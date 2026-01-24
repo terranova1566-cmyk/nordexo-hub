@@ -1,0 +1,4282 @@
+{
+  "sourceLocale": "en",
+  "strings": [
+    {
+      "key": "app.brand",
+      "text": "Nordexo Hub",
+      "context": "App brand in the header"
+    },
+    {
+      "key": "nav.products",
+      "text": "Product Manager",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.productsExplorer",
+      "text": "Products Explorer",
+      "context": "Products menu item"
+    },
+    {
+      "key": "nav.allProducts",
+      "text": "All products",
+      "context": "Products menu item"
+    },
+    {
+      "key": "nav.saved",
+      "text": "My Lists",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.exports",
+      "text": "Export",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.uiKit",
+      "text": "UI Kit",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.productDiscovery",
+      "text": "Product Discovery",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.myLists",
+      "text": "My Lists",
+      "context": "Product discovery menu item"
+    },
+    {
+      "key": "nav.productFinder",
+      "text": "Product Finder",
+      "context": "Product discovery menu item"
+    },
+    {
+      "key": "nav.digidealCampaigns",
+      "text": "DigiDeal Deals",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.trendResearch",
+      "text": "NX Research",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.production",
+      "text": "Production",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.orders",
+      "text": "Orders",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.ordersView",
+      "text": "View Orders",
+      "context": "Orders menu item"
+    },
+    {
+      "key": "nav.ordersImport",
+      "text": "Import Orders",
+      "context": "Orders menu item"
+    },
+    {
+      "key": "nav.ordersResend",
+      "text": "Resend Queue",
+      "context": "Orders menu item"
+    },
+    {
+      "key": "nav.email",
+      "text": "Email",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.sendEmail",
+      "text": "Send email",
+      "context": "Email menu item"
+    },
+    {
+      "key": "nav.emailAutomations",
+      "text": "Automations",
+      "context": "Email menu item"
+    },
+    {
+      "key": "nav.productionQueue",
+      "text": "Production Queue",
+      "context": "Production menu item"
+    },
+    {
+      "key": "nav.bulkProcessing",
+      "text": "Bulk Product Processing",
+      "context": "Production menu item"
+    },
+    {
+      "key": "nav.draftExplorer",
+      "text": "Product Draft Explorer",
+      "context": "Production menu item"
+    },
+    {
+      "key": "draftExplorer.title",
+      "text": "Product Draft Explorer",
+      "context": "Draft explorer page title"
+    },
+    {
+      "key": "draftExplorer.subtitle",
+      "text": "Upload offline edits and manage draft runs.",
+      "context": "Draft explorer page subtitle"
+    },
+    {
+      "key": "draftExplorer.tableTitle",
+      "text": "Drafts",
+      "context": "Draft explorer table title"
+    },
+    {
+      "key": "draftExplorer.tableSubtitle",
+      "text": "Draft products and variants (live edit).",
+      "context": "Draft explorer table subtitle"
+    },
+    {
+      "key": "draftExplorer.searchLabel",
+      "text": "Search",
+      "context": "Draft explorer search label"
+    },
+    {
+      "key": "draftExplorer.searchPlaceholder",
+      "text": "Search SPU, SKU, or titles",
+      "context": "Draft explorer search placeholder"
+    },
+    {
+      "key": "draftExplorer.publishButton",
+      "text": "Save to database",
+      "context": "Draft explorer publish button"
+    },
+    {
+      "key": "draftExplorer.publishConfirmAll",
+      "text": "Publish all draft products to the database?",
+      "context": "Draft explorer publish confirmation when none selected"
+    },
+    {
+      "key": "draftExplorer.publishConfirmSelected",
+      "text": "Publish {count} selected draft products to the database?",
+      "context": "Draft explorer publish confirmation for selected rows"
+    },
+    {
+      "key": "draftExplorer.publishSuccess",
+      "text": "Published {count} draft product(s).",
+      "context": "Draft explorer publish success message"
+    },
+    {
+      "key": "draftExplorer.publishBlockedSkusMissing",
+      "text": "Run SKU generation before saving to the database.",
+      "context": "Draft explorer publish blocked when SKUs are missing"
+    },
+    {
+      "key": "draftExplorer.publishBlockedSkuRunning",
+      "text": "SKU generation is still running. Please wait.",
+      "context": "Draft explorer publish blocked while SKU generation is running"
+    },
+    {
+      "key": "draftExplorer.generateSkuButton",
+      "text": "Generate SKU",
+      "context": "Draft explorer SKU generation button"
+    },
+    {
+      "key": "draftExplorer.generateSkuRunning",
+      "text": "Generating SKU",
+      "context": "Draft explorer SKU generation running label"
+    },
+    {
+      "key": "draftExplorer.regenerateSkuButton",
+      "text": "Regenerate SKUs",
+      "context": "Draft explorer SKU regeneration button"
+    },
+    {
+      "key": "draftExplorer.regenerateSkuRunning",
+      "text": "Regenerating SKUs",
+      "context": "Draft explorer SKU regeneration running label"
+    },
+    {
+      "key": "draftExplorer.generateSkuConfirmAll",
+      "text": "Generate SKUs for all draft products?",
+      "context": "Draft explorer SKU generation confirmation when none selected"
+    },
+    {
+      "key": "draftExplorer.generateSkuConfirmSelected",
+      "text": "Generate SKUs for {count} selected draft products?",
+      "context": "Draft explorer SKU generation confirmation for selected rows"
+    },
+    {
+      "key": "draftExplorer.regenerateSkuConfirmAll",
+      "text": "Regenerate SKUs for all draft products?",
+      "context": "Draft explorer SKU regeneration confirmation when none selected"
+    },
+    {
+      "key": "draftExplorer.regenerateSkuConfirmSelected",
+      "text": "Regenerate SKUs for {count} selected draft products?",
+      "context": "Draft explorer SKU regeneration confirmation for selected rows"
+    },
+    {
+      "key": "draftExplorer.rerunSkuButton",
+      "text": "Rerun SKU + images",
+      "context": "Draft explorer SKU rerun button"
+    },
+    {
+      "key": "draftExplorer.rerunSkuRunning",
+      "text": "Rerunning SKU + images",
+      "context": "Draft explorer SKU rerun running label"
+    },
+    {
+      "key": "draftExplorer.rerunSkuConfirmAll",
+      "text": "Rerun SKU + images for all draft products?",
+      "context": "Draft explorer SKU rerun confirmation when none selected"
+    },
+    {
+      "key": "draftExplorer.rerunSkuConfirmSelected",
+      "text": "Rerun SKU + images for {count} selected draft products?",
+      "context": "Draft explorer SKU rerun confirmation for selected rows"
+    },
+    {
+      "key": "draftExplorer.spuTab",
+      "text": "SPUs (Draft Products)",
+      "context": "Draft explorer tab"
+    },
+    {
+      "key": "draftExplorer.skuTab",
+      "text": "SKUs (Draft Variants)",
+      "context": "Draft explorer tab"
+    },
+    {
+      "key": "draftExplorer.columns.spu",
+      "text": "SPU",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.title",
+      "text": "Title",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.subtitle",
+      "text": "Subtitle",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.status",
+      "text": "Status",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.source",
+      "text": "Source",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.supplierUrl",
+      "text": "Supplier URL",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.images",
+      "text": "Images",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.variantImages",
+      "text": "Variant Images",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.videos",
+      "text": "Videos",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.variants",
+      "text": "Variants",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.updated",
+      "text": "Updated",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.created",
+      "text": "Created",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.details",
+      "text": "Details",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.sku",
+      "text": "SKU",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.colorSe",
+      "text": "Color (SE)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.sizeSe",
+      "text": "Size (SE)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.otherSe",
+      "text": "Other (SE)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.amountSe",
+      "text": "Amount (SE)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.optionCombined",
+      "text": "Chinese Combined",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.option1",
+      "text": "Option 1 (CN)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.option2",
+      "text": "Option 2 (CN)",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.price",
+      "text": "Price",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.weight",
+      "text": "Weight",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.columns.variantImage",
+      "text": "Variant Image",
+      "context": "Draft explorer column"
+    },
+    {
+      "key": "draftExplorer.empty",
+      "text": "No drafts found.",
+      "context": "Draft explorer empty state"
+    },
+    {
+      "key": "draftExplorer.expand",
+      "text": "Details",
+      "context": "Draft explorer expand action"
+    },
+    {
+      "key": "draftExplorer.collapse",
+      "text": "Close",
+      "context": "Draft explorer collapse action"
+    },
+    {
+      "key": "draftExplorer.saving",
+      "text": "Saving changes...",
+      "context": "Draft explorer saving indicator"
+    },
+    {
+      "key": "draftExplorer.details.description",
+      "text": "Descriptions",
+      "context": "Draft explorer details heading"
+    },
+    {
+      "key": "draftExplorer.details.titles",
+      "text": "Titles",
+      "context": "Draft explorer details heading"
+    },
+    {
+      "key": "draftExplorer.details.bullets",
+      "text": "Bullets & Specs",
+      "context": "Draft explorer details heading"
+    },
+    {
+      "key": "draftExplorer.details.images",
+      "text": "Images",
+      "context": "Draft explorer details heading"
+    },
+    {
+      "key": "draftExplorer.details.raw",
+      "text": "Raw JSON",
+      "context": "Draft explorer details heading"
+    },
+    {
+      "key": "orders.view.title",
+      "text": "Orders",
+      "context": "Orders page title"
+    },
+    {
+      "key": "orders.view.subtitle",
+      "text": "Search and filter all imported orders.",
+      "context": "Orders page subtitle"
+    },
+    {
+      "key": "orders.resendView.title",
+      "text": "Resend Queue",
+      "context": "Resend orders page title"
+    },
+    {
+      "key": "orders.resendView.subtitle",
+      "text": "Track orders queued for resend.",
+      "context": "Resend orders page subtitle"
+    },
+    {
+      "key": "orders.filters.search",
+      "text": "Search",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.searchPlaceholder",
+      "text": "Search by order number, customer, or channel",
+      "context": "Orders filter placeholder"
+    },
+    {
+      "key": "orders.filters.transactionFrom",
+      "text": "Transaction From",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.transactionTo",
+      "text": "Transaction To",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.shippedFrom",
+      "text": "Shipped From",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.shippedTo",
+      "text": "Shipped To",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.export.button",
+      "text": "Export selection",
+      "context": "Orders export button"
+    },
+    {
+      "key": "orders.remove.button",
+      "text": "Remove orders",
+      "context": "Orders remove button"
+    },
+    {
+      "key": "orders.remove.confirm",
+      "text": "Remove selected orders?",
+      "context": "Orders remove confirm"
+    },
+    {
+      "key": "orders.resend.button",
+      "text": "Resend Orders",
+      "context": "Orders resend button"
+    },
+    {
+      "key": "orders.resend.dialogTitle",
+      "text": "Resend items",
+      "context": "Orders resend dialog title"
+    },
+    {
+      "key": "orders.resend.summaryTitle",
+      "text": "Order summary",
+      "context": "Orders resend summary section title"
+    },
+    {
+      "key": "orders.resend.addressTitle",
+      "text": "Customer details",
+      "context": "Orders resend address section title"
+    },
+    {
+      "key": "orders.resend.itemsTitle",
+      "text": "Selected items",
+      "context": "Orders resend items section title"
+    },
+    {
+      "key": "orders.resend.empty",
+      "text": "No items selected.",
+      "context": "Orders resend empty state"
+    },
+    {
+      "key": "orders.resend.fields.orderNumber",
+      "text": "Order number",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.salesChannel",
+      "text": "Sales channel",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.customerName",
+      "text": "Customer name",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.address",
+      "text": "Address",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.zip",
+      "text": "ZIP code",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.city",
+      "text": "City",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.phone",
+      "text": "Phone",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.fields.email",
+      "text": "Email",
+      "context": "Orders resend field label"
+    },
+    {
+      "key": "orders.resend.columns.sku",
+      "text": "SKU",
+      "context": "Orders resend column label"
+    },
+    {
+      "key": "orders.resend.columns.title",
+      "text": "Title",
+      "context": "Orders resend column label"
+    },
+    {
+      "key": "orders.resend.columns.quantity",
+      "text": "Quantity",
+      "context": "Orders resend column label"
+    },
+    {
+      "key": "orders.resend.columns.price",
+      "text": "Price",
+      "context": "Orders resend column label"
+    },
+    {
+      "key": "orders.resend.actions.cancel",
+      "text": "Cancel",
+      "context": "Orders resend dialog action"
+    },
+    {
+      "key": "orders.resend.actions.confirm",
+      "text": "Confirm",
+      "context": "Orders resend dialog action"
+    },
+    {
+      "key": "orders.resend.actions.resend",
+      "text": "Add to Resend",
+      "context": "Orders resend dialog action"
+    },
+    {
+      "key": "orders.resend.actions.addRow",
+      "text": "Add rows",
+      "context": "Orders resend dialog action"
+    },
+    {
+      "key": "orders.resend.commentsTitle",
+      "text": "Comments",
+      "context": "Orders resend comments section title"
+    },
+    {
+      "key": "orders.resend.fields.comment",
+      "text": "Order comment",
+      "context": "Orders resend comment field label"
+    },
+    {
+      "key": "orders.resend.fields.commentPlaceholder",
+      "text": "Add internal notes for this resend",
+      "context": "Orders resend comment placeholder"
+    },
+    {
+      "key": "orders.resend.error.details",
+      "text": "Load order details before resending.",
+      "context": "Orders resend error"
+    },
+    {
+      "key": "orders.resend.error.missing",
+      "text": "Unable to load order details.",
+      "context": "Orders resend error"
+    },
+    {
+      "key": "orders.resend.error.noItems",
+      "text": "Select at least one SKU to resend.",
+      "context": "Orders resend error"
+    },
+    {
+      "key": "orders.columns.salesChannelId",
+      "text": "Sales Channel ID",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.orderNumber",
+      "text": "Order Number",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.salesChannel",
+      "text": "Sales Channel",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.customer",
+      "text": "Customer",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.email",
+      "text": "Customer Email",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.city",
+      "text": "City",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.transactionDate",
+      "text": "Transaction Date",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.dateShipped",
+      "text": "Date Shipped",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.empty",
+      "text": "No orders found.",
+      "context": "Orders empty state"
+    },
+    {
+      "key": "orders.details.loading",
+      "text": "Loading order details...",
+      "context": "Orders details state"
+    },
+    {
+      "key": "orders.details.tracking",
+      "text": "Tracking numbers",
+      "context": "Orders details heading"
+    },
+    {
+      "key": "orders.details.none",
+      "text": "None",
+      "context": "Orders details empty value"
+    },
+    {
+      "key": "orders.details.itemsTitle",
+      "text": "Order items",
+      "context": "Orders details heading"
+    },
+    {
+      "key": "orders.details.columns.sku",
+      "text": "SKU",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.title",
+      "text": "Title",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.quantity",
+      "text": "Qty",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.salesValue",
+      "text": "Sales (EUR)",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.marketplaceOrder",
+      "text": "Marketplace Order",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.salesChannelOrder",
+      "text": "Sales Channel Order",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.customerTitle",
+      "text": "Customer details",
+      "context": "Orders details heading"
+    },
+    {
+      "key": "orders.details.customerAddress",
+      "text": "Address",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.customerEmail",
+      "text": "Email",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.customerPhone",
+      "text": "Phone",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.notes",
+      "text": "Notes",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.notesPlaceholder",
+      "text": "Add notes for this order...",
+      "context": "Orders details placeholder"
+    },
+    {
+      "key": "orders.details.trackExternal",
+      "text": "Open tracking link",
+      "context": "Orders details link label"
+    },
+    {
+      "key": "orders.import.title",
+      "text": "Import Orders",
+      "context": "Orders import page title"
+    },
+    {
+      "key": "orders.import.subtitle",
+      "text": "Upload an Excel file to import order data.",
+      "context": "Orders import page subtitle"
+    },
+    {
+      "key": "orders.import.uploadLabel",
+      "text": "Upload Excel file",
+      "context": "Orders import upload label"
+    },
+    {
+      "key": "orders.import.button",
+      "text": "Import",
+      "context": "Orders import button"
+    },
+    {
+      "key": "orders.import.done",
+      "text": "Import done: {orders} orders, {items} line items, {tracking} tracking numbers.",
+      "context": "Orders import success message"
+    },
+    {
+      "key": "orders.import.instructionsTitle",
+      "text": "How it works",
+      "context": "Orders import instructions title"
+    },
+    {
+      "key": "orders.import.instructions1",
+      "text": "First row must match the required headers exactly and in order.",
+      "context": "Orders import instructions"
+    },
+    {
+      "key": "orders.import.instructions2",
+      "text": "Each row represents one SKU line item; an order can span multiple rows.",
+      "context": "Orders import instructions"
+    },
+    {
+      "key": "orders.import.instructions3",
+      "text": "Tracking numbers are collected per order; duplicate numbers are ignored.",
+      "context": "Orders import instructions"
+    }
+    ,
+    {
+      "key": "orders.import.historyTitle",
+      "text": "Import history",
+      "context": "Orders import history title"
+    },
+    {
+      "key": "orders.import.history.columns.date",
+      "text": "Date / Time",
+      "context": "Orders import history column"
+    },
+    {
+      "key": "orders.import.history.columns.file",
+      "text": "File",
+      "context": "Orders import history column"
+    },
+    {
+      "key": "orders.import.history.columns.rows",
+      "text": "Rows",
+      "context": "Orders import history column"
+    },
+    {
+      "key": "orders.import.history.empty",
+      "text": "No imports yet.",
+      "context": "Orders import history empty state"
+    },
+    {
+      "key": "email.title",
+      "text": "Manual Email Sender",
+      "context": "Email page title"
+    },
+    {
+      "key": "email.subtitle",
+      "text": "Send one-off emails through SendPulse templates.",
+      "context": "Email page subtitle"
+    },
+    {
+      "key": "email.to.label",
+      "text": "To",
+      "context": "Email form label"
+    },
+    {
+      "key": "email.to.placeholder",
+      "text": "email1@example.com, email2@example.com",
+      "context": "Email form placeholder"
+    },
+    {
+      "key": "email.subject.label",
+      "text": "Subject",
+      "context": "Email form label"
+    },
+    {
+      "key": "email.subject.placeholder",
+      "text": "Subject line for this send",
+      "context": "Email form placeholder"
+    },
+    {
+      "key": "email.template.label",
+      "text": "Template",
+      "context": "Email form label"
+    },
+    {
+      "key": "email.template.placeholder",
+      "text": "Search templates",
+      "context": "Email form placeholder"
+    },
+    {
+      "key": "email.template.selected",
+      "text": "Selected:",
+      "context": "Email form helper"
+    },
+    {
+      "key": "email.templates.loading",
+      "text": "Loading templates...",
+      "context": "Email form state"
+    },
+    {
+      "key": "email.templates.error",
+      "text": "Unable to load templates.",
+      "context": "Email form error"
+    },
+    {
+      "key": "email.sender.label",
+      "text": "Sender",
+      "context": "Email form label"
+    },
+    {
+      "key": "email.sender.placeholder",
+      "text": "Select sender",
+      "context": "Email form placeholder"
+    },
+    {
+      "key": "email.senders.loading",
+      "text": "Loading senders...",
+      "context": "Email form state"
+    },
+    {
+      "key": "email.senders.error",
+      "text": "Unable to load senders.",
+      "context": "Email form error"
+    },
+    {
+      "key": "email.variables.title",
+      "text": "Template variables",
+      "context": "Email form section title"
+    },
+    {
+      "key": "email.variables.helper",
+      "text": "Add key/value pairs for the selected template.",
+      "context": "Email form helper"
+    },
+    {
+      "key": "email.variables.key",
+      "text": "Key",
+      "context": "Email variables label"
+    },
+    {
+      "key": "email.variables.value",
+      "text": "Value",
+      "context": "Email variables label"
+    },
+    {
+      "key": "email.variables.keyPlaceholder",
+      "text": "tracking_number",
+      "context": "Email variables placeholder"
+    },
+    {
+      "key": "email.variables.valuePlaceholder",
+      "text": "123456",
+      "context": "Email variables placeholder"
+    },
+    {
+      "key": "email.variables.add",
+      "text": "Add variable",
+      "context": "Email variables action"
+    },
+    {
+      "key": "email.variables.actions",
+      "text": "Actions",
+      "context": "Email variables table header"
+    },
+    {
+      "key": "email.variables.remove",
+      "text": "Remove",
+      "context": "Email variables action"
+    },
+    {
+      "key": "email.variables.empty",
+      "text": "No variables added yet.",
+      "context": "Email variables empty state"
+    },
+    {
+      "key": "email.send",
+      "text": "Send email",
+      "context": "Email form action"
+    },
+    {
+      "key": "email.sendSuccess",
+      "text": "Email sent successfully.",
+      "context": "Email form success"
+    },
+    {
+      "key": "email.sendError",
+      "text": "Unable to send email.",
+      "context": "Email form error"
+    },
+    {
+      "key": "email.automations.title",
+      "text": "Email Automations",
+      "context": "Email automations page title"
+    },
+    {
+      "key": "email.automations.subtitle",
+      "text": "Create rules for automated SendPulse sends triggered by new orders.",
+      "context": "Email automations page subtitle"
+    },
+    {
+      "key": "email.automations.section.orderDelivery",
+      "text": "Order Delivery Emails",
+      "context": "Email automations section title"
+    },
+    {
+      "key": "email.automations.section.helper",
+      "text": "Rules apply when new shipped orders are imported into the system.",
+      "context": "Email automations section helper"
+    },
+    {
+      "key": "email.automations.actions.addRow",
+      "text": "Add New Row",
+      "context": "Email automations action"
+    },
+    {
+      "key": "email.automations.actions.save",
+      "text": "Save Rules",
+      "context": "Email automations action"
+    },
+    {
+      "key": "email.automations.actions.remove",
+      "text": "Remove",
+      "context": "Email automations action"
+    },
+    {
+      "key": "email.automations.actions.saved",
+      "text": "Rules saved.",
+      "context": "Email automations feedback"
+    },
+    {
+      "key": "email.automations.actions.error",
+      "text": "Unable to save rules.",
+      "context": "Email automations feedback"
+    },
+    {
+      "key": "email.automations.empty",
+      "text": "No rules yet.",
+      "context": "Email automations empty state"
+    },
+    {
+      "key": "email.automations.columns.salesChannelId",
+      "text": "Sales Channel ID",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.channelTemplate",
+      "text": "Channel / Template",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.template",
+      "text": "Template",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.sender",
+      "text": "Sender",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.subject",
+      "text": "Subject",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.deliveryTime",
+      "text": "Delivery time",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.subjectDelivery",
+      "text": "Subject / Delivery",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.variables",
+      "text": "Variables",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.placeholders",
+      "text": "Available Variables",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.columns.actions",
+      "text": "Actions",
+      "context": "Email automations column"
+    },
+    {
+      "key": "email.automations.variables.tracking",
+      "text": "Tracking number",
+      "context": "Email automations variable"
+    },
+    {
+      "key": "email.automations.variables.orderNumber",
+      "text": "Order number",
+      "context": "Email automations variable"
+    },
+    {
+      "key": "email.automations.variables.deliveryTime",
+      "text": "Delivery time",
+      "context": "Email automations variable"
+    },
+    {
+      "key": "email.automations.subject.helper",
+      "text": "Use {order_number}, {tracking_number}, {delivery_time}",
+      "context": "Email automations subject helper"
+    },
+    {
+      "key": "email.automations.salesChannel.placeholder",
+      "text": "Choose platform",
+      "context": "Email automations sales channel placeholder"
+    },
+    {
+      "key": "email.automations.salesChannel.SK_SE",
+      "text": "SK-SE / Sparklar",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.OF_FI",
+      "text": "OF-FI / Offerilla",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.LD_SE",
+      "text": "LD-SE / LetsDeal Sverige",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.LD_NO",
+      "text": "LD-NO / LetsDeal Norge",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.DI_SE",
+      "text": "DI-SE / Digideal",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.TI_SE",
+      "text": "TI-SE / Tingelo",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.salesChannel.WL_SE",
+      "text": "WL-SE / Wellando",
+      "context": "Email automations sales channel option"
+    },
+    {
+      "key": "email.automations.delivery.placeholder",
+      "text": "Delivery time",
+      "context": "Email automations delivery placeholder"
+    },
+    {
+      "key": "bulkProcessing.title",
+      "text": "Bulk Product Processing",
+      "context": "Bulk processing page title"
+    },
+    {
+      "key": "bulkProcessing.subtitle",
+      "text": "Upload a JSON file, run the batch, and monitor each worker in real time.",
+      "context": "Bulk processing page subtitle"
+    },
+    {
+      "key": "bulkProcessing.uploadLabel",
+      "text": "Upload JSON file",
+      "context": "Bulk processing upload label"
+    },
+    {
+      "key": "bulkProcessing.upload",
+      "text": "Upload",
+      "context": "Bulk processing upload button"
+    },
+    {
+      "key": "bulkProcessing.run",
+      "text": "Run Batch",
+      "context": "Bulk processing start button"
+    },
+    {
+      "key": "bulkProcessing.stop",
+      "text": "Kill and Sweep",
+      "context": "Bulk processing stop switch label"
+    },
+    {
+      "key": "bulkProcessing.summary.file",
+      "text": "Input file",
+      "context": "Bulk processing summary column"
+    },
+    {
+      "key": "bulkProcessing.summary.count",
+      "text": "Total SKUs",
+      "context": "Bulk processing summary column"
+    },
+    {
+      "key": "bulkProcessing.summary.workers",
+      "text": "Workers",
+      "context": "Bulk processing summary column"
+    },
+    {
+      "key": "bulkProcessing.summary.status",
+      "text": "Status",
+      "context": "Bulk processing summary column"
+    },
+    {
+      "key": "bulkProcessing.logs.parallel",
+      "text": "Parallel",
+      "context": "Bulk processing log tab"
+    },
+    {
+      "key": "bulkProcessing.logs.worker",
+      "text": "Worker",
+      "context": "Bulk processing log tab"
+    },
+    {
+      "key": "bulkProcessing.logs.empty",
+      "text": "Waiting for logs...",
+      "context": "Bulk processing log empty state"
+    },
+    {
+      "key": "bulkProcessing.completed",
+      "text": "Batch completed.",
+      "context": "Bulk processing completion text"
+    },
+    {
+      "key": "bulkProcessing.downloadExcel",
+      "text": "Download Excel",
+      "context": "Bulk processing download button"
+    },
+    {
+      "key": "bulkProcessing.downloadZip",
+      "text": "Download Zip",
+      "context": "Bulk processing download button"
+    },
+    {
+      "key": "bulkProcessing.explorer.title",
+      "text": "File Explorer",
+      "context": "Bulk processing explorer title"
+    },
+    {
+      "key": "bulkProcessing.explorer.subtitle",
+      "text": "Browse draft images and outputs from batch runs.",
+      "context": "Bulk processing explorer subtitle"
+    },
+    {
+      "key": "bulkProcessing.explorer.selectFolder",
+      "text": "Select run folder",
+      "context": "Bulk processing explorer folder select"
+    },
+    {
+      "key": "bulkProcessing.explorer.refresh",
+      "text": "Refresh",
+      "context": "Bulk processing explorer refresh"
+    },
+    {
+      "key": "bulkProcessing.explorer.up",
+      "text": "Up one level",
+      "context": "Bulk processing explorer up"
+    },
+    {
+      "key": "bulkProcessing.explorer.downloadSelected",
+      "text": "Download selected (zip)",
+      "context": "Bulk processing explorer download selected"
+    },
+    {
+      "key": "bulkProcessing.explorer.downloadAll",
+      "text": "Download all (zip)",
+      "context": "Bulk processing explorer download all"
+    },
+    {
+      "key": "bulkProcessing.explorer.deleteSelected",
+      "text": "Delete selected",
+      "context": "Bulk processing explorer delete selected"
+    },
+    {
+      "key": "bulkProcessing.explorer.deleteConfirm",
+      "text": "Are you sure you want to delete the selected items?",
+      "context": "Bulk processing explorer delete confirm"
+    },
+    {
+      "key": "bulkProcessing.explorer.drop",
+      "text": "Drag and drop files to upload into this folder, or click to pick files.",
+      "context": "Bulk processing explorer drop zone"
+    },
+    {
+      "key": "bulkProcessing.explorer.name",
+      "text": "Name",
+      "context": "Bulk processing explorer column"
+    },
+    {
+      "key": "bulkProcessing.explorer.modified",
+      "text": "Modified",
+      "context": "Bulk processing explorer column"
+    },
+    {
+      "key": "bulkProcessing.explorer.size",
+      "text": "Size",
+      "context": "Bulk processing explorer column"
+    },
+    {
+      "key": "bulkProcessing.explorer.actions",
+      "text": "Actions",
+      "context": "Bulk processing explorer column"
+    },
+    {
+      "key": "bulkProcessing.explorer.viewList",
+      "text": "List view",
+      "context": "Bulk processing explorer view toggle"
+    },
+    {
+      "key": "bulkProcessing.explorer.viewGrid",
+      "text": "Big thumbnails",
+      "context": "Bulk processing explorer view toggle"
+    },
+    {
+      "key": "bulkProcessing.explorer.viewSmall",
+      "text": "Small",
+      "context": "Bulk processing explorer view toggle"
+    },
+    {
+      "key": "bulkProcessing.explorer.viewLarge",
+      "text": "Large",
+      "context": "Bulk processing explorer view toggle"
+    },
+    {
+      "key": "bulkProcessing.explorer.empty",
+      "text": "No files found.",
+      "context": "Bulk processing explorer empty"
+    },
+    {
+      "key": "bulkProcessing.explorer.open",
+      "text": "Open",
+      "context": "Bulk processing explorer open folder"
+    },
+    {
+      "key": "bulkProcessing.explorer.download",
+      "text": "Download",
+      "context": "Bulk processing explorer download"
+    },
+    {
+      "key": "bulkProcessing.explorer.preview",
+      "text": "Preview",
+      "context": "Bulk processing explorer preview"
+    },
+    {
+      "key": "bulkProcessing.explorer.previewTitle",
+      "text": "Preview",
+      "context": "Bulk processing explorer preview title"
+    },
+    {
+      "key": "bulkProcessing.explorer.folder",
+      "text": "Folder",
+      "context": "Bulk processing explorer folder label"
+    },
+    {
+      "key": "bulkProcessing.explorer.file",
+      "text": "File",
+      "context": "Bulk processing explorer file label"
+    },
+    {
+      "key": "bulkProcessing.import.title",
+      "text": "Import edits",
+      "context": "Bulk processing import section title"
+    },
+    {
+      "key": "bulkProcessing.import.subtitle",
+      "text": "Upload edited Excel and/or image ZIPs to replace draft runs.",
+      "context": "Bulk processing import section subtitle"
+    },
+    {
+      "key": "bulkProcessing.import.excel",
+      "text": "Upload Excel file",
+      "context": "Bulk processing import Excel label"
+    },
+    {
+      "key": "bulkProcessing.import.zip",
+      "text": "Upload image ZIP",
+      "context": "Bulk processing import ZIP label"
+    },
+    {
+      "key": "bulkProcessing.import.upload",
+      "text": "Upload",
+      "context": "Bulk processing import upload button"
+    },
+    {
+      "key": "bulkProcessing.import.uploading",
+      "text": "Uploading...",
+      "context": "Bulk processing import uploading state"
+    },
+    {
+      "key": "bulkProcessing.import.done",
+      "text": "Done",
+      "context": "Bulk processing import done state"
+    },
+    {
+      "key": "settings.title",
+      "text": "Settings",
+      "context": "Settings page title"
+    },
+    {
+      "key": "settings.open",
+      "text": "Open settings",
+      "context": "Aria label for settings button"
+    },
+    {
+      "key": "settings.discovery.tab",
+      "text": "Product Discovery",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.discovery.categories.title",
+      "text": "Category hiding",
+      "context": "Settings section title"
+    },
+    {
+      "key": "settings.discovery.categories.helper",
+      "text": "Hide categories so they do not appear while browsing Product Discovery.",
+      "context": "Settings section helper text"
+    },
+    {
+      "key": "settings.discovery.categories.label",
+      "text": "Hidden categories",
+      "context": "Settings category field label"
+    },
+    {
+      "key": "settings.discovery.categories.none",
+      "text": "No hidden categories",
+      "context": "Settings category summary when empty"
+    },
+    {
+      "key": "settings.discovery.categories.count",
+      "text": "{count} categories hidden",
+      "context": "Settings category summary with count"
+    },
+    {
+      "key": "settings.discovery.categories.showHidden",
+      "text": "Show only hidden categories",
+      "context": "Settings category filter toggle"
+    },
+    {
+      "key": "settings.discovery.categories.unhideAll",
+      "text": "Unhide all",
+      "context": "Settings category clear action"
+    },
+    {
+      "key": "settings.discovery.keywords.title",
+      "text": "Keyword hiding",
+      "context": "Settings section title"
+    },
+    {
+      "key": "settings.discovery.keywords.helper",
+      "text": "Hide products whose titles contain these keywords.",
+      "context": "Settings keyword helper text"
+    },
+    {
+      "key": "settings.discovery.keywords.placeholder",
+      "text": "Add keyword",
+      "context": "Settings keyword input placeholder"
+    },
+    {
+      "key": "settings.discovery.keywords.add",
+      "text": "Add",
+      "context": "Settings keyword add button"
+    },
+    {
+      "key": "settings.discovery.saveSuccess",
+      "text": "Settings saved.",
+      "context": "Settings save success message"
+    },
+    {
+      "key": "settings.discovery.saveError",
+      "text": "Unable to save settings.",
+      "context": "Settings save error fallback"
+    },
+    {
+      "key": "settings.discovery.saving",
+      "text": "Saving...",
+      "context": "Settings save loading label"
+    },
+    {
+      "key": "settings.discovery.error",
+      "text": "Unable to load your settings.",
+      "context": "Settings load error"
+    },
+    {
+      "key": "settings.user.tab",
+      "text": "User",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.system.tab",
+      "text": "System",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.user.basic.title",
+      "text": "Basic information",
+      "context": "User settings section title"
+    },
+    {
+      "key": "settings.user.basic.helper",
+      "text": "Update your name, company, and role.",
+      "context": "User settings helper text"
+    },
+    {
+      "key": "settings.user.basic.name",
+      "text": "Name",
+      "context": "User settings name label"
+    },
+    {
+      "key": "settings.user.basic.company",
+      "text": "Company",
+      "context": "User settings company label"
+    },
+    {
+      "key": "settings.user.basic.role",
+      "text": "Role",
+      "context": "User settings role label"
+    },
+    {
+      "key": "settings.user.basic.email",
+      "text": "Email",
+      "context": "User settings email label"
+    },
+    {
+      "key": "settings.user.avatar.title",
+      "text": "Profile image",
+      "context": "User settings avatar section title"
+    },
+    {
+      "key": "settings.user.avatar.helper",
+      "text": "Upload an avatar to personalize your profile.",
+      "context": "User settings avatar helper text"
+    },
+    {
+      "key": "settings.user.avatar.upload",
+      "text": "Upload avatar",
+      "context": "User settings avatar upload button"
+    },
+    {
+      "key": "settings.user.avatar.remove",
+      "text": "Remove",
+      "context": "User settings avatar remove button"
+    },
+    {
+      "key": "settings.user.avatar.invalid",
+      "text": "Please choose an image file.",
+      "context": "User settings avatar invalid file error"
+    },
+    {
+      "key": "settings.user.avatar.tooLarge",
+      "text": "Image is too large. Please upload a file under 2MB.",
+      "context": "User settings avatar size error"
+    },
+    {
+      "key": "settings.user.avatar.cropTitle",
+      "text": "Crop image",
+      "context": "User settings avatar crop title"
+    },
+    {
+      "key": "settings.user.avatar.cropZoom",
+      "text": "Zoom",
+      "context": "User settings avatar crop zoom label"
+    },
+    {
+      "key": "settings.user.avatar.crop",
+      "text": "Crop",
+      "context": "User settings avatar crop button"
+    },
+    {
+      "key": "settings.user.avatar.cropping",
+      "text": "Cropping...",
+      "context": "User settings avatar crop loading label"
+    },
+    {
+      "key": "settings.user.preferences.title",
+      "text": "Basic settings",
+      "context": "User settings preferences section title"
+    },
+    {
+      "key": "settings.user.preferences.helper",
+      "text": "Choose your default language for the app.",
+      "context": "User settings preferences helper text"
+    },
+    {
+      "key": "settings.user.preferences.language",
+      "text": "Preferred language",
+      "context": "User settings language label"
+    },
+    {
+      "key": "settings.system.title",
+      "text": "System information",
+      "context": "System settings section title"
+    },
+    {
+      "key": "settings.system.helper",
+      "text": "Live server metrics and runtime details.",
+      "context": "System settings helper text"
+    },
+    {
+      "key": "settings.system.loading",
+      "text": "Loading system metrics...",
+      "context": "System settings loading label"
+    },
+    {
+      "key": "settings.system.refresh",
+      "text": "Refresh",
+      "context": "System settings refresh button"
+    },
+    {
+      "key": "settings.system.error",
+      "text": "Unable to load system metrics.",
+      "context": "System settings error message"
+    },
+    {
+      "key": "settings.system.forbidden",
+      "text": "System metrics are available to admin users only.",
+      "context": "System settings forbidden message"
+    },
+    {
+      "key": "settings.system.metrics.hostname",
+      "text": "Hostname",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.platform",
+      "text": "Platform",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.uptime",
+      "text": "Uptime",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.cpu",
+      "text": "CPU cores",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.load",
+      "text": "Load (1/5/15)",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.memory",
+      "text": "Memory",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.processMemory",
+      "text": "Process memory",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.disk",
+      "text": "Disk usage",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.metrics.updated",
+      "text": "Last updated",
+      "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.table.metric",
+      "text": "Metric",
+      "context": "System metrics table header"
+    },
+    {
+      "key": "settings.system.table.value",
+      "text": "Value",
+      "context": "System metrics table header"
+    },
+    {
+      "key": "settings.user.saveSuccess",
+      "text": "Profile saved.",
+      "context": "User settings save success"
+    },
+    {
+      "key": "settings.user.saveError",
+      "text": "Unable to save profile.",
+      "context": "User settings save error"
+    },
+    {
+      "key": "settings.user.saving",
+      "text": "Saving...",
+      "context": "User settings saving label"
+    },
+    {
+      "key": "settings.user.error",
+      "text": "Unable to load your profile.",
+      "context": "User settings load error"
+    },
+    {
+      "key": "actions.savedForExport",
+      "text": "Saved for export ({count})",
+      "context": "Toolbar action with count"
+    },
+    {
+      "key": "actions.signOut",
+      "text": "Sign out",
+      "context": "Sign out button"
+    },
+    {
+      "key": "actions.language",
+      "text": "Language",
+      "context": "Language selector label"
+    },
+    {
+      "key": "language.english",
+      "text": "English",
+      "context": "Language option"
+    },
+    {
+      "key": "language.swedish",
+      "text": "Swedish",
+      "context": "Language option"
+    },
+    {
+      "key": "language.chinese",
+      "text": "Chinese (Simplified)",
+      "context": "Language option"
+    },
+    {
+      "key": "auth.title",
+      "text": "Product & Sales Hub",
+      "context": "Login page title"
+    },
+    {
+      "key": "auth.subtitle",
+      "text": "Sign in with your partner credentials to access the inventory explorer.",
+      "context": "Login page subtitle"
+    },
+    {
+      "key": "auth.sessionExpired",
+      "text": "Your session expired. Please sign in to continue.",
+      "context": "Login page session expired message"
+    },
+    {
+      "key": "auth.emailLabel",
+      "text": "Email",
+      "context": "Login form label"
+    },
+    {
+      "key": "auth.passwordLabel",
+      "text": "Password",
+      "context": "Login form label"
+    },
+    {
+      "key": "auth.emailPlaceholder",
+      "text": "partner@company.com",
+      "context": "Login form placeholder"
+    },
+    {
+      "key": "auth.signIn",
+      "text": "Sign in",
+      "context": "Login button"
+    },
+    {
+      "key": "auth.signingIn",
+      "text": "Signing in...",
+      "context": "Login button loading label"
+    },
+    {
+      "key": "auth.accessRestricted",
+      "text": "Access is restricted to approved partners.",
+      "context": "Login page footer message"
+    },
+    {
+      "key": "auth.loadingLogin",
+      "text": "Loading login",
+      "context": "Login page loading label"
+    },
+    {
+      "key": "home.title",
+      "text": "Nodexo Hub",
+      "context": "Landing page title"
+    },
+    {
+      "key": "home.subtitle",
+      "text": "Welcome to Nodexo Hub!\n\nThis is our product and sales management platform, currently under development. You can start by exploring different tools and functions in the top menu.\n\nIf you find any bugs or issues, please contact admin support at partner@nordexo.se.\n\nEnjoy!",
+      "context": "Landing page subtitle"
+    },
+    {
+      "key": "common.save",
+      "text": "Save",
+      "context": "Primary action"
+    },
+    {
+      "key": "common.saved",
+      "text": "Saved",
+      "context": "Saved state label"
+    },
+    {
+      "key": "common.view",
+      "text": "View",
+      "context": "View button"
+    },
+    {
+      "key": "common.hide",
+      "text": "Hide",
+      "context": "Hide action"
+    },
+    {
+      "key": "common.unselect",
+      "text": "Unselect",
+      "context": "Unselect action"
+    },
+    {
+      "key": "common.clear",
+      "text": "Clear",
+      "context": "Clear action"
+    },
+    {
+      "key": "common.done",
+      "text": "Done",
+      "context": "Done action"
+    },
+    {
+      "key": "common.cancel",
+      "text": "Cancel",
+      "context": "Cancel action"
+    },
+    {
+      "key": "common.close",
+      "text": "Close",
+      "context": "Close action"
+    },
+    {
+      "key": "common.ok",
+      "text": "OK",
+      "context": "OK action"
+    },
+    {
+      "key": "common.yes",
+      "text": "Yes",
+      "context": "Confirmation action"
+    },
+    {
+      "key": "common.no",
+      "text": "No",
+      "context": "Confirmation action"
+    },
+    {
+      "key": "common.selectAll",
+      "text": "Select All",
+      "context": "Select all checkbox label"
+    },
+    {
+      "key": "common.selectItem",
+      "text": "Select {item}",
+      "context": "Select item label"
+    },
+    {
+      "key": "common.previous",
+      "text": "Previous",
+      "context": "Pagination button"
+    },
+    {
+      "key": "common.next",
+      "text": "Next",
+      "context": "Pagination button"
+    },
+    {
+      "key": "common.loading",
+      "text": "Loading...",
+      "context": "Generic loading label"
+    },
+    {
+      "key": "common.filter",
+      "text": "Filter",
+      "context": "Filter button"
+    },
+    {
+      "key": "common.to",
+      "text": "to",
+      "context": "Range separator"
+    },
+    {
+      "key": "common.sku",
+      "text": "SKU",
+      "context": "SKU column label"
+    },
+    {
+      "key": "common.variant",
+      "text": "Variant",
+      "context": "Variant column label"
+    },
+    {
+      "key": "common.notAvailable",
+      "text": "N/A",
+      "context": "Not available label"
+    },
+    {
+      "key": "common.currencySek",
+      "text": "kr",
+      "context": "SEK currency suffix"
+    },
+    {
+      "key": "products.sort.updatedNewest",
+      "text": "Updated (newest)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.addedNewest",
+      "text": "Added (newest)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.titleAZ",
+      "text": "Title A-Z",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.savedFilter.showAll",
+      "text": "Show all",
+      "context": "Saved filter option"
+    },
+    {
+      "key": "products.savedFilter.showSaved",
+      "text": "Show saved",
+      "context": "Saved filter option"
+    },
+    {
+      "key": "products.savedFilter.showNotSaved",
+      "text": "Show not saved",
+      "context": "Saved filter option"
+    },
+    {
+      "key": "products.filters.search",
+      "text": "Search",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.searchPlaceholder",
+      "text": "Search by SPU, title, or brand",
+      "context": "Products search placeholder"
+    },
+    {
+      "key": "products.filters.category",
+      "text": "Category",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.tags",
+      "text": "Tags",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.brand",
+      "text": "Brand",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.vendor",
+      "text": "Vendor",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.brandPlaceholder",
+      "text": "All brands",
+      "context": "Products brand filter placeholder"
+    },
+    {
+      "key": "products.filters.noBrand",
+      "text": "No brand",
+      "context": "Products brand filter option"
+    },
+    {
+      "key": "products.filters.vendorPlaceholder",
+      "text": "All vendors",
+      "context": "Products vendor filter placeholder"
+    },
+    {
+      "key": "products.filters.noVendor",
+      "text": "No vendor",
+      "context": "Products vendor filter option"
+    },
+    {
+      "key": "products.filters.selectedCount",
+      "text": "{count} selected",
+      "context": "Products filter selected count"
+    },
+    {
+      "key": "products.bulk.saveSelected",
+      "text": "Save Selected",
+      "context": "Bulk save button"
+    },
+    {
+      "key": "products.bulk.remove",
+      "text": "Remove",
+      "context": "Bulk remove button"
+    },
+    {
+      "key": "products.filters.updated",
+      "text": "Updated",
+      "context": "Products sort label"
+    },
+    {
+      "key": "products.filters.pages",
+      "text": "Pages",
+      "context": "Products page size label"
+    },
+    {
+      "key": "products.filters.pageSizeValue",
+      "text": "{size} / page",
+      "context": "Products page size value"
+    },
+    {
+      "key": "products.filters.show",
+      "text": "Show",
+      "context": "Products saved filter label"
+    },
+    {
+      "key": "products.filters.updatedRange",
+      "text": "Updated range",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.addedRange",
+      "text": "Added range",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.rangeFrom",
+      "text": "From",
+      "context": "Products range filter label"
+    },
+    {
+      "key": "products.filters.rangeTo",
+      "text": "To",
+      "context": "Products range filter label"
+    },
+    {
+      "key": "products.filters.rangeAll",
+      "text": "Any time",
+      "context": "Products range filter summary"
+    },
+    {
+      "key": "products.filters.updatedFrom",
+      "text": "Updated from",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.updatedTo",
+      "text": "Updated to",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.addedFrom",
+      "text": "Added from",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.addedTo",
+      "text": "Added to",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.filters.hasVariants",
+      "text": "Has variants",
+      "context": "Products filter label"
+    },
+    {
+      "key": "products.loading",
+      "text": "Loading products",
+      "context": "Products loading label"
+    },
+    {
+      "key": "products.empty",
+      "text": "No products match the current filters.",
+      "context": "Products empty state"
+    },
+    {
+      "key": "products.table.image",
+      "text": "Image",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.product",
+      "text": "Product",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.spu",
+      "text": "SPU",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.createdUpdated",
+      "text": "Created / Updated",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.createdLabel",
+      "text": "Created",
+      "context": "Products table label"
+    },
+    {
+      "key": "products.table.updated",
+      "text": "Updated",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.added",
+      "text": "Added",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.variants",
+      "text": "Variants",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.save",
+      "text": "Save",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.details",
+      "text": "Details",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.selection.selectedCount",
+      "text": "{count} selected",
+      "context": "Products selection count"
+    },
+    {
+      "key": "products.selection.label",
+      "text": "Selection",
+      "context": "Products selection label"
+    },
+    {
+      "key": "products.lists.loading",
+      "text": "Loading lists...",
+      "context": "Product manager lists loading"
+    },
+    {
+      "key": "products.lists.empty",
+      "text": "No lists yet.",
+      "context": "Product manager lists empty"
+    },
+    {
+      "key": "products.lists.new",
+      "text": "New list",
+      "context": "Create new list button"
+    },
+    {
+      "key": "products.lists.createTitle",
+      "text": "Create new list",
+      "context": "Create list dialog title"
+    },
+    {
+      "key": "products.lists.nameLabel",
+      "text": "List name",
+      "context": "Create list name label"
+    },
+    {
+      "key": "products.lists.namePlaceholder",
+      "text": "Enter list name",
+      "context": "Create list name placeholder"
+    },
+    {
+      "key": "products.lists.error",
+      "text": "Unable to load lists.",
+      "context": "Product manager lists load error"
+    },
+    {
+      "key": "products.lists.saveError",
+      "text": "Unable to save selected products.",
+      "context": "Product manager list save error"
+    },
+    {
+      "key": "products.lists.createError",
+      "text": "Unable to create list.",
+      "context": "Product manager create list error"
+    },
+    {
+      "key": "products.lists.title",
+      "text": "My Lists",
+      "context": "Product manager lists page title"
+    },
+    {
+      "key": "products.lists.back",
+      "text": "Back to lists",
+      "context": "Return to the list selector"
+    },
+    {
+      "key": "products.lists.items",
+      "text": "Items",
+      "context": "Product manager lists items column"
+    },
+    {
+      "key": "products.lists.notFound",
+      "text": "List not found.",
+      "context": "List detail not found state"
+    },
+    {
+      "key": "products.lists.export",
+      "text": "Export",
+      "context": "Export list button"
+    },
+    {
+      "key": "products.lists.exportTitle",
+      "text": "Export list",
+      "context": "Export dialog title"
+    },
+    {
+      "key": "products.lists.exportNameLabel",
+      "text": "Export name",
+      "context": "Export dialog label"
+    },
+    {
+      "key": "products.lists.exportNamePlaceholder",
+      "text": "Enter export name",
+      "context": "Export dialog placeholder"
+    },
+    {
+      "key": "products.lists.exporting",
+      "text": "Exporting...",
+      "context": "Export in progress"
+    },
+    {
+      "key": "products.lists.exportError",
+      "text": "Unable to export list.",
+      "context": "Export list error"
+    },
+    {
+      "key": "products.lists.name",
+      "text": "List name",
+      "context": "Product manager lists name column"
+    },
+    {
+      "key": "products.lists.actions",
+      "text": "Actions",
+      "context": "Product manager lists actions column"
+    },
+    {
+      "key": "products.lists.view",
+      "text": "View",
+      "context": "Product manager lists view button"
+    },
+    {
+      "key": "products.lists.delete",
+      "text": "Delete",
+      "context": "Product manager lists delete label"
+    },
+    {
+      "key": "products.lists.deleteConfirm",
+      "text": "Are you sure you want to delete this list?",
+      "context": "Product manager lists delete confirmation"
+    },
+    {
+      "key": "products.lists.deleteError",
+      "text": "Unable to delete list.",
+      "context": "Product manager lists delete error"
+    },
+    {
+      "key": "products.lists.merge",
+      "text": "Merge",
+      "context": "Merge selected lists button"
+    },
+    {
+      "key": "products.lists.mergeTitle",
+      "text": "Merge lists",
+      "context": "Merge lists dialog title"
+    },
+    {
+      "key": "products.lists.mergeConfirm",
+      "text": "Merge {count} lists into one.",
+      "context": "Merge lists confirmation text"
+    },
+    {
+      "key": "products.lists.mergeNamePickLabel",
+      "text": "Use existing name",
+      "context": "Merge lists name picker label"
+    },
+    {
+      "key": "products.lists.mergeNameLabel",
+      "text": "Merged list name",
+      "context": "Merge lists name label"
+    },
+    {
+      "key": "products.lists.mergeNamePlaceholder",
+      "text": "Enter merged list name",
+      "context": "Merge lists name placeholder"
+    },
+    {
+      "key": "products.lists.mergeCustomName",
+      "text": "New name",
+      "context": "Merge lists custom name option"
+    },
+    {
+      "key": "products.lists.mergeNameRequired",
+      "text": "Merge name is required.",
+      "context": "Merge lists missing name error"
+    },
+    {
+      "key": "products.lists.mergeError",
+      "text": "Unable to merge lists.",
+      "context": "Merge lists error"
+    },
+    {
+      "key": "products.lists.deleteSelected",
+      "text": "Delete selected",
+      "context": "Delete selected lists button"
+    },
+    {
+      "key": "products.lists.deleteSelectedConfirm",
+      "text": "Are you sure you want to delete {count} lists?",
+      "context": "Delete selected lists confirmation"
+    },
+    {
+      "key": "products.lists.deleteAll",
+      "text": "Delete all",
+      "context": "Delete all lists button"
+    },
+    {
+      "key": "products.lists.deleteAllConfirm",
+      "text": "Are you sure you want to delete all lists?",
+      "context": "Delete all lists confirmation"
+    },
+    {
+      "key": "products.lists.selectAll",
+      "text": "Select all lists",
+      "context": "Select all lists checkbox label"
+    },
+    {
+      "key": "products.lists.selectRow",
+      "text": "Select list {name}",
+      "context": "Select list checkbox label"
+    },
+    {
+      "key": "products.pagination.pageOf",
+      "text": "Page {page} of {pageCount}",
+      "context": "Products pagination label"
+    },
+    {
+      "key": "products.error.load",
+      "text": "Unable to load products.",
+      "context": "Products load error"
+    },
+    {
+      "key": "products.uncategorized",
+      "text": "Uncategorized",
+      "context": "Products category fallback"
+    },
+    {
+      "key": "products.variant.count",
+      "text": "{count} variants",
+      "context": "Variants count label"
+    },
+    {
+      "key": "products.variant.default",
+      "text": "Default",
+      "context": "Default variant label"
+    },
+    {
+      "key": "products.removeItem",
+      "text": "Remove {title}",
+      "context": "Remove item aria label"
+    },
+    {
+      "key": "productDetail.loading",
+      "text": "Loading product",
+      "context": "Product detail loading label"
+    },
+    {
+      "key": "productDetail.error.load",
+      "text": "Unable to load product.",
+      "context": "Product detail load error"
+    },
+    {
+      "key": "productDetail.notFound",
+      "text": "Product not found.",
+      "context": "Product detail not found"
+    },
+    {
+      "key": "productDetail.exportedAt",
+      "text": "Exported {date}",
+      "context": "Exported badge label"
+    },
+    {
+      "key": "productDetail.meta.sku",
+      "text": "SKU, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.meta.brand",
+      "text": "Brand, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.meta.vendor",
+      "text": "Vendor, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.meta.productType",
+      "text": "Product type, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.meta.category",
+      "text": "Category, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.meta.updated",
+      "text": "Updated, {value}",
+      "context": "Product detail meta label"
+    },
+    {
+      "key": "productDetail.tabs.variants",
+      "text": "Variants",
+      "context": "Product detail tab"
+    },
+    {
+      "key": "productDetail.tabs.descriptionSe",
+      "text": "Description SE",
+      "context": "Product detail tab"
+    },
+    {
+      "key": "productDetail.table.image",
+      "text": "Image",
+      "context": "Product detail table header"
+    },
+    {
+      "key": "productDetail.table.barcode",
+      "text": "Barcode",
+      "context": "Product detail table header"
+    },
+    {
+      "key": "productDetail.variant.default",
+      "text": "Default",
+      "context": "Product detail default variant"
+    },
+    {
+      "key": "productDetail.variant.seeAll",
+      "text": "See all variants",
+      "context": "Product detail variants hint"
+    },
+    {
+      "key": "productDetail.description.shortTitle",
+      "text": "Short title",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.shortTitleEmpty",
+      "text": "No short title provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.subtitle",
+      "text": "Subtitle",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.subtitleEmpty",
+      "text": "No subtitle provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.longTitle",
+      "text": "Long title",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.longTitleEmpty",
+      "text": "No long title provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.shortDescription",
+      "text": "Short description",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.shortDescriptionEmpty",
+      "text": "No short description provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.longDescription",
+      "text": "Long description",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.longDescriptionEmpty",
+      "text": "No long description provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.extendedDescription",
+      "text": "Extended description",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.extendedDescriptionEmpty",
+      "text": "No extended description provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.shortBullets",
+      "text": "Short bullets",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.shortBulletsEmpty",
+      "text": "No short bullets provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.bullets",
+      "text": "Bullets",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.bulletsEmpty",
+      "text": "No bullets provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.longBullets",
+      "text": "Long bullets",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.longBulletsEmpty",
+      "text": "No long bullets provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "productDetail.description.specification",
+      "text": "Specification",
+      "context": "Product detail description label"
+    },
+    {
+      "key": "productDetail.description.specificationEmpty",
+      "text": "No specification provided.",
+      "context": "Product detail empty placeholder"
+    },
+    {
+      "key": "saved.summary.label",
+      "text": "Saved selections:",
+      "context": "Saved summary label"
+    },
+    {
+      "key": "saved.summary.readyCount",
+      "text": "{count} products ready for export",
+      "context": "Saved summary count"
+    },
+    {
+      "key": "saved.removeAll.button",
+      "text": "Remove all",
+      "context": "Remove all button"
+    },
+    {
+      "key": "saved.removeAll.confirmTitle",
+      "text": "Are you sure you want to remove all the items?",
+      "context": "Remove all confirmation title"
+    },
+    {
+      "key": "saved.removeAll.removing",
+      "text": "Removing...",
+      "context": "Remove all loading label"
+    },
+    {
+      "key": "saved.export.button",
+      "text": "Export",
+      "context": "Export button"
+    },
+    {
+      "key": "saved.export.title",
+      "text": "Name this export list",
+      "context": "Export dialog title"
+    },
+    {
+      "key": "saved.export.nameLabel",
+      "text": "List name",
+      "context": "Export dialog label"
+    },
+    {
+      "key": "saved.export.namePlaceholder",
+      "text": "Enter a name",
+      "context": "Export dialog placeholder"
+    },
+    {
+      "key": "saved.export.preparing",
+      "text": "Preparing...",
+      "context": "Export loading label"
+    },
+    {
+      "key": "saved.export.download",
+      "text": "Download",
+      "context": "Export download button"
+    },
+    {
+      "key": "saved.export.defaultPrefix",
+      "text": "export",
+      "context": "Export default prefix"
+    },
+    {
+      "key": "saved.export.defaultSuffix",
+      "text": "products",
+      "context": "Export default suffix"
+    },
+    {
+      "key": "saved.export.error",
+      "text": "Unable to export.",
+      "context": "Export error"
+    },
+    {
+      "key": "saved.loading",
+      "text": "Loading saved products",
+      "context": "Saved loading label"
+    },
+    {
+      "key": "saved.empty",
+      "text": "No saved products yet.",
+      "context": "Saved empty state"
+    },
+    {
+      "key": "saved.error.load",
+      "text": "Unable to load saved products.",
+      "context": "Saved load error"
+    },
+    {
+      "key": "saved.table.image",
+      "text": "Image",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.product",
+      "text": "Product",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.spu",
+      "text": "SPU",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.updated",
+      "text": "Updated",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.added",
+      "text": "Added",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.variants",
+      "text": "Variants",
+      "context": "Saved table header"
+    },
+    {
+      "key": "saved.table.actions",
+      "text": "Actions",
+      "context": "Saved table header"
+    },
+    {
+      "key": "exports.title",
+      "text": "Export history",
+      "context": "Exports page title"
+    },
+    {
+      "key": "exports.subtitle",
+      "text": "This table shows recent export runs and download links.",
+      "context": "Exports page subtitle"
+    },
+    {
+      "key": "exports.loading",
+      "text": "Loading exports",
+      "context": "Exports loading label"
+    },
+    {
+      "key": "exports.empty",
+      "text": "No exports have been generated yet.",
+      "context": "Exports empty state"
+    },
+    {
+      "key": "exports.table.listName",
+      "text": "List name",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.exportId",
+      "text": "Export ID",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.created",
+      "text": "Created",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.spus",
+      "text": "SPUs",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.skus",
+      "text": "SKUs",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.status",
+      "text": "Status",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.file",
+      "text": "File",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.table.actions",
+      "text": "Actions",
+      "context": "Exports table header"
+    },
+    {
+      "key": "exports.unnamed",
+      "text": "Unnamed export",
+      "context": "Exports fallback name"
+    },
+    {
+      "key": "exports.download",
+      "text": "Download",
+      "context": "Exports download button"
+    },
+    {
+      "key": "exports.delete",
+      "text": "Delete",
+      "context": "Exports delete button"
+    },
+    {
+      "key": "exports.deleting",
+      "text": "Deleting...",
+      "context": "Exports delete loading label"
+    },
+    {
+      "key": "exports.error.delete",
+      "text": "Unable to delete export.",
+      "context": "Exports delete error"
+    },
+    {
+      "key": "exports.status.generated",
+      "text": "Generated",
+      "context": "Export status label"
+    },
+    {
+      "key": "exports.status.failed",
+      "text": "Failed",
+      "context": "Export status label"
+    },
+    {
+      "key": "exports.status.pending",
+      "text": "Pending",
+      "context": "Export status label"
+    },
+    {
+      "key": "discovery.filters.search",
+      "text": "Search",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.searchPlaceholder",
+      "text": "Search titles or taxonomy",
+      "context": "Discovery search placeholder"
+    },
+    {
+      "key": "discovery.filters.provider",
+      "text": "Provider",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.providersAll",
+      "text": "All providers",
+      "context": "Discovery provider label"
+    },
+    {
+      "key": "discovery.filters.sortBy",
+      "text": "Sort by",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.category",
+      "text": "Category",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.priceRange",
+      "text": "Price range",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.addedFrom",
+      "text": "Added date from",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.updatedFrom",
+      "text": "Updated date from",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.itemsPerPage",
+      "text": "Items per page",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.pageSizeValue",
+      "text": "{size} / page",
+      "context": "Discovery page size value"
+    },
+    {
+      "key": "discovery.sort.soldToday",
+      "text": "Sold today",
+      "context": "Discovery sort option"
+    },
+    {
+      "key": "discovery.sort.sold7d",
+      "text": "Sold 7 days",
+      "context": "Discovery sort option"
+    },
+    {
+      "key": "discovery.sort.soldAll",
+      "text": "Sold all time",
+      "context": "Discovery sort option"
+    },
+    {
+      "key": "discovery.sort.trending",
+      "text": "Trending",
+      "context": "Discovery sort option"
+    },
+    {
+      "key": "discovery.lists.label",
+      "text": "My lists",
+      "context": "Discovery lists label"
+    },
+    {
+      "key": "discovery.lists.all",
+      "text": "All lists",
+      "context": "Discovery lists option"
+    },
+    {
+      "key": "discovery.lists.loading",
+      "text": "Loading lists...",
+      "context": "Discovery lists loading"
+    },
+    {
+      "key": "discovery.lists.empty",
+      "text": "No lists yet",
+      "context": "Discovery lists empty"
+    },
+    {
+      "key": "discovery.lists.new",
+      "text": "New list",
+      "context": "Discovery new list action"
+    },
+    {
+      "key": "discovery.lists.createTitle",
+      "text": "Create new list",
+      "context": "Discovery create list title"
+    },
+    {
+      "key": "discovery.lists.nameLabel",
+      "text": "List name",
+      "context": "Discovery list name label"
+    },
+    {
+      "key": "discovery.lists.namePlaceholder",
+      "text": "Enter list name",
+      "context": "Discovery list name placeholder"
+    },
+    {
+      "key": "discovery.categories.loading",
+      "text": "Loading categories",
+      "context": "Discovery categories loading"
+    },
+    {
+      "key": "discovery.categories.empty",
+      "text": "No categories available.",
+      "context": "Discovery categories empty"
+    },
+    {
+      "key": "discovery.categories.searchPlaceholder",
+      "text": "Search categories",
+      "context": "Discovery categories search placeholder"
+    },
+    {
+      "key": "discovery.categories.level1",
+      "text": "Level 1",
+      "context": "Discovery category level"
+    },
+    {
+      "key": "discovery.categories.level2",
+      "text": "Level 2",
+      "context": "Discovery category level"
+    },
+    {
+      "key": "discovery.categories.level3",
+      "text": "Level 3",
+      "context": "Discovery category level"
+    },
+    {
+      "key": "discovery.categories.all",
+      "text": "All categories",
+      "context": "Discovery category summary"
+    },
+    {
+      "key": "discovery.categories.selectedCount",
+      "text": "{count} selected",
+      "context": "Discovery category count"
+    },
+    {
+      "key": "discovery.selection.label",
+      "text": "Selection",
+      "context": "Discovery selection label"
+    },
+    {
+      "key": "discovery.selection.selectedCount",
+      "text": "Selected: {count}",
+      "context": "Discovery selected count"
+    },
+    {
+      "key": "discovery.selection.produce",
+      "text": "Produce",
+      "context": "Discovery selection action for production"
+    },
+    {
+      "key": "discovery.loading",
+      "text": "Loading discovery products",
+      "context": "Discovery loading label"
+    },
+    {
+      "key": "discovery.empty",
+      "text": "No products match the current filters.",
+      "context": "Discovery empty state"
+    },
+    {
+      "key": "discovery.sales.all",
+      "text": "All",
+      "context": "Discovery sales label"
+    },
+    {
+      "key": "discovery.price.prev",
+      "text": "Prev {value}",
+      "context": "Discovery previous price label"
+    },
+    {
+      "key": "discovery.rating.label",
+      "text": "Rating",
+      "context": "Discovery rating label"
+    },
+    {
+      "key": "discovery.dates.updated",
+      "text": "Updated",
+      "context": "Discovery date label"
+    },
+    {
+      "key": "discovery.dates.firstSeen",
+      "text": "First seen",
+      "context": "Discovery date label"
+    },
+    {
+      "key": "discovery.actions.viewOn",
+      "text": "View on {provider}",
+      "context": "Discovery card link"
+    },
+    {
+      "key": "discovery.actions.remove",
+      "text": "Remove product",
+      "context": "Discovery remove action"
+    },
+    {
+      "key": "discovery.actions.restore",
+      "text": "Restore product",
+      "context": "Discovery restore action"
+    },
+    {
+      "key": "discovery.wishlist.savedInList",
+      "text": "Saved in list",
+      "context": "Discovery wishlist label"
+    },
+    {
+      "key": "discovery.wishlist.like",
+      "text": "Like product",
+      "context": "Discovery wishlist label"
+    },
+    {
+      "key": "discovery.pagination.pageOf",
+      "text": "Page {page} of {pageCount}",
+      "context": "Discovery pagination label"
+    },
+    {
+      "key": "discovery.error.load",
+      "text": "Unable to load product discovery data.",
+      "context": "Discovery load error"
+    },
+    {
+      "key": "discovery.error.categories",
+      "text": "Unable to load categories.",
+      "context": "Discovery categories error"
+    },
+    {
+      "key": "discovery.error.wishlists",
+      "text": "Unable to load wishlists.",
+      "context": "Discovery wishlists error"
+    },
+    {
+      "key": "discovery.error.actions",
+      "text": "Unable to update discovery actions.",
+      "context": "Discovery actions error"
+    },
+    {
+      "key": "trend.providers.all",
+      "text": "All providers",
+      "context": "Trend providers label"
+    },
+    {
+      "key": "trend.title",
+      "text": "NX Research",
+      "context": "Trend page title"
+    },
+    {
+      "key": "trend.subtitle",
+      "text": "Compare category performance and top sellers across providers.",
+      "context": "Trend page subtitle"
+    },
+    {
+      "key": "trend.filters.category",
+      "text": "Category",
+      "context": "Trend filter label"
+    },
+    {
+      "key": "trend.filters.provider",
+      "text": "Provider",
+      "context": "Trend filter label"
+    },
+    {
+      "key": "trend.filters.range",
+      "text": "Range",
+      "context": "Trend filter label"
+    },
+    {
+      "key": "trend.filters.bestMode",
+      "text": "Best sellers",
+      "context": "Trend filter label"
+    },
+    {
+      "key": "trend.categories.searchPlaceholder",
+      "text": "Search categories",
+      "context": "Trend category search placeholder"
+    },
+    {
+      "key": "trend.categories.level1",
+      "text": "Level 1",
+      "context": "Trend category level"
+    },
+    {
+      "key": "trend.categories.level2",
+      "text": "Level 2",
+      "context": "Trend category level"
+    },
+    {
+      "key": "trend.categories.all",
+      "text": "All categories",
+      "context": "Trend category summary"
+    },
+    {
+      "key": "trend.range.oneDay",
+      "text": "Past 24 hours",
+      "context": "Trend range option"
+    },
+    {
+      "key": "trend.range.sevenDays",
+      "text": "Last 7 days",
+      "context": "Trend range option"
+    },
+    {
+      "key": "trend.best.sevenDays",
+      "text": "7-day best sellers",
+      "context": "Trend best seller option"
+    },
+    {
+      "key": "trend.best.allTime",
+      "text": "All-time best sellers",
+      "context": "Trend best seller option"
+    },
+    {
+      "key": "trend.best.trending",
+      "text": "Trending items",
+      "context": "Trend best seller option"
+    },
+    {
+      "key": "trend.chart.title",
+      "text": "Category performance",
+      "context": "Trend chart title"
+    },
+    {
+      "key": "trend.chart.subtitle",
+      "text": "Sales by subcategory for {category}",
+      "context": "Trend chart subtitle"
+    },
+    {
+      "key": "trend.chart.empty",
+      "text": "No sales data available for this selection.",
+      "context": "Trend chart empty state"
+    },
+    {
+      "key": "trend.loading",
+      "text": "Loading trend data",
+      "context": "Trend loading label"
+    },
+    {
+      "key": "trend.best.title",
+      "text": "Top 10: {mode}",
+      "context": "Trend best seller title"
+    },
+    {
+      "key": "trend.best.empty",
+      "text": "No products available for this selection.",
+      "context": "Trend best seller empty state"
+    },
+    {
+      "key": "trend.best.table.product",
+      "text": "Product",
+      "context": "Trend best seller table header"
+    },
+    {
+      "key": "trend.best.table.provider",
+      "text": "Provider",
+      "context": "Trend best seller table header"
+    },
+    {
+      "key": "trend.best.table.sales",
+      "text": "Sales",
+      "context": "Trend best seller table header"
+    },
+    {
+      "key": "trend.best.table.price",
+      "text": "Price",
+      "context": "Trend best seller table header"
+    },
+    {
+      "key": "trend.best.table.link",
+      "text": "Link",
+      "context": "Trend best seller table header"
+    },
+    {
+      "key": "trend.error.load",
+      "text": "Unable to load trend data.",
+      "context": "Trend load error"
+    },
+    {
+      "key": "trend.error.categories",
+      "text": "Unable to load categories.",
+      "context": "Trend categories error"
+    },
+    {
+      "key": "lists.page.title",
+      "text": "My Lists",
+      "context": "My lists page title"
+    },
+    {
+      "key": "lists.page.subtitle",
+      "text": "Manage your lists and shared lists.",
+      "context": "My lists page subtitle"
+    },
+    {
+      "key": "lists.section.owned",
+      "text": "Your Lists",
+      "context": "Owned lists section title"
+    },
+    {
+      "key": "lists.section.shared",
+      "text": "Lists Shared with Me",
+      "context": "Shared lists section title"
+    },
+    {
+      "key": "lists.table.listName",
+      "text": "List name",
+      "context": "My lists table header"
+    },
+    {
+      "key": "lists.table.items",
+      "text": "Items",
+      "context": "My lists table header"
+    },
+    {
+      "key": "lists.table.sharedWith",
+      "text": "Shared with",
+      "context": "My lists table header"
+    },
+    {
+      "key": "lists.table.sharedBy",
+      "text": "Shared by",
+      "context": "Shared lists table header"
+    },
+    {
+      "key": "lists.table.sharedAt",
+      "text": "Shared on",
+      "context": "Shared lists table header"
+    },
+    {
+      "key": "lists.table.actions",
+      "text": "Actions",
+      "context": "My lists table header"
+    },
+    {
+      "key": "lists.table.view",
+      "text": "View",
+      "context": "My lists table action"
+    },
+    {
+      "key": "lists.table.share",
+      "text": "Share",
+      "context": "My lists table action"
+    },
+    {
+      "key": "lists.table.edit",
+      "text": "Edit list name",
+      "context": "Edit list name button label"
+    },
+    {
+      "key": "lists.table.save",
+      "text": "Save list name",
+      "context": "Save list name button label"
+    },
+    {
+      "key": "lists.loading",
+      "text": "Loading lists...",
+      "context": "My lists loading state"
+    },
+    {
+      "key": "lists.empty.owned",
+      "text": "You have no lists yet.",
+      "context": "Empty state for owned lists"
+    },
+    {
+      "key": "lists.empty.shared",
+      "text": "No lists have been shared with you.",
+      "context": "Empty state for shared lists"
+    },
+    {
+      "key": "lists.error.load",
+      "text": "Unable to load lists.",
+      "context": "My lists load error"
+    },
+    {
+      "key": "lists.error.share",
+      "text": "Unable to share list.",
+      "context": "My lists share error"
+    },
+    {
+      "key": "lists.error.rename",
+      "text": "Unable to rename list.",
+      "context": "My lists rename error"
+    },
+    {
+      "key": "lists.error.delete",
+      "text": "Unable to delete list.",
+      "context": "My lists delete error"
+    },
+    {
+      "key": "lists.delete.aria",
+      "text": "Delete list",
+      "context": "Delete list icon label"
+    },
+    {
+      "key": "lists.delete.confirmTitle",
+      "text": "Are you sure you want to remove this list?",
+      "context": "Delete list confirmation title"
+    },
+    {
+      "key": "lists.delete.deleting",
+      "text": "Deleting...",
+      "context": "Delete list loading label"
+    },
+    {
+      "key": "lists.share.dialogTitle",
+      "text": "Share list",
+      "context": "Share list dialog title"
+    },
+    {
+      "key": "lists.share.emailLabel",
+      "text": "Share with email",
+      "context": "Share list email label"
+    },
+    {
+      "key": "lists.share.emailPlaceholder",
+      "text": "Add email addresses, separated by commas",
+      "context": "Share list email placeholder"
+    },
+    {
+      "key": "lists.share.shareAll",
+      "text": "Share with all users",
+      "context": "Share list with all users checkbox"
+    },
+    {
+      "key": "lists.share.submit",
+      "text": "Share",
+      "context": "Share list submit button"
+    },
+    {
+      "key": "lists.share.saving",
+      "text": "Sharing...",
+      "context": "Share list loading button"
+    },
+    {
+      "key": "lists.share.sharedWithAll",
+      "text": "All users",
+      "context": "Label for shared with all users"
+    },
+    {
+      "key": "lists.share.notShared",
+      "text": "Not shared yet",
+      "context": "No shares yet label"
+    },
+    {
+      "key": "lists.share.usersLoading",
+      "text": "Loading users...",
+      "context": "Share list users loading state"
+    },
+    {
+      "key": "lists.share.usersEmpty",
+      "text": "No users found.",
+      "context": "Share list users empty state"
+    },
+    {
+      "key": "lists.share.usersError",
+      "text": "Unable to load users.",
+      "context": "Share list users error"
+    }
+    ,
+    {
+      "key": "production.title",
+      "text": "Production",
+      "context": "Production page title"
+    },
+    {
+      "key": "production.subtitle",
+      "text": "Items queued for production.",
+      "context": "Production page subtitle"
+    },
+    {
+      "key": "production.loading",
+      "text": "Loading production list...",
+      "context": "Production page loading label"
+    },
+    {
+      "key": "production.empty",
+      "text": "No items added to production yet.",
+      "context": "Production page empty state"
+    },
+    {
+      "key": "production.table.product",
+      "text": "Product",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.provider",
+      "text": "Provider",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.sales",
+      "text": "Sales",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.updated",
+      "text": "Updated",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.firstSeen",
+      "text": "First seen",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.category",
+      "text": "Category",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.link",
+      "text": "Link",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.comments",
+      "text": "Comments",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.actions",
+      "text": "Actions",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.link.view",
+      "text": "View",
+      "context": "Production provider link label"
+    },
+    {
+      "key": "production.action.remove",
+      "text": "Remove",
+      "context": "Production row remove button"
+    },
+    {
+      "key": "production.action.produce",
+      "text": "Produce",
+      "context": "Production row produce placeholder"
+    },
+    {
+      "key": "production.comments.view",
+      "text": "View Comments",
+      "context": "Production comments button label"
+    },
+    {
+      "key": "production.comments.none",
+      "text": "No Comments",
+      "context": "Production comments button empty label"
+    },
+    {
+      "key": "production.comments.title",
+      "text": "Comments",
+      "context": "Production comments dialog title"
+    },
+    {
+      "key": "production.comments.loading",
+      "text": "Loading comments...",
+      "context": "Production comments loading label"
+    },
+    {
+      "key": "production.comments.empty",
+      "text": "No comments yet.",
+      "context": "Production comments empty state"
+    },
+    {
+      "key": "production.comments.addLabel",
+      "text": "Add new comment",
+      "context": "Production comments add label"
+    },
+    {
+      "key": "production.comments.addPlaceholder",
+      "text": "Write a note for production",
+      "context": "Production comments add placeholder"
+    },
+    {
+      "key": "production.comments.save",
+      "text": "Save",
+      "context": "Production comments save button"
+    },
+    {
+      "key": "production.comments.close",
+      "text": "Close",
+      "context": "Production comments close button"
+    },
+    {
+      "key": "production.comments.errorLoad",
+      "text": "Unable to load comments.",
+      "context": "Production comments load error"
+    },
+    {
+      "key": "production.comments.errorSave",
+      "text": "Unable to save comment.",
+      "context": "Production comments save error"
+    },
+    {
+      "key": "production.comments.you",
+      "text": "You",
+      "context": "Production comments fallback name"
+    },
+    {
+      "key": "production.error.load",
+      "text": "Unable to load production list.",
+      "context": "Production load error"
+    },
+    {
+      "key": "production.error.remove",
+      "text": "Unable to remove production item.",
+      "context": "Production remove error"
+    },
+    {
+      "key": "production.error.adminOnly",
+      "text": "This page is only available to administrators.",
+      "context": "Production admin access message"
+    },
+    {
+      "key": "digideal.filters.search",
+      "text": "Search",
+      "context": "DigiDeal campaigns filter label"
+    },
+    {
+      "key": "digideal.filters.searchPlaceholder",
+      "text": "Search DigiDeal campaigns",
+      "context": "DigiDeal campaigns search placeholder"
+    },
+    {
+      "key": "digideal.filters.category",
+      "text": "Category",
+      "context": "DigiDeal campaigns category filter label"
+    },
+    {
+      "key": "digideal.filters.categoryPlaceholder",
+      "text": "Filter by category",
+      "context": "DigiDeal campaigns category placeholder"
+    },
+    {
+      "key": "digideal.filters.tags",
+      "text": "Tags",
+      "context": "DigiDeal campaigns tags filter label"
+    },
+    {
+      "key": "digideal.filters.tagsPlaceholder",
+      "text": "Filter by tags",
+      "context": "DigiDeal campaigns tags placeholder"
+    },
+    {
+      "key": "digideal.filters.status",
+      "text": "Status",
+      "context": "DigiDeal campaigns status filter label"
+    },
+    {
+      "key": "digideal.filters.seller",
+      "text": "Seller",
+      "context": "DigiDeal campaigns seller filter label"
+    },
+    {
+      "key": "digideal.filters.sort",
+      "text": "Sort",
+      "context": "DigiDeal campaigns sort filter label"
+    },
+    {
+      "key": "digideal.filters.pages",
+      "text": "Pages",
+      "context": "DigiDeal campaigns page size filter label"
+    },
+    {
+      "key": "digideal.status.online",
+      "text": "Online",
+      "context": "DigiDeal campaigns status option"
+    },
+    {
+      "key": "digideal.status.offline",
+      "text": "Offline",
+      "context": "DigiDeal campaigns status option"
+    },
+    {
+      "key": "digideal.status.all",
+      "text": "All",
+      "context": "DigiDeal campaigns status option"
+    },
+    {
+      "key": "digideal.seller.all",
+      "text": "All sellers",
+      "context": "DigiDeal campaigns seller filter option"
+    },
+    {
+      "key": "digideal.sort.updated",
+      "text": "Updated",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.soldToday",
+      "text": "Sales (1 day)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.sold7d",
+      "text": "Sales (7 days)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.soldAll",
+      "text": "Sales (all time)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.salesAll",
+      "text": "Sales (all time)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.priceDesc",
+      "text": "Price (high to low)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.priceAsc",
+      "text": "Price (low to high)",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.table.image",
+      "text": "Image",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.product",
+      "text": "Product",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.sales",
+      "text": "Estimated sales",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.salesSeller",
+      "text": "EST Sales / Seller",
+      "context": "DigiDeal campaigns combined seller/sales header"
+    },
+    {
+      "key": "digideal.table.seller",
+      "text": "Seller",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.price",
+      "text": "Sales price",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.status",
+      "text": "Status",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.link",
+      "text": "Link",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.optimize",
+      "text": "Optimize Deal",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.estimatedRerunPrice",
+      "text": "EST Rerun Price",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.table.rerun",
+      "text": "Rerun",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.link.view",
+      "text": "View",
+      "context": "DigiDeal campaigns link button"
+    },
+    {
+      "key": "digideal.optimize.analyze",
+      "text": "Analyze with NX",
+      "context": "DigiDeal campaigns optimize button"
+    },
+    {
+      "key": "digideal.optimize.title",
+      "text": "NX AI Deal Report",
+      "context": "DigiDeal campaigns optimize dialog title"
+    },
+    {
+      "key": "digideal.optimize.loading",
+      "text": "Loading report…",
+      "context": "DigiDeal campaigns optimize dialog loading"
+    },
+    {
+      "key": "digideal.optimize.empty",
+      "text": "No analysis data available yet.",
+      "context": "DigiDeal campaigns optimize dialog empty state"
+    },
+    {
+      "key": "digideal.optimize.comingSoon",
+      "text": "Will soon be available",
+      "context": "DigiDeal campaigns optimize dialog overlay badge"
+    },
+    {
+      "key": "digideal.optimize.error",
+      "text": "Unable to load NX AI report.",
+      "context": "DigiDeal campaigns optimize dialog error"
+    },
+    {
+      "key": "digideal.optimize.score.text",
+      "text": "Copy score",
+      "context": "DigiDeal campaigns copy score badge"
+    },
+    {
+      "key": "digideal.optimize.score.image",
+      "text": "Image score",
+      "context": "DigiDeal campaigns image score badge"
+    },
+    {
+      "key": "digideal.optimize.heroNoteFallback",
+      "text": "No hero image notes available.",
+      "context": "DigiDeal campaigns hero image fallback note"
+    },
+    {
+      "key": "digideal.optimize.thumbFallback",
+      "text": "No notes for this image.",
+      "context": "DigiDeal campaigns thumbnail tooltip fallback"
+    },
+    {
+      "key": "digideal.optimize.thumbsEmpty",
+      "text": "No images available.",
+      "context": "DigiDeal campaigns thumbnail empty state"
+    },
+    {
+      "key": "digideal.optimize.summary",
+      "text": "Summary",
+      "context": "DigiDeal campaigns text summary section"
+    },
+    {
+      "key": "digideal.optimize.issues",
+      "text": "Issues",
+      "context": "DigiDeal campaigns issues section"
+    },
+    {
+      "key": "digideal.optimize.blockers",
+      "text": "Conversion blockers",
+      "context": "DigiDeal campaigns conversion blockers section"
+    },
+    {
+      "key": "digideal.optimize.improvements",
+      "text": "Improvements",
+      "context": "DigiDeal campaigns improvements section"
+    },
+    {
+      "key": "digideal.optimize.imageIssues",
+      "text": "Hero image issues",
+      "context": "DigiDeal campaigns hero image issues section"
+    },
+    {
+      "key": "digideal.optimize.imageImprovements",
+      "text": "Hero image improvements",
+      "context": "DigiDeal campaigns hero image improvements section"
+    },
+    {
+      "key": "digideal.optimize.descriptionMismatches",
+      "text": "Description mismatches",
+      "context": "DigiDeal campaigns image/description mismatches section"
+    },
+    {
+      "key": "digideal.optimize.originalDescription",
+      "text": "Original description",
+      "context": "DigiDeal campaigns original description section"
+    },
+    {
+      "key": "digideal.optimize.operational",
+      "text": "Operational status",
+      "context": "DigiDeal campaigns operational status section"
+    },
+    {
+      "key": "digideal.optimize.lastRun",
+      "text": "Last run",
+      "context": "DigiDeal campaigns last run label"
+    },
+    {
+      "key": "digideal.optimize.attempts",
+      "text": "Attempts",
+      "context": "DigiDeal campaigns attempts label"
+    },
+    {
+      "key": "digideal.optimize.lastError",
+      "text": "Last error",
+      "context": "DigiDeal campaigns last error label"
+    },
+    {
+      "key": "digideal.optimize.placeholderTitle",
+      "text": "Report placeholder",
+      "context": "DigiDeal campaigns optimize dialog placeholder title"
+    },
+    {
+      "key": "digideal.optimize.placeholderBody",
+      "text": "This window will show the NX AI report with text, images, and deal insights.",
+      "context": "DigiDeal campaigns optimize dialog placeholder body"
+    },
+    {
+      "key": "digideal.rerun.add",
+      "text": "Add",
+      "context": "DigiDeal campaigns rerun action button"
+    },
+    {
+      "key": "digideal.rerun.added",
+      "text": "Added",
+      "context": "DigiDeal campaigns rerun added button label"
+    },
+    {
+      "key": "digideal.rerun.remove",
+      "text": "Remove",
+      "context": "DigiDeal campaigns rerun remove button label"
+    },
+    {
+      "key": "digideal.rerun.addWithComment",
+      "text": "Add with comment",
+      "context": "DigiDeal campaigns rerun menu option"
+    },
+    {
+      "key": "digideal.rerun.addedOn",
+      "text": "Added {date}",
+      "context": "DigiDeal campaigns rerun added date label"
+    },
+    {
+      "key": "digideal.rerun.status.queued",
+      "text": "Queued",
+      "context": "DigiDeal campaigns rerun status label"
+    },
+    {
+      "key": "digideal.rerun.status.beingProduced",
+      "text": "Being Produced",
+      "context": "DigiDeal campaigns rerun status label"
+    },
+    {
+      "key": "digideal.rerun.status.done",
+      "text": "Done",
+      "context": "DigiDeal campaigns rerun status label"
+    },
+    {
+      "key": "digideal.rerun.error",
+      "text": "Unable to add this deal.",
+      "context": "DigiDeal campaigns rerun add error"
+    },
+    {
+      "key": "digideal.rerun.removeError",
+      "text": "Unable to remove this deal.",
+      "context": "DigiDeal campaigns rerun remove error"
+    },
+    {
+      "key": "digideal.rerun.dialog.title",
+      "text": "Add with comment",
+      "context": "DigiDeal campaigns rerun dialog title"
+    },
+    {
+      "key": "digideal.rerun.dialog.commentLabel",
+      "text": "Comment",
+      "context": "DigiDeal campaigns rerun dialog comment label"
+    },
+    {
+      "key": "digideal.rerun.dialog.commentPlaceholder",
+      "text": "Add a note about this deal",
+      "context": "DigiDeal campaigns rerun dialog comment placeholder"
+    },
+    {
+      "key": "digideal.rerun.dialog.addToPipeline",
+      "text": "Add to production pipeline",
+      "context": "DigiDeal campaigns rerun dialog checkbox"
+    },
+    {
+      "key": "digideal.rerun.dialog.addDirectly",
+      "text": "Add directly to production",
+      "context": "DigiDeal campaigns rerun dialog checkbox"
+    },
+    {
+      "key": "digideal.rerun.dialog.save",
+      "text": "Save",
+      "context": "DigiDeal campaigns rerun dialog save button"
+    },
+    {
+      "key": "digideal.rerun.fullImageSet",
+      "text": "Full image set",
+      "context": "DigiDeal campaigns rerun icon tooltip"
+    },
+    {
+      "key": "digideal.rerun.localizedImages",
+      "text": "AI localized images",
+      "context": "DigiDeal campaigns rerun icon tooltip"
+    },
+    {
+      "key": "digideal.rerun.aiText",
+      "text": "AI optimized text",
+      "context": "DigiDeal campaigns rerun icon tooltip"
+    },
+    {
+      "key": "digideal.rerun.aiVideo",
+      "text": "AI video",
+      "context": "DigiDeal campaigns rerun icon tooltip"
+    },
+    {
+      "key": "digideal.rerun.ready24h",
+      "text": "Ready in 24 hours",
+      "context": "DigiDeal campaigns rerun icon tooltip"
+    },
+    {
+      "key": "digideal.sales.all",
+      "text": "All",
+      "context": "DigiDeal campaigns sales label"
+    },
+    {
+      "key": "digideal.meta.idNumber",
+      "text": "ID Number: {value}",
+      "context": "DigiDeal campaigns product metadata label"
+    },
+    {
+      "key": "digideal.meta.firstSeen",
+      "text": "First seen: {date}",
+      "context": "DigiDeal campaigns product metadata label"
+    },
+    {
+      "key": "digideal.meta.updated",
+      "text": "Last seen: {date}",
+      "context": "DigiDeal campaigns product metadata label"
+    },
+    {
+      "key": "digideal.discount",
+      "text": "Discount {value}%",
+      "context": "DigiDeal campaigns discount label"
+    },
+    {
+      "key": "digideal.save",
+      "text": "Save {value} kr",
+      "context": "DigiDeal campaigns savings label"
+    },
+    {
+      "key": "digideal.loading",
+      "text": "Loading DigiDeal campaigns...",
+      "context": "DigiDeal campaigns loading label"
+    },
+    {
+      "key": "digideal.empty",
+      "text": "No DigiDeal campaigns found.",
+      "context": "DigiDeal campaigns empty state"
+    },
+    {
+      "key": "digideal.error",
+      "text": "Unable to load DigiDeal campaigns.",
+      "context": "DigiDeal campaigns error"
+    },
+    {
+      "key": "digideal.pagination.pageOf",
+      "text": "Page {page} of {pageCount}",
+      "context": "DigiDeal campaigns pagination"
+    },
+    {
+      "key": "nav.pricing",
+      "text": "Pricing",
+      "context": "Products menu item"
+    },
+    {
+      "key": "pricing.title",
+      "text": "Price Manager",
+      "context": "Pricing page title"
+    },
+    {
+      "key": "pricing.subtitle",
+      "text": "Configure exchange rates, shipping rules, and markups for calculated B2B pricing.",
+      "context": "Pricing page subtitle"
+    },
+    {
+      "key": "pricing.save",
+      "text": "Save settings",
+      "context": "Pricing save button"
+    },
+    {
+      "key": "pricing.saved",
+      "text": "Pricing settings saved.",
+      "context": "Pricing save success"
+    },
+    {
+      "key": "pricing.recalculate",
+      "text": "Recalculate B2B prices",
+      "context": "Pricing recalc button"
+    },
+    {
+      "key": "pricing.recalculating",
+      "text": "Recalculating…",
+      "context": "Pricing recalc button loading"
+    },
+    {
+      "key": "pricing.recalcSummary",
+      "text": "Recalculation complete. Variants / rows updated:",
+      "context": "Pricing recalc summary"
+    },
+    {
+      "key": "pricing.exchangeRates",
+      "text": "B2B Currency and Markup Settings",
+      "context": "Pricing exchange rates section title"
+    },
+    {
+      "key": "pricing.exchangeRatesHelp",
+      "text": "Exchange rates convert CNY costs to local currency. Markup and packing fee are applied per market.",
+      "context": "Pricing exchange rates help text"
+    },
+    {
+      "key": "pricing.market",
+      "text": "Market",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.currency",
+      "text": "Currency",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.fxRate",
+      "text": "CNY → Local",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.weightThreshold",
+      "text": "Weight threshold (g)",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.packingFee",
+      "text": "Packing fee",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.markupPercent",
+      "text": "Markup %",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.markupFixed",
+      "text": "Markup fixed",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.shippingRates",
+      "text": "Shipping class rules",
+      "context": "Pricing shipping rules section title"
+    },
+    {
+      "key": "pricing.shippingRatesHelp",
+      "text": "Rates and bases are in CNY. Multipliers apply before conversion.",
+      "context": "Pricing shipping rules help text"
+    },
+    {
+      "key": "pricing.export",
+      "text": "Export",
+      "context": "Pricing export button"
+    },
+    {
+      "key": "pricing.import",
+      "text": "Import",
+      "context": "Pricing import button"
+    },
+    {
+      "key": "pricing.importing",
+      "text": "Importing…",
+      "context": "Pricing import button loading"
+    },
+    {
+      "key": "pricing.importSaved",
+      "text": "Shipping class rules imported.",
+      "context": "Pricing import success"
+    },
+    {
+      "key": "pricing.thresholdSave",
+      "text": "Save threshold",
+      "context": "Pricing weight threshold save"
+    },
+    {
+      "key": "pricing.thresholdSaved",
+      "text": "Weight threshold saved.",
+      "context": "Pricing weight threshold saved"
+    },
+    {
+      "key": "pricing.thresholdRequired",
+      "text": "Enter a weight threshold.",
+      "context": "Pricing weight threshold validation"
+    },
+    {
+      "key": "pricing.shippingClass",
+      "text": "Class",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.rateLow",
+      "text": "Rate low",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.rateHigh",
+      "text": "Rate high",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.baseLow",
+      "text": "Base low",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.baseHigh",
+      "text": "Base high",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.multLow",
+      "text": "Mult low",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.multHigh",
+      "text": "Mult high",
+      "context": "Pricing column label"
+    },
+    {
+      "key": "pricing.manualTitle",
+      "text": "Bulk Price Edits",
+      "context": "Pricing manual section title"
+    },
+    {
+      "key": "pricing.manualBody",
+      "text": "Export all prices or import updates by SKU.",
+      "context": "Pricing manual section description"
+    },
+    {
+      "key": "pricing.manualExport",
+      "text": "Export",
+      "context": "Pricing manual export button"
+    },
+    {
+      "key": "pricing.manualExporting",
+      "text": "Exporting…",
+      "context": "Pricing manual export loading label"
+    },
+    {
+      "key": "pricing.manualImport",
+      "text": "Import",
+      "context": "Pricing manual import button"
+    },
+    {
+      "key": "pricing.manualImporting",
+      "text": "Importing…",
+      "context": "Pricing manual import loading label"
+    },
+    {
+      "key": "pricing.manualExportDate",
+      "text": "Date",
+      "context": "Pricing manual export history date column"
+    },
+    {
+      "key": "pricing.manualExportFile",
+      "text": "File",
+      "context": "Pricing manual export history file column"
+    },
+    {
+      "key": "pricing.manualExportRows",
+      "text": "Rows",
+      "context": "Pricing manual export history row count column"
+    },
+    {
+      "key": "pricing.manualExportNone",
+      "text": "No exports yet.",
+      "context": "Pricing manual export empty state"
+    },
+    {
+      "key": "pricing.manualExportSuccess",
+      "text": "Export ready.",
+      "context": "Pricing manual export success message"
+    },
+    {
+      "key": "pricing.manualSkuPrefix",
+      "text": "SKU prefix",
+      "context": "Pricing manual export filter label"
+    },
+    {
+      "key": "pricing.manualSkuPrefixPlaceholder",
+      "text": "e.g. GB",
+      "context": "Pricing manual export filter placeholder"
+    },
+    {
+      "key": "pricing.manualCreatedFrom",
+      "text": "Created from",
+      "context": "Pricing manual export created from label"
+    },
+    {
+      "key": "pricing.manualCreatedTo",
+      "text": "Created to",
+      "context": "Pricing manual export created to label"
+    },
+    {
+      "key": "pricing.manualMissingTitle",
+      "text": "Missing prices",
+      "context": "Pricing manual export missing info header"
+    },
+    {
+      "key": "pricing.manualMissingB2b",
+      "text": "B2B",
+      "context": "Pricing manual export missing B2B checkbox"
+    },
+    {
+      "key": "pricing.manualMissingB2c",
+      "text": "B2C",
+      "context": "Pricing manual export missing B2C checkbox"
+    },
+    {
+      "key": "pricing.manualMissingShopify",
+      "text": "Shopify Tingelo",
+      "context": "Pricing manual export missing Shopify checkbox"
+    },
+    {
+      "key": "pricing.manualImportSummary",
+      "text": "Import complete. Updated: {updated}, skipped: {skipped}.",
+      "context": "Pricing manual import summary message"
+    },
+    {
+      "key": "pricing.overviewTitle",
+      "text": "Product overview table",
+      "context": "Pricing overview section title"
+    },
+    {
+      "key": "pricing.overviewBody",
+      "text": "Search and review SKU pricing across markets.",
+      "context": "Pricing overview section placeholder"
+    },
+    {
+      "key": "pricing.overviewPageSize",
+      "text": "Items per page",
+      "context": "Pricing overview page size label"
+    },
+    {
+      "key": "pricing.overviewSearchPlaceholder",
+      "text": "Search by SPU, SKU, or title",
+      "context": "Pricing overview search placeholder"
+    },
+    {
+      "key": "pricing.overviewShippingClassPlaceholder",
+      "text": "Choose class",
+      "context": "Pricing overview shipping class placeholder"
+    },
+    {
+      "key": "pricing.overviewInvalidNumber",
+      "text": "Enter a valid number.",
+      "context": "Pricing overview validation"
+    },
+    {
+      "key": "pricing.overviewPageLabel",
+      "text": "Page {page} of {total}",
+      "context": "Pricing overview page status"
+    },
+    {
+      "key": "pricing.overviewColSpu",
+      "text": "SPU",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColSku",
+      "text": "SKU",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColTitle",
+      "text": "Title",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShippingClass",
+      "text": "Shipping class",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColWeight",
+      "text": "Weight (kg)",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColPurchasePrice",
+      "text": "Stock",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColB2BSe",
+      "text": "B2B SE",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColB2BNo",
+      "text": "B2B NO",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColB2BDk",
+      "text": "B2B DK",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColB2BFi",
+      "text": "B2B FI",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColB2C",
+      "text": "B2C",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyTingeloPrice",
+      "text": "Shopify Tingelo price",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyTingeloCompare",
+      "text": "Shopify Tingelo compare",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewEmpty",
+      "text": "No SKUs found for this search.",
+      "context": "Pricing overview empty state"
+    }
+  ]
+}
