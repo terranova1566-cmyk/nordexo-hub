@@ -289,23 +289,23 @@ export async function GET(request: NextRequest) {
       const fallbackSelect =
         "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
 
-      let detailResponse = await supabase
+      const primaryResponse = await supabase
         .from("digideal_products")
         .select(primarySelect)
         .in("product_id", productIds);
-      detailRows = detailResponse.data as DigidealDetailRow[] | null;
-      detailError = detailResponse.error;
+      detailRows = primaryResponse.data as DigidealDetailRow[] | null;
+      detailError = primaryResponse.error;
 
       if (
         detailError?.message &&
         detailError.message.toLowerCase().includes("1688")
       ) {
-        detailResponse = await supabase
+        const fallbackResponse = await supabase
           .from("digideal_products")
           .select(fallbackSelect)
           .in("product_id", productIds);
-        detailRows = detailResponse.data as DigidealDetailRow[] | null;
-        detailError = detailResponse.error;
+        detailRows = fallbackResponse.data as DigidealDetailRow[] | null;
+        detailError = fallbackResponse.error;
       }
 
       if (detailError) {
