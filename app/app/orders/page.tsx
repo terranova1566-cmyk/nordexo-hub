@@ -286,6 +286,22 @@ const useStyles = makeStyles({
     overflow: "auto",
     maxHeight: "280px",
   },
+  resendRemoveCell: {
+    width: "48px",
+    textAlign: "center",
+  },
+  rowRemoveButton: {
+    minWidth: "24px",
+    height: "24px",
+    padding: 0,
+    borderRadius: "4px",
+    border: "none",
+    backgroundColor: "transparent",
+    color: tokens.colorNeutralForeground2,
+    "&:hover": {
+      color: tokens.colorStatusDangerBorder1,
+    },
+  },
   resendTable: {
     tableLayout: "fixed",
     width: "100%",
@@ -294,6 +310,28 @@ const useStyles = makeStyles({
     width: "100%",
   },
 });
+
+const TrashIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+    focusable="false"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path stroke="none" d="M0 0h24v24H0z" />
+    <path d="M4 7l16 0" />
+    <path d="M10 11l0 6" />
+    <path d="M14 11l0 6" />
+    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+  </svg>
+);
 
 export default function OrdersPage() {
   const styles = useStyles();
@@ -635,6 +673,22 @@ export default function OrdersPage() {
           },
         ],
       };
+    });
+  };
+
+  const removeResendRow = (itemId: string) => {
+    setResendDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.filter((item) => item.id !== itemId),
+      };
+    });
+    setResendItemIds((prev) => {
+      if (!prev.has(itemId)) return prev;
+      const next = new Set(prev);
+      next.delete(itemId);
+      return next;
     });
   };
 
@@ -1129,6 +1183,14 @@ export default function OrdersPage() {
                                         </Text>
                                         <div>
                                           <Text className={styles.detailLabel}>
+                                            {t("orders.details.customerName")}
+                                          </Text>
+                                          <Text className={styles.detailValue}>
+                                            {details?.order?.customer_name ?? "-"}
+                                          </Text>
+                                        </div>
+                                        <div>
+                                          <Text className={styles.detailLabel}>
                                             {t("orders.details.customerAddress")}
                                           </Text>
                                           <Text className={styles.detailValue}>
@@ -1332,6 +1394,12 @@ export default function OrdersPage() {
                             <TableHeaderCell className={styles.detailsTableHeader}>
                               {t("orders.resend.columns.price")}
                             </TableHeaderCell>
+                            <TableHeaderCell
+                              className={mergeClasses(
+                                styles.detailsTableHeader,
+                                styles.resendRemoveCell
+                              )}
+                            />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1379,6 +1447,15 @@ export default function OrdersPage() {
                                     )
                                   }
                                   className={styles.resendInput}
+                                />
+                              </TableCell>
+                              <TableCell className={styles.resendRemoveCell}>
+                                <Button
+                                  appearance="subtle"
+                                  className={styles.rowRemoveButton}
+                                  icon={<TrashIcon />}
+                                  aria-label={t("orders.resend.actions.removeRow")}
+                                  onClick={() => removeResendRow(item.id)}
                                 />
                               </TableCell>
                             </TableRow>

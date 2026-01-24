@@ -269,6 +269,25 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground2,
   },
+  estimatedPriceRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  supplierDialog: {
+    minWidth: "420px",
+    maxWidth: "520px",
+  },
+  supplierDialogContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  supplierDialogMeta: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+  },
   cellStack: {
     display: "flex",
     flexDirection: "column",
@@ -813,6 +832,7 @@ export default function DigidealCampaignsPage() {
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [rerunComment, setRerunComment] = useState("");
   const [rerunAddToPipeline, setRerunAddToPipeline] = useState(true);
@@ -833,6 +853,14 @@ export default function DigidealCampaignsPage() {
   );
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [supplierTarget, setSupplierTarget] = useState<DigidealItem | null>(null);
+  const [supplierUrlDraft, setSupplierUrlDraft] = useState("");
+  const [supplierWeightDraft, setSupplierWeightDraft] = useState("");
+  const [supplierPriceDraft, setSupplierPriceDraft] = useState("");
+  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [supplierError, setSupplierError] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   const openRerunDialog = (title: string, productId: string) => {
     setRerunTargetTitle(title);
@@ -847,11 +875,56 @@ export default function DigidealCampaignsPage() {
     setIsRerunDialogOpen(false);
     setRerunTargetId(null);
   };
+
+  const openSupplierDialog = (item: DigidealItem) => {
+    const weightGrams =
+      item.weight_grams ??
+      (item.weight_kg !== null && item.weight_kg !== undefined
+        ? Math.round(item.weight_kg * 1000)
+        : null);
+    setSupplierTarget(item);
+    setSupplierUrlDraft(item.supplier_url ?? "");
+    setSupplierWeightDraft(weightGrams !== null ? String(weightGrams) : "");
+    setSupplierPriceDraft(
+      item.purchase_price !== null && item.purchase_price !== undefined
+        ? String(item.purchase_price)
+        : ""
+    );
+    setSupplierError(null);
+    setSupplierDialogOpen(true);
+  };
+
+  const closeSupplierDialog = () => {
+    setSupplierDialogOpen(false);
+    setSupplierTarget(null);
+  };
   const openOptimizeDialog = (title: string, productId: string) => {
     setOptimizeTargetTitle(title);
     setOptimizeTargetId(productId);
     setIsOptimizeDialogOpen(true);
   };
+
+  useEffect(() => {
+    let isActive = true;
+    const loadAdmin = async () => {
+      try {
+        const response = await fetch("/api/settings/profile");
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (isActive) {
+          setIsAdmin(Boolean(payload?.is_admin));
+        }
+      } catch {
+        // ignore admin fetch errors
+      }
+    };
+
+    loadAdmin();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const setAddingState = (productId: string, isAdding: boolean) => {
     setAddingIds((prev) => {
@@ -1022,6 +1095,54 @@ export default function DigidealCampaignsPage() {
     }
   };
 
+  const handleSupplierSave = async () => {
+    if (!supplierTarget) {
+      closeSupplierDialog();
+      return;
+    }
+    const supplierUrl = supplierUrlDraft.trim();
+    const weightValue = Number(supplierWeightDraft);
+    const priceValue = Number(supplierPriceDraft);
+    if (
+      !supplierUrl ||
+      !Number.isFinite(weightValue) ||
+      weightValue <= 0 ||
+      !Number.isFinite(priceValue) ||
+      priceValue <= 0
+    ) {
+      setSupplierError(t("digideal.supplier.errorInvalid"));
+      return;
+    }
+
+    setSupplierSaving(true);
+    setSupplierError(null);
+    try {
+      const response = await fetch("/api/digideal", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: supplierTarget.product_id,
+          supplier_url: supplierUrl,
+          weight_grams: weightValue,
+          purchase_price: priceValue,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || t("digideal.supplier.errorSave"));
+      }
+      setSupplierDialogOpen(false);
+      setSupplierTarget(null);
+      setRefreshToken((prev) => prev + 1);
+    } catch (err) {
+      setSupplierError(
+        err instanceof Error ? err.message : t("digideal.supplier.errorSave")
+      );
+    } finally {
+      setSupplierSaving(false);
+    }
+  };
+
   const debouncedSearch = useDebouncedValue(search, 300);
   const debouncedCategory = useDebouncedValue(category, 300);
   const debouncedTag = useDebouncedValue(tag, 300);
@@ -1174,6 +1295,7 @@ export default function DigidealCampaignsPage() {
     sellerFilter,
     page,
     pageSize,
+    refreshToken,
     t,
   ]);
 
@@ -1573,10 +1695,13 @@ export default function DigidealCampaignsPage() {
           typeof item.estimated_rerun_price === "number"
             ? item.estimated_rerun_price
             : null;
+        const hasEstimatedPrice = estimatedPriceValue !== null;
         const estimatedPriceLabel =
           estimatedPriceValue !== null
             ? formatCurrency(estimatedPriceValue, "SEK") || "-"
             : "-";
+        const showSupplierAdd = isAdmin && !hasEstimatedPrice;
+        const showSupplierEdit = isAdmin && hasEstimatedPrice;
         const rerunIcons = [
           {
             key: "full",
@@ -1915,9 +2040,32 @@ export default function DigidealCampaignsPage() {
               )}
             </TableCell>
             <TableCell className={styles.estimatedPriceCol}>
-              <Text className={styles.estimatedPriceText}>
-                {estimatedPriceLabel}
-              </Text>
+              {hasEstimatedPrice ? (
+                <div className={styles.estimatedPriceRow}>
+                  <Text className={styles.estimatedPriceText}>
+                    {estimatedPriceLabel}
+                  </Text>
+                  {showSupplierEdit ? (
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      onClick={() => openSupplierDialog(item)}
+                    >
+                      {t("digideal.supplier.edit")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : showSupplierAdd ? (
+                <Button
+                  appearance="outline"
+                  size="small"
+                  onClick={() => openSupplierDialog(item)}
+                >
+                  {t("digideal.supplier.add")}
+                </Button>
+              ) : (
+                <Text className={styles.estimatedPriceText}>-</Text>
+              )}
             </TableCell>
             <TableCell className={styles.rerunCol}>
               {isNordexo ? (
@@ -2030,6 +2178,8 @@ export default function DigidealCampaignsPage() {
       addToProduction,
       removeFromProduction,
       openRerunDialog,
+      openSupplierDialog,
+      isAdmin,
     ]
   );
 
@@ -2251,6 +2401,89 @@ export default function DigidealCampaignsPage() {
                 disabled={isRerunSaving}
               >
                 {t("digideal.rerun.dialog.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={supplierDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeSupplierDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.supplierDialog}>
+          <DialogBody>
+            <DialogTitle>{t("digideal.supplier.dialog.title")}</DialogTitle>
+            <DialogContent className={styles.supplierDialogContent}>
+              {supplierTarget ? (
+                <Text size={200} className={styles.supplierDialogMeta}>
+                  {supplierTarget.listing_title ||
+                    supplierTarget.title_h1 ||
+                    supplierTarget.product_slug ||
+                    supplierTarget.product_id}
+                </Text>
+              ) : null}
+              {supplierError ? (
+                <MessageBar intent="error">{supplierError}</MessageBar>
+              ) : null}
+              <Field
+                label={
+                  <span className={styles.filterLabel}>
+                    {t("digideal.supplier.dialog.urlLabel")}
+                  </span>
+                }
+              >
+                <Input
+                  value={supplierUrlDraft}
+                  onChange={(_, data) => setSupplierUrlDraft(data.value)}
+                  placeholder={t("digideal.supplier.dialog.urlPlaceholder")}
+                />
+              </Field>
+              <Field
+                label={
+                  <span className={styles.filterLabel}>
+                    {t("digideal.supplier.dialog.weightLabel")}
+                  </span>
+                }
+              >
+                <Input
+                  type="number"
+                  value={supplierWeightDraft}
+                  onChange={(_, data) => setSupplierWeightDraft(data.value)}
+                  placeholder={t("digideal.supplier.dialog.weightPlaceholder")}
+                  min={0}
+                />
+              </Field>
+              <Field
+                label={
+                  <span className={styles.filterLabel}>
+                    {t("digideal.supplier.dialog.priceLabel")}
+                  </span>
+                }
+              >
+                <Input
+                  type="number"
+                  value={supplierPriceDraft}
+                  onChange={(_, data) => setSupplierPriceDraft(data.value)}
+                  placeholder={t("digideal.supplier.dialog.pricePlaceholder")}
+                  min={0}
+                  step="0.01"
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeSupplierDialog}>
+                {t("digideal.supplier.dialog.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSupplierSave}
+                disabled={supplierSaving}
+              >
+                {t("digideal.supplier.dialog.save")}
               </Button>
             </DialogActions>
           </DialogBody>

@@ -587,6 +587,11 @@
       "context": "Orders resend dialog action"
     },
     {
+      "key": "orders.resend.actions.removeRow",
+      "text": "Remove row",
+      "context": "Orders resend dialog action"
+    },
+    {
       "key": "orders.resend.commentsTitle",
       "text": "Comments",
       "context": "Orders resend comments section title"
@@ -717,6 +722,11 @@
       "context": "Orders details heading"
     },
     {
+      "key": "orders.details.customerName",
+      "text": "Name:",
+      "context": "Orders details label"
+    },
+    {
       "key": "orders.details.customerAddress",
       "text": "Address",
       "context": "Orders details label"
@@ -729,6 +739,11 @@
     {
       "key": "orders.details.customerPhone",
       "text": "Phone",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.customerNote",
+      "text": "Note:",
       "context": "Orders details label"
     },
     {
@@ -3617,6 +3632,71 @@
       "key": "digideal.table.estimatedRerunPrice",
       "text": "EST Rerun Price",
       "context": "DigiDeal campaigns table header"
+    },
+    {
+      "key": "digideal.supplier.add",
+      "text": "Add Supplier",
+      "context": "DigiDeal campaigns add supplier button"
+    },
+    {
+      "key": "digideal.supplier.edit",
+      "text": "Edit",
+      "context": "DigiDeal campaigns edit supplier button"
+    },
+    {
+      "key": "digideal.supplier.dialog.title",
+      "text": "Supplier details",
+      "context": "DigiDeal campaigns supplier dialog title"
+    },
+    {
+      "key": "digideal.supplier.dialog.urlLabel",
+      "text": "Supplier URL",
+      "context": "DigiDeal campaigns supplier dialog URL label"
+    },
+    {
+      "key": "digideal.supplier.dialog.urlPlaceholder",
+      "text": "Paste the supplier URL",
+      "context": "DigiDeal campaigns supplier dialog URL placeholder"
+    },
+    {
+      "key": "digideal.supplier.dialog.weightLabel",
+      "text": "Supplier weight (g)",
+      "context": "DigiDeal campaigns supplier dialog weight label"
+    },
+    {
+      "key": "digideal.supplier.dialog.weightPlaceholder",
+      "text": "Example: 500",
+      "context": "DigiDeal campaigns supplier dialog weight placeholder"
+    },
+    {
+      "key": "digideal.supplier.dialog.priceLabel",
+      "text": "Supplier price (CNY)",
+      "context": "DigiDeal campaigns supplier dialog price label"
+    },
+    {
+      "key": "digideal.supplier.dialog.pricePlaceholder",
+      "text": "Example: 25.5",
+      "context": "DigiDeal campaigns supplier dialog price placeholder"
+    },
+    {
+      "key": "digideal.supplier.dialog.save",
+      "text": "Save",
+      "context": "DigiDeal campaigns supplier dialog save button"
+    },
+    {
+      "key": "digideal.supplier.dialog.cancel",
+      "text": "Cancel",
+      "context": "DigiDeal campaigns supplier dialog cancel button"
+    },
+    {
+      "key": "digideal.supplier.errorInvalid",
+      "text": "Enter a supplier URL, weight, and price.",
+      "context": "DigiDeal campaigns supplier dialog validation error"
+    },
+    {
+      "key": "digideal.supplier.errorSave",
+      "text": "Unable to save supplier details.",
+      "context": "DigiDeal campaigns supplier dialog save error"
     },
     {
       "key": "digideal.table.rerun",

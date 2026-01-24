@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -123,6 +124,44 @@ const computeEstimatedPrice = (
       ? Number(rawPrice.toFixed(2))
       : Math.round(rawPrice);
   return Number.isFinite(price) ? price : null;
+};
+
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) return null;
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
+
+const requireAdmin = async () => {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+
+  const { data: settings } = await supabase
+    .from("partner_user_settings")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!settings?.is_admin) {
+    return { ok: false, status: 403, error: "Forbidden" };
+  }
+
+  return { ok: true, user };
 };
 
 export async function GET(request: NextRequest) {
@@ -570,5 +609,91 @@ export async function POST(request: Request) {
     added_at: updated.digideal_add_rerun_at ?? now,
     comment: updated.digideal_add_rerun_comment ?? null,
     status: updated.digideal_rerun_status ?? statusValue,
+  });
+}
+
+export async function PATCH(request: Request) {
+  const adminCheck = await requireAdmin();
+  if (!adminCheck.ok) {
+    return NextResponse.json(
+      { error: adminCheck.error },
+      { status: adminCheck.status }
+    );
+  }
+
+  const adminClient = getAdminClient();
+  if (!adminClient) {
+    return NextResponse.json(
+      { error: "Server is missing Supabase credentials." },
+      { status: 500 }
+    );
+  }
+
+  let payload: {
+    product_id?: string;
+    supplier_url?: string;
+    weight_grams?: number;
+    purchase_price?: number;
+  };
+  try {
+    payload = (await request.json()) as typeof payload;
+  } catch {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  const productId = String(payload?.product_id ?? "").trim();
+  const supplierUrl =
+    typeof payload?.supplier_url === "string" ? payload.supplier_url.trim() : "";
+  const purchasePrice = toNumber(payload?.purchase_price);
+  const weightGramsInput = toNumber(payload?.weight_grams);
+  if (!productId) {
+    return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
+  }
+  if (!supplierUrl) {
+    return NextResponse.json({ error: "Missing supplier_url." }, { status: 400 });
+  }
+  if (purchasePrice === null || purchasePrice <= 0) {
+    return NextResponse.json(
+      { error: "Missing purchase_price." },
+      { status: 400 }
+    );
+  }
+  if (weightGramsInput === null || weightGramsInput <= 0) {
+    return NextResponse.json(
+      { error: "Missing weight_grams." },
+      { status: 400 }
+    );
+  }
+
+  const weightGrams = Math.round(weightGramsInput);
+  const weightKg = Number((weightGrams / 1000).toFixed(3));
+
+  const { data, error } = await adminClient
+    .from("digideal_products")
+    .update({
+      purchase_price: purchasePrice,
+      weight_grams: weightGrams,
+      weight_kg: weightKg,
+      "1688_URL": supplierUrl,
+    })
+    .eq("product_id", productId)
+    .select('product_id, purchase_price, weight_kg, weight_grams, "1688_URL"')
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Product not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    item: {
+      product_id: data.product_id,
+      purchase_price: data.purchase_price,
+      weight_kg: data.weight_kg,
+      weight_grams: data.weight_grams,
+      supplier_url: (data as DigidealDetailRow)["1688_URL"] ?? null,
+    },
   });
 }

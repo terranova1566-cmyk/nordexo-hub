@@ -54,6 +54,7 @@ type ResendDetails = {
     customer_phone: string | null;
     customer_email: string | null;
     transaction_date: string | null;
+    resend_comment?: string | null;
   } | null;
   items: ResendItem[];
   loading: boolean;
@@ -653,6 +654,14 @@ export default function OrdersResendPage() {
                                         </Text>
                                         <div>
                                           <Text className={styles.detailLabel}>
+                                            {t("orders.details.customerName")}
+                                          </Text>
+                                          <Text className={styles.detailValue}>
+                                            {details?.order?.customer_name ?? "-"}
+                                          </Text>
+                                        </div>
+                                        <div>
+                                          <Text className={styles.detailLabel}>
                                             {t("orders.details.customerAddress")}
                                           </Text>
                                           <Text className={styles.detailValue}>
@@ -684,6 +693,14 @@ export default function OrdersResendPage() {
                                           </Text>
                                           <Text className={styles.detailValue}>
                                             {details?.order?.customer_phone ?? ""}
+                                          </Text>
+                                        </div>
+                                        <div>
+                                          <Text className={styles.detailLabel}>
+                                            {t("orders.details.customerNote")}
+                                          </Text>
+                                          <Text className={styles.detailValue}>
+                                            {details?.order?.resend_comment ?? "-"}
                                           </Text>
                                         </div>
                                       </div>

@@ -72,7 +72,7 @@ export async function GET(
   const { data: order, error: orderError } = await adminClient
     .from("orders_global_resend")
     .select(
-      "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date"
+      "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,resend_comment"
     )
     .eq("id", id)
     .maybeSingle();
