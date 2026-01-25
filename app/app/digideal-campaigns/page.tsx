@@ -1654,6 +1654,7 @@ export default function DigidealCampaignsPage() {
         const statusLabel = item.status ?? "-";
         const seller = item.seller_name ?? "-";
         const sellerId = item.seller_orgnr;
+        const isNordexo = seller.toLowerCase().includes("nordexo");
         const soldToday = Math.max(0, (item.sold_today ?? 0) - 30);
         const sold7d = Math.max(0, (item.sold_7d ?? 0) - 30);
         const soldAllTime = Math.max(0, (item.sold_all_time ?? 0) - 30);
@@ -1694,7 +1695,7 @@ export default function DigidealCampaignsPage() {
           estimatedPriceValue !== null
             ? formatCurrency(estimatedPriceValue, "SEK") || "-"
             : "-";
-        const showSupplierAdd = isAdmin && !hasEstimatedPrice;
+        const showSupplierAdd = isAdmin && !hasEstimatedPrice && !isNordexo;
         const showSupplierEdit = isAdmin && hasEstimatedPrice;
         const rerunIcons = [
           {
@@ -1816,8 +1817,6 @@ export default function DigidealCampaignsPage() {
             ),
           },
         ];
-
-        const isNordexo = seller.toLowerCase().includes("nordexo");
 
         return (
           <TableRow

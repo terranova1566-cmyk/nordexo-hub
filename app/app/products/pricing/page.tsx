@@ -120,6 +120,8 @@ const SHOPIFY_SHOPS = [
   },
 ] as const;
 
+type ShopifyShop = (typeof SHOPIFY_SHOPS)[number]["value"];
+
 const formatMarketLabel = (market: string) => {
   const code = market?.toUpperCase?.() ?? "";
   const label = MARKET_LABELS[code];
@@ -374,7 +376,7 @@ export default function PricingPage() {
     useState(false);
   const [manualMissingShopifySparklar, setManualMissingShopifySparklar] =
     useState(false);
-  const [shopifySelection, setShopifySelection] = useState<string[]>(
+  const [shopifySelection, setShopifySelection] = useState<ShopifyShop[]>(
     SHOPIFY_SHOPS.map((shop) => shop.value)
   );
 
@@ -394,7 +396,7 @@ export default function PricingPage() {
     if (shopifySelection.length === shopifyOptions.length) {
       return t("pricing.shopifyAll");
     }
-    const labelMap = new Map(
+    const labelMap = new Map<string, string>(
       shopifyOptions.map((option) => [option.value, option.label])
     );
     return shopifySelection
@@ -1507,7 +1509,7 @@ export default function PricingPage() {
                 value={shopifyLabel}
                 selectedOptions={shopifySelection}
                 onOptionSelect={(_, data) => {
-                  const next = (data.selectedOptions ?? []) as string[];
+                  const next = (data.selectedOptions ?? []) as ShopifyShop[];
                   if (next.length === 0) {
                     setShopifySelection(SHOPIFY_SHOPS.map((shop) => shop.value));
                     setOverviewPage(1);
