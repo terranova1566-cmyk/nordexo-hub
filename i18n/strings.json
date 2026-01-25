@@ -728,17 +728,17 @@
     },
     {
       "key": "orders.details.customerAddress",
-      "text": "Address",
+      "text": "Address:",
       "context": "Orders details label"
     },
     {
       "key": "orders.details.customerEmail",
-      "text": "Email",
+      "text": "Email:",
       "context": "Orders details label"
     },
     {
       "key": "orders.details.customerPhone",
-      "text": "Phone",
+      "text": "Phone:",
       "context": "Orders details label"
     },
     {
@@ -4249,6 +4249,31 @@
       "context": "Pricing manual export missing Shopify checkbox"
     },
     {
+      "key": "pricing.manualMissingShopifyTingelo",
+      "text": "Shopify Tingelo",
+      "context": "Pricing manual export missing Shopify Tingelo checkbox"
+    },
+    {
+      "key": "pricing.manualMissingShopifyWellando",
+      "text": "Shopify Wellando",
+      "context": "Pricing manual export missing Shopify Wellando checkbox"
+    },
+    {
+      "key": "pricing.manualMissingShopifySparklar",
+      "text": "Shopify Sparklar",
+      "context": "Pricing manual export missing Shopify Sparklar checkbox"
+    },
+    {
+      "key": "pricing.manualTemplate",
+      "text": "Download template",
+      "context": "Pricing manual import template download"
+    },
+    {
+      "key": "pricing.manualDelete",
+      "text": "Delete export",
+      "context": "Pricing manual export delete action"
+    },
+    {
       "key": "pricing.manualImportSummary",
       "text": "Import complete. Updated: {updated}, skipped: {skipped}.",
       "context": "Pricing manual import summary message"
@@ -4352,6 +4377,71 @@
       "key": "pricing.overviewColShopifyTingeloCompare",
       "text": "Shopify Tingelo compare",
       "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyWellandoPrice",
+      "text": "Shopify Wellando price",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyWellandoCompare",
+      "text": "Shopify Wellando compare",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifySparklarPrice",
+      "text": "Shopify Sparklar price",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifySparklarCompare",
+      "text": "Shopify Sparklar compare",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyShopifyPrice",
+      "text": "Shopify price",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.overviewColShopifyShopifyCompare",
+      "text": "Shopify compare",
+      "context": "Pricing overview column label"
+    },
+    {
+      "key": "pricing.shopifyFilterLabel",
+      "text": "Shopify shops",
+      "context": "Pricing overview Shopify filter label"
+    },
+    {
+      "key": "pricing.shopifyAll",
+      "text": "All Shopify shops",
+      "context": "Pricing overview Shopify filter summary when all selected"
+    },
+    {
+      "key": "pricing.shopifyNone",
+      "text": "Select Shopify shops",
+      "context": "Pricing overview Shopify filter summary when none selected"
+    },
+    {
+      "key": "pricing.shopifyTingelo",
+      "text": "Tingelo",
+      "context": "Pricing overview Shopify Tingelo label"
+    },
+    {
+      "key": "pricing.shopifyWellando",
+      "text": "Wellando",
+      "context": "Pricing overview Shopify Wellando label"
+    },
+    {
+      "key": "pricing.shopifySparklar",
+      "text": "Sparklar",
+      "context": "Pricing overview Shopify Sparklar label"
+    },
+    {
+      "key": "pricing.shopifyShopify",
+      "text": "Shopify",
+      "context": "Pricing overview Shopify label"
     },
     {
       "key": "pricing.overviewEmpty",

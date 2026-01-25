@@ -10,6 +10,12 @@ export const runtime = "nodejs";
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
 const EXPORT_ROOT = "/srv/incoming-scripts/uploads/pricing-exports";
 const HISTORY_PATH = "/srv/incoming-scripts/uploads/pricing-exports-history.json";
+const SHOPIFY_PRICE_TYPES = [
+  "shopify_tingelo",
+  "shopify_wellando",
+  "shopify_sparklar",
+  "shopify_shopify",
+];
 
 type ExportHistory = {
   id: string;
@@ -100,7 +106,9 @@ type ExportFilters = {
   missing?: {
     b2b?: boolean;
     b2c?: boolean;
-    shopify?: boolean;
+    shopifyTingelo?: boolean;
+    shopifyWellando?: boolean;
+    shopifySparklar?: boolean;
   };
 };
 
@@ -128,7 +136,9 @@ export async function POST(request: Request) {
   const missingFilters = {
     b2b: Boolean(filters?.missing?.b2b),
     b2c: Boolean(filters?.missing?.b2c),
-    shopify: Boolean(filters?.missing?.shopify),
+    shopifyTingelo: Boolean(filters?.missing?.shopifyTingelo),
+    shopifyWellando: Boolean(filters?.missing?.shopifyWellando),
+    shopifySparklar: Boolean(filters?.missing?.shopifySparklar),
   };
 
   const selectFields =
@@ -271,25 +281,31 @@ export async function POST(request: Request) {
     string,
     Map<string, Map<string, number | null>>
   >();
-  const shopifyPriceMap = new Map<string, { price: number | null; compare: number | null }>();
+  const shopifyPriceMap = new Map<
+    string,
+    Map<string, { price: number | null; compare: number | null }>
+  >();
 
   for (const batch of chunk(variantIds, 500)) {
     const { data: priceRows } = await adminClient
       .from("catalog_variant_prices")
       .select("catalog_variant_id, market, price_type, price, compare_at_price")
       .in("catalog_variant_id", batch)
-      .in("price_type", ["b2b_fixed", "b2b_calc", "b2b_dropship", "shopify_tingelo"])
+      .in("price_type", [
+        "b2b_fixed",
+        "b2b_calc",
+        "b2b_dropship",
+        ...SHOPIFY_PRICE_TYPES,
+      ])
       .is("deleted_at", null);
 
     priceRows?.forEach((row) => {
       const variantId = row.catalog_variant_id;
       if (!variantId) return;
       const type = String(row.price_type || "");
-      if (type === "shopify_tingelo") {
-        const current = shopifyPriceMap.get(variantId) ?? {
-          price: null,
-          compare: null,
-        };
+      if (SHOPIFY_PRICE_TYPES.includes(type)) {
+        const perVariant = shopifyPriceMap.get(variantId) ?? new Map();
+        const current = perVariant.get(type) ?? { price: null, compare: null };
         const priceValue =
           row.price !== null && row.price !== undefined
             ? Number(row.price)
@@ -298,13 +314,14 @@ export async function POST(request: Request) {
           row.compare_at_price !== null && row.compare_at_price !== undefined
             ? Number(row.compare_at_price)
             : null;
-        shopifyPriceMap.set(variantId, {
+        perVariant.set(type, {
           price:
             current.price ?? (Number.isFinite(priceValue) ? priceValue : null),
           compare:
             current.compare ??
             (Number.isFinite(compareValue) ? compareValue : null),
         });
+        shopifyPriceMap.set(variantId, perVariant);
         return;
       }
       const entry = variantPriceRows.get(variantId) ?? new Map();
@@ -355,6 +372,12 @@ export async function POST(request: Request) {
     "B2C",
     "Shopify Tingelo Price",
     "Shopify Tingelo Compare",
+    "Shopify Wellando Price",
+    "Shopify Wellando Compare",
+    "Shopify Sparklar Price",
+    "Shopify Sparklar Compare",
+    "Shopify Price",
+    "Shopify Compare",
   ]);
 
   const exportRows = variants
@@ -398,7 +421,10 @@ export async function POST(request: Request) {
     const b2bNo = resolveMarketPrice(priceEntry, "NO", legacyNo);
     const b2bDk = resolveMarketPrice(priceEntry, "DK", legacyDk);
     const b2bFi = resolveMarketPrice(priceEntry, "FI", legacyFi);
-    const shopify = shopifyPriceMap.get(String(rawVariant.id));
+    const shopifyEntries = shopifyPriceMap.get(String(rawVariant.id));
+    const shopifyPrices = shopifyEntries
+      ? Object.fromEntries(shopifyEntries.entries())
+      : {};
 
       return {
         spu: product?.spu ?? "",
@@ -412,12 +438,24 @@ export async function POST(request: Request) {
         b2bDk,
         b2bFi,
         b2c: rawVariant.price ?? "",
-        shopifyPrice: shopify?.price ?? null,
-        shopifyCompare: shopify?.compare ?? null,
+        shopifyTingeloPrice: shopifyPrices["shopify_tingelo"]?.price ?? null,
+        shopifyTingeloCompare: shopifyPrices["shopify_tingelo"]?.compare ?? null,
+        shopifyWellandoPrice: shopifyPrices["shopify_wellando"]?.price ?? null,
+        shopifyWellandoCompare: shopifyPrices["shopify_wellando"]?.compare ?? null,
+        shopifySparklarPrice: shopifyPrices["shopify_sparklar"]?.price ?? null,
+        shopifySparklarCompare: shopifyPrices["shopify_sparklar"]?.compare ?? null,
+        shopifyShopifyPrice: shopifyPrices["shopify_shopify"]?.price ?? null,
+        shopifyShopifyCompare: shopifyPrices["shopify_shopify"]?.compare ?? null,
       };
     })
     .filter((row) => {
-      if (!missingFilters.b2b && !missingFilters.b2c && !missingFilters.shopify) {
+      if (
+        !missingFilters.b2b &&
+        !missingFilters.b2c &&
+        !missingFilters.shopifyTingelo &&
+        !missingFilters.shopifyWellando &&
+        !missingFilters.shopifySparklar
+      ) {
         return true;
       }
       const missingB2b =
@@ -426,12 +464,16 @@ export async function POST(request: Request) {
         row.b2bDk == null ||
         row.b2bFi == null;
       const missingB2c = row.b2c == null || row.b2c === "";
-      const missingShopify = row.shopifyPrice == null;
+      const missingShopifyTingelo = row.shopifyTingeloPrice == null;
+      const missingShopifyWellando = row.shopifyWellandoPrice == null;
+      const missingShopifySparklar = row.shopifySparklarPrice == null;
 
       const matches: boolean[] = [];
       if (missingFilters.b2b) matches.push(missingB2b);
       if (missingFilters.b2c) matches.push(missingB2c);
-      if (missingFilters.shopify) matches.push(missingShopify);
+      if (missingFilters.shopifyTingelo) matches.push(missingShopifyTingelo);
+      if (missingFilters.shopifyWellando) matches.push(missingShopifyWellando);
+      if (missingFilters.shopifySparklar) matches.push(missingShopifySparklar);
       return matches.some(Boolean);
     });
 
@@ -448,8 +490,14 @@ export async function POST(request: Request) {
       row.b2bDk ?? "",
       row.b2bFi ?? "",
       row.b2c ?? "",
-      row.shopifyPrice ?? "",
-      row.shopifyCompare ?? "",
+      row.shopifyTingeloPrice ?? "",
+      row.shopifyTingeloCompare ?? "",
+      row.shopifyWellandoPrice ?? "",
+      row.shopifyWellandoCompare ?? "",
+      row.shopifySparklarPrice ?? "",
+      row.shopifySparklarCompare ?? "",
+      row.shopifyShopifyPrice ?? "",
+      row.shopifyShopifyCompare ?? "",
     ]);
   });
 

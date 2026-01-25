@@ -79,6 +79,7 @@ type ResendItemDraft = {
   title: string;
   quantity: string;
   price: string;
+  isPlaceholder?: boolean;
 };
 
 type ResendDraft = {
@@ -195,11 +196,15 @@ const useStyles = makeStyles({
     padding: "12px",
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "6px",
+  },
+  detailsRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "6px",
   },
   detailLabel: {
     color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase200,
   },
   detailValue: {
     color: tokens.colorNeutralForeground1,
@@ -332,6 +337,15 @@ const TrashIcon = () => (
     <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
   </svg>
 );
+
+const createEmptyResendRow = (): ResendItemDraft => ({
+  id: `draft-new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  sku: "",
+  title: "",
+  quantity: "",
+  price: "",
+  isPlaceholder: true,
+});
 
 export default function OrdersPage() {
   const styles = useStyles();
@@ -580,19 +594,22 @@ export default function OrdersPage() {
         customerEmail: details.order.customer_email ?? "",
         transactionDate: details.order.transaction_date ?? "",
         comment: "",
-        items: selectedItems.map((item) => ({
-          id: item.id,
-          sku: item.sku ?? "",
-          title: item.product_title ?? "",
-          quantity:
-            item.quantity === null || item.quantity === undefined
-              ? ""
-              : String(item.quantity),
-          price:
-            item.sales_value_eur === null || item.sales_value_eur === undefined
-              ? ""
-              : String(item.sales_value_eur),
-        })),
+        items: [
+          ...selectedItems.map((item) => ({
+            id: item.id,
+            sku: item.sku ?? "",
+            title: item.product_title ?? "",
+            quantity:
+              item.quantity === null || item.quantity === undefined
+                ? ""
+                : String(item.quantity),
+            price:
+              item.sales_value_eur === null || item.sales_value_eur === undefined
+                ? ""
+                : String(item.sales_value_eur),
+          })),
+          createEmptyResendRow(),
+        ],
       };
       setResendDraft(draft);
     };
@@ -647,31 +664,21 @@ export default function OrdersPage() {
   ) => {
     setResendDraft((prev) => {
       if (!prev) return prev;
+      const items = prev.items.map((item) => {
+        if (item.id !== itemId) return item;
+        const updated = { ...item, [field]: value };
+        if (
+          item.isPlaceholder &&
+          (updated.sku.trim() || updated.quantity.trim() || updated.price.trim())
+        ) {
+          return { ...updated, isPlaceholder: false };
+        }
+        return updated;
+      });
+      const hasPlaceholder = items.some((item) => item.isPlaceholder);
       return {
         ...prev,
-        items: prev.items.map((item) =>
-          item.id === itemId ? { ...item, [field]: value } : item
-        ),
-      };
-    });
-  };
-
-  const addResendRow = () => {
-    setResendDraft((prev) => {
-      if (!prev) return prev;
-      const nextId = `draft-${Date.now()}-${prev.items.length}`;
-      return {
-        ...prev,
-        items: [
-          ...prev.items,
-          {
-            id: nextId,
-            sku: "",
-            title: "",
-            quantity: "",
-            price: "",
-          },
-        ],
+        items: hasPlaceholder ? items : [...items, createEmptyResendRow()],
       };
     });
   };
@@ -679,9 +686,11 @@ export default function OrdersPage() {
   const removeResendRow = (itemId: string) => {
     setResendDraft((prev) => {
       if (!prev) return prev;
+      const items = prev.items.filter((item) => item.id !== itemId);
+      const hasPlaceholder = items.some((item) => item.isPlaceholder);
       return {
         ...prev,
-        items: prev.items.filter((item) => item.id !== itemId),
+        items: hasPlaceholder ? items : [...items, createEmptyResendRow()],
       };
     });
     setResendItemIds((prev) => {
@@ -1177,81 +1186,89 @@ export default function OrdersPage() {
                                           </Table>
                                         </div>
                                       </div>
-                                      <div className={styles.detailsPanel}>
+                                      <div className={styles.detailsSection}>
                                         <Text weight="semibold">
                                           {t("orders.details.customerTitle")}
                                         </Text>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerName")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.order?.customer_name ?? "-"}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerAddress")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {[
-                                              details?.order?.customer_address ?? "",
-                                              details?.order?.customer_zip ?? "",
-                                              details?.order?.customer_city ?? "",
-                                            ]
-                                              .map((value) => value.trim())
-                                              .filter(Boolean)
-                                              .join(", ")}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerEmail")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {(() => {
-                                              const email =
-                                                details?.order?.customer_email ?? "";
-                                              return email && isValidEmail(email) ? email : "-";
-                                            })()}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerPhone")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.order?.customer_phone ?? ""}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.tracking")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.tracking_numbers?.length ? (
-                                              <span className={styles.trackingInline}>
-                                                {details.tracking_numbers.map((tracking, idx) => (
-                                                  <span key={tracking}>
-                                                    {idx > 0 ? " : " : ""}
-                                                    <a
-                                                      className={styles.trackingLink}
-                                                      href={`https://t.17track.net/en#nums=${encodeURIComponent(
-                                                        tracking
-                                                      )}`}
-                                                      target="_blank"
-                                                      rel="noreferrer"
-                                                      aria-label={t("orders.details.trackExternal")}
-                                                    >
-                                                      {tracking}
-                                                    </a>
-                                                  </span>
-                                                ))}
-                                              </span>
-                                            ) : (
-                                              "-"
-                                            )}
-                                          </Text>
+                                        <div className={styles.detailsPanel}>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerName")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.order?.customer_name ?? "-"}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerAddress")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {[
+                                                details?.order?.customer_address ?? "",
+                                                details?.order?.customer_zip ?? "",
+                                                details?.order?.customer_city ?? "",
+                                              ]
+                                                .map((value) => value.trim())
+                                                .filter(Boolean)
+                                                .join(", ")}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerEmail")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {(() => {
+                                                const email =
+                                                  details?.order?.customer_email ?? "";
+                                                return email && isValidEmail(email) ? email : "-";
+                                              })()}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerPhone")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.order?.customer_phone ?? "-"}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerNote")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>-</Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.tracking")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.tracking_numbers?.length ? (
+                                                <span className={styles.trackingInline}>
+                                                  {details.tracking_numbers.map((tracking, idx) => (
+                                                    <span key={tracking}>
+                                                      {idx > 0 ? " : " : ""}
+                                                      <a
+                                                        className={styles.trackingLink}
+                                                        href={`https://t.17track.net/en#nums=${encodeURIComponent(
+                                                          tracking
+                                                        )}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        aria-label={t("orders.details.trackExternal")}
+                                                      >
+                                                        {tracking}
+                                                      </a>
+                                                    </span>
+                                                  ))}
+                                                </span>
+                                              ) : (
+                                                "-"
+                                              )}
+                                            </Text>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
@@ -1419,7 +1436,7 @@ export default function OrdersPage() {
                                 />
                               </TableCell>
                               <TableCell>
-                                <Text>{item.title || "-"}</Text>
+                                <Text>{item.title}</Text>
                               </TableCell>
                               <TableCell>
                                 <Input
@@ -1450,23 +1467,20 @@ export default function OrdersPage() {
                                 />
                               </TableCell>
                               <TableCell className={styles.resendRemoveCell}>
-                                <Button
-                                  appearance="subtle"
-                                  className={styles.rowRemoveButton}
-                                  icon={<TrashIcon />}
-                                  aria-label={t("orders.resend.actions.removeRow")}
-                                  onClick={() => removeResendRow(item.id)}
-                                />
+                                {item.isPlaceholder ? null : (
+                                  <Button
+                                    appearance="subtle"
+                                    className={styles.rowRemoveButton}
+                                    icon={<TrashIcon />}
+                                    aria-label={t("orders.resend.actions.removeRow")}
+                                    onClick={() => removeResendRow(item.id)}
+                                  />
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
-                    </div>
-                    <div className={styles.actionRow}>
-                      <Button appearance="subtle" onClick={addResendRow}>
-                        {t("orders.resend.actions.addRow")}
-                      </Button>
                     </div>
                   </div>
                   <div className={styles.resendSection}>

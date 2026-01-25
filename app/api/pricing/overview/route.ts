@@ -84,6 +84,19 @@ export async function GET(request: Request) {
   const updatedTo = searchParams.get("updatedTo")?.trim() ?? "";
   const createdFrom = searchParams.get("createdFrom")?.trim() ?? "";
   const createdTo = searchParams.get("createdTo")?.trim() ?? "";
+  const shopifyParam = searchParams.get("shopify")?.trim() ?? "";
+  const shopifyAllowed = [
+    "shopify_tingelo",
+    "shopify_wellando",
+    "shopify_sparklar",
+    "shopify_shopify",
+  ];
+  const shopifyTypes = shopifyParam
+    ? shopifyParam
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => shopifyAllowed.includes(value))
+    : ["shopify_tingelo"];
   const baseLimit = Math.max(pageSize * page, 200);
   const limit = Math.min(baseLimit, 2000);
 
@@ -270,25 +283,31 @@ export async function GET(request: Request) {
     string,
     Map<string, Map<string, number | null>>
   >();
-  const shopifyPriceMap = new Map<string, { price: number | null; compare: number | null }>();
+  const shopifyPriceMap = new Map<
+    string,
+    Map<string, { price: number | null; compare: number | null }>
+  >();
 
   if (variantIds.length > 0) {
     const { data: priceRows } = await adminClient
       .from("catalog_variant_prices")
       .select("catalog_variant_id, market, price_type, price, compare_at_price")
       .in("catalog_variant_id", variantIds)
-      .in("price_type", ["b2b_fixed", "b2b_calc", "b2b_dropship", "shopify_tingelo"])
+      .in("price_type", [
+        "b2b_fixed",
+        "b2b_calc",
+        "b2b_dropship",
+        ...shopifyTypes,
+      ])
       .is("deleted_at", null);
 
     priceRows?.forEach((row) => {
       const variantId = row.catalog_variant_id;
       if (!variantId) return;
       const type = String(row.price_type || "");
-      if (type === "shopify_tingelo") {
-        const current = shopifyPriceMap.get(variantId) ?? {
-          price: null,
-          compare: null,
-        };
+      if (shopifyTypes.includes(type)) {
+        const perVariant = shopifyPriceMap.get(variantId) ?? new Map();
+        const current = perVariant.get(type) ?? { price: null, compare: null };
         const priceValue =
           row.price !== null && row.price !== undefined
             ? Number(row.price)
@@ -297,13 +316,14 @@ export async function GET(request: Request) {
           row.compare_at_price !== null && row.compare_at_price !== undefined
             ? Number(row.compare_at_price)
             : null;
-        shopifyPriceMap.set(variantId, {
+        perVariant.set(type, {
           price:
             current.price ?? (Number.isFinite(priceValue) ? priceValue : null),
           compare:
             current.compare ??
             (Number.isFinite(compareValue) ? compareValue : null),
         });
+        shopifyPriceMap.set(variantId, perVariant);
         return;
       }
       const entry = variantPriceRows.get(variantId) ?? new Map();
@@ -398,7 +418,10 @@ export async function GET(request: Request) {
         "FI",
         legacyFi
       );
-      const shopify = shopifyPriceMap.get(String(rawVariant.id));
+      const shopifyEntries = shopifyPriceMap.get(String(rawVariant.id));
+      const shopifyPrices = shopifyEntries
+        ? Object.fromEntries(shopifyEntries.entries())
+        : {};
 
       return {
         id: String(rawVariant.id),
@@ -424,8 +447,7 @@ export async function GET(request: Request) {
           rawVariant.price !== null && rawVariant.price !== undefined
             ? Number(rawVariant.price)
             : null,
-        shopify_price: shopify?.price ?? null,
-        shopify_compare_at: shopify?.compare ?? null,
+        shopify_prices: shopifyPrices,
       };
     })
     .sort((a, b) => (a.sku ?? "").localeCompare(b.sku ?? ""));

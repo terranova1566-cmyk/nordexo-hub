@@ -4,7 +4,6 @@ import {
   Badge,
   Button,
   Card,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -268,11 +267,15 @@ const useStyles = makeStyles({
   estimatedPriceText: {
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground2,
+    display: "inline-block",
+    minWidth: "12ch",
+    flexShrink: 0,
+    whiteSpace: "nowrap",
   },
   estimatedPriceRow: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "8px",
+    gap: "10px",
     flexWrap: "wrap",
   },
   supplierDialog: {
@@ -555,7 +558,7 @@ const useStyles = makeStyles({
   optimizeButton: {
     backgroundColor: tokens.colorNeutralBackground1,
     "&:hover": {
-      backgroundColor: tokens.colorNeutralBackground1,
+      backgroundColor: tokens.colorNeutralBackground2,
     },
     "&:hover .optimizeIcon": {
       color: "#6732d3",
@@ -603,11 +606,6 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-  },
-  dialogCheckboxes: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
   },
   dialogPlaceholder: {
     minHeight: "220px",
@@ -835,8 +833,6 @@ export default function DigidealCampaignsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [rerunComment, setRerunComment] = useState("");
-  const [rerunAddToPipeline, setRerunAddToPipeline] = useState(true);
-  const [rerunAddDirectly, setRerunAddDirectly] = useState(false);
   const [rerunTargetTitle, setRerunTargetTitle] = useState<string | null>(null);
   const [rerunTargetId, setRerunTargetId] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
@@ -866,8 +862,6 @@ export default function DigidealCampaignsPage() {
     setRerunTargetTitle(title);
     setRerunTargetId(productId);
     setRerunComment("");
-    setRerunAddToPipeline(true);
-    setRerunAddDirectly(false);
     setIsRerunDialogOpen(true);
   };
 
@@ -1086,8 +1080,8 @@ export default function DigidealCampaignsPage() {
     setIsRerunSaving(true);
     const ok = await addToProduction(target, {
       comment: rerunComment,
-      addToPipeline: rerunAddToPipeline,
-      addDirectly: rerunAddDirectly,
+      addToPipeline: true,
+      addDirectly: true,
     });
     setIsRerunSaving(false);
     if (ok) {
@@ -2049,6 +2043,7 @@ export default function DigidealCampaignsPage() {
                     <Button
                       appearance="outline"
                       size="small"
+                      className={styles.linkButton}
                       onClick={() => openSupplierDialog(item)}
                     >
                       {t("digideal.supplier.edit")}
@@ -2059,6 +2054,7 @@ export default function DigidealCampaignsPage() {
                 <Button
                   appearance="outline"
                   size="small"
+                  className={styles.linkButton}
                   onClick={() => openSupplierDialog(item)}
                 >
                   {t("digideal.supplier.add")}
@@ -2372,22 +2368,6 @@ export default function DigidealCampaignsPage() {
                   value={rerunComment}
                   onChange={(_, data) => setRerunComment(data.value)}
                   placeholder={t("digideal.rerun.dialog.commentPlaceholder")}
-                />
-              </div>
-              <div className={styles.dialogCheckboxes}>
-                <Checkbox
-                  checked={rerunAddToPipeline}
-                  label={t("digideal.rerun.dialog.addToPipeline")}
-                  onChange={(_, data) =>
-                    setRerunAddToPipeline(Boolean(data.checked))
-                  }
-                />
-                <Checkbox
-                  checked={rerunAddDirectly}
-                  label={t("digideal.rerun.dialog.addDirectly")}
-                  onChange={(_, data) =>
-                    setRerunAddDirectly(Boolean(data.checked))
-                  }
                 />
               </div>
             </DialogContent>

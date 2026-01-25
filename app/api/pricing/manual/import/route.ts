@@ -146,6 +146,7 @@ async function upsertB2BPrice(
 async function updateShopifyPrices(
   adminClient: AdminClient,
   variantId: string,
+  priceType: string,
   price: number | null,
   compare: number | null,
   now: string
@@ -155,7 +156,7 @@ async function updateShopifyPrices(
     .from("catalog_variant_prices")
     .select("id")
     .eq("catalog_variant_id", variantId)
-    .eq("price_type", "shopify_tingelo")
+    .eq("price_type", priceType)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -247,8 +248,14 @@ export async function POST(request: Request) {
     b2b_dk: headerLookup("b2b dk"),
     b2b_fi: headerLookup("b2b fi"),
     b2c_price: headerLookup("b2c"),
-    shopify_price: headerLookup("shopify tingelo price"),
-    shopify_compare: headerLookup("shopify tingelo compare"),
+    shopify_tingelo_price: headerLookup("shopify tingelo price"),
+    shopify_tingelo_compare: headerLookup("shopify tingelo compare"),
+    shopify_wellando_price: headerLookup("shopify wellando price"),
+    shopify_wellando_compare: headerLookup("shopify wellando compare"),
+    shopify_sparklar_price: headerLookup("shopify sparklar price"),
+    shopify_sparklar_compare: headerLookup("shopify sparklar compare"),
+    shopify_shopify_price: headerLookup("shopify price"),
+    shopify_shopify_compare: headerLookup("shopify compare"),
   };
 
   const skuValues: string[] = [];
@@ -337,16 +344,45 @@ export async function POST(request: Request) {
       await upsertB2BPrice(admin, variantId, field, value, now);
     }
 
-    const shopifyPrice =
-      fieldColumns.shopify_price &&
-      normalizeNumber(readCellText(row.getCell(fieldColumns.shopify_price)));
-    const shopifyCompare =
-      fieldColumns.shopify_compare &&
-      normalizeNumber(readCellText(row.getCell(fieldColumns.shopify_compare)));
-    if (shopifyPrice !== null || shopifyCompare !== null) {
+    const shopifyFields = [
+      {
+        priceKey: "shopify_tingelo_price",
+        compareKey: "shopify_tingelo_compare",
+        priceType: "shopify_tingelo",
+      },
+      {
+        priceKey: "shopify_wellando_price",
+        compareKey: "shopify_wellando_compare",
+        priceType: "shopify_wellando",
+      },
+      {
+        priceKey: "shopify_sparklar_price",
+        compareKey: "shopify_sparklar_compare",
+        priceType: "shopify_sparklar",
+      },
+      {
+        priceKey: "shopify_shopify_price",
+        compareKey: "shopify_shopify_compare",
+        priceType: "shopify_shopify",
+      },
+    ];
+
+    for (const shop of shopifyFields) {
+      const priceColumn = fieldColumns[shop.priceKey];
+      const compareColumn = fieldColumns[shop.compareKey];
+      const shopifyPrice =
+        priceColumn &&
+        normalizeNumber(readCellText(row.getCell(priceColumn)));
+      const shopifyCompare =
+        compareColumn &&
+        normalizeNumber(readCellText(row.getCell(compareColumn)));
+      if (shopifyPrice === null && shopifyCompare === null) {
+        continue;
+      }
       const updated = await updateShopifyPrices(
         admin,
         variantId,
+        shop.priceType,
         shopifyPrice ?? null,
         shopifyCompare ?? null,
         now

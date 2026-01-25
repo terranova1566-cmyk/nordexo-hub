@@ -63,8 +63,13 @@ type OverviewRow = {
   b2b_dk: number | null;
   b2b_fi: number | null;
   b2c_price: number | null;
-  shopify_price: number | null;
-  shopify_compare_at: number | null;
+  shopify_prices?: Record<
+    string,
+    {
+      price: number | null;
+      compare: number | null;
+    }
+  >;
 };
 
 type PricingExportEntry = {
@@ -88,6 +93,33 @@ const SHIPPING_CLASS_LABELS: Record<string, string> = {
   PBA: "Pure Battery",
 };
 
+const SHOPIFY_SHOPS = [
+  {
+    value: "shopify_tingelo",
+    labelKey: "pricing.shopifyTingelo",
+    priceKey: "pricing.overviewColShopifyTingeloPrice",
+    compareKey: "pricing.overviewColShopifyTingeloCompare",
+  },
+  {
+    value: "shopify_wellando",
+    labelKey: "pricing.shopifyWellando",
+    priceKey: "pricing.overviewColShopifyWellandoPrice",
+    compareKey: "pricing.overviewColShopifyWellandoCompare",
+  },
+  {
+    value: "shopify_sparklar",
+    labelKey: "pricing.shopifySparklar",
+    priceKey: "pricing.overviewColShopifySparklarPrice",
+    compareKey: "pricing.overviewColShopifySparklarCompare",
+  },
+  {
+    value: "shopify_shopify",
+    labelKey: "pricing.shopifyShopify",
+    priceKey: "pricing.overviewColShopifyShopifyPrice",
+    compareKey: "pricing.overviewColShopifyShopifyCompare",
+  },
+] as const;
+
 const formatMarketLabel = (market: string) => {
   const code = market?.toUpperCase?.() ?? "";
   const label = MARKET_LABELS[code];
@@ -101,6 +133,35 @@ const formatShippingClassLabel = (shippingClass: string) => {
   if (!label) return shippingClass;
   return `${label} (${code})`;
 };
+
+const toPercentDisplay = (value: unknown) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const percent = Number((numeric * 100).toFixed(4));
+  return Number.isFinite(percent) ? String(percent) : "";
+};
+
+const TrashIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M4 7l16 0" />
+    <path d="M10 11l0 6" />
+    <path d="M14 11l0 6" />
+    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+  </svg>
+);
 
 const useStyles = makeStyles({
   page: {
@@ -166,7 +227,7 @@ const useStyles = makeStyles({
     alignItems: "flex-end",
   },
   overviewEditInput: {
-    maxWidth: "120px",
+    maxWidth: "60px",
     width: "100%",
   },
   overviewSearchWrap: {
@@ -218,8 +279,26 @@ const useStyles = makeStyles({
   manualMissingRow: {
     display: "flex",
     flexWrap: "wrap",
-    gap: "12px",
+    gap: "8px",
     alignItems: "center",
+  },
+  manualImportStack: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "2px",
+  },
+  manualTemplateLink: {
+    padding: 0,
+    minHeight: "auto",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+  },
+  historyActionCell: {
+    width: "48px",
+  },
+  iconButton: {
+    minWidth: "32px",
   },
   scrollArea: {
     width: "100%",
@@ -280,6 +359,7 @@ export default function PricingPage() {
   const [overviewEditingValue, setOverviewEditingValue] = useState("");
   const [manualExporting, setManualExporting] = useState(false);
   const [manualImporting, setManualImporting] = useState(false);
+  const [manualDeleting, setManualDeleting] = useState<string | null>(null);
   const [manualHistory, setManualHistory] = useState<PricingExportEntry[]>([]);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
   const manualImportRef = useRef<HTMLInputElement | null>(null);
@@ -288,7 +368,44 @@ export default function PricingPage() {
   const [manualCreatedTo, setManualCreatedTo] = useState("");
   const [manualMissingB2b, setManualMissingB2b] = useState(false);
   const [manualMissingB2c, setManualMissingB2c] = useState(false);
-  const [manualMissingShopify, setManualMissingShopify] = useState(false);
+  const [manualMissingShopifyTingelo, setManualMissingShopifyTingelo] =
+    useState(false);
+  const [manualMissingShopifyWellando, setManualMissingShopifyWellando] =
+    useState(false);
+  const [manualMissingShopifySparklar, setManualMissingShopifySparklar] =
+    useState(false);
+  const [shopifySelection, setShopifySelection] = useState<string[]>(
+    SHOPIFY_SHOPS.map((shop) => shop.value)
+  );
+
+  const shopifyOptions = useMemo(
+    () =>
+      SHOPIFY_SHOPS.map((shop) => ({
+        ...shop,
+        label: t(shop.labelKey),
+      })),
+    [t]
+  );
+
+  const shopifyLabel = useMemo(() => {
+    if (shopifySelection.length === 0) {
+      return t("pricing.shopifyNone");
+    }
+    if (shopifySelection.length === shopifyOptions.length) {
+      return t("pricing.shopifyAll");
+    }
+    const labelMap = new Map(
+      shopifyOptions.map((option) => [option.value, option.label])
+    );
+    return shopifySelection
+      .map((value) => labelMap.get(value) ?? value)
+      .join(", ");
+  }, [shopifySelection, shopifyOptions, t]);
+
+  const shopifyColumns = useMemo(
+    () => shopifyOptions.filter((shop) => shopifySelection.includes(shop.value)),
+    [shopifyOptions, shopifySelection]
+  );
 
   const fetchConfig = async (active = true) => {
     setLoading(true);
@@ -305,7 +422,7 @@ export default function PricingPage() {
           fx_rate_cny: toString(row.fx_rate_cny),
           weight_threshold_g: toString(row.weight_threshold_g),
           packing_fee: toString(row.packing_fee),
-          markup_percent: toString(row.markup_percent),
+          markup_percent: toPercentDisplay(row.markup_percent),
           markup_fixed: toString(row.markup_fixed),
         })
       );
@@ -369,7 +486,9 @@ export default function PricingPage() {
           missing: {
             b2b: manualMissingB2b,
             b2c: manualMissingB2c,
-            shopify: manualMissingShopify,
+            shopifyTingelo: manualMissingShopifyTingelo,
+            shopifyWellando: manualMissingShopifyWellando,
+            shopifySparklar: manualMissingShopifySparklar,
           },
         }),
       });
@@ -408,11 +527,28 @@ export default function PricingPage() {
         updatedTo: overviewUpdatedTo,
         createdFrom: overviewCreatedFrom,
         createdTo: overviewCreatedTo,
+        shopify: shopifySelection,
       });
     } catch (error) {
       setManualMessage((error as Error).message || "Import failed.");
     } finally {
       setManualImporting(false);
+    }
+  };
+
+  const handleManualDelete = async (id: string) => {
+    setManualDeleting(id);
+    setManualMessage(null);
+    try {
+      const response = await fetch(`/api/pricing/manual/delete?id=${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setManualHistory((prev) => prev.filter((entry) => entry.id !== id));
+    } catch (error) {
+      setManualMessage((error as Error).message || "Delete failed.");
+    } finally {
+      setManualDeleting(null);
     }
   };
 
@@ -446,11 +582,22 @@ export default function PricingPage() {
     setMessage(null);
     setSummary(null);
     try {
+      const normalizePercent = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const numeric = Number(trimmed);
+        if (!Number.isFinite(numeric)) return null;
+        return numeric / 100;
+      };
+      const payloadMarkets = markets.map((row) => ({
+        ...row,
+        markup_percent: normalizePercent(row.markup_percent),
+      }));
       const response = await fetch("/api/pricing/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          markets,
+          markets: payloadMarkets,
           shippingClasses: shipping,
         }),
       });
@@ -714,6 +861,7 @@ export default function PricingPage() {
       updatedTo?: string;
       createdFrom?: string;
       createdTo?: string;
+      shopify?: string[];
     }
   ) => {
     setOverviewLoading(true);
@@ -729,6 +877,9 @@ export default function PricingPage() {
       if (options?.updatedTo) params.set("updatedTo", options.updatedTo);
       if (options?.createdFrom) params.set("createdFrom", options.createdFrom);
       if (options?.createdTo) params.set("createdTo", options.createdTo);
+      if (options?.shopify?.length) {
+        params.set("shopify", options.shopify.join(","));
+      }
       const response = await fetch(`/api/pricing/overview?${params.toString()}`);
       if (!response.ok) throw new Error(await response.text());
       const payload = await response.json();
@@ -753,6 +904,7 @@ export default function PricingPage() {
         updatedTo: overviewUpdatedTo,
         createdFrom: overviewCreatedFrom,
         createdTo: overviewCreatedTo,
+        shopify: shopifySelection,
       });
     }, 300);
     return () => {
@@ -767,6 +919,7 @@ export default function PricingPage() {
     overviewUpdatedTo,
     overviewCreatedFrom,
     overviewCreatedTo,
+    shopifySelection,
   ]);
 
   return (
@@ -779,18 +932,6 @@ export default function PricingPage() {
           <Text size={200} className={styles.sectionHelp}>
             {t("pricing.subtitle")}
           </Text>
-        </div>
-        <div className={styles.actionsRow}>
-          <Button appearance="primary" onClick={handleSave} disabled={saving || loading}>
-            {t("pricing.save")}
-          </Button>
-          <Button
-            appearance="outline"
-            onClick={handleRecalc}
-            disabled={recalcRunning || loading || !hasData}
-          >
-            {actionLabel}
-          </Button>
         </div>
       </div>
 
@@ -893,6 +1034,18 @@ export default function PricingPage() {
             ))}
           </TableBody>
         </Table>
+        <div className={styles.actionsRow}>
+          <Button appearance="primary" onClick={handleSave} disabled={saving || loading}>
+            {t("pricing.save")}
+          </Button>
+          <Button
+            appearance="outline"
+            onClick={handleRecalc}
+            disabled={recalcRunning || loading || !hasData}
+          >
+            {actionLabel}
+          </Button>
+        </div>
       </Card>
 
       <Card className={styles.card}>
@@ -1078,25 +1231,35 @@ export default function PricingPage() {
             <Button appearance="outline" onClick={handleManualExport}>
               {manualExporting ? t("pricing.manualExporting") : t("pricing.manualExport")}
             </Button>
-            <input
-              ref={manualImportRef}
-              type="file"
-              accept=".xlsx"
-              style={{ display: "none" }}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (!file) return;
-                handleManualImport(file);
-                event.currentTarget.value = "";
-              }}
-            />
-            <Button
-              appearance="outline"
-              onClick={() => manualImportRef.current?.click()}
-              disabled={manualImporting}
-            >
-              {manualImporting ? t("pricing.manualImporting") : t("pricing.manualImport")}
-            </Button>
+            <div className={styles.manualImportStack}>
+              <input
+                ref={manualImportRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (!file) return;
+                  handleManualImport(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <Button
+                appearance="outline"
+                onClick={() => manualImportRef.current?.click()}
+                disabled={manualImporting}
+              >
+                {manualImporting ? t("pricing.manualImporting") : t("pricing.manualImport")}
+              </Button>
+              <Button
+                appearance="transparent"
+                as="a"
+                href="/api/pricing/manual/template"
+                className={styles.manualTemplateLink}
+              >
+                {t("pricing.manualTemplate")}
+              </Button>
+            </div>
           </div>
         </div>
         <div className={styles.overviewControls}>
@@ -1134,9 +1297,25 @@ export default function PricingPage() {
                 onChange={(_, data) => setManualMissingB2c(Boolean(data.checked))}
               />
               <Checkbox
-                label={t("pricing.manualMissingShopify")}
-                checked={manualMissingShopify}
-                onChange={(_, data) => setManualMissingShopify(Boolean(data.checked))}
+                label={t("pricing.manualMissingShopifyTingelo")}
+                checked={manualMissingShopifyTingelo}
+                onChange={(_, data) =>
+                  setManualMissingShopifyTingelo(Boolean(data.checked))
+                }
+              />
+              <Checkbox
+                label={t("pricing.manualMissingShopifyWellando")}
+                checked={manualMissingShopifyWellando}
+                onChange={(_, data) =>
+                  setManualMissingShopifyWellando(Boolean(data.checked))
+                }
+              />
+              <Checkbox
+                label={t("pricing.manualMissingShopifySparklar")}
+                checked={manualMissingShopifySparklar}
+                onChange={(_, data) =>
+                  setManualMissingShopifySparklar(Boolean(data.checked))
+                }
               />
             </div>
           </Field>
@@ -1154,12 +1333,13 @@ export default function PricingPage() {
               <TableHeaderCell className={styles.tableHeader}>
                 {t("pricing.manualExportRows")}
               </TableHeaderCell>
+              <TableHeaderCell className={styles.tableHeader} />
             </TableRow>
           </TableHeader>
           <TableBody>
             {manualHistory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className={styles.tableCell}>
+                <TableCell colSpan={4} className={styles.tableCell}>
                   <Text className={styles.placeholder}>
                     {t("pricing.manualExportNone")}
                   </Text>
@@ -1182,6 +1362,16 @@ export default function PricingPage() {
                   </TableCell>
                   <TableCell className={styles.tableCell}>
                     {entry.row_count ?? 0}
+                  </TableCell>
+                  <TableCell className={mergeClasses(styles.tableCell, styles.historyActionCell)}>
+                    <Button
+                      appearance="subtle"
+                      className={styles.iconButton}
+                      icon={<TrashIcon />}
+                      disabled={manualDeleting === entry.id}
+                      title={t("pricing.manualDelete")}
+                      onClick={() => handleManualDelete(entry.id)}
+                    />
                   </TableCell>
                 </TableRow>
               ))
@@ -1309,6 +1499,32 @@ export default function PricingPage() {
               </Popover>
             </Field>
             <Field
+              label={<span className={styles.dimText}>{t("pricing.shopifyFilterLabel")}</span>}
+              className={styles.filterField}
+            >
+              <Dropdown
+                multiselect
+                value={shopifyLabel}
+                selectedOptions={shopifySelection}
+                onOptionSelect={(_, data) => {
+                  const next = (data.selectedOptions ?? []) as string[];
+                  if (next.length === 0) {
+                    setShopifySelection(SHOPIFY_SHOPS.map((shop) => shop.value));
+                    setOverviewPage(1);
+                    return;
+                  }
+                  setShopifySelection(next);
+                  setOverviewPage(1);
+                }}
+              >
+                {shopifyOptions.map((option) => (
+                  <Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
+              </Dropdown>
+            </Field>
+            <Field
               label={<span className={styles.dimText}>{t("pricing.overviewPageSize")}</span>}
             >
               <Dropdown
@@ -1431,16 +1647,22 @@ export default function PricingPage() {
                 >
                   {t("pricing.overviewColB2C")}
                 </TableHeaderCell>
-                <TableHeaderCell
-                  className={mergeClasses(styles.tableHeader, styles.resizableHeader)}
-                >
-                  {t("pricing.overviewColShopifyTingeloPrice")}
-                </TableHeaderCell>
-                <TableHeaderCell
-                  className={mergeClasses(styles.tableHeader, styles.resizableHeader)}
-                >
-                  {t("pricing.overviewColShopifyTingeloCompare")}
-                </TableHeaderCell>
+                {shopifyColumns.flatMap((shop) => [
+                  <TableHeaderCell
+                    key={`${shop.value}-price`}
+                    className={mergeClasses(styles.tableHeader, styles.resizableHeader)}
+                    style={narrowColumnStyle}
+                  >
+                    {t(shop.priceKey)}
+                  </TableHeaderCell>,
+                  <TableHeaderCell
+                    key={`${shop.value}-compare`}
+                    className={mergeClasses(styles.tableHeader, styles.resizableHeader)}
+                    style={narrowColumnStyle}
+                  >
+                    {t(shop.compareKey)}
+                  </TableHeaderCell>,
+                ])}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1531,14 +1753,29 @@ export default function PricingPage() {
                           display: formatDecimal(row.b2c_price, 0),
                         })}
                       </TableCell>
-                      <TableCell className={styles.tableCell}>
-                        <Text size={200}>{formatDecimal(row.shopify_price, 0)}</Text>
-                      </TableCell>
-                      <TableCell className={styles.tableCell}>
-                        <Text size={200}>
-                          {formatDecimal(row.shopify_compare_at, 0)}
-                        </Text>
-                      </TableCell>
+                      {shopifyColumns.flatMap((shop) => {
+                        const entry = row.shopify_prices?.[shop.value];
+                        return [
+                          <TableCell
+                            key={`${row.id}-${shop.value}-price`}
+                            className={styles.tableCell}
+                            style={narrowColumnStyle}
+                          >
+                            <Text size={200}>
+                              {formatDecimal(entry?.price ?? null, 0)}
+                            </Text>
+                          </TableCell>,
+                          <TableCell
+                            key={`${row.id}-${shop.value}-compare`}
+                            className={styles.tableCell}
+                            style={narrowColumnStyle}
+                          >
+                            <Text size={200}>
+                              {formatDecimal(entry?.compare ?? null, 0)}
+                            </Text>
+                          </TableCell>,
+                        ];
+                      })}
                     </TableRow>
                   );
                 });

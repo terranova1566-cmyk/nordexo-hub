@@ -152,11 +152,15 @@ const useStyles = makeStyles({
     padding: "12px",
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "6px",
+  },
+  detailsRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "6px",
   },
   detailLabel: {
     color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase200,
   },
   detailValue: {
     color: tokens.colorNeutralForeground1,
@@ -648,60 +652,62 @@ export default function OrdersResendPage() {
                                           </Table>
                                         </div>
                                       </div>
-                                      <div className={styles.detailsPanel}>
+                                      <div className={styles.detailsSection}>
                                         <Text weight="semibold">
                                           {t("orders.details.customerTitle")}
                                         </Text>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerName")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.order?.customer_name ?? "-"}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerAddress")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {[
-                                              details?.order?.customer_address ?? "",
-                                              details?.order?.customer_zip ?? "",
-                                              details?.order?.customer_city ?? "",
-                                            ]
-                                              .map((value) => value.trim())
-                                              .filter(Boolean)
-                                              .join(", ")}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerEmail")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {(() => {
-                                              const email =
-                                                details?.order?.customer_email ?? "";
-                                              return email && isValidEmail(email) ? email : "-";
-                                            })()}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerPhone")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.order?.customer_phone ?? ""}
-                                          </Text>
-                                        </div>
-                                        <div>
-                                          <Text className={styles.detailLabel}>
-                                            {t("orders.details.customerNote")}
-                                          </Text>
-                                          <Text className={styles.detailValue}>
-                                            {details?.order?.resend_comment ?? "-"}
-                                          </Text>
+                                        <div className={styles.detailsPanel}>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerName")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.order?.customer_name ?? "-"}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerAddress")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {[
+                                                details?.order?.customer_address ?? "",
+                                                details?.order?.customer_zip ?? "",
+                                                details?.order?.customer_city ?? "",
+                                              ]
+                                                .map((value) => value.trim())
+                                                .filter(Boolean)
+                                                .join(", ")}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerEmail")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {(() => {
+                                                const email =
+                                                  details?.order?.customer_email ?? "";
+                                                return email && isValidEmail(email) ? email : "-";
+                                              })()}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerPhone")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.order?.customer_phone ?? "-"}
+                                            </Text>
+                                          </div>
+                                          <div className={styles.detailsRow}>
+                                            <Text className={styles.detailLabel}>
+                                              {t("orders.details.customerNote")}
+                                            </Text>
+                                            <Text className={styles.detailValue}>
+                                              {details?.order?.resend_comment ?? "-"}
+                                            </Text>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>

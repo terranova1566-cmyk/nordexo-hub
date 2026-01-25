@@ -527,8 +527,7 @@ export async function POST(request: Request) {
   const rawComment =
     typeof payload?.comment === "string" ? payload.comment.trim() : "";
   const comment = rawComment ? rawComment : null;
-  const addToPipeline =
-    payload?.add_to_pipeline !== false || payload?.add_directly === true;
+  const addToPipeline = true;
 
   const now = new Date().toISOString();
   const statusValue = "Queued";
