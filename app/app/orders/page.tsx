@@ -163,11 +163,11 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
   },
   selectCell: {
-    width: "36px",
-    minWidth: "36px",
+    width: "40px",
+    minWidth: "40px",
     textAlign: "center",
-    paddingLeft: "8px",
-    paddingRight: "8px",
+    paddingLeft: "4px",
+    paddingRight: "4px",
   },
   detailsCard: {
     display: "flex",
@@ -198,6 +198,26 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "6px",
   },
+  detailsPanelGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: "16px",
+    "@media (max-width: 960px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  detailsInfoGrid: {
+    display: "grid",
+    gridTemplateColumns: "70px 1fr",
+    columnGap: "12px",
+    rowGap: "6px",
+    alignItems: "baseline",
+  },
+  detailsColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
   detailsRow: {
     display: "flex",
     alignItems: "baseline",
@@ -208,6 +228,12 @@ const useStyles = makeStyles({
   },
   detailValue: {
     color: tokens.colorNeutralForeground1,
+  },
+  trackingList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    alignItems: "flex-start",
   },
   trackingInline: {
     display: "inline-flex",
@@ -234,23 +260,37 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     color: tokens.colorNeutralForeground3,
   },
+  detailsColTitle: {
+    width: "250px",
+  },
   detailsColSelect: {
     width: "6%",
   },
   detailsColSku: {
-    width: "25%",
+    width: "200px",
   },
   detailsColQty: {
-    width: "10%",
+    width: "40px",
   },
   detailsColSalesValue: {
-    width: "10%",
+    width: "90px",
   },
   detailsColMarketplace: {
-    width: "10%",
+    minWidth: "160px",
   },
   detailsColSalesChannel: {
-    width: "10%",
+    minWidth: "160px",
+  },
+  detailsTitleCell: {
+    paddingRight: "8px",
+  },
+  detailsTitleText: {
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
   errorText: {
     color: tokens.colorStatusDangerForeground1,
@@ -271,7 +311,7 @@ const useStyles = makeStyles({
   },
   resendMetaRow: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "12px",
     "@media (max-width: 720px)": {
       gridTemplateColumns: "1fr",
@@ -313,6 +353,17 @@ const useStyles = makeStyles({
   },
   resendInput: {
     width: "100%",
+  },
+  resendDialogActions: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  resendActionGroup: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
   },
 });
 
@@ -680,6 +731,28 @@ export default function OrdersPage() {
         ...prev,
         items: hasPlaceholder ? items : [...items, createEmptyResendRow()],
       };
+    });
+  };
+
+  const addResendRow = () => {
+    setResendDraft((prev) => {
+      if (!prev) return prev;
+      const nextRow: ResendItemDraft = {
+        id: `draft-${Date.now()}-${prev.items.length}`,
+        sku: "",
+        title: "",
+        quantity: "",
+        price: "",
+        isPlaceholder: false,
+      };
+      const items = [...prev.items];
+      const placeholderIndex = items.findIndex((item) => item.isPlaceholder);
+      if (placeholderIndex >= 0) {
+        items.splice(placeholderIndex, 0, nextRow);
+      } else {
+        items.push(nextRow, createEmptyResendRow());
+      }
+      return { ...prev, items };
     });
   };
 
@@ -1087,7 +1160,12 @@ export default function OrdersPage() {
                                                 >
                                                   {t("orders.details.columns.sku")}
                                                 </TableHeaderCell>
-                                                <TableHeaderCell className={styles.detailsTableHeader}>
+                                                <TableHeaderCell
+                                                  className={mergeClasses(
+                                                    styles.detailsTableHeader,
+                                                    styles.detailsColTitle
+                                                  )}
+                                                >
                                                   {t("orders.details.columns.title")}
                                                 </TableHeaderCell>
                                                 <TableHeaderCell
@@ -1154,8 +1232,10 @@ export default function OrdersPage() {
                                                     <TableCell className={styles.detailsColSku}>
                                                       {item.sku ?? ""}
                                                     </TableCell>
-                                                    <TableCell>
-                                                      {renderItemTitle(item)}
+                                                    <TableCell className={styles.detailsTitleCell}>
+                                                      <Text className={styles.detailsTitleText}>
+                                                        {renderItemTitle(item)}
+                                                      </Text>
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColQty}>
                                                       {item.quantity === 0 ||
@@ -1191,83 +1271,77 @@ export default function OrdersPage() {
                                           {t("orders.details.customerTitle")}
                                         </Text>
                                         <div className={styles.detailsPanel}>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.customerName")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>
-                                              {details?.order?.customer_name ?? "-"}
-                                            </Text>
-                                          </div>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.customerAddress")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>
-                                              {[
-                                                details?.order?.customer_address ?? "",
-                                                details?.order?.customer_zip ?? "",
-                                                details?.order?.customer_city ?? "",
-                                              ]
-                                                .map((value) => value.trim())
-                                                .filter(Boolean)
-                                                .join(", ")}
-                                            </Text>
-                                          </div>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.customerEmail")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>
-                                              {(() => {
-                                                const email =
-                                                  details?.order?.customer_email ?? "";
-                                                return email && isValidEmail(email) ? email : "-";
-                                              })()}
-                                            </Text>
-                                          </div>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.customerPhone")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>
-                                              {details?.order?.customer_phone ?? "-"}
-                                            </Text>
-                                          </div>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.customerNote")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>-</Text>
-                                          </div>
-                                          <div className={styles.detailsRow}>
-                                            <Text className={styles.detailLabel}>
-                                              {t("orders.details.tracking")}
-                                            </Text>
-                                            <Text className={styles.detailValue}>
+                                          <div className={styles.detailsPanelGrid}>
+                                            <div className={styles.detailsInfoGrid}>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.customerName")}
+                                              </Text>
+                                              <Text className={styles.detailValue}>
+                                                {details?.order?.customer_name ?? "-"}
+                                              </Text>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.customerAddress")}
+                                              </Text>
+                                              <Text className={styles.detailValue}>
+                                                {[
+                                                  details?.order?.customer_address ?? "",
+                                                  details?.order?.customer_zip ?? "",
+                                                  details?.order?.customer_city ?? "",
+                                                ]
+                                                  .map((value) => value.trim())
+                                                  .filter(Boolean)
+                                                  .join(", ")}
+                                              </Text>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.customerEmail")}
+                                              </Text>
+                                              <Text className={styles.detailValue}>
+                                                {(() => {
+                                                  const email =
+                                                    details?.order?.customer_email ?? "";
+                                                  return email && isValidEmail(email)
+                                                    ? email
+                                                    : "-";
+                                                })()}
+                                              </Text>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.customerPhone")}
+                                              </Text>
+                                              <Text className={styles.detailValue}>
+                                                {details?.order?.customer_phone ?? "-"}
+                                              </Text>
+                                            </div>
+                                            <div className={styles.detailsColumn}>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.tracking")}
+                                              </Text>
                                               {details?.tracking_numbers?.length ? (
-                                                <span className={styles.trackingInline}>
-                                                  {details.tracking_numbers.map((tracking, idx) => (
-                                                    <span key={tracking}>
-                                                      {idx > 0 ? " : " : ""}
-                                                      <a
-                                                        className={styles.trackingLink}
-                                                        href={`https://t.17track.net/en#nums=${encodeURIComponent(
-                                                          tracking
-                                                        )}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        aria-label={t("orders.details.trackExternal")}
-                                                      >
-                                                        {tracking}
-                                                      </a>
-                                                    </span>
+                                                <div className={styles.trackingList}>
+                                                  {details.tracking_numbers.map((tracking) => (
+                                                    <a
+                                                      key={tracking}
+                                                      className={styles.trackingLink}
+                                                      href={`https://t.17track.net/en#nums=${encodeURIComponent(
+                                                        tracking
+                                                      )}`}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      aria-label={t(
+                                                        "orders.details.trackExternal"
+                                                      )}
+                                                    >
+                                                      {tracking}
+                                                    </a>
                                                   ))}
-                                                </span>
+                                                </div>
                                               ) : (
-                                                "-"
+                                                <Text className={styles.detailValue}>-</Text>
                                               )}
-                                            </Text>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.customerNote")}
+                                              </Text>
+                                              <Text className={styles.detailValue}>-</Text>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -1324,14 +1398,6 @@ export default function OrdersPage() {
                         </Text>
                         <Text className={styles.detailValue}>
                           {resendDraft.salesChannel || "-"}
-                        </Text>
-                      </div>
-                      <div>
-                        <Text className={styles.detailLabel}>
-                          {t("orders.resend.fields.customerName")}
-                        </Text>
-                        <Text className={styles.detailValue}>
-                          {resendDraft.customerName || "-"}
                         </Text>
                       </div>
                     </div>
@@ -1487,37 +1553,41 @@ export default function OrdersPage() {
                     <Text weight="semibold">
                       {t("orders.resend.commentsTitle")}
                     </Text>
-                    <Field label={t("orders.resend.fields.comment")}>
-                      <Textarea
-                        value={resendDraft.comment}
-                        onChange={(_, data) =>
-                          updateResendField("comment", data.value)
-                        }
-                        placeholder={t("orders.resend.fields.commentPlaceholder")}
-                        resize="vertical"
-                      />
-                    </Field>
+                    <Textarea
+                      value={resendDraft.comment}
+                      onChange={(_, data) =>
+                        updateResendField("comment", data.value)
+                      }
+                      placeholder={t("orders.resend.fields.commentPlaceholder")}
+                      resize="vertical"
+                      aria-label={t("orders.resend.fields.comment")}
+                    />
                   </div>
                 </>
               ) : (
                 <Text>{t("orders.resend.empty")}</Text>
               )}
             </DialogContent>
-            <DialogActions>
-              <Button appearance="secondary" onClick={closeResendDialog}>
-                {t("orders.resend.actions.cancel")}
+            <DialogActions className={styles.resendDialogActions}>
+              <Button appearance="subtle" onClick={addResendRow}>
+                {t("orders.resend.actions.addRow")}
               </Button>
-              <Button
-                appearance="primary"
-                onClick={handleAddToResend}
-                disabled={!resendDraft || isAddingResend}
-              >
-                {isAddingResend ? (
-                  <Spinner size="tiny" />
-                ) : (
-                  t("orders.resend.actions.resend")
-                )}
-              </Button>
+              <div className={styles.resendActionGroup}>
+                <Button appearance="secondary" onClick={closeResendDialog}>
+                  {t("orders.resend.actions.cancel")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={handleAddToResend}
+                  disabled={!resendDraft || isAddingResend}
+                >
+                  {isAddingResend ? (
+                    <Spinner size="tiny" />
+                  ) : (
+                    t("orders.resend.actions.resend")
+                  )}
+                </Button>
+              </div>
             </DialogActions>
           </DialogBody>
         </DialogSurface>

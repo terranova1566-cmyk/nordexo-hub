@@ -185,6 +185,10 @@ const productionMenuItems = [
   { label: "nav.draftExplorer", href: "/app/production/draft-explorer" },
 ];
 
+const shopifyMenuItems = [
+  { label: "nav.shopifyStoreSettings", href: "/app/shopify/store-settings" },
+];
+
 function ResearchSparkIcon({ className }: { className?: string }) {
   return (
     <span className={className} aria-hidden="true">
@@ -281,6 +285,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   );
   const isEmailActive = useMemo(
     () => pathname.startsWith("/app/email"),
+    [pathname]
+  );
+  const isShopifyActive = useMemo(
+    () => pathname.startsWith("/app/shopify"),
     [pathname]
   );
 
@@ -465,6 +473,32 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   <MenuPopover className={styles.menuPopover}>
                     <MenuList>
                       {productionMenuItems.map((item) => (
+                        <MenuItem
+                          key={item.href}
+                          onClick={() => router.push(item.href)}
+                        >
+                          <span className={styles.navMenuItem}>
+                            {t(item.label)}
+                          </span>
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
+              ) : null}
+              {isAdmin ? (
+                <Menu openOnHover hoverDelay={0}>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance={isShopifyActive ? "primary" : "subtle"}
+                      className={styles.navButton}
+                    >
+                      {t("nav.shopify")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover className={styles.menuPopover}>
+                    <MenuList>
+                      {shopifyMenuItems.map((item) => (
                         <MenuItem
                           key={item.href}
                           onClick={() => router.push(item.href)}

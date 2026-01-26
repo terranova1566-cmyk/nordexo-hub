@@ -5,6 +5,13 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+type ServiceStatus = {
+  id: "supabase" | "meilisearch";
+  status: "healthy" | "down" | "unknown";
+  detail?: string | null;
+  checkedAt: string;
+};
+
 const readDiskUsage = () => {
   try {
     const output = execSync("df -k /").toString("utf8").trim().split("\n");
@@ -27,6 +34,65 @@ const readDiskUsage = () => {
   }
 };
 
+const checkMeilisearch = async (): Promise<ServiceStatus> => {
+  const checkedAt = new Date().toISOString();
+  const host = process.env.MEILI_HOST?.replace(/\/$/, "");
+
+  if (!host) {
+    return {
+      id: "meilisearch",
+      status: "unknown",
+      detail: "MEILI_HOST is not set.",
+      checkedAt,
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+
+  try {
+    const response = await fetch(`${host}/health`, {
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return {
+        id: "meilisearch",
+        status: "down",
+        detail: `HTTP ${response.status}`,
+        checkedAt,
+      };
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (payload?.status === "available") {
+      return {
+        id: "meilisearch",
+        status: "healthy",
+        detail: null,
+        checkedAt,
+      };
+    }
+
+    return {
+      id: "meilisearch",
+      status: "down",
+      detail: payload?.status ? `status: ${payload.status}` : "Health check failed.",
+      checkedAt,
+    };
+  } catch (err) {
+    const error = err as Error;
+    return {
+      id: "meilisearch",
+      status: "down",
+      detail: error?.name === "AbortError" ? "Timeout." : error?.message,
+      checkedAt,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 export async function GET() {
   const supabase = await createServerSupabase();
   const {
@@ -37,11 +103,18 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: settings } = await supabase
+  const { data: settings, error: settingsError } = await supabase
     .from("partner_user_settings")
     .select("is_admin")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (settingsError) {
+    return NextResponse.json(
+      { error: settingsError.message },
+      { status: 500 }
+    );
+  }
 
   if (!settings?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -57,6 +130,16 @@ export async function GET() {
     five: cpuCount ? (loadAvg[1] / cpuCount) * 100 : 0,
     fifteen: cpuCount ? (loadAvg[2] / cpuCount) * 100 : 0,
   };
+
+  const services: ServiceStatus[] = [
+    {
+      id: "supabase",
+      status: "healthy",
+      detail: null,
+      checkedAt: new Date().toISOString(),
+    },
+    await checkMeilisearch(),
+  ];
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
@@ -82,5 +165,6 @@ export async function GET() {
       heapTotal: process.memoryUsage().heapTotal,
     },
     disk: readDiskUsage(),
+    services,
   });
 }

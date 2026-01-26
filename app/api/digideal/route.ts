@@ -5,7 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const PRODUCT_SELECT =
-  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, bullet_points_text, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment";
+  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment";
 
 const SELLER_GROUPS = [
   {
@@ -103,6 +103,29 @@ const normalizeWeightKg = (weightKg: number | null, weightGrams: number | null) 
   return null;
 };
 
+const stripHtml = (value: string) =>
+  value.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ");
+
+const extractShippingCost = (value?: string | null) => {
+  if (!value) return null;
+  const text = stripHtml(value);
+  const patterns = [
+    /\+\s*(\d+(?:[.,]\d+)?)\s*kr\s*frakt/i,
+    /frakt\s*:?\s*(\d+(?:[.,]\d+)?)\s*kr/i,
+    /(\d+(?:[.,]\d+)?)\s*kr\s*frakt/i,
+    /\+\s*(\d+(?:[.,]\d+)?)\s*kr\s*shipping/i,
+    /shipping\s*:?\s*(\d+(?:[.,]\d+)?)\s*kr/i,
+    /(\d+(?:[.,]\d+)?)\s*kr\s*shipping/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const numeric = Number(match[1].replace(",", "."));
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return null;
+};
+
 const computeEstimatedPrice = (
   purchaseCny: number,
   weightKg: number,
@@ -183,7 +206,7 @@ export async function GET(request: NextRequest) {
     const tag = searchParams.get("tag")?.trim();
     const seller = searchParams.get("seller")?.trim();
     const status = (searchParams.get("status") ?? "online").toLowerCase();
-    const sort = (searchParams.get("sort") ?? "updated_desc").toLowerCase();
+    const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
 
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(
@@ -265,8 +288,12 @@ export async function GET(request: NextRequest) {
       });
       break;
     case "updated_desc":
+    case "last_seen_desc":
     default:
       query = query.order("last_seen_at", { ascending: false, nullsFirst: false });
+      break;
+    case "first_seen_desc":
+      query = query.order("first_seen_at", { ascending: false, nullsFirst: false });
       break;
   }
 
@@ -424,6 +451,11 @@ export async function GET(request: NextRequest) {
         const supplierUrl = toText(
           detail?.["1688_URL"] ?? detail?.["1688_url"]
         );
+        const shippingCost = extractShippingCost(
+          [toText(product.description_html), toText(product.bullet_points_text)]
+            .filter(Boolean)
+            .join(" ")
+        );
         const canEstimate =
           purchasePrice !== null &&
           weightKg !== null &&
@@ -471,6 +503,7 @@ export async function GET(request: NextRequest) {
         weight_kg: weightKgValue,
         weight_grams: weightGramsValue,
         supplier_url: supplierUrl || null,
+        shipping_cost: shippingCost,
         estimated_rerun_price: estimatedPrice,
         sold_today: toNumber(product.sold_today) ?? 0,
         sold_7d: toNumber(product.sold_7d) ?? 0,
@@ -540,23 +573,7 @@ export async function POST(request: Request) {
     updates.digideal_add_rerun_comment = comment;
   }
 
-  const { data: updated, error: updateError } = await supabase
-    .from("digideal_products")
-    .update(updates)
-    .eq("product_id", productId)
-    .select(
-      "product_id, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, digideal_rerun_status"
-    )
-    .maybeSingle();
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  if (!updated) {
-    return NextResponse.json({ error: "Product not found." }, { status: 404 });
-  }
-
+  let inserted = false;
   if (addToPipeline) {
     const { error: insertError } = await supabase
       .from("discovery_production_items")
@@ -574,6 +591,40 @@ export async function POST(request: Request) {
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
+    inserted = true;
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("digideal_products")
+    .update(updates)
+    .eq("product_id", productId)
+    .select(
+      "product_id, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, digideal_rerun_status"
+    )
+    .maybeSingle();
+
+  if (updateError) {
+    if (inserted) {
+      await supabase
+        .from("discovery_production_items")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("provider", "digideal")
+        .eq("product_id", productId);
+    }
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  if (!updated) {
+    if (inserted) {
+      await supabase
+        .from("discovery_production_items")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("provider", "digideal")
+        .eq("product_id", productId);
+    }
+    return NextResponse.json({ error: "Product not found." }, { status: 404 });
   }
 
   if (comment !== null && addToPipeline) {

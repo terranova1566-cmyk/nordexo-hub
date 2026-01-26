@@ -67,6 +67,11 @@
       "context": "Main navigation item"
     },
     {
+      "key": "nav.shopify",
+      "text": "Shopify",
+      "context": "Main navigation item"
+    },
+    {
       "key": "nav.orders",
       "text": "Orders",
       "context": "Main navigation item"
@@ -115,6 +120,11 @@
       "key": "nav.draftExplorer",
       "text": "Product Draft Explorer",
       "context": "Production menu item"
+    },
+    {
+      "key": "nav.shopifyStoreSettings",
+      "text": "Store Settings",
+      "context": "Shopify menu item"
     },
     {
       "key": "draftExplorer.title",
@@ -508,12 +518,12 @@
     },
     {
       "key": "orders.resend.fields.orderNumber",
-      "text": "Order number",
+      "text": "Order number:",
       "context": "Orders resend field label"
     },
     {
       "key": "orders.resend.fields.salesChannel",
-      "text": "Sales channel",
+      "text": "Sales channel:",
       "context": "Orders resend field label"
     },
     {
@@ -583,7 +593,7 @@
     },
     {
       "key": "orders.resend.actions.addRow",
-      "text": "Add rows",
+      "text": "Add Order Row",
       "context": "Orders resend dialog action"
     },
     {
@@ -598,7 +608,7 @@
     },
     {
       "key": "orders.resend.fields.comment",
-      "text": "Order comment",
+      "text": "Comment",
       "context": "Orders resend comment field label"
     },
     {
@@ -672,11 +682,6 @@
       "context": "Orders details state"
     },
     {
-      "key": "orders.details.tracking",
-      "text": "Tracking numbers",
-      "context": "Orders details heading"
-    },
-    {
       "key": "orders.details.none",
       "text": "None",
       "context": "Orders details empty value"
@@ -743,7 +748,12 @@
     },
     {
       "key": "orders.details.customerNote",
-      "text": "Note:",
+      "text": "Notes:",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.tracking",
+      "text": "Tracking numbers:",
       "context": "Orders details label"
     },
     {
@@ -1218,6 +1228,126 @@
       "context": "Bulk processing download button"
     },
     {
+      "key": "bulkProcessing.chrome.title",
+      "text": "Chrome Extension Incoming Products",
+      "context": "Bulk processing incoming chrome files title"
+    },
+    {
+      "key": "bulkProcessing.chrome.file",
+      "text": "JSON file",
+      "context": "Bulk processing incoming chrome file column"
+    },
+    {
+      "key": "bulkProcessing.chrome.products",
+      "text": "Products",
+      "context": "Bulk processing incoming chrome products column"
+    },
+    {
+      "key": "bulkProcessing.chrome.received",
+      "text": "Created",
+      "context": "Bulk processing incoming chrome created column"
+    },
+    {
+      "key": "bulkProcessing.chrome.actions",
+      "text": "Actions",
+      "context": "Bulk processing incoming chrome actions column"
+    },
+    {
+      "key": "bulkProcessing.chrome.availableSpus",
+      "text": "Available SPUs: {count}",
+      "context": "Bulk processing incoming chrome SPU pool counter"
+    },
+    {
+      "key": "bulkProcessing.chrome.empty",
+      "text": "No incoming files found.",
+      "context": "Bulk processing incoming chrome empty state"
+    },
+    {
+      "key": "bulkProcessing.chrome.load",
+      "text": "Load this file",
+      "context": "Bulk processing incoming chrome load button"
+    },
+    {
+      "key": "bulkProcessing.chrome.assign",
+      "text": "Assign SPUs",
+      "context": "Bulk processing incoming chrome assign SPUs button"
+    },
+    {
+      "key": "bulkProcessing.chrome.assigning",
+      "text": "Assigning...",
+      "context": "Bulk processing incoming chrome assigning SPUs button"
+    },
+    {
+      "key": "bulkProcessing.chrome.assignDone",
+      "text": "SPUs Added",
+      "context": "Bulk processing incoming chrome assigned SPUs button"
+    },
+    {
+      "key": "bulkProcessing.chrome.assignDisabled",
+      "text": "SPUs Added",
+      "context": "Bulk processing incoming chrome assign SPUs disabled"
+    },
+    {
+      "key": "bulkProcessing.chrome.merge",
+      "text": "Merge Files",
+      "context": "Bulk processing incoming chrome merge files button"
+    },
+    {
+      "key": "bulkProcessing.chrome.mergeDialogTitle",
+      "text": "Merge JSON files",
+      "context": "Bulk processing incoming chrome merge dialog title"
+    },
+    {
+      "key": "bulkProcessing.chrome.mergeDialogSummary",
+      "text": "Selected {files} file(s), {products} total product(s).",
+      "context": "Bulk processing incoming chrome merge dialog summary"
+    },
+    {
+      "key": "bulkProcessing.chrome.mergeNameLabel",
+      "text": "New file name",
+      "context": "Bulk processing incoming chrome merge name label"
+    },
+    {
+      "key": "bulkProcessing.chrome.mergeNamePlaceholder",
+      "text": "Optional name (date/time will be added)",
+      "context": "Bulk processing incoming chrome merge name placeholder"
+    },
+    {
+      "key": "bulkProcessing.chrome.mergeConfirm",
+      "text": "Confirm merge",
+      "context": "Bulk processing incoming chrome merge confirm button"
+    },
+    {
+      "key": "bulkProcessing.chrome.delete",
+      "text": "Delete",
+      "context": "Bulk processing incoming chrome delete button"
+    },
+    {
+      "key": "bulkProcessing.chrome.previewTitle",
+      "text": "Incoming product list",
+      "context": "Bulk processing incoming chrome preview title"
+    },
+    {
+      "key": "bulkProcessing.chrome.previewProducts",
+      "text": "Products: {count}",
+      "context": "Bulk processing incoming chrome preview products count"
+    },
+    {
+      "key": "bulkProcessing.chrome.previewUrls",
+      "text": "URLs: {count}",
+      "context": "Bulk processing incoming chrome preview urls count"
+    },
+    {
+      "key": "bulkProcessing.chrome.previewVariants",
+      "text": "Variants: {count}",
+      "context": "Bulk processing incoming chrome preview variant count"
+    },
+    {
+      "key": "bulkProcessing.chrome.spuEmpty",
+      "text": "SPU not assigned yet",
+      "context": "Bulk processing incoming chrome preview missing SPU label"
+    },
+    {
       "key": "bulkProcessing.explorer.title",
       "text": "File Explorer",
       "context": "Bulk processing explorer title"
@@ -1388,6 +1518,116 @@
       "context": "Aria label for settings button"
     },
     {
+      "key": "shopify.storeSettings.title",
+      "text": "Store Design Settings",
+      "context": "Shopify store settings page title"
+    },
+    {
+      "key": "shopify.storeSettings.sectionTitle",
+      "text": "Store Color Settings",
+      "context": "Shopify store settings section title"
+    },
+    {
+      "key": "shopify.storeSettings.helper",
+      "text": "Update store settings without editing the Shopify theme directly.",
+      "context": "Shopify store settings helper text"
+    },
+    {
+      "key": "shopify.storeSettings.helperWithStore",
+      "text": "Update {store} store settings without editing the Shopify theme directly.",
+      "context": "Shopify store settings helper text"
+    },
+    {
+      "key": "shopify.storeSettings.loading",
+      "text": "Loading store settings...",
+      "context": "Shopify store settings loading"
+    },
+    {
+      "key": "shopify.storeSettings.error",
+      "text": "Unable to load store settings.",
+      "context": "Shopify store settings load error"
+    },
+    {
+      "key": "shopify.storeSettings.saveError",
+      "text": "Unable to save store settings.",
+      "context": "Shopify store settings save error"
+    },
+    {
+      "key": "shopify.storeSettings.saveSuccess",
+      "text": "Store settings saved and synced.",
+      "context": "Shopify store settings save success"
+    },
+    {
+      "key": "shopify.storeSettings.colorsTitle",
+      "text": "Store Colors",
+      "context": "Shopify store settings colors title"
+    },
+    {
+      "key": "shopify.storeSettings.tabs.colors",
+      "text": "Store Colors",
+      "context": "Shopify store settings colors tab"
+    },
+    {
+      "key": "shopify.storeSettings.tabs.overrides",
+      "text": "Custom Color Overrides",
+      "context": "Shopify store settings overrides tab"
+    },
+    {
+      "key": "shopify.storeSettings.linkedBadge",
+      "text": "Linked to base color",
+      "context": "Shopify store settings linked badge"
+    },
+    {
+      "key": "shopify.storeSettings.sourceTitle",
+      "text": "Source",
+      "context": "Shopify store settings source panel title"
+    },
+    {
+      "key": "shopify.storeSettings.source.file",
+      "text": "File",
+      "context": "Shopify store settings source file label"
+    },
+    {
+      "key": "shopify.storeSettings.source.type",
+      "text": "Type",
+      "context": "Shopify store settings source type label"
+    },
+    {
+      "key": "shopify.storeSettings.source.selector",
+      "text": "Selector",
+      "context": "Shopify store settings source selector label"
+    },
+    {
+      "key": "shopify.storeSettings.source.lineText",
+      "text": "Line",
+      "context": "Shopify store settings source line text label"
+    },
+    {
+      "key": "shopify.storeSettings.source.otherRefs",
+      "text": "Other refs",
+      "context": "Shopify store settings source other refs label"
+    },
+    {
+      "key": "shopify.storeSettings.source.csvKey",
+      "text": "CSV key",
+      "context": "Shopify store settings source csv key label"
+    },
+    {
+      "key": "shopify.storeSettings.source.notes",
+      "text": "Notes",
+      "context": "Shopify store settings source notes label"
+    },
+    {
+      "key": "shopify.storeSettings.saving",
+      "text": "Saving...",
+      "context": "Shopify store settings saving label"
+    },
+    {
+      "key": "shopify.storeSettings.invalidColor",
+      "text": "Invalid hex color for {key}.",
+      "context": "Shopify store settings invalid color message"
+    },
+    {
       "key": "settings.discovery.tab",
       "text": "Product Discovery",
       "context": "Settings tab label"
@@ -1473,9 +1713,79 @@
       "context": "Settings tab label"
     },
     {
+      "key": "settings.production.tab",
+      "text": "Production",
+      "context": "Settings tab label"
+    },
+    {
       "key": "settings.system.tab",
       "text": "System",
       "context": "Settings tab label"
+    },
+    {
+      "key": "settings.production.upload.title",
+      "text": "SPU upload",
+      "context": "Settings production SPU upload title"
+    },
+    {
+      "key": "settings.production.upload.helper",
+      "text": "Upload Excel or TXT files containing new SPUs.",
+      "context": "Settings production SPU upload helper"
+    },
+    {
+      "key": "settings.production.upload.label",
+      "text": "Upload SPU file",
+      "context": "Settings production SPU upload label"
+    },
+    {
+      "key": "settings.production.upload.button",
+      "text": "Upload",
+      "context": "Settings production SPU upload button"
+    },
+    {
+      "key": "settings.production.upload.success",
+      "text": "SPUs uploaded.",
+      "context": "Settings production SPU upload success"
+    },
+    {
+      "key": "settings.production.uploadError",
+      "text": "Unable to upload SPUs.",
+      "context": "Settings production SPU upload error"
+    },
+    {
+      "key": "settings.production.download.title",
+      "text": "Download SPUs",
+      "context": "Settings production SPU download title"
+    },
+    {
+      "key": "settings.production.download.helper",
+      "text": "Download used or free SPUs as a CSV file.",
+      "context": "Settings production SPU download helper"
+    },
+    {
+      "key": "settings.production.download.label",
+      "text": "Download scope",
+      "context": "Settings production SPU download label"
+    },
+    {
+      "key": "settings.production.download.all",
+      "text": "All SPUs",
+      "context": "Settings production SPU download option"
+    },
+    {
+      "key": "settings.production.download.free",
+      "text": "Free SPUs",
+      "context": "Settings production SPU download option"
+    },
+    {
+      "key": "settings.production.download.used",
+      "text": "Used SPUs",
+      "context": "Settings production SPU download option"
+    },
+    {
+      "key": "settings.production.download.button",
+      "text": "Download",
+      "context": "Settings production SPU download button"
     },
     {
       "key": "settings.user.basic.title",
@@ -1646,6 +1956,71 @@
       "key": "settings.system.metrics.updated",
       "text": "Last updated",
       "context": "System metrics label"
+    },
+    {
+      "key": "settings.system.services.title",
+      "text": "Service status",
+      "context": "System settings service status section title"
+    },
+    {
+      "key": "settings.system.services.table.service",
+      "text": "Service",
+      "context": "System settings service status table header"
+    },
+    {
+      "key": "settings.system.services.table.status",
+      "text": "Status",
+      "context": "System settings service status table header"
+    },
+    {
+      "key": "settings.system.services.table.detail",
+      "text": "Details",
+      "context": "System settings service status table header"
+    },
+    {
+      "key": "settings.system.services.table.actions",
+      "text": "Actions",
+      "context": "System settings service status table header"
+    },
+    {
+      "key": "settings.system.services.status.healthy",
+      "text": "Online",
+      "context": "System settings service status label"
+    },
+    {
+      "key": "settings.system.services.status.down",
+      "text": "Down",
+      "context": "System settings service status label"
+    },
+    {
+      "key": "settings.system.services.status.unknown",
+      "text": "Unknown",
+      "context": "System settings service status label"
+    },
+    {
+      "key": "settings.system.services.supabase",
+      "text": "Supabase",
+      "context": "System settings service label"
+    },
+    {
+      "key": "settings.system.services.meilisearch",
+      "text": "Meilisearch",
+      "context": "System settings service label"
+    },
+    {
+      "key": "settings.system.services.actions.restart",
+      "text": "Restart",
+      "context": "System settings service restart action"
+    },
+    {
+      "key": "settings.system.services.actions.restarting",
+      "text": "Restarting...",
+      "context": "System settings service restart in progress"
+    },
+    {
+      "key": "settings.system.services.restartError",
+      "text": "Unable to restart service.",
+      "context": "System settings service restart error"
     },
     {
       "key": "settings.system.table.metric",
@@ -3550,7 +3925,17 @@
     },
     {
       "key": "digideal.sort.updated",
-      "text": "Updated",
+      "text": "Last seen",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.lastSeen",
+      "text": "Last seen",
+      "context": "DigiDeal campaigns sort option"
+    },
+    {
+      "key": "digideal.sort.firstSeen",
+      "text": "First seen",
       "context": "DigiDeal campaigns sort option"
     },
     {

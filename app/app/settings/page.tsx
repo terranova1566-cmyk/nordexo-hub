@@ -84,6 +84,14 @@ type SystemInfo = {
     usedPercent: number | null;
     mount: string;
   } | null;
+  services?: ServiceStatus[];
+};
+
+type ServiceStatus = {
+  id: "supabase" | "meilisearch";
+  status: "healthy" | "down" | "unknown";
+  detail?: string | null;
+  checkedAt: string;
 };
 
 const createImage = (url: string) =>
@@ -144,6 +152,15 @@ const useStyles = makeStyles({
     gap: "16px",
   },
   discoveryRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: "16px",
+    alignItems: "start",
+    "@media (max-width: 980px)": {
+      gridTemplateColumns: "minmax(0, 1fr)",
+    },
+  },
+  productionRow: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
     gap: "16px",
@@ -283,7 +300,7 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
   },
-  fileInput: {
+  fileInputHidden: {
     display: "none",
   },
   dialogSurface: {
@@ -333,6 +350,63 @@ const useStyles = makeStyles({
   },
   metricsHeader: {
     backgroundColor: tokens.colorNeutralBackground2,
+  },
+  serviceSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  serviceBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "999px",
+    padding: "2px 10px",
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    border: `1px solid transparent`,
+  },
+  serviceHealthy: {
+    backgroundColor: tokens.colorStatusSuccessBackground1,
+    color: tokens.colorStatusSuccessForeground1,
+    border: `1px solid ${tokens.colorStatusSuccessBackground1}`,
+  },
+  serviceDown: {
+    backgroundColor: tokens.colorStatusDangerBackground1,
+    color: tokens.colorStatusDangerForeground1,
+    border: `1px solid ${tokens.colorStatusDangerBackground1}`,
+  },
+  serviceUnknown: {
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground2,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  serviceDetail: {
+    color: tokens.colorNeutralForeground3,
+  },
+  systemContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  fileInput: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "8px",
+    padding: "6px 8px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    minWidth: "240px",
+  },
+  uploadRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "12px",
+    alignItems: "flex-end",
+  },
+  downloadRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "12px",
+    alignItems: "flex-end",
   },
 });
 
@@ -387,6 +461,18 @@ export default function SettingsPage() {
   const [systemLoading, setSystemLoading] = useState(false);
   const [systemError, setSystemError] = useState<string | null>(null);
   const [systemForbidden, setSystemForbidden] = useState(false);
+  const [serviceRestarting, setServiceRestarting] = useState<
+    Record<string, boolean>
+  >({});
+  const [serviceRestartError, setServiceRestartError] = useState<string | null>(
+    null
+  );
+  const [spuUploadFile, setSpuUploadFile] = useState<File | null>(null);
+  const [spuUploadLoading, setSpuUploadLoading] = useState(false);
+  const [spuUploadError, setSpuUploadError] = useState<string | null>(null);
+  const [spuUploadSuccess, setSpuUploadSuccess] = useState(false);
+  const [spuDownloadStatus, setSpuDownloadStatus] = useState("all");
+  const spuUploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -443,6 +529,84 @@ export default function SettingsPage() {
     if (activeTab !== "system") return;
     loadSystemInfo();
   }, [activeTab, loadSystemInfo]);
+
+  const handleSpuUpload = async () => {
+    if (!spuUploadFile) return;
+    setSpuUploadLoading(true);
+    setSpuUploadError(null);
+    setSpuUploadSuccess(false);
+    try {
+      const formData = new FormData();
+      formData.append("file", spuUploadFile);
+      const response = await fetch("/api/production/spu-pool/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || t("settings.production.uploadError"));
+      }
+      setSpuUploadSuccess(true);
+      setSpuUploadFile(null);
+      if (spuUploadRef.current) {
+        spuUploadRef.current.value = "";
+      }
+      setTimeout(() => setSpuUploadSuccess(false), 2500);
+    } catch (err) {
+      setSpuUploadError((err as Error).message);
+    } finally {
+      setSpuUploadLoading(false);
+    }
+  };
+
+  const handleSpuDownload = () => {
+    const status =
+      spuDownloadStatus === "free" || spuDownloadStatus === "used"
+        ? spuDownloadStatus
+        : "all";
+    window.open(
+      `/api/production/spu-pool/download?status=${encodeURIComponent(status)}`,
+      "_blank"
+    );
+  };
+
+  const serviceLabels = useMemo(
+    () => ({
+      supabase: t("settings.system.services.supabase"),
+      meilisearch: t("settings.system.services.meilisearch"),
+    }),
+    [t]
+  );
+
+  const serviceStatusLabels = useMemo(
+    () => ({
+      healthy: t("settings.system.services.status.healthy"),
+      down: t("settings.system.services.status.down"),
+      unknown: t("settings.system.services.status.unknown"),
+    }),
+    [t]
+  );
+
+  const handleServiceRestart = async (serviceId: ServiceStatus["id"]) => {
+    setServiceRestartError(null);
+    setServiceRestarting((prev) => ({ ...prev, [serviceId]: true }));
+    try {
+      const response = await fetch("/api/settings/system/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service: serviceId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || t("settings.system.services.restartError"));
+      }
+      await loadSystemInfo();
+    } catch (err) {
+      setServiceRestartError((err as Error).message);
+    } finally {
+      setServiceRestarting((prev) => ({ ...prev, [serviceId]: false }));
+    }
+  };
 
   const formatBytes = (value?: number | null) => {
     if (value === null || value === undefined) return "-";
@@ -794,6 +958,7 @@ export default function SettingsPage() {
         >
           <Tab value="discovery">{t("settings.discovery.tab")}</Tab>
           <Tab value="user">{t("settings.user.tab")}</Tab>
+          <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
         </TabList>
       </Card>
@@ -1061,6 +1226,87 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
+      {activeTab === "production" ? (
+        <div className={styles.sectionGrid}>
+          <div className={styles.productionRow}>
+            <Card className={styles.card}>
+              <Text weight="semibold">
+                {t("settings.production.upload.title")}
+              </Text>
+              <Text size={200} className={styles.helperText}>
+                {t("settings.production.upload.helper")}
+              </Text>
+              {spuUploadError ? (
+                <MessageBar>{spuUploadError}</MessageBar>
+              ) : null}
+              {spuUploadSuccess ? (
+                <MessageBar intent="success">
+                  {t("settings.production.upload.success")}
+                </MessageBar>
+              ) : null}
+              <div className={styles.uploadRow}>
+                <Field label={t("settings.production.upload.label")}>
+                  <input
+                    type="file"
+                    accept=".txt,.csv,.xlsx,.xls"
+                    className={styles.fileInput}
+                    ref={spuUploadRef}
+                    onChange={(event) =>
+                      setSpuUploadFile(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </Field>
+                <Button
+                  appearance="primary"
+                  onClick={handleSpuUpload}
+                  disabled={!spuUploadFile || spuUploadLoading}
+                >
+                  {spuUploadLoading ? (
+                    <Spinner size="tiny" />
+                  ) : (
+                    t("settings.production.upload.button")
+                  )}
+                </Button>
+              </div>
+            </Card>
+
+            <Card className={styles.card}>
+              <Text weight="semibold">
+                {t("settings.production.download.title")}
+              </Text>
+              <Text size={200} className={styles.helperText}>
+                {t("settings.production.download.helper")}
+              </Text>
+              <div className={styles.downloadRow}>
+                <Field label={t("settings.production.download.label")}>
+                  <Dropdown
+                    selectedOptions={[spuDownloadStatus]}
+                    onOptionSelect={(_, data) =>
+                      setSpuDownloadStatus(
+                        String(data.optionValue ?? data.selectedOptions?.[0] ?? "all")
+                      )
+                    }
+                  >
+                    <Option value="all">
+                      {t("settings.production.download.all")}
+                    </Option>
+                    <Option value="free">
+                      {t("settings.production.download.free")}
+                    </Option>
+                    <Option value="used">
+                      {t("settings.production.download.used")}
+                    </Option>
+                  </Dropdown>
+                </Field>
+                <Button appearance="outline" onClick={handleSpuDownload}>
+                  {t("settings.production.download.button")}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      ) : null}
+
       {activeTab === "user" ? (
         <div className={styles.sectionGrid}>
           <Card className={styles.card}>
@@ -1114,7 +1360,7 @@ export default function SettingsPage() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  className={styles.fileInput}
+                  className={styles.fileInputHidden}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) handleAvatarFile(file);
@@ -1272,82 +1518,166 @@ export default function SettingsPage() {
             ) : systemError ? (
               <MessageBar>{systemError}</MessageBar>
             ) : null}
+            {serviceRestartError ? (
+              <MessageBar>{serviceRestartError}</MessageBar>
+            ) : null}
 
             {systemLoading ? (
               <Spinner label={t("settings.system.loading")} />
             ) : systemInfo ? (
-              <Table size="small" className={styles.metricsTable}>
-                <TableHeader>
-                  <TableRow className={styles.metricsHeader}>
-                    <TableHeaderCell>
-                      {t("settings.system.table.metric")}
-                    </TableHeaderCell>
-                    <TableHeaderCell>
-                      {t("settings.system.table.value")}
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.hostname")}</TableCell>
-                    <TableCell>{systemInfo.hostname}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.platform")}</TableCell>
-                    <TableCell>{systemInfo.platform}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.uptime")}</TableCell>
-                    <TableCell>{formatUptime(systemInfo.uptimeSeconds)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.cpu")}</TableCell>
-                    <TableCell>{systemInfo.cpuCount}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.load")}</TableCell>
-                    <TableCell>
-                      {systemInfo.loadAvg.one.toFixed(2)} /{" "}
-                      {systemInfo.loadAvg.five.toFixed(2)} /{" "}
-                      {systemInfo.loadAvg.fifteen.toFixed(2)} (
-                      {formatPercent(systemInfo.loadPercent.one)} /{" "}
-                      {formatPercent(systemInfo.loadPercent.five)} /{" "}
-                      {formatPercent(systemInfo.loadPercent.fifteen)})
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.memory")}</TableCell>
-                    <TableCell>
-                      {formatBytes(systemInfo.memory.used)} /{" "}
-                      {formatBytes(systemInfo.memory.total)} (
-                      {formatPercent(systemInfo.memory.usedPercent)})
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      {t("settings.system.metrics.processMemory")}
-                    </TableCell>
-                    <TableCell>
-                      {formatBytes(systemInfo.process.rss)} /{" "}
-                      {formatBytes(systemInfo.process.heapUsed)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.disk")}</TableCell>
-                    <TableCell>
-                      {systemInfo.disk
-                        ? `${formatBytes(systemInfo.disk.used)} / ${formatBytes(
-                            systemInfo.disk.total
-                          )} (${formatPercent(systemInfo.disk.usedPercent)})`
-                        : "-"}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>{t("settings.system.metrics.updated")}</TableCell>
-                    <TableCell>{formatDateTime(systemInfo.timestamp)}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className={styles.systemContent}>
+                {systemInfo.services && systemInfo.services.length > 0 ? (
+                  <div className={styles.serviceSection}>
+                    <Text weight="semibold">
+                      {t("settings.system.services.title")}
+                    </Text>
+                    <Table size="small" className={styles.metricsTable}>
+                      <TableHeader>
+                        <TableRow className={styles.metricsHeader}>
+                          <TableHeaderCell>
+                            {t("settings.system.services.table.service")}
+                          </TableHeaderCell>
+                          <TableHeaderCell>
+                            {t("settings.system.services.table.status")}
+                          </TableHeaderCell>
+                          <TableHeaderCell>
+                            {t("settings.system.services.table.detail")}
+                          </TableHeaderCell>
+                          <TableHeaderCell>
+                            {t("settings.system.services.table.actions")}
+                          </TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {systemInfo.services.map((service) => {
+                          const label =
+                            serviceLabels[service.id] ?? service.id;
+                          const statusLabel =
+                            serviceStatusLabels[service.status] ??
+                            service.status;
+                          const statusClass =
+                            service.status === "healthy"
+                              ? styles.serviceHealthy
+                              : service.status === "down"
+                                ? styles.serviceDown
+                                : styles.serviceUnknown;
+                          const canRestart = service.id === "meilisearch";
+                          const isRestarting = Boolean(
+                            serviceRestarting[service.id]
+                          );
+                          return (
+                            <TableRow key={service.id}>
+                              <TableCell>{label}</TableCell>
+                              <TableCell>
+                                <span
+                                  className={mergeClasses(
+                                    styles.serviceBadge,
+                                    statusClass
+                                  )}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </TableCell>
+                              <TableCell className={styles.serviceDetail}>
+                                {service.detail ?? "-"}
+                              </TableCell>
+                              <TableCell>
+                                {canRestart ? (
+                                  <Button
+                                    size="small"
+                                    appearance="outline"
+                                    disabled={isRestarting}
+                                    onClick={() => handleServiceRestart(service.id)}
+                                  >
+                                    {isRestarting
+                                      ? t("settings.system.services.actions.restarting")
+                                      : t("settings.system.services.actions.restart")}
+                                  </Button>
+                                ) : (
+                                  "-"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : null}
+
+                <Table size="small" className={styles.metricsTable}>
+                  <TableHeader>
+                    <TableRow className={styles.metricsHeader}>
+                      <TableHeaderCell>
+                        {t("settings.system.table.metric")}
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        {t("settings.system.table.value")}
+                      </TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.hostname")}</TableCell>
+                      <TableCell>{systemInfo.hostname}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.platform")}</TableCell>
+                      <TableCell>{systemInfo.platform}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.uptime")}</TableCell>
+                      <TableCell>{formatUptime(systemInfo.uptimeSeconds)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.cpu")}</TableCell>
+                      <TableCell>{systemInfo.cpuCount}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.load")}</TableCell>
+                      <TableCell>
+                        {systemInfo.loadAvg.one.toFixed(2)} /{" "}
+                        {systemInfo.loadAvg.five.toFixed(2)} /{" "}
+                        {systemInfo.loadAvg.fifteen.toFixed(2)} (
+                        {formatPercent(systemInfo.loadPercent.one)} /{" "}
+                        {formatPercent(systemInfo.loadPercent.five)} /{" "}
+                        {formatPercent(systemInfo.loadPercent.fifteen)})
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.memory")}</TableCell>
+                      <TableCell>
+                        {formatBytes(systemInfo.memory.used)} /{" "}
+                        {formatBytes(systemInfo.memory.total)} (
+                        {formatPercent(systemInfo.memory.usedPercent)})
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>
+                        {t("settings.system.metrics.processMemory")}
+                      </TableCell>
+                      <TableCell>
+                        {formatBytes(systemInfo.process.rss)} /{" "}
+                        {formatBytes(systemInfo.process.heapUsed)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.disk")}</TableCell>
+                      <TableCell>
+                        {systemInfo.disk
+                          ? `${formatBytes(systemInfo.disk.used)} / ${formatBytes(
+                              systemInfo.disk.total
+                            )} (${formatPercent(systemInfo.disk.usedPercent)})`
+                          : "-"}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>{t("settings.system.metrics.updated")}</TableCell>
+                      <TableCell>{formatDateTime(systemInfo.timestamp)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             ) : null}
           </Card>
         </div>

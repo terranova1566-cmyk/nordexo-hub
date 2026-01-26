@@ -72,6 +72,7 @@ type DigidealItem = {
   weight_kg: number | null;
   weight_grams: number | null;
   supplier_url: string | null;
+  shipping_cost: number | null;
   estimated_rerun_price: number | null;
   report_exists: boolean;
 };
@@ -223,8 +224,8 @@ const useStyles = makeStyles({
     boxSizing: "border-box",
   },
   productCol: {
-    minWidth: "320px",
-    width: "320px",
+    minWidth: "360px",
+    width: "360px",
     paddingLeft: "15px",
     paddingRight: "16px",
   },
@@ -268,15 +269,16 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground2,
     display: "inline-block",
-    minWidth: "12ch",
     flexShrink: 0,
+    textAlign: "right",
     whiteSpace: "nowrap",
+    fontVariantNumeric: "tabular-nums",
   },
   estimatedPriceRow: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "10px",
-    flexWrap: "wrap",
+    gap: "4px",
+    flexWrap: "nowrap",
   },
   supplierDialog: {
     minWidth: "420px",
@@ -457,6 +459,9 @@ const useStyles = makeStyles({
   pricePrevious: {
     color: tokens.colorNeutralForeground3,
     textDecorationLine: "line-through",
+  },
+  priceShipping: {
+    color: tokens.colorNeutralForeground3,
   },
   discountText: {
     color: tokens.colorNeutralForeground3,
@@ -825,7 +830,7 @@ export default function DigidealCampaignsPage() {
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState("");
   const [status, setStatus] = useState("online");
-  const [sort, setSort] = useState("updated_desc");
+  const [sort, setSort] = useState("last_seen_desc");
   const [sellerFilter, setSellerFilter] = useState("all");
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1649,15 +1654,33 @@ export default function DigidealCampaignsPage() {
         const productId = item.prodno || item.product_id;
         const priceValue = item.last_price ?? null;
         const prevPrice = item.last_original_price ?? null;
+        const shippingCost =
+          typeof item.shipping_cost === "number" ? item.shipping_cost : null;
+        const shippingCostLabel =
+          shippingCost !== null ? formatCurrency(shippingCost, "SEK") : "";
         const discount = item.last_discount_percent;
         const saveKr = item.last_you_save_kr;
         const statusLabel = item.status ?? "-";
         const seller = item.seller_name ?? "-";
         const sellerId = item.seller_orgnr;
         const isNordexo = seller.toLowerCase().includes("nordexo");
-        const soldToday = Math.max(0, (item.sold_today ?? 0) - 30);
-        const sold7d = Math.max(0, (item.sold_7d ?? 0) - 30);
-        const soldAllTime = Math.max(0, (item.sold_all_time ?? 0) - 30);
+        const soldTodayRaw = Math.max(0, item.sold_today ?? 0);
+        const sold7dRaw = Math.max(0, item.sold_7d ?? 0);
+        const soldAllRaw = Math.max(0, item.sold_all_time ?? 0);
+        const firstSeenTime = item.first_seen_at
+          ? Date.parse(item.first_seen_at)
+          : Number.NaN;
+        const activeDays = Number.isFinite(firstSeenTime)
+          ? (Date.now() - firstSeenTime) / (1000 * 60 * 60 * 24)
+          : null;
+        const soldToday = soldTodayRaw;
+        let sold7d = sold7dRaw;
+        if (activeDays !== null && activeDays <= 1) {
+          sold7d = Math.max(sold7d, soldToday);
+        } else if (sold7d < soldToday) {
+          sold7d = soldToday;
+        }
+        const soldAllTime = Math.max(soldAllRaw, sold7d);
         const showShortSales = statusLabel !== "offline";
         const hasReport = item.report_exists === true;
         const rawProductionStatus =
@@ -1926,6 +1949,11 @@ export default function DigidealCampaignsPage() {
                       ? formatCurrency(priceValue, "SEK")
                       : "-"}
                   </Text>
+                  {shippingCostLabel ? (
+                    <Text className={styles.priceShipping}>
+                      ({shippingCostLabel})
+                    </Text>
+                  ) : null}
                   {prevPrice !== null && prevPrice > (priceValue ?? 0) ? (
                     <Text className={styles.pricePrevious}>
                       {formatCurrency(prevPrice, "SEK")}
@@ -2256,15 +2284,18 @@ export default function DigidealCampaignsPage() {
                     ? t("digideal.sort.sold7d")
                     : sort === "sold_all_time"
                       ? t("digideal.sort.soldAll")
-                      : t("digideal.sort.updated")
+                      : sort === "first_seen_desc"
+                        ? t("digideal.sort.firstSeen")
+                        : t("digideal.sort.lastSeen")
               }
               selectedOptions={[sort]}
               onOptionSelect={(_, data) =>
-                setSort(String(data.optionValue) || "updated_desc")
+                setSort(String(data.optionValue) || "last_seen_desc")
               }
               className={mergeClasses(styles.dropdownCompact, styles.filterField)}
             >
-              <Option value="updated_desc">{t("digideal.sort.updated")}</Option>
+              <Option value="last_seen_desc">{t("digideal.sort.lastSeen")}</Option>
+              <Option value="first_seen_desc">{t("digideal.sort.firstSeen")}</Option>
               <Option value="sold_today">{t("digideal.sort.soldToday")}</Option>
               <Option value="sold_7d">{t("digideal.sort.sold7d")}</Option>
               <Option value="sold_all_time">{t("digideal.sort.soldAll")}</Option>
