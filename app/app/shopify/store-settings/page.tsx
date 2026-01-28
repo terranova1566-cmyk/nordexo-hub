@@ -9,6 +9,7 @@ import {
   Spinner,
   Tab,
   TabList,
+  Tooltip,
   Text,
   makeStyles,
   tokens,
@@ -95,9 +96,10 @@ const useStyles = makeStyles({
     marginTop: "8px",
   },
   overrideList: {
-    display: "flex",
-    flexDirection: "column",
+    display: "grid",
     gap: "16px",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    alignItems: "start",
   },
   overrideCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -120,6 +122,11 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
+  },
+  overrideActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
   },
   linkedBadge: {
     fontSize: tokens.fontSizeBase200,
@@ -260,13 +267,23 @@ export default function StoreSettingsPage() {
     setColors((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = async () => {
+  const extractBaseKey = (notes: string) => {
+    const match = notes.match(/base color\s+(color_[a-z0-9_]+)/i);
+    return match ? match[1] : null;
+  };
+
+  const saveSettings = async (
+    nextColors: Record<string, string>,
+    nextOverrides: CustomColorOverride[]
+  ) => {
     setSaveError(null);
     setSaveSuccess(false);
-    const invalidKey = colorEntries.find(([_, value]) => !isValidHex(value));
+    const invalidKey = COLOR_KEYS.find(
+      (key) => !isValidHex(nextColors[key] ?? "")
+    );
     if (invalidKey) {
       setSaveError(
-        t("shopify.storeSettings.invalidColor", { key: invalidKey[0] })
+        t("shopify.storeSettings.invalidColor", { key: invalidKey })
       );
       return;
     }
@@ -276,7 +293,10 @@ export default function StoreSettingsPage() {
       const response = await fetch("/api/shopify/store-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ colors, custom_color_overrides: overrides }),
+        body: JSON.stringify({
+          colors: nextColors,
+          custom_color_overrides: nextOverrides,
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -291,10 +311,31 @@ export default function StoreSettingsPage() {
     }
   };
 
+  const handleSave = async () => {
+    await saveSettings(colors, overrides);
+  };
+
   const updateOverrideValue = (id: string, value: string) => {
     setOverrides((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, value } : entry))
     );
+  };
+
+  const handlePromote = async (entry: CustomColorOverride) => {
+    const baseKey = extractBaseKey(entry.notes ?? "");
+    if (!baseKey || !(baseKey in colors)) {
+      return;
+    }
+    const confirmMessage = t("shopify.storeSettings.promoteConfirm", {
+      key: baseKey,
+    });
+    if (!window.confirm(confirmMessage)) return;
+
+    const nextColors = { ...colors, [baseKey]: entry.value };
+    const nextOverrides = overrides.filter((item) => item.id !== entry.id);
+    setColors(nextColors);
+    setOverrides(nextOverrides);
+    await saveSettings(nextColors, nextOverrides);
   };
 
   const hasBaseColorNote = (notes: string) =>
@@ -388,20 +429,47 @@ export default function StoreSettingsPage() {
                   const pickerValue = isValidHex(entry.value)
                     ? entry.value
                     : "#000000";
+                  const baseKey = extractBaseKey(entry.notes ?? "");
+                  const baseKeyIsValid = Boolean(baseKey && baseKey in colors);
                   return (
                     <div key={entry.id} className={styles.overrideCard}>
                       <div className={styles.overrideHeader}>
                         <div className={styles.overrideLabelRow}>
                           <Text weight="semibold">{entry.label}</Text>
-                          {hasBaseColorNote(entry.notes) ? (
+                          {hasBaseColorNote(entry.notes) && baseKey ? (
                             <span className={styles.linkedBadge}>
-                              {t("shopify.storeSettings.linkedBadge")}
+                              {t("shopify.storeSettings.linkedBadgeWithKey", {
+                                key: baseKey,
+                              })}
                             </span>
                           ) : null}
                         </div>
-                        <Text size={200} className={styles.helperText}>
-                          {entry.id}
-                        </Text>
+                        <div className={styles.overrideActions}>
+                          <Text size={200} className={styles.helperText}>
+                            {entry.id}
+                          </Text>
+                          <Tooltip
+                            content={
+                              baseKeyIsValid
+                                ? t("shopify.storeSettings.promoteHint", {
+                                    key: baseKey ?? "",
+                                  })
+                                : t("shopify.storeSettings.promoteNoLink")
+                            }
+                            relationship="label"
+                          >
+                            <span>
+                              <Button
+                                size="small"
+                                appearance="outline"
+                                disabled={!baseKeyIsValid || saving}
+                                onClick={() => handlePromote(entry)}
+                              >
+                                {t("shopify.storeSettings.promote")}
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        </div>
                       </div>
                       <div className={styles.overrideInputs}>
                         <span

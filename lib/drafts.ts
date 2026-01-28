@@ -86,3 +86,29 @@ export const safeRemoveDraftPath = (absolutePath: string) => {
     return;
   }
 };
+
+export const removeSpuFolders = (spus: string[]) => {
+  if (!fs.existsSync(DRAFT_ROOT)) return [];
+  const target = new Set(spus.map((value) => value.trim()).filter(Boolean));
+  if (target.size === 0) return [];
+
+  const removed: string[] = [];
+
+  const walk = (dir: string) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const full = path.join(dir, entry.name);
+      if (target.has(entry.name)) {
+        safeRemoveDraftPath(full);
+        removed.push(toRelativePath(full));
+        continue;
+      }
+      walk(full);
+    }
+  };
+
+  walk(DRAFT_ROOT);
+
+  return removed;
+};

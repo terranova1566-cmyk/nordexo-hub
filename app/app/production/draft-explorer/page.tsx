@@ -12,6 +12,7 @@ import {
   Dropdown,
   Field,
   Input,
+  Textarea,
   Option,
   Spinner,
   Switch,
@@ -58,6 +59,8 @@ type DraftSpuRow = {
   draft_created_at: string | null;
   draft_description_html: string | null;
   draft_product_description_main_html: string | null;
+  draft_mf_product_description_short_html: string | null;
+  draft_mf_product_description_extended_html: string | null;
   draft_mf_product_short_title: string | null;
   draft_mf_product_long_title: string | null;
   draft_mf_product_subtitle: string | null;
@@ -354,6 +357,46 @@ const useStyles = makeStyles({
     paddingLeft: "6px",
     paddingRight: "6px",
   },
+  spuCol: {
+    width: "140px",
+    maxWidth: "140px",
+  },
+  statusCol: {
+    width: "90px",
+    maxWidth: "90px",
+  },
+  sourceCol: {
+    width: "90px",
+    maxWidth: "90px",
+  },
+  supplierCol: {
+    width: "150px",
+    maxWidth: "150px",
+  },
+  imagesCol: {
+    width: "70px",
+    maxWidth: "70px",
+  },
+  videosCol: {
+    width: "70px",
+    maxWidth: "70px",
+  },
+  variantsCol: {
+    width: "80px",
+    maxWidth: "80px",
+  },
+  updatedCol: {
+    width: "110px",
+    maxWidth: "110px",
+  },
+  createdCol: {
+    width: "110px",
+    maxWidth: "110px",
+  },
+  detailsCol: {
+    width: "90px",
+    maxWidth: "90px",
+  },
   numericCell: {
     textAlign: "right",
   },
@@ -387,6 +430,77 @@ const useStyles = makeStyles({
     gap: "12px",
     padding: "8px 0",
   },
+  detailsDialogSurface: {
+    width: "60vw",
+    maxWidth: "60vw",
+    maxHeight: "calc(100vh - 140px)",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+  },
+  detailsDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+    height: "100%",
+    minHeight: 0,
+    overflow: "auto",
+    paddingTop: "4px",
+    paddingBottom: "28px",
+    paddingRight: "16px",
+  },
+  detailsDialogContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+    alignItems: "stretch",
+  },
+  detailsDialogColumns: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "24px",
+    "@media (max-width: 1100px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  detailsDialogColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+  },
+  detailsGallery: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "12px",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  detailsGalleryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+    gap: "10px",
+  },
+  detailsGalleryImage: {
+    width: "100%",
+    height: "110px",
+    objectFit: "cover",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  detailsInstruction: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  detailsActionsRow: {
+    display: "flex",
+    gap: "8px",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+  },
   link: {
     color: tokens.colorBrandForeground1,
     textDecoration: "none",
@@ -404,6 +518,20 @@ const getRawValue = (raw: Record<string, unknown> | null | undefined, key: strin
   return value == null ? "" : String(value);
 };
 
+const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
+  draft_mf_product_short_title: ["SE_shorttitle"],
+  draft_mf_product_long_title: ["SE_longtitle"],
+  draft_mf_product_subtitle: ["SE_subtitle"],
+  draft_mf_product_bullets_short: ["SE_bullets_short"],
+  draft_mf_product_bullets: ["SE_bullets"],
+  draft_mf_product_bullets_long: ["SE_bullets_long"],
+  draft_product_description_main_html: ["SE_description_main"],
+  draft_description_html: ["SE_description_short"],
+  draft_mf_product_description_short_html: ["SE_description_short"],
+  draft_mf_product_description_extended_html: ["SE_description_extended"],
+  draft_mf_product_specs: ["SE_specifications"],
+};
+
 export default function DraftExplorerPage() {
   const styles = useStyles();
   const { t } = useI18n();
@@ -419,6 +547,7 @@ export default function DraftExplorerPage() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
+  const [deleteFolderPending, setDeleteFolderPending] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [excelStatus, setExcelStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
@@ -431,12 +560,25 @@ export default function DraftExplorerPage() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [spuRows, setSpuRows] = useState<DraftSpuRow[]>([]);
   const [skuRows, setSkuRows] = useState<DraftSkuRow[]>([]);
-  const [expandedSpus, setExpandedSpus] = useState<Set<string>>(new Set());
   const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [selectedSpus, setSelectedSpus] = useState<Set<string>>(new Set());
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [deleteRowsPending, setDeleteRowsPending] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<DraftSpuRow | null>(null);
+  const [detailDraft, setDetailDraft] = useState<Record<string, string | null>>({});
+  const [detailRawRow, setDetailRawRow] = useState<Record<string, unknown> | null>(
+    null
+  );
+  const [detailImages, setDetailImages] = useState<DraftEntry[]>([]);
+  const [detailImagesLoading, setDetailImagesLoading] = useState(false);
+  const [detailInstruction, setDetailInstruction] = useState("");
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailRegenerating, setDetailRegenerating] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [publishStatus, setPublishStatus] = useState<
     "idle" | "running" | "done" | "error"
   >("idle");
@@ -626,6 +768,16 @@ export default function DraftExplorerPage() {
     [spuRows, selectedSpus]
   );
 
+  const allSkuSelected = useMemo(
+    () => skuRows.length > 0 && skuRows.every((row) => selectedSkus.has(row.id)),
+    [skuRows, selectedSkus]
+  );
+
+  const someSkuSelected = useMemo(
+    () => skuRows.some((row) => selectedSkus.has(row.id)),
+    [skuRows, selectedSkus]
+  );
+
   const toggleSelectAllSpus = () => {
     if (allSpuSelected) {
       setSelectedSpus(new Set());
@@ -645,6 +797,127 @@ export default function DraftExplorerPage() {
       return next;
     });
   };
+
+  const toggleSelectAllSkus = () => {
+    if (allSkuSelected) {
+      setSelectedSkus(new Set());
+      return;
+    }
+    setSelectedSkus(new Set(skuRows.map((row) => row.id)));
+  };
+
+  const toggleSelectSku = (id: string) => {
+    setSelectedSkus((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const buildDetailDraft = (row: DraftSpuRow) => ({
+    draft_mf_product_short_title: row.draft_mf_product_short_title ?? "",
+    draft_mf_product_long_title: row.draft_mf_product_long_title ?? "",
+    draft_mf_product_subtitle: row.draft_mf_product_subtitle ?? "",
+    draft_mf_product_bullets_short: row.draft_mf_product_bullets_short ?? "",
+    draft_mf_product_bullets: row.draft_mf_product_bullets ?? "",
+    draft_mf_product_bullets_long: row.draft_mf_product_bullets_long ?? "",
+    draft_product_description_main_html:
+      row.draft_product_description_main_html ?? "",
+    draft_mf_product_description_short_html:
+      row.draft_mf_product_description_short_html ?? row.draft_description_html ?? "",
+    draft_mf_product_description_extended_html:
+      row.draft_mf_product_description_extended_html ?? "",
+    draft_description_html:
+      row.draft_description_html ??
+      row.draft_mf_product_description_short_html ??
+      "",
+    draft_mf_product_specs: row.draft_mf_product_specs ?? "",
+    draft_title: row.draft_title ?? "",
+    draft_subtitle: row.draft_subtitle ?? "",
+  });
+
+  const updateDetailField = (field: string, value: string) => {
+    setDetailDraft((prev) => ({ ...prev, [field]: value }));
+    const rawKeys = RAW_ROW_FIELD_MAP[field];
+    if (rawKeys && detailRawRow) {
+      setDetailRawRow((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev };
+        rawKeys.forEach((key) => {
+          next[key] = value;
+        });
+        return next;
+      });
+    }
+  };
+
+  const openDetails = (row: DraftSpuRow) => {
+    setDetailTarget(row);
+    setDetailDraft(buildDetailDraft(row));
+    setDetailRawRow(row.draft_raw_row ?? null);
+    setDetailInstruction("");
+    setDetailError(null);
+    setDetailOpen(true);
+  };
+
+  const resolveDetailFolder = (row: DraftSpuRow) => {
+    const rawFolder = row.draft_image_folder ?? "";
+    if (!rawFolder) return null;
+    const normalized = rawFolder.replace(/^\/+/, "");
+    const marker = "images/draft_products/";
+    const idx = normalized.indexOf(marker);
+    const relative = idx >= 0 ? normalized.slice(idx + marker.length) : normalized;
+    return relative || null;
+  };
+
+  const fetchDetailImages = useCallback(async (row: DraftSpuRow) => {
+    const relative = resolveDetailFolder(row);
+    if (!relative) {
+      setDetailImages([]);
+      return;
+    }
+    const parts = relative.split("/").filter(Boolean);
+    if (parts.length === 0) {
+      setDetailImages([]);
+      return;
+    }
+    const [run, ...rest] = parts;
+    const subPath = rest.join("/");
+    setDetailImagesLoading(true);
+    try {
+      const url = new URL(
+        `/api/drafts/folders/${encodeURIComponent(run)}/list`,
+        window.location.origin
+      );
+      if (subPath) url.searchParams.set("path", subPath);
+      const response = await fetch(url.toString());
+      if (!response.ok) throw new Error();
+      const payload = await response.json();
+      const items = (payload.items ?? []) as DraftEntry[];
+      const images = items
+        .filter(
+          (entry) =>
+            entry.type === "file" &&
+            /\.jpe?g$/i.test(entry.name)
+        )
+        .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))
+        .slice(0, 6);
+      setDetailImages(images);
+    } catch {
+      setDetailImages([]);
+    } finally {
+      setDetailImagesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!detailOpen || !detailTarget) return;
+    fetchDetailImages(detailTarget);
+  }, [detailOpen, detailTarget, fetchDetailImages]);
 
   const skuReady =
     skuMissingCount !== null &&
@@ -763,6 +1036,163 @@ export default function DraftExplorerPage() {
       setSkuStatus("error");
       setSkuMessage((err as Error).message);
     }
+  };
+
+  const handleDeleteRows = async () => {
+    if (deleteRowsPending) return;
+    const selectedRows =
+      draftTab === "spu"
+        ? spuRows.filter((row) => selectedSpus.has(row.id))
+        : skuRows.filter((row) => selectedSkus.has(row.id));
+    if (selectedRows.length === 0) return;
+    const confirmDelete = window.confirm(
+      t("draftExplorer.deleteRowsConfirm", { count: selectedRows.length })
+    );
+    if (!confirmDelete) return;
+    setDeleteRowsPending(true);
+    setDraftError(null);
+    try {
+      if (draftTab === "spu") {
+        const selectedSpuValues = selectedRows
+          .map((row) => (row as DraftSpuRow).draft_spu)
+          .filter(Boolean);
+        if (selectedSpuValues.length === 0) {
+          setDeleteRowsPending(false);
+          return;
+        }
+        const response = await fetch("/api/drafts/products/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spus: selectedSpuValues }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            payload?.error || t("draftExplorer.deleteRowsError")
+          );
+        }
+        setSelectedSpus(new Set());
+      } else {
+        const selectedSkuIds = selectedRows.map((row) => row.id);
+        const response = await fetch("/api/drafts/variants/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: selectedSkuIds }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            payload?.error || t("draftExplorer.deleteRowsError")
+          );
+        }
+        setSelectedSkus(new Set());
+      }
+      fetchSpuRows();
+      fetchSkuRows();
+    } catch (err) {
+      setDraftError(
+        err instanceof Error
+          ? err.message
+          : t("draftExplorer.deleteRowsError")
+      );
+    } finally {
+      setDeleteRowsPending(false);
+    }
+  };
+
+  const handleDetailSave = async () => {
+    if (!detailTarget || detailSaving) return;
+    setDetailSaving(true);
+    setDetailError(null);
+    try {
+      const updates: Record<string, unknown> = {
+        draft_title:
+          detailDraft.draft_mf_product_long_title ||
+          detailDraft.draft_mf_product_short_title ||
+          detailDraft.draft_title,
+        draft_subtitle:
+          detailDraft.draft_mf_product_subtitle || detailDraft.draft_subtitle,
+        draft_description_html:
+          detailDraft.draft_mf_product_description_short_html ||
+          detailDraft.draft_description_html,
+        draft_product_description_main_html:
+          detailDraft.draft_product_description_main_html,
+        draft_mf_product_description_short_html:
+          detailDraft.draft_mf_product_description_short_html,
+        draft_mf_product_description_extended_html:
+          detailDraft.draft_mf_product_description_extended_html,
+        draft_mf_product_short_title: detailDraft.draft_mf_product_short_title,
+        draft_mf_product_long_title: detailDraft.draft_mf_product_long_title,
+        draft_mf_product_subtitle: detailDraft.draft_mf_product_subtitle,
+        draft_mf_product_bullets_short: detailDraft.draft_mf_product_bullets_short,
+        draft_mf_product_bullets: detailDraft.draft_mf_product_bullets,
+        draft_mf_product_bullets_long: detailDraft.draft_mf_product_bullets_long,
+        draft_mf_product_specs: detailDraft.draft_mf_product_specs,
+      };
+      if (detailRawRow) {
+        updates.draft_raw_row = detailRawRow;
+      }
+      const response = await fetch("/api/drafts/products/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: detailTarget.id, updates }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Save failed.");
+      }
+      setDetailOpen(false);
+      setDetailTarget(null);
+      fetchSpuRows();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setDetailSaving(false);
+    }
+  };
+
+  const handleDetailRegenerate = async () => {
+    if (!detailTarget || detailRegenerating) return;
+    if (!detailInstruction.trim()) {
+      setDetailError(t("draftExplorer.detailsDialog.instructionRequired"));
+      return;
+    }
+    setDetailRegenerating(true);
+    setDetailError(null);
+    try {
+      const response = await fetch("/api/drafts/products/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: detailTarget.id,
+          instruction: detailInstruction,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Rewrite failed.");
+      }
+      const updates = payload?.updates ?? {};
+      const rawRow = payload?.raw_row ?? null;
+      setDetailDraft((prev) => ({ ...prev, ...updates }));
+      if (rawRow) {
+        setDetailRawRow(rawRow);
+      }
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Rewrite failed.");
+    } finally {
+      setDetailRegenerating(false);
+    }
+  };
+
+  const closeDetails = () => {
+    setDetailOpen(false);
+    setDetailTarget(null);
+    setDetailDraft({});
+    setDetailRawRow(null);
+    setDetailInstruction("");
+    setDetailImages([]);
+    setDetailError(null);
   };
 
   const handleRerunSkuImages = async () => {
@@ -889,6 +1319,48 @@ export default function DraftExplorerPage() {
       fetchEntries(currentPath);
     }
   }, [fetchFolders, currentPath, fetchEntries]);
+
+  const handleDeleteFolder = useCallback(async () => {
+    if (!selectedFolder) return;
+    if (selectedFolder.includes("/") || selectedFolder.includes("\\")) {
+      setError(t("bulkProcessing.explorer.deleteFolderError"));
+      return;
+    }
+    const confirmed = window.confirm(
+      t("bulkProcessing.explorer.deleteFolderConfirm", {
+        folder: selectedFolder,
+      })
+    );
+    if (!confirmed) return;
+    setDeleteFolderPending(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/drafts/folders/${encodeURIComponent(selectedFolder)}`,
+        { method: "DELETE" }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          payload?.error || t("bulkProcessing.explorer.deleteFolderError")
+        );
+      }
+      setSelectedFolder("");
+      setCurrentPath("");
+      setEntries([]);
+      setSelectedFiles(new Set());
+      setPreviewPath(null);
+      fetchFolders();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("bulkProcessing.explorer.deleteFolderError")
+      );
+    } finally {
+      setDeleteFolderPending(false);
+    }
+  }, [selectedFolder, fetchFolders, t]);
 
   useEffect(() => {
     fetchFolders();
@@ -1050,28 +1522,16 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const toggleExpanded = (table: "spu" | "sku", id: string) => {
-    if (table === "spu") {
-      setExpandedSpus((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        return next;
-      });
-    } else {
-      setExpandedSkus((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        return next;
-      });
-    }
+  const toggleExpanded = (id: string) => {
+    setExpandedSkus((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const startEdit = (table: "spu" | "sku", id: string, field: string, value: string | number | null) => {
@@ -1236,6 +1696,27 @@ export default function DraftExplorerPage() {
               )}
             </Button>
             <Button
+              appearance={
+                (draftTab === "spu" ? someSpuSelected : someSkuSelected)
+                  ? "primary"
+                  : "outline"
+              }
+              onClick={handleDeleteRows}
+              disabled={
+                !(draftTab === "spu" ? someSpuSelected : someSkuSelected) ||
+                deleteRowsPending
+              }
+            >
+              {deleteRowsPending ? (
+                <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                  <Spinner size="tiny" />
+                  {t("draftExplorer.deleteRowsRunning")}
+                </span>
+              ) : (
+                t("draftExplorer.deleteRowsButton")
+              )}
+            </Button>
+            <Button
               appearance="primary"
               onClick={handlePublishDrafts}
               disabled={
@@ -1315,43 +1796,112 @@ export default function DraftExplorerPage() {
                       aria-label={t("common.selectAll")}
                     />
                   </TableHeaderCell>
-                  {[
-                    t("draftExplorer.columns.spu"),
-                    t("draftExplorer.columns.title"),
-                    t("draftExplorer.columns.subtitle"),
-                    t("draftExplorer.columns.status"),
-                    t("draftExplorer.columns.source"),
-                    t("draftExplorer.columns.supplierUrl"),
-                    t("draftExplorer.columns.images"),
-                    t("draftExplorer.columns.variantImages"),
-                    t("draftExplorer.columns.videos"),
-                    t("draftExplorer.columns.variants"),
-                    t("draftExplorer.columns.updated"),
-                    t("draftExplorer.columns.created"),
-                    t("draftExplorer.columns.details"),
-                  ].map((label) => (
-                    <TableHeaderCell
-                      key={label}
-                      className={mergeClasses(
-                        styles.stickyHeader,
-                        styles.resizableHeader
-                      )}
-                    >
-                      {label}
-                    </TableHeaderCell>
-                  ))}
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.spuCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.spu")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.resizableHeader)}
+                  >
+                    {t("draftExplorer.columns.title")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.statusCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.status")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.sourceCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.source")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.supplierCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.supplierUrl")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.imagesCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.images")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.videosCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.videos")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.variantsCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.variants")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.updatedCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.updated")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.createdCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.created")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.detailsCol
+                    )}
+                  >
+                    {t("draftExplorer.columns.details")}
+                  </TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {spuRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14}>
+                    <TableCell colSpan={12}>
                       {t("draftExplorer.empty")}
                     </TableCell>
                   </TableRow>
                 ) : (
                   spuRows.map((row, index) => {
-                    const isExpanded = expandedSpus.has(row.id);
                     const altClass = index % 2 === 1 ? styles.tableRowAlt : undefined;
                     return (
                       <Fragment key={row.id}>
@@ -1371,7 +1921,7 @@ export default function DraftExplorerPage() {
                               aria-label={t("common.selectItem", { item: row.draft_spu })}
                             />
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell className={mergeClasses(styles.tableCell, styles.spuCol)}>
                             <Text size={200}>{row.draft_spu}</Text>
                           </TableCell>
                           <TableCell className={styles.tableCell}>
@@ -1383,19 +1933,14 @@ export default function DraftExplorerPage() {
                               { clamp: true }
                             )}
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
-                            {renderEditableCell(
-                              "spu",
-                              row.id,
-                              "draft_subtitle",
-                              row.draft_subtitle,
-                              { clamp: true }
-                            )}
-                          </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.statusCol)}
+                          >
                             <Text size={200}>{row.draft_status ?? ""}</Text>
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.sourceCol)}
+                          >
                             {renderEditableCell(
                               "spu",
                               row.id,
@@ -1403,7 +1948,9 @@ export default function DraftExplorerPage() {
                               row.draft_source
                             )}
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.supplierCol)}
+                          >
                             {editingCell?.table === "spu" &&
                             editingCell?.id === row.id &&
                             editingCell?.field === "draft_supplier_1688_url" ? (
@@ -1451,7 +1998,8 @@ export default function DraftExplorerPage() {
                           <TableCell
                             className={mergeClasses(
                               styles.tableCell,
-                              styles.numericCell
+                              styles.numericCell,
+                              styles.imagesCol
                             )}
                           >
                             {row.image_count}
@@ -1459,15 +2007,8 @@ export default function DraftExplorerPage() {
                           <TableCell
                             className={mergeClasses(
                               styles.tableCell,
-                              styles.numericCell
-                            )}
-                          >
-                            {row.variant_image_count}
-                          </TableCell>
-                          <TableCell
-                            className={mergeClasses(
-                              styles.tableCell,
-                              styles.numericCell
+                              styles.numericCell,
+                              styles.videosCol
                             )}
                           >
                             {row.video_count}
@@ -1475,104 +2016,34 @@ export default function DraftExplorerPage() {
                           <TableCell
                             className={mergeClasses(
                               styles.tableCell,
-                              styles.numericCell
+                              styles.numericCell,
+                              styles.variantsCol
                             )}
                           >
                             {row.variant_count}
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.updatedCol)}
+                          >
                             <Text size={100}>{formatDate(row.draft_updated_at)}</Text>
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.createdCol)}
+                          >
                             <Text size={100}>{formatDate(row.draft_created_at)}</Text>
                           </TableCell>
-                          <TableCell className={styles.tableCell}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.detailsCol)}
+                          >
                             <Button
                               size="small"
                               appearance="outline"
-                              onClick={() => toggleExpanded("spu", row.id)}
+                              onClick={() => openDetails(row)}
                             >
-                              {isExpanded
-                                ? t("draftExplorer.collapse")
-                                : t("draftExplorer.expand")}
+                              {t("draftExplorer.detailsButton")}
                             </Button>
                           </TableCell>
                         </TableRow>
-                        {isExpanded ? (
-                          <TableRow className={styles.detailsRow}>
-                            <TableCell colSpan={14}>
-                              <div className={styles.detailsGrid}>
-                                <div className={styles.detailsBlock}>
-                                  <Text size={200} weight="semibold">
-                                    {t("draftExplorer.details.description")}
-                                  </Text>
-                                  <Text size={100}>
-                                    {stripHtml(row.draft_description_html)}
-                                  </Text>
-                                  <Text size={100}>
-                                    {stripHtml(row.draft_product_description_main_html)}
-                                  </Text>
-                                </div>
-                                <div className={styles.detailsBlock}>
-                                  <Text size={200} weight="semibold">
-                                    {t("draftExplorer.details.titles")}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_short_title ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_long_title ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_subtitle ?? ""}
-                                  </Text>
-                                </div>
-                                <div className={styles.detailsBlock}>
-                                  <Text size={200} weight="semibold">
-                                    {t("draftExplorer.details.bullets")}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_bullets_short ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_bullets ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_bullets_long ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_mf_product_specs ?? ""}
-                                  </Text>
-                                </div>
-                                <div className={styles.detailsBlock}>
-                                  <Text size={200} weight="semibold">
-                                    {t("draftExplorer.details.images")}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_image_folder ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_main_image_url ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_image_urls?.join(", ") ?? ""}
-                                  </Text>
-                                  <Text size={100}>
-                                    {row.draft_variant_image_urls?.join(", ") ?? ""}
-                                  </Text>
-                                </div>
-                                <div className={styles.detailsBlock}>
-                                  <Text size={200} weight="semibold">
-                                    {t("draftExplorer.details.raw")}
-                                  </Text>
-                                  <Text size={100}>
-                                    {JSON.stringify(row.draft_raw_row ?? {}, null, 2)}
-                                  </Text>
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : null}
                       </Fragment>
                     );
                   })
@@ -1583,6 +2054,19 @@ export default function DraftExplorerPage() {
             <Table size="small">
               <TableHeader>
                 <TableRow>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.selectionCol
+                    )}
+                  >
+                    <Checkbox
+                      checked={allSkuSelected ? true : someSkuSelected ? "mixed" : false}
+                      onChange={toggleSelectAllSkus}
+                      aria-label={t("common.selectAll")}
+                    />
+                  </TableHeaderCell>
                   {[
                     t("draftExplorer.columns.sku"),
                     t("draftExplorer.columns.spu"),
@@ -1628,6 +2112,18 @@ export default function DraftExplorerPage() {
                           key={row.id}
                           className={mergeClasses(styles.tableRow, altClass)}
                         >
+                          <TableCell
+                            className={mergeClasses(
+                              styles.tableCell,
+                              styles.selectionCol
+                            )}
+                          >
+                            <Checkbox
+                              checked={selectedSkus.has(row.id)}
+                              onChange={() => toggleSelectSku(row.id)}
+                              aria-label={t("common.selectItem", { item: row.draft_sku ?? "" })}
+                            />
+                          </TableCell>
                           <TableCell className={styles.tableCell}>
                             <Text size={200}>{row.draft_sku ?? ""}</Text>
                           </TableCell>
@@ -1727,7 +2223,7 @@ export default function DraftExplorerPage() {
                             <Button
                               size="small"
                               appearance="outline"
-                              onClick={() => toggleExpanded("sku", row.id)}
+                              onClick={() => toggleExpanded(row.id)}
                             >
                               {isExpanded
                                 ? t("draftExplorer.collapse")
@@ -1760,6 +2256,207 @@ export default function DraftExplorerPage() {
           )}
         </div>
       </Card>
+
+      <Dialog
+        open={detailOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeDetails();
+          }
+        }}
+      >
+        <DialogSurface className={styles.detailsDialogSurface}>
+          <DialogBody className={styles.detailsDialogBody}>
+            <DialogTitle>
+              {t("draftExplorer.detailsDialog.title", {
+                spu: detailTarget?.draft_spu ?? "",
+              })}
+            </DialogTitle>
+            {detailError ? (
+              <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                {detailError}
+              </Text>
+            ) : null}
+            <div className={styles.detailsDialogContent}>
+              <div className={styles.detailsGallery}>
+                <Text size={200} weight="semibold">
+                  {t("draftExplorer.detailsDialog.images")}
+                </Text>
+                {detailImagesLoading ? (
+                  <Spinner size="tiny" />
+                ) : detailImages.length === 0 ? (
+                  <Text size={100}>{t("draftExplorer.detailsDialog.imagesEmpty")}</Text>
+                ) : (
+                  <div className={styles.detailsGalleryGrid}>
+                    {detailImages.map((entry) => (
+                      <img
+                        key={entry.path}
+                        src={`/api/drafts/download?path=${encodeURIComponent(
+                          entry.path
+                        )}`}
+                        alt={entry.name}
+                        className={styles.detailsGalleryImage}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className={styles.detailsDialogColumns}>
+                <div className={styles.detailsDialogColumn}>
+                  <Field label={t("draftExplorer.detailsDialog.shortTitle")}>
+                    <Input
+                      value={detailDraft.draft_mf_product_short_title ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_short_title", data.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.subtitle")}>
+                    <Input
+                      value={detailDraft.draft_mf_product_subtitle ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_subtitle", data.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.longTitle")}>
+                    <Input
+                      value={detailDraft.draft_mf_product_long_title ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_long_title", data.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.bulletsShort")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_bullets_short ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_bullets_short", data.value)
+                      }
+                      resize="vertical"
+                      rows={4}
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.bullets")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_bullets ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_bullets", data.value)
+                      }
+                      resize="vertical"
+                      rows={5}
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.bulletsLong")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_bullets_long ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_bullets_long", data.value)
+                      }
+                      resize="vertical"
+                      rows={6}
+                    />
+                  </Field>
+                </div>
+                <div className={styles.detailsDialogColumn}>
+                  <Field label={t("draftExplorer.detailsDialog.descriptionMain")}>
+                    <Textarea
+                      value={detailDraft.draft_product_description_main_html ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField(
+                          "draft_product_description_main_html",
+                          data.value
+                        )
+                      }
+                      resize="vertical"
+                      rows={7}
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.descriptionExtended")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_description_extended_html ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField(
+                          "draft_mf_product_description_extended_html",
+                          data.value
+                        )
+                      }
+                      resize="vertical"
+                      rows={6}
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.descriptionShort")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_description_short_html ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField(
+                          "draft_mf_product_description_short_html",
+                          data.value
+                        )
+                      }
+                      resize="vertical"
+                      rows={5}
+                    />
+                  </Field>
+                  <Field label={t("draftExplorer.detailsDialog.specs")}>
+                    <Textarea
+                      value={detailDraft.draft_mf_product_specs ?? ""}
+                      onChange={(_, data) =>
+                        updateDetailField("draft_mf_product_specs", data.value)
+                      }
+                      resize="vertical"
+                      rows={7}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+            <div className={styles.detailsInstruction}>
+              <Field label={t("draftExplorer.detailsDialog.instructionLabel")}>
+                <Textarea
+                  value={detailInstruction}
+                  onChange={(_, data) => setDetailInstruction(data.value)}
+                  resize="vertical"
+                  rows={3}
+                />
+              </Field>
+            </div>
+            <DialogActions className={styles.detailsActionsRow}>
+              <Button appearance="outline" onClick={closeDetails}>
+                {t("common.close")}
+              </Button>
+              <Button
+                appearance="outline"
+                onClick={handleDetailRegenerate}
+                disabled={detailRegenerating || detailSaving}
+              >
+                {detailRegenerating ? (
+                  <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                    <Spinner size="tiny" />
+                    {t("draftExplorer.detailsDialog.regenerating")}
+                  </span>
+                ) : (
+                  t("draftExplorer.detailsDialog.regenerate")
+                )}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleDetailSave}
+                disabled={detailSaving}
+              >
+                {detailSaving ? (
+                  <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                    <Spinner size="tiny" />
+                    {t("draftExplorer.detailsDialog.saving")}
+                  </span>
+                ) : (
+                  t("common.save")
+                )}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
 
       <Card className={styles.logCard}>
         <div className={styles.explorerHeader}>
@@ -1816,6 +2513,20 @@ export default function DraftExplorerPage() {
             </Button>
           </div>
           <div className={styles.explorerControlsRight}>
+            <Button
+              appearance="outline"
+              onClick={handleExplorerRefresh}
+              disabled={entriesLoading}
+            >
+              {t("bulkProcessing.explorer.refresh")}
+            </Button>
+            <Button
+              appearance="outline"
+              onClick={handleDeleteFolder}
+              disabled={!selectedFolder || deleteFolderPending}
+            >
+              {t("bulkProcessing.explorer.deleteFolder")}
+            </Button>
             <Dropdown
               value={selectedFolder}
               selectedOptions={selectedFolder ? [selectedFolder] : []}
@@ -1830,13 +2541,6 @@ export default function DraftExplorerPage() {
                 </Option>
               ))}
             </Dropdown>
-            <Button
-              appearance="outline"
-              onClick={handleExplorerRefresh}
-              disabled={entriesLoading}
-            >
-              {t("bulkProcessing.explorer.refresh")}
-            </Button>
             <div className={styles.viewToggle}>
               <Text size={100}>{t("bulkProcessing.explorer.viewSmall")}</Text>
               <Switch

@@ -192,6 +192,141 @@
       "context": "Draft explorer SKU generation button"
     },
     {
+      "key": "draftExplorer.detailsButton",
+      "text": "Details",
+      "context": "Draft explorer details button"
+    },
+    {
+      "key": "draftExplorer.deleteRowsButton",
+      "text": "Delete Rows",
+      "context": "Draft explorer delete rows button"
+    },
+    {
+      "key": "draftExplorer.deleteRowsRunning",
+      "text": "Deleting Rows",
+      "context": "Draft explorer delete rows running label"
+    },
+    {
+      "key": "draftExplorer.deleteRowsConfirm",
+      "text": "Delete {count} selected rows?",
+      "context": "Draft explorer delete rows confirmation"
+    },
+    {
+      "key": "draftExplorer.deleteRowsError",
+      "text": "Unable to delete selected rows.",
+      "context": "Draft explorer delete rows error"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.title",
+      "text": "Draft details · {spu}",
+      "context": "Draft explorer details dialog title"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.images",
+      "text": "Latest images",
+      "context": "Draft explorer details dialog images label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.imagesEmpty",
+      "text": "No JPG images found in this folder.",
+      "context": "Draft explorer details dialog images empty"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.shortTitle",
+      "text": "Short title",
+      "context": "Draft explorer details dialog short title label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.longTitle",
+      "text": "Long title",
+      "context": "Draft explorer details dialog long title label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.subtitle",
+      "text": "Subtitle",
+      "context": "Draft explorer details dialog subtitle label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.bulletsShort",
+      "text": "Bullets (short)",
+      "context": "Draft explorer details dialog bullets short label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.bullets",
+      "text": "Bullets",
+      "context": "Draft explorer details dialog bullets label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.bulletsLong",
+      "text": "Bullets (long)",
+      "context": "Draft explorer details dialog bullets long label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.descriptionMain",
+      "text": "Description (main)",
+      "context": "Draft explorer details dialog main description label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.descriptionExtended",
+      "text": "Description (extended)",
+      "context": "Draft explorer details dialog extended description label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.descriptionShort",
+      "text": "Description (short)",
+      "context": "Draft explorer details dialog short description label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.specs",
+      "text": "Specifications",
+      "context": "Draft explorer details dialog specs label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.instructionLabel",
+      "text": "Edit instruction",
+      "context": "Draft explorer details dialog instruction label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.regenerate",
+      "text": "Regenerate product description",
+      "context": "Draft explorer details dialog regenerate button"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.regenerating",
+      "text": "Regenerating",
+      "context": "Draft explorer details dialog regenerating label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.saving",
+      "text": "Saving",
+      "context": "Draft explorer details dialog saving label"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.instructionRequired",
+      "text": "Add an edit instruction before regenerating.",
+      "context": "Draft explorer details dialog missing instruction"
+    },
+    {
+      "key": "draftExplorer.deleteSpusButton",
+      "text": "Delete SPUs",
+      "context": "Draft explorer delete SPUs button"
+    },
+    {
+      "key": "draftExplorer.deleteSpusRunning",
+      "text": "Deleting SPUs",
+      "context": "Draft explorer delete SPUs running label"
+    },
+    {
+      "key": "draftExplorer.deleteSpusConfirm",
+      "text": "Delete {count} selected draft products and their images?",
+      "context": "Draft explorer delete SPUs confirmation"
+    },
+    {
+      "key": "draftExplorer.deleteSpusError",
+      "text": "Unable to delete selected draft products.",
+      "context": "Draft explorer delete SPUs error"
+    },
+    {
       "key": "draftExplorer.generateSkuRunning",
       "text": "Generating SKU",
       "context": "Draft explorer SKU generation running label"
@@ -293,7 +428,7 @@
     },
     {
       "key": "draftExplorer.columns.variantImages",
-      "text": "Variant Images",
+      "text": "Variants",
       "context": "Draft explorer column"
     },
     {
@@ -1368,6 +1503,11 @@
       "context": "Bulk processing explorer refresh"
     },
     {
+      "key": "bulkProcessing.explorer.deleteFolder",
+      "text": "Delete folder",
+      "context": "Bulk processing explorer delete folder"
+    },
+    {
       "key": "bulkProcessing.explorer.up",
       "text": "Up one level",
       "context": "Bulk processing explorer up"
@@ -1391,6 +1531,16 @@
       "key": "bulkProcessing.explorer.deleteConfirm",
       "text": "Are you sure you want to delete the selected items?",
       "context": "Bulk processing explorer delete confirm"
+    },
+    {
+      "key": "bulkProcessing.explorer.deleteFolderConfirm",
+      "text": "Delete the folder \"{folder}\" and all related draft data?",
+      "context": "Bulk processing explorer delete folder confirm"
+    },
+    {
+      "key": "bulkProcessing.explorer.deleteFolderError",
+      "text": "Unable to delete folder.",
+      "context": "Bulk processing explorer delete folder error"
     },
     {
       "key": "bulkProcessing.explorer.drop",
@@ -1576,6 +1726,31 @@
       "key": "shopify.storeSettings.linkedBadge",
       "text": "Linked to base color",
       "context": "Shopify store settings linked badge"
+    },
+    {
+      "key": "shopify.storeSettings.linkedBadgeWithKey",
+      "text": "Linked to base color: {key}",
+      "context": "Shopify store settings linked badge with base key"
+    },
+    {
+      "key": "shopify.storeSettings.promote",
+      "text": "Promote to base",
+      "context": "Shopify store settings promote action"
+    },
+    {
+      "key": "shopify.storeSettings.promoteConfirm",
+      "text": "Promote this override to base color {key}?",
+      "context": "Shopify store settings promote confirm"
+    },
+    {
+      "key": "shopify.storeSettings.promoteNoLink",
+      "text": "No base color link",
+      "context": "Shopify store settings promote disabled hint"
+    },
+    {
+      "key": "shopify.storeSettings.promoteHint",
+      "text": "Updates base color {key} and removes this override.",
+      "context": "Shopify store settings promote hint"
     },
     {
       "key": "shopify.storeSettings.sourceTitle",

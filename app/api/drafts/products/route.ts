@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   let supabaseQuery = adminClient
     .from("draft_products")
     .select(
-      "id,draft_spu,draft_title,draft_subtitle,draft_status,draft_source,draft_supplier_1688_url,draft_updated_at,draft_created_at,draft_description_html,draft_product_description_main_html,draft_mf_product_short_title,draft_mf_product_long_title,draft_mf_product_subtitle,draft_mf_product_bullets_short,draft_mf_product_bullets,draft_mf_product_bullets_long,draft_mf_product_specs,draft_image_folder,draft_main_image_url,draft_image_urls,draft_variant_image_urls,draft_raw_row,draft_image_files,draft_variant_image_files",
+      "id,draft_spu,draft_title,draft_subtitle,draft_status,draft_source,draft_supplier_1688_url,draft_updated_at,draft_created_at,draft_description_html,draft_product_description_main_html,draft_mf_product_description_short_html,draft_mf_product_description_extended_html,draft_mf_product_short_title,draft_mf_product_long_title,draft_mf_product_subtitle,draft_mf_product_bullets_short,draft_mf_product_bullets,draft_mf_product_bullets_long,draft_mf_product_specs,draft_image_folder,draft_main_image_url,draft_image_urls,draft_variant_image_urls,draft_raw_row,draft_image_files,draft_variant_image_files",
       { count: "exact" }
     )
     .eq("draft_status", "draft")
