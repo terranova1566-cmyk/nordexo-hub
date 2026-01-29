@@ -12,6 +12,11 @@ import {
   Dropdown,
   Field,
   Input,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   Textarea,
   Option,
   Spinner,
@@ -1151,21 +1156,26 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleDetailRegenerate = async () => {
+  const handleDetailRegenerate = async (mode: "stay" | "close") => {
     if (!detailTarget || detailRegenerating) return;
-    if (!detailInstruction.trim()) {
+    const instruction = detailInstruction.trim();
+    if (!instruction) {
       setDetailError(t("draftExplorer.detailsDialog.instructionRequired"));
       return;
     }
+    const targetId = detailTarget.id;
     setDetailRegenerating(true);
     setDetailError(null);
+    if (mode === "close") {
+      setDetailOpen(false);
+    }
     try {
       const response = await fetch("/api/drafts/products/rewrite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: detailTarget.id,
-          instruction: detailInstruction,
+          id: targetId,
+          instruction,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -1174,12 +1184,35 @@ export default function DraftExplorerPage() {
       }
       const updates = payload?.updates ?? {};
       const rawRow = payload?.raw_row ?? null;
-      setDetailDraft((prev) => ({ ...prev, ...updates }));
-      if (rawRow) {
-        setDetailRawRow(rawRow);
+
+      if (mode === "close") {
+        const saveUpdates: Record<string, unknown> = { ...updates };
+        if (rawRow) {
+          saveUpdates.draft_raw_row = rawRow;
+        }
+        const saveResponse = await fetch("/api/drafts/products/bulk-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: targetId, updates: saveUpdates }),
+        });
+        const savePayload = await saveResponse.json().catch(() => ({}));
+        if (!saveResponse.ok) {
+          throw new Error(savePayload?.error || "Save failed.");
+        }
+        fetchSpuRows();
+      } else {
+        setDetailDraft((prev) => ({ ...prev, ...updates }));
+        if (rawRow) {
+          setDetailRawRow(rawRow);
+        }
       }
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "Rewrite failed.");
+      const message = err instanceof Error ? err.message : "Rewrite failed.";
+      if (mode === "close") {
+        setDraftError(message);
+      } else {
+        setDetailError(message);
+      }
     } finally {
       setDetailRegenerating(false);
     }
@@ -2425,20 +2458,45 @@ export default function DraftExplorerPage() {
               <Button appearance="outline" onClick={closeDetails}>
                 {t("common.close")}
               </Button>
-              <Button
-                appearance="outline"
-                onClick={handleDetailRegenerate}
-                disabled={detailRegenerating || detailSaving}
-              >
-                {detailRegenerating ? (
-                  <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                    <Spinner size="tiny" />
-                    {t("draftExplorer.detailsDialog.regenerating")}
-                  </span>
-                ) : (
-                  t("draftExplorer.detailsDialog.regenerate")
-                )}
-              </Button>
+              <Menu>
+                <MenuTrigger disableButtonEnhancement>
+                  <Button
+                    appearance="outline"
+                    disabled={detailRegenerating || detailSaving}
+                  >
+                    {detailRegenerating ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          gap: "6px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Spinner size="tiny" />
+                        {t("draftExplorer.detailsDialog.regenerating")}
+                      </span>
+                    ) : (
+                      t("draftExplorer.detailsDialog.regenerate")
+                    )}
+                  </Button>
+                </MenuTrigger>
+                <MenuPopover>
+                  <MenuList>
+                    <MenuItem
+                      disabled={detailRegenerating || detailSaving}
+                      onClick={() => handleDetailRegenerate("stay")}
+                    >
+                      {t("draftExplorer.detailsDialog.regenerateStay")}
+                    </MenuItem>
+                    <MenuItem
+                      disabled={detailRegenerating || detailSaving}
+                      onClick={() => handleDetailRegenerate("close")}
+                    >
+                      {t("draftExplorer.detailsDialog.regenerateClose")}
+                    </MenuItem>
+                  </MenuList>
+                </MenuPopover>
+              </Menu>
               <Button
                 appearance="primary"
                 onClick={handleDetailSave}

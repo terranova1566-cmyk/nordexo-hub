@@ -56,90 +56,11 @@ const formatAmount = (value?: string | null) => {
   return trimmed;
 };
 
-const classifyOptionName = (name?: string | null) => {
-  if (!name) return null;
-  const lowered = name.toLowerCase();
-  if (
-    lowered.includes("amount") ||
-    lowered.includes("qty") ||
-    lowered.includes("quantity") ||
-    lowered.includes("pack") ||
-    lowered.includes("antal") ||
-    lowered.includes("pcs") ||
-    lowered.includes("pieces")
-  ) {
-    return "amount";
-  }
-  if (
-    lowered.includes("color") ||
-    lowered.includes("colour") ||
-    lowered.includes("färg") ||
-    lowered.includes("kulör")
-  ) {
-    return "color";
-  }
-  if (
-    lowered.includes("size") ||
-    lowered.includes("storlek") ||
-    lowered.includes("mått") ||
-    lowered.includes("längd") ||
-    lowered.includes("höjd") ||
-    lowered.includes("bredd") ||
-    lowered.includes("diameter")
-  ) {
-    return "size";
-  }
-  if (
-    lowered.includes("other") ||
-    lowered.includes("övr") ||
-    lowered.includes("variant") ||
-    lowered.includes("modell") ||
-    lowered.includes("material")
-  ) {
-    return "other";
-  }
-  return null;
-};
-
 type OptionBucket = {
   amount: string;
   color: string;
   size: string;
   other: string;
-};
-
-const assignOptionValues = (
-  optionNames: Array<string | null>,
-  optionValues: Array<string | null>
-) => {
-  const bucket: OptionBucket = {
-    amount: "",
-    color: "",
-    size: "",
-    other: "",
-  };
-  const fallbackOrder: Array<keyof OptionBucket> = [
-    "color",
-    "size",
-    "other",
-    "amount",
-  ];
-
-  optionValues.forEach((value, index) => {
-    if (!value) return;
-    const name = optionNames[index];
-    const target = classifyOptionName(name);
-    if (target && !bucket[target]) {
-      bucket[target] = value;
-      return;
-    }
-    const fallback = fallbackOrder.find((field) => !bucket[field]);
-    if (fallback) {
-      bucket[fallback] = value;
-    }
-  });
-
-  return bucket;
 };
 
 const sanitizeFilePart = (value: string) => {
@@ -180,15 +101,9 @@ export async function POST(request: Request) {
   ).map((market: string) => market.toUpperCase());
   const isAdmin = Boolean(userSettings?.is_admin);
 
-  if (!activeMarkets.includes("SE")) {
-    return NextResponse.json(
-      { error: "SE market is not enabled for this user." },
-      { status: 403 }
-    );
-  }
-
   let requestedName = "";
   let listId: string | null = null;
+  let requestedMarket = "SE";
   try {
     const body = await request.json();
     if (body?.name) {
@@ -197,9 +112,23 @@ export async function POST(request: Request) {
     if (body?.listId) {
       listId = String(body.listId).trim() || null;
     }
+    if (body?.market) {
+      requestedMarket = String(body.market).trim().toUpperCase() || "SE";
+    }
   } catch {
     requestedName = "";
     listId = null;
+  }
+
+  const allowedMarkets = new Set(["SE", "NO", "DK", "FI"]);
+  if (!allowedMarkets.has(requestedMarket)) {
+    return NextResponse.json({ error: "Unsupported market." }, { status: 400 });
+  }
+  if (!activeMarkets.includes(requestedMarket)) {
+    return NextResponse.json(
+      { error: `${requestedMarket} market is not enabled for this user.` },
+      { status: 403 }
+    );
   }
 
   const emailPrefix = user.email?.split("@")[0] ?? "export";
@@ -292,7 +221,7 @@ export async function POST(request: Request) {
   const { data: variants, error: variantError } = await supabase
     .from("catalog_variants")
     .select(
-      "id, product_id, sku, option1, option2, option3, b2b_dropship_price_se"
+      "id, product_id, sku, option1, option2, option3, variation_color_se, variation_size_se, variation_other_se, variation_amount_se, b2b_dropship_price_se, b2b_dropship_price_no, b2b_dropship_price_dk, b2b_dropship_price_fi"
     )
     .in("product_id", productIds)
     .order("sku", { ascending: true });
@@ -300,6 +229,57 @@ export async function POST(request: Request) {
   if (variantError) {
     return NextResponse.json({ error: variantError.message }, { status: 500 });
   }
+
+  const variantIds = variants?.map((variant) => variant.id).filter(Boolean) ?? [];
+  const variantPriceRows = new Map<
+    string,
+    Map<string, Map<string, number | null>>
+  >();
+
+  if (variantIds.length > 0) {
+    const { data: priceRows } = await supabase
+      .from("catalog_variant_prices")
+      .select("catalog_variant_id, market, currency, price, price_type")
+      .in("catalog_variant_id", variantIds)
+      .eq("market", requestedMarket)
+      .in("price_type", ["b2b_fixed", "b2b_calc", "b2b_dropship"])
+      .is("deleted_at", null);
+
+    priceRows?.forEach((row) => {
+      const variantId = row.catalog_variant_id;
+      if (!variantId) return;
+      const type = String(row.price_type || "b2b_dropship");
+      const entry = variantPriceRows.get(variantId) ?? new Map();
+      const typeEntry = entry.get(type) ?? new Map<string, number | null>();
+      const market = row.market?.toUpperCase();
+      if (market) {
+        let priceValue: number | null = null;
+        if (row.price !== null && row.price !== undefined) {
+          const numeric = Number(row.price);
+          if (Number.isFinite(numeric)) {
+            priceValue = numeric;
+          }
+        }
+        typeEntry.set(market, priceValue);
+      }
+      entry.set(type, typeEntry);
+      variantPriceRows.set(variantId, entry);
+    });
+  }
+
+  const resolveMarketPrice = (
+    variantId: string,
+    fallback: number | null | undefined
+  ) => {
+    const entry = variantPriceRows.get(variantId);
+    if (!entry) return fallback ?? null;
+    const readPrice = (type: string) => entry.get(type)?.get(requestedMarket);
+    const fixed = readPrice("b2b_fixed") ?? readPrice("b2b_dropship");
+    if (fixed !== undefined && fixed !== null) return fixed;
+    const calc = readPrice("b2b_calc");
+    if (calc !== undefined && calc !== null) return calc;
+    return fallback ?? null;
+  };
 
   const { data: metaDefs } = await supabase
     .from("metafield_definitions")
@@ -404,12 +384,6 @@ export async function POST(request: Request) {
     const nameSe = shortTitle ?? product.title ?? product.spu;
     const longTitleSe = longTitle ?? product.title ?? product.spu;
 
-    const optionNames = [
-      product.option1_name,
-      product.option2_name,
-      product.option3_name,
-    ];
-
     const variantsToExport =
       productVariants.length > 0
         ? productVariants
@@ -419,13 +393,25 @@ export async function POST(request: Request) {
               option1: null,
               option2: null,
               option3: null,
+              variation_color_se: null,
+              variation_size_se: null,
+              variation_other_se: null,
+              variation_amount_se: null,
               b2b_dropship_price_se: null,
+              b2b_dropship_price_no: null,
+              b2b_dropship_price_dk: null,
+              b2b_dropship_price_fi: null,
+              id: "",
             },
           ];
 
     variantsToExport.forEach((variant) => {
-      const optionValues = [variant.option1, variant.option2, variant.option3];
-      const bucket = assignOptionValues(optionNames, optionValues);
+      const bucket: OptionBucket = {
+        amount: variant.variation_amount_se ?? "",
+        color: variant.variation_color_se ?? "",
+        size: variant.variation_size_se ?? "",
+        other: variant.variation_other_se ?? "",
+      };
       const amountFormatted = formatAmount(bucket.amount);
       const variantParts = [
         bucket.color,
@@ -435,12 +421,23 @@ export async function POST(request: Request) {
       ].filter(Boolean);
       const variantName = variantParts.join("; ");
       const combinedText = variantName ? `${nameSe} - ${variantName}` : nameSe;
+      const fallbackPrice =
+        requestedMarket === "SE"
+          ? variant.b2b_dropship_price_se
+          : requestedMarket === "NO"
+            ? variant.b2b_dropship_price_no
+            : requestedMarket === "DK"
+              ? variant.b2b_dropship_price_dk
+              : variant.b2b_dropship_price_fi;
+      const b2bPrice = variant.id
+        ? resolveMarketPrice(variant.id, fallbackPrice)
+        : fallbackPrice;
 
       rows.push([
         product.spu,
         variant.sku ?? product.spu,
         nameSe,
-        variantName || "Default",
+        variantName,
         amountFormatted,
         bucket.color,
         bucket.size,
@@ -451,7 +448,7 @@ export async function POST(request: Request) {
         bulletList,
         descriptionCell,
         specsList,
-        variant.b2b_dropship_price_se ?? "",
+        b2bPrice ?? "",
         1000,
         `${IMAGE_ZIP_BASE}/${product.spu}.zip`,
       ]);
@@ -502,6 +499,7 @@ export async function POST(request: Request) {
       meta: {
         template: "digideal",
         export_name: exportName,
+        market: requestedMarket,
         product_count: productIds.length,
         row_count: rows.length,
         spu_count: productIds.length,

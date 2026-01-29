@@ -14,6 +14,11 @@ import {
   Field,
   Image,
   Input,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   MessageBar,
   Option,
   Spinner,
@@ -772,6 +777,13 @@ function SavedListDetailView({ listId }: { listId: string }) {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportName, setExportName] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportMode, setExportMode] = useState<"excel" | "images">("excel");
+  const [exportImageMode, setExportImageMode] = useState<"all" | "original">(
+    "all"
+  );
+  const [exportMarket, setExportMarket] = useState<"SE" | "NO" | "FI" | "DK">(
+    "SE"
+  );
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
@@ -784,11 +796,18 @@ function SavedListDetailView({ listId }: { listId: string }) {
     return `${prefix} products ${date}`;
   };
 
-  const openExportDialog = async () => {
+  const openExportDialog = async (
+    mode: "excel" | "images",
+    market: "SE" | "NO" | "FI" | "DK" = "SE",
+    imageMode: "all" | "original" = "all"
+  ) => {
     if (!exportName.trim()) {
       const { data } = await supabase.auth.getUser();
       setExportName(buildDefaultExportName(data.user?.email));
     }
+    setExportMode(mode);
+    setExportMarket(market);
+    setExportImageMode(imageMode);
     setExportDialogOpen(true);
   };
 
@@ -796,12 +815,18 @@ function SavedListDetailView({ listId }: { listId: string }) {
     setIsExporting(true);
     setError(null);
     try {
-      const response = await fetch("/api/exports/digideal", {
+      const endpoint =
+        exportMode === "images"
+          ? "/api/exports/digideal/images"
+          : "/api/exports/digideal";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: exportName.trim(),
           listId,
+          market: exportMarket,
+          imageMode: exportImageMode,
         }),
       });
       if (!response.ok) {
@@ -811,7 +836,8 @@ function SavedListDetailView({ listId }: { listId: string }) {
       const blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
-      const filename = match?.[1] ?? "export.xlsx";
+      const filename =
+        match?.[1] ?? (exportMode === "images" ? "export.zip" : "export.xlsx");
 
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -1043,14 +1069,55 @@ function SavedListDetailView({ listId }: { listId: string }) {
             </Text>
           </div>
           <div className={styles.detailActions}>
-            <Button
-              appearance="primary"
-              className={styles.exportButton}
-              onClick={openExportDialog}
-              disabled={listMissing || items.length === 0 || isLoading}
-            >
-              {t("products.lists.export")}
-            </Button>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance="primary"
+                  className={styles.exportButton}
+                  disabled={listMissing || items.length === 0 || isLoading}
+                >
+                  {t("products.lists.exportExcel")}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuItem onClick={() => openExportDialog("excel", "SE")}>
+                    {t("products.lists.exportMarketSe")}
+                  </MenuItem>
+                  <MenuItem onClick={() => openExportDialog("excel", "NO")}>
+                    {t("products.lists.exportMarketNo")}
+                  </MenuItem>
+                  <MenuItem onClick={() => openExportDialog("excel", "FI")}>
+                    {t("products.lists.exportMarketFi")}
+                  </MenuItem>
+                  <MenuItem onClick={() => openExportDialog("excel", "DK")}>
+                    {t("products.lists.exportMarketDk")}
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance="outline"
+                  disabled={listMissing || items.length === 0 || isLoading}
+                >
+                  {t("products.lists.exportImages")}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuItem onClick={() => openExportDialog("images", "SE", "all")}>
+                    {t("products.lists.exportImagesAll")}
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => openExportDialog("images", "SE", "original")}
+                  >
+                    {t("products.lists.exportImagesOriginal")}
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
           </div>
         </div>
 
@@ -1140,7 +1207,9 @@ function SavedListDetailView({ listId }: { listId: string }) {
               >
                 {isExporting
                   ? t("products.lists.exporting")
-                  : t("products.lists.export")}
+                  : exportMode === "images"
+                    ? t("products.lists.exportImages")
+                    : t("products.lists.exportExcel")}
               </Button>
             </DialogActions>
           </DialogBody>

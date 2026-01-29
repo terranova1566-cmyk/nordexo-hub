@@ -292,6 +292,16 @@
       "context": "Draft explorer details dialog regenerate button"
     },
     {
+      "key": "draftExplorer.detailsDialog.regenerateStay",
+      "text": "Regenerate and stay on page",
+      "context": "Draft explorer details dialog regenerate menu option"
+    },
+    {
+      "key": "draftExplorer.detailsDialog.regenerateClose",
+      "text": "Regenerate and close window",
+      "context": "Draft explorer details dialog regenerate menu option"
+    },
+    {
       "key": "draftExplorer.detailsDialog.regenerating",
       "text": "Regenerating",
       "context": "Draft explorer details dialog regenerating label"
@@ -2736,6 +2746,46 @@
       "key": "products.lists.export",
       "text": "Export",
       "context": "Export list button"
+    },
+    {
+      "key": "products.lists.exportExcel",
+      "text": "Export Excel",
+      "context": "Export list Excel button"
+    },
+    {
+      "key": "products.lists.exportImages",
+      "text": "Export Images",
+      "context": "Export list images button"
+    },
+    {
+      "key": "products.lists.exportImagesAll",
+      "text": "Export all sizes",
+      "context": "Export list images all sizes option"
+    },
+    {
+      "key": "products.lists.exportImagesOriginal",
+      "text": "Export original",
+      "context": "Export list images original option"
+    },
+    {
+      "key": "products.lists.exportMarketSe",
+      "text": "Sweden",
+      "context": "Export list market option"
+    },
+    {
+      "key": "products.lists.exportMarketNo",
+      "text": "Norway",
+      "context": "Export list market option"
+    },
+    {
+      "key": "products.lists.exportMarketFi",
+      "text": "Finland",
+      "context": "Export list market option"
+    },
+    {
+      "key": "products.lists.exportMarketDk",
+      "text": "Denmark",
+      "context": "Export list market option"
     },
     {
       "key": "products.lists.exportTitle",
