@@ -4,6 +4,10 @@ import path from "path";
 import { spawn } from "child_process";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  normalizeImageNamesInFolder,
+  validateImageFolder,
+} from "@/lib/image-names";
 
 export const runtime = "nodejs";
 
@@ -298,15 +302,68 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const runFolders = new Map<string, string[]>();
   const archivedRuns = new Map<string, string>();
+  const imageIssues: Array<{
+    spu: string;
+    folder: string;
+    error?: string;
+    missingMain?: boolean;
+    invalidPrefixes?: string[];
+  }> = [];
 
   for (const row of products) {
     if (!row.draft_image_folder || !row.draft_spu) continue;
     const abs = resolveDraftFolder(row.draft_image_folder);
-    if (!abs) continue;
+    if (!abs) {
+      imageIssues.push({
+        spu: row.draft_spu,
+        folder: row.draft_image_folder,
+        error: "Invalid draft folder path.",
+      });
+      continue;
+    }
+    if (!existsSync(abs)) {
+      imageIssues.push({
+        spu: row.draft_spu,
+        folder: abs,
+        error: "Draft folder missing.",
+      });
+      continue;
+    }
+    try {
+      await normalizeImageNamesInFolder(abs, row.draft_spu);
+      const validation = await validateImageFolder(abs, row.draft_spu);
+      if (validation.count > 0) {
+        if (!validation.hasMain || validation.invalidPrefixes.length) {
+          imageIssues.push({
+            spu: row.draft_spu,
+            folder: abs,
+            missingMain: !validation.hasMain,
+            invalidPrefixes: validation.invalidPrefixes,
+          });
+        }
+      }
+    } catch (err) {
+      imageIssues.push({
+        spu: row.draft_spu,
+        folder: abs,
+        error: (err as Error).message,
+      });
+    }
     const runFolder = path.dirname(abs);
     const existing = runFolders.get(runFolder) ?? [];
     existing.push(row.draft_spu);
     runFolders.set(runFolder, existing);
+  }
+
+  if (imageIssues.length) {
+    return NextResponse.json(
+      {
+        error:
+          "Some draft image folders are missing required naming structure. Please resolve and retry.",
+        issues: imageIssues,
+      },
+      { status: 400 }
+    );
   }
 
   const archiveResults: Array<{
