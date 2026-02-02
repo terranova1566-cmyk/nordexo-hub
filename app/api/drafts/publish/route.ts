@@ -448,6 +448,20 @@ export async function POST(request: Request) {
       row.draft_raw_row && typeof row.draft_raw_row === "object"
         ? (row.draft_raw_row as Record<string, unknown>)
         : null;
+    const parentShiptype =
+      parent?.draft_raw_row && typeof parent.draft_raw_row === "object"
+        ? (parent.draft_raw_row as Record<string, unknown>)
+        : null;
+    const shippingClass = normalizeText(
+      row.draft_shipping_class ||
+        (parentShiptype ? (parentShiptype.product_shiptype as string) : "") ||
+        (parentShiptype ? (parentShiptype.product_shipType as string) : "")
+    );
+    const purchasePrice = normalizeText(
+      row.draft_purchase_price_cny ||
+        row.draft_price ||
+        (rawRow ? getRawText(rawRow, "price") : "")
+    );
     return {
       spu: row.draft_spu,
       sku: normalizeText(row.draft_sku),
@@ -479,7 +493,7 @@ export async function POST(request: Request) {
       shipping_name_en: normalizeText(row.draft_shipping_name_en),
       short_title_zh: normalizeText(row.draft_short_title_zh),
       shipping_name_zh: normalizeText(row.draft_shipping_name_zh),
-      shipping_class: normalizeText(row.draft_shipping_class),
+      shipping_class: shippingClass,
       taxable: normalizeText(row.draft_taxable),
       tax_code: normalizeText(row.draft_tax_code),
       hs_code: normalizeText(row.draft_hs_code),
@@ -492,7 +506,7 @@ export async function POST(request: Request) {
       b2b_dropship_price_no: normalizeText(row.draft_b2b_dropship_price_no),
       b2b_dropship_price_dk: normalizeText(row.draft_b2b_dropship_price_dk),
       b2b_dropship_price_fi: normalizeText(row.draft_b2b_dropship_price_fi),
-      purchase_price_cny: normalizeText(row.draft_purchase_price_cny),
+      purchase_price_cny: purchasePrice,
       raw_row: row.draft_raw_row ?? null,
       imported_at: now,
       processed: false,
