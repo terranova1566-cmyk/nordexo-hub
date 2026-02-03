@@ -95,8 +95,12 @@ export async function GET(request: NextRequest) {
   const categoriesParam = searchParams.get("categories")?.trim() ?? null;
   const categorySelections = parseCategorySelections(categoriesParam);
   const tag = searchParams.get("tag")?.trim();
-  const searchTerms = [q, category, tag].filter(Boolean).join(" ").trim();
-  const useMeili = searchTerms.length > 0;
+  const exactSpuQuery = Boolean(q) && q.includes("-") && !/\s/.test(q ?? "");
+  const searchTerms = [exactSpuQuery ? null : q, category, tag]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const useMeili = searchTerms.length > 0 || exactSpuQuery;
   const brandFilters = searchParams
     .getAll("brand")
     .map((value) => value.trim())
@@ -791,3 +795,6 @@ export async function GET(request: NextRequest) {
     active_markets: activeMarkets,
   });
 }
+    if (exactSpuQuery && q) {
+      addOrGroup([`spu = "${q.replace(/"/g, '\\"')}"`]);
+    }

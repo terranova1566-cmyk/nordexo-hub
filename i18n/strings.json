@@ -4114,6 +4114,11 @@
       "context": "DigiDeal campaigns status filter label"
     },
     {
+      "key": "digideal.filters.priceMatch",
+      "text": "Matched Prices",
+      "context": "DigiDeal campaigns matched prices filter label"
+    },
+    {
       "key": "digideal.filters.seller",
       "text": "Seller",
       "context": "DigiDeal campaigns seller filter label"
@@ -4142,6 +4147,21 @@
       "key": "digideal.status.all",
       "text": "All",
       "context": "DigiDeal campaigns status option"
+    },
+    {
+      "key": "digideal.priceMatch.all",
+      "text": "All",
+      "context": "DigiDeal campaigns price match filter option"
+    },
+    {
+      "key": "digideal.priceMatch.have",
+      "text": "Have Prices",
+      "context": "DigiDeal campaigns price match filter option"
+    },
+    {
+      "key": "digideal.priceMatch.none",
+      "text": "No Price",
+      "context": "DigiDeal campaigns price match filter option"
     },
     {
       "key": "digideal.seller.all",

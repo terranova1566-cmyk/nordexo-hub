@@ -1,6 +1,63 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+const SELLER_GROUPS = [
+  {
+    display: "Nordexo",
+    variants: [
+      "Nordexo",
+      "Nordexo Limited",
+      "Nordexo Limited77795751",
+      "Blank Space Limited",
+    ],
+  },
+  {
+    display: "Newtech Trading",
+    variants: [
+      "Newtech Trading Electronics Limited",
+      "Newtech Trading Electronics Limited61275193",
+    ],
+  },
+  {
+    display: "TurboDeals",
+    variants: [
+      "Turbo Inc Limited2608850",
+      "TurboDealz",
+      "Turbo Dealz",
+      "Turbo dealz",
+      "TurboDeals",
+      "Turbo Deals",
+      "Turbodealz",
+    ],
+  },
+  {
+    display: "Nord Trading Limited",
+    variants: ["Nord Trading Limited", "NordTradingLimited OU"],
+  },
+];
+
+const getSellerGroup = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  return SELLER_GROUPS.find((group) => {
+    if (group.display.toLowerCase() === normalized) return true;
+    return group.variants.some((variant) => {
+      const variantValue = variant.toLowerCase();
+      if (variantValue === normalized) return true;
+      if (normalized.startsWith(variantValue)) {
+        const suffix = normalized.slice(variantValue.length);
+        return suffix.length > 0 && /^[\\s\\d-]+$/.test(suffix);
+      }
+      return false;
+    });
+  });
+};
+
+const normalizeSellerName = (value?: string | null) => {
+  if (!value) return value ?? null;
+  const group = getSellerGroup(value);
+  return group ? group.display : value.trim();
+};
+
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabase();
   const {
@@ -67,7 +124,12 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    product: product ?? null,
+    product: product
+      ? {
+          ...product,
+          seller_name: normalizeSellerName(product.seller_name),
+        }
+      : null,
     analysis: analysis ?? null,
   });
 }

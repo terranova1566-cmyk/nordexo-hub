@@ -183,6 +183,9 @@ const useStyles = makeStyles({
   filterField: {
     minWidth: "180px",
   },
+  filterFieldNarrow: {
+    minWidth: "150px",
+  },
   dropdownCompact: {
     minWidth: "unset",
     width: "auto",
@@ -217,6 +220,18 @@ const useStyles = makeStyles({
       backgroundColor: "#d8f5dd",
     },
   },
+  priceMatchRow: {
+    backgroundColor: "#dbeeff",
+    "& .fui-TableCell": {
+      backgroundColor: "#dbeeff",
+    },
+    "&:hover": {
+      backgroundColor: "#cfe4ff",
+    },
+    "&:hover .fui-TableCell": {
+      backgroundColor: "#cfe4ff",
+    },
+  },
   imageCol: {
     width: "158px",
     paddingLeft: "8px",
@@ -239,18 +254,34 @@ const useStyles = makeStyles({
     minWidth: "160px",
   },
   statusCol: {
-    minWidth: "110px",
+    minWidth: "75px",
+    width: "75px",
+    maxWidth: "75px",
   },
   linkCol: {
-    minWidth: "120px",
+    minWidth: "75px",
+    width: "75px",
+    maxWidth: "75px",
   },
   estimatedPriceCol: {
-    minWidth: "160px",
+    minWidth: "200px",
   },
   linkButton: {
     backgroundColor: tokens.colorNeutralBackground1,
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  supplierAddButton: {
+    backgroundColor: "#ffe480",
+    borderColor: "#e0c666",
+    "&:hover": {
+      backgroundColor: "#f5db70",
+      borderColor: "#d2ba5f",
+    },
+    "&:active": {
+      backgroundColor: "#edd36a",
+      borderColor: "#c8b255",
     },
   },
   linkButtonContent: {
@@ -273,6 +304,15 @@ const useStyles = makeStyles({
     textAlign: "right",
     whiteSpace: "nowrap",
     fontVariantNumeric: "tabular-nums",
+  },
+  estimatedPriceBadge: {
+    borderRadius: "999px",
+    paddingInline: "8px",
+    paddingBlock: "2px",
+    border: "1px solid #2e7d32",
+    color: "#2e7d32",
+    backgroundColor: "transparent",
+    fontWeight: tokens.fontWeightSemibold,
   },
   estimatedPriceRow: {
     display: "inline-flex",
@@ -398,6 +438,8 @@ const useStyles = makeStyles({
     minWidth: "unset",
     height: "auto",
     alignSelf: "flex-start",
+    justifyContent: "flex-start",
+    textAlign: "left",
     backgroundColor: "transparent",
     color: tokens.colorNeutralForeground1,
     fontSize: tokens.fontSizeBase300,
@@ -832,6 +874,7 @@ export default function DigidealCampaignsPage() {
   const [status, setStatus] = useState("online");
   const [sort, setSort] = useState("last_seen_desc");
   const [sellerFilter, setSellerFilter] = useState("all");
+  const [priceMatch, setPriceMatch] = useState("all");
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1235,6 +1278,9 @@ export default function DigidealCampaignsPage() {
         if (sellerFilter && sellerFilter !== "all") {
           params.set("seller", sellerFilter);
         }
+        if (priceMatch && priceMatch !== "all") {
+          params.set("priceMatch", priceMatch);
+        }
         if (status) params.set("status", status);
         if (sort) params.set("sort", sort);
         params.set("page", String(page));
@@ -1292,6 +1338,7 @@ export default function DigidealCampaignsPage() {
     status,
     sort,
     sellerFilter,
+    priceMatch,
     page,
     pageSize,
     refreshToken,
@@ -1844,7 +1891,12 @@ export default function DigidealCampaignsPage() {
         return (
           <TableRow
             key={item.product_id}
-            className={isProductionActive ? styles.productionRow : undefined}
+            className={mergeClasses(
+              hasEstimatedPrice && !isProductionActive
+                ? styles.priceMatchRow
+                : undefined,
+              isProductionActive ? styles.productionRow : undefined
+            )}
           >
             <TableCell className={styles.imageCol}>
               <div className={styles.thumbnailWrap}>
@@ -2063,9 +2115,12 @@ export default function DigidealCampaignsPage() {
             <TableCell className={styles.estimatedPriceCol}>
               {hasEstimatedPrice ? (
                 <div className={styles.estimatedPriceRow}>
-                  <Text className={styles.estimatedPriceText}>
+                  <Badge
+                    appearance="outline"
+                    className={styles.estimatedPriceBadge}
+                  >
                     {estimatedPriceLabel}
-                  </Text>
+                  </Badge>
                   {showSupplierEdit ? (
                     <Button
                       appearance="outline"
@@ -2081,7 +2136,7 @@ export default function DigidealCampaignsPage() {
                 <Button
                   appearance="outline"
                   size="small"
-                  className={styles.linkButton}
+                  className={mergeClasses(styles.linkButton, styles.supplierAddButton)}
                   onClick={() => openSupplierDialog(item)}
                 >
                   {t("digideal.supplier.add")}
@@ -2254,6 +2309,28 @@ export default function DigidealCampaignsPage() {
               <Option value="online">{t("digideal.status.online")}</Option>
               <Option value="offline">{t("digideal.status.offline")}</Option>
               <Option value="all">{t("digideal.status.all")}</Option>
+            </Dropdown>
+          </Field>
+          <Field
+            label={<span className={styles.filterLabel}>{t("digideal.filters.priceMatch")}</span>}
+          >
+            <Dropdown
+              value={
+                priceMatch === "have"
+                  ? t("digideal.priceMatch.have")
+                  : priceMatch === "none"
+                    ? t("digideal.priceMatch.none")
+                    : t("digideal.priceMatch.all")
+              }
+              selectedOptions={[priceMatch]}
+              onOptionSelect={(_, data) =>
+                setPriceMatch(String(data.optionValue) || "all")
+              }
+              className={mergeClasses(styles.dropdownCompact, styles.filterFieldNarrow)}
+            >
+              <Option value="all">{t("digideal.priceMatch.all")}</Option>
+              <Option value="have">{t("digideal.priceMatch.have")}</Option>
+              <Option value="none">{t("digideal.priceMatch.none")}</Option>
             </Dropdown>
           </Field>
           <Field label={<span className={styles.filterLabel}>{t("digideal.filters.seller")}</span>}>

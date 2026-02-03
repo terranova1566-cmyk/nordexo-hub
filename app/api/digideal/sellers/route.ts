@@ -3,8 +3,20 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const SELLER_GROUPS = [
   {
-    display: "Nordexo Limited",
-    variants: ["Nordexo Limited77795751", "Nordexo Limited"],
+    display: "Nordexo",
+    variants: [
+      "Nordexo",
+      "Nordexo Limited",
+      "Nordexo Limited77795751",
+      "Blank Space Limited",
+    ],
+  },
+  {
+    display: "Newtech Trading",
+    variants: [
+      "Newtech Trading Electronics Limited",
+      "Newtech Trading Electronics Limited61275193",
+    ],
   },
   {
     display: "TurboDeals",
@@ -26,11 +38,18 @@ const SELLER_GROUPS = [
 
 const getSellerGroup = (value: string) => {
   const normalized = value.trim().toLowerCase();
-  return SELLER_GROUPS.find(
-    (group) =>
-      group.display.toLowerCase() === normalized ||
-      group.variants.some((variant) => variant.toLowerCase() === normalized)
-  );
+  return SELLER_GROUPS.find((group) => {
+    if (group.display.toLowerCase() === normalized) return true;
+    return group.variants.some((variant) => {
+      const variantValue = variant.toLowerCase();
+      if (variantValue === normalized) return true;
+      if (normalized.startsWith(variantValue)) {
+        const suffix = normalized.slice(variantValue.length);
+        return suffix.length > 0 && /^[\\s\\d-]+$/.test(suffix);
+      }
+      return false;
+    });
+  });
 };
 
 const normalizeSellerName = (value?: string | null) => {

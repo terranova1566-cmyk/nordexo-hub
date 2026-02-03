@@ -9,8 +9,20 @@ const PRODUCT_SELECT =
 
 const SELLER_GROUPS = [
   {
-    display: "Nordexo Limited",
-    variants: ["Nordexo Limited77795751", "Nordexo Limited"],
+    display: "Nordexo",
+    variants: [
+      "Nordexo",
+      "Nordexo Limited",
+      "Nordexo Limited77795751",
+      "Blank Space Limited",
+    ],
+  },
+  {
+    display: "Newtech Trading",
+    variants: [
+      "Newtech Trading Electronics Limited",
+      "Newtech Trading Electronics Limited61275193",
+    ],
   },
   {
     display: "TurboDeals",
@@ -32,11 +44,18 @@ const SELLER_GROUPS = [
 
 const getSellerGroup = (value: string) => {
   const normalized = value.trim().toLowerCase();
-  return SELLER_GROUPS.find(
-    (group) =>
-      group.display.toLowerCase() === normalized ||
-      group.variants.some((variant) => variant.toLowerCase() === normalized)
-  );
+  return SELLER_GROUPS.find((group) => {
+    if (group.display.toLowerCase() === normalized) return true;
+    return group.variants.some((variant) => {
+      const variantValue = variant.toLowerCase();
+      if (variantValue === normalized) return true;
+      if (normalized.startsWith(variantValue)) {
+        const suffix = normalized.slice(variantValue.length);
+        return suffix.length > 0 && /^[\\s\\d-]+$/.test(suffix);
+      }
+      return false;
+    });
+  });
 };
 
 const normalizeSellerName = (value?: string | null) => {
@@ -106,6 +125,9 @@ const normalizeWeightKg = (weightKg: number | null, weightGrams: number | null) 
 const stripHtml = (value: string) =>
   value.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ");
 
+const toPgInList = (values: string[]) =>
+  `(${values.map((value) => `'${value.replace(/'/g, "''")}'`).join(",")})`;
+
 const extractShippingCost = (value?: string | null) => {
   if (!value) return null;
   const text = stripHtml(value);
@@ -147,6 +169,39 @@ const computeEstimatedPrice = (
       ? Number(rawPrice.toFixed(2))
       : Math.round(rawPrice);
   return Number.isFinite(price) ? price : null;
+};
+
+const loadPriceMatchIds = async (supabase: any) => {
+  const baseFilters = (query: any) =>
+    query
+      .not("purchase_price", "is", null)
+      .or("weight_kg.gt.0,weight_grams.gt.0")
+      .not("1688_URL", "is", null);
+
+  const primarySelect =
+    'product_id, purchase_price, weight_kg, weight_grams, "1688_URL"';
+  const fallbackSelect =
+    "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
+
+  let response = await baseFilters(
+    supabase.from("digideal_products").select(primarySelect)
+  );
+  if (
+    response.error?.message &&
+    response.error.message.toLowerCase().includes("1688")
+  ) {
+    response = await baseFilters(
+      supabase.from("digideal_products").select(fallbackSelect)
+    );
+  }
+
+  if (response.error) {
+    return { ids: [] as string[], error: response.error };
+  }
+
+  const ids =
+    response.data?.map((row) => String(row.product_id)).filter(Boolean) ?? [];
+  return { ids, error: null };
 };
 
 const getAdminClient = () => {
@@ -207,33 +262,58 @@ export async function GET(request: NextRequest) {
     const seller = searchParams.get("seller")?.trim();
     const status = (searchParams.get("status") ?? "online").toLowerCase();
     const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
+    const priceMatch = searchParams.get("priceMatch")?.trim().toLowerCase();
 
-  const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const pageSize = Math.min(
-    MAX_PAGE_SIZE,
-    Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE))
-  );
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+    const pageSize = Math.min(
+      MAX_PAGE_SIZE,
+      Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE))
+    );
 
-  let query = supabase
-    .from("digideal_products_search")
-    .select(PRODUCT_SELECT, { count: "exact" });
+    let query = supabase
+      .from("digideal_products_search")
+      .select(PRODUCT_SELECT, { count: "exact" });
 
-  if (status !== "all") {
-    query = query.eq("status", status);
-  }
-
-  query = query.not("seller_name", "ilike", "%digideal%");
-  query = query.not("seller_name", "ilike", "%ace lloyds%");
-
-  if (seller && seller.toLowerCase() !== "all") {
-    const group = getSellerGroup(seller);
-    if (group) {
-      query = query.in("seller_name", group.variants);
-    } else {
-      const like = `%${escapeLikeToken(seller)}%`;
-      query = query.ilike("seller_name", like);
+    if (status !== "all") {
+      query = query.eq("status", status);
     }
-  }
+
+    query = query.not("seller_name", "ilike", "%digideal%");
+    query = query.not("seller_name", "ilike", "%ace lloyds%");
+
+    if (seller && seller.toLowerCase() !== "all") {
+      const group = getSellerGroup(seller);
+      if (group) {
+        query = query.in("seller_name", group.variants);
+      } else {
+        const like = `%${escapeLikeToken(seller)}%`;
+        query = query.ilike("seller_name", like);
+      }
+    }
+
+    if (priceMatch === "have" || priceMatch === "none") {
+      const { ids, error: priceMatchError } = await loadPriceMatchIds(supabase);
+      if (priceMatchError) {
+        console.error("digideal price match error", {
+          message: priceMatchError.message,
+          details: priceMatchError.details,
+          hint: priceMatchError.hint,
+          code: priceMatchError.code,
+        });
+      } else if (priceMatch === "have") {
+        if (ids.length === 0) {
+          return NextResponse.json({
+            items: [],
+            page,
+            pageSize,
+            total: 0,
+          });
+        }
+        query = query.in("product_id", ids);
+      } else if (ids.length > 0) {
+        query = query.not("product_id", "in", toPgInList(ids));
+      }
+    }
 
   if (q) {
     const tokens = buildSearchTokens(q);
