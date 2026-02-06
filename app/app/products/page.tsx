@@ -79,13 +79,13 @@ const useStyles = makeStyles({
   topRow: {
     display: "flex",
     flexWrap: "wrap",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     gap: "12px",
   },
   topLeft: {
     display: "flex",
     flexWrap: "wrap",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     gap: "12px",
   },
   topRight: {
@@ -98,6 +98,76 @@ const useStyles = makeStyles({
     "& input": {
       fontSize: tokens.fontSizeBase300,
     },
+  },
+  searchLabelRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    width: "100%",
+  },
+  advancedSearchButton: {
+    border: "none",
+    padding: 0,
+    background: "transparent",
+    cursor: "pointer",
+    color: tokens.colorNeutralForeground4,
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightRegular,
+    lineHeight: tokens.lineHeightBase100,
+    fontFamily: tokens.fontFamilyBase,
+    "&:hover": {
+      color: tokens.colorNeutralForeground2,
+      textDecorationLine: "underline",
+    },
+    "&:disabled": {
+      cursor: "not-allowed",
+      color: tokens.colorNeutralForeground4,
+      opacity: 0.6,
+      textDecorationLine: "none",
+    },
+  },
+  advancedSearchButtonActive: {
+    color: tokens.colorBrandForeground1,
+  },
+  advancedSearchSummary: {
+    marginTop: "4px",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+  },
+  advancedDataDialog: {
+    width: "min(1200px, 96vw)",
+    maxHeight: "80vh",
+  },
+  advancedDataBody: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  advancedDataContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  advancedDataSection: {
+    width: "100%",
+  },
+  advancedDataLabel: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    marginBottom: "4px",
+    display: "block",
+  },
+  advancedDataBlock: {
+    maxHeight: "220px",
+    overflow: "auto",
+    padding: "10px 12px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    fontSize: tokens.fontSizeBase200,
+    fontFamily: tokens.fontFamilyMonospace,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
   },
   filterLabel: {
     fontSize: tokens.fontSizeBase200,
@@ -701,6 +771,16 @@ function ProductsPageInner() {
   );
 
   const [searchInput, setSearchInput] = useState("");
+  const [advancedMode, setAdvancedMode] = useState(false);
+  const [advancedLoading, setAdvancedLoading] = useState(false);
+  const [advancedError, setAdvancedError] = useState<string | null>(null);
+  const [advancedQuery, setAdvancedQuery] = useState<string>("");
+  const [advancedCoreTerms, setAdvancedCoreTerms] = useState<string[]>([]);
+  const [advancedSupportTerms, setAdvancedSupportTerms] = useState<string[]>([]);
+  const [advancedPrompt, setAdvancedPrompt] = useState<string | null>(null);
+  const [advancedRawResponse, setAdvancedRawResponse] = useState<string | null>(null);
+  const [advancedRawJson, setAdvancedRawJson] = useState<Record<string, unknown> | null>(null);
+  const [advancedDataOpen, setAdvancedDataOpen] = useState(false);
   const [sort, setSort] = useState("updated_desc");
   const [savedFilter, setSavedFilter] = useState("all");
   const [wishlistFilterId, setWishlistFilterId] = useState("all");
@@ -744,6 +824,71 @@ function ProductsPageInner() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   const debouncedSearch = useDebouncedValue(searchInput, 400);
+  const effectiveQuery =
+    advancedMode && advancedQuery ? advancedQuery : debouncedSearch;
+  const advancedCoreParam = advancedMode
+    ? advancedCoreTerms
+        .map((term) => term.trim())
+        .filter(Boolean)
+        .join("|")
+    : "";
+
+  const runAdvancedSearch = async () => {
+    const query = searchInput.trim();
+    if (!query || advancedLoading) return;
+    setAdvancedLoading(true);
+    setAdvancedError(null);
+    try {
+      const response = await fetch("/api/products/advanced-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const message =
+          payload?.error || t("products.filters.advancedSearchError");
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      const nextQuery = String(payload?.expanded_query || query).trim();
+      setAdvancedMode(true);
+      setAdvancedQuery(nextQuery);
+      setAdvancedCoreTerms(
+        Array.isArray(payload?.core_terms) ? payload.core_terms : []
+      );
+      setAdvancedSupportTerms(
+        Array.isArray(payload?.support_terms) ? payload.support_terms : []
+      );
+      setAdvancedPrompt(typeof payload?.prompt === "string" ? payload.prompt : null);
+      setAdvancedRawResponse(
+        typeof payload?.raw_response === "string" ? payload.raw_response : null
+      );
+      setAdvancedRawJson(
+        payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null
+      );
+      setAdvancedDataOpen(false);
+      setPage(1);
+    } catch (err) {
+      setAdvancedError((err as Error).message);
+    } finally {
+      setAdvancedLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setAdvancedMode(false);
+    setAdvancedQuery("");
+    setAdvancedCoreTerms([]);
+    setAdvancedSupportTerms([]);
+    setAdvancedPrompt(null);
+    setAdvancedRawResponse(null);
+    setAdvancedRawJson(null);
+    setAdvancedDataOpen(false);
+    setAdvancedError(null);
+    setPage(1);
+  };
   const categorySearchNormalized = categorySearch.trim().toLowerCase();
   const categoryTokens = useMemo(
     () => categorySearchNormalized.split(/\s+/).filter(Boolean),
@@ -1067,7 +1212,8 @@ function ProductsPageInner() {
       setError(null);
 
       const params = new URLSearchParams();
-      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (effectiveQuery) params.set("q", effectiveQuery);
+      if (advancedCoreParam) params.set("coreTerms", advancedCoreParam);
       if (sort) params.set("sort", sort);
       const categoryParam = buildCategoryParam(categorySelections);
       if (categoryParam) params.set("categories", categoryParam);
@@ -1113,7 +1259,8 @@ function ProductsPageInner() {
 
     return () => controller.abort();
   }, [
-    debouncedSearch,
+    effectiveQuery,
+    advancedCoreParam,
     sort,
     categorySelections,
     selectedBrands,
@@ -1654,12 +1801,63 @@ function ProductsPageInner() {
         <div className={styles.topRow}>
           <div className={styles.topLeft}>
             <Field
-              label={<span className={styles.filterLabel}>{t("products.filters.search")}</span>}
+              label={
+                <span className={styles.searchLabelRow}>
+                  <span className={styles.filterLabel}>
+                    {t("products.filters.search")}
+                  </span>
+                  <button
+                    type="button"
+                    className={mergeClasses(
+                      styles.advancedSearchButton,
+                      advancedMode ? styles.advancedSearchButtonActive : undefined
+                    )}
+                    onClick={runAdvancedSearch}
+                    disabled={!searchInput.trim() || advancedLoading}
+                  >
+                    {advancedLoading
+                      ? t("products.filters.advancedSearchLoading")
+                      : t("products.filters.advancedSearch")}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.advancedSearchButton}
+                    onClick={clearSearch}
+                    disabled={!searchInput.trim() && !advancedMode}
+                  >
+                    {t("common.clear")}
+                  </button>
+                  {advancedRawJson ? (
+                    <button
+                      type="button"
+                      className={styles.advancedSearchButton}
+                      onClick={() => setAdvancedDataOpen(true)}
+                    >
+                      {t("products.filters.advancedSearchShowData")}
+                    </button>
+                  ) : null}
+                </span>
+              }
               className={styles.filterField}
             >
               <Input
                 value={searchInput}
-                onChange={(_, data) => setSearchInput(data.value)}
+                onChange={(_, data) => {
+                  setSearchInput(data.value);
+                  if (advancedMode) {
+                    setAdvancedMode(false);
+                    setAdvancedQuery("");
+                    setAdvancedCoreTerms([]);
+                    setAdvancedSupportTerms([]);
+                    setAdvancedPrompt(null);
+                    setAdvancedRawResponse(null);
+                    setAdvancedRawJson(null);
+                    setAdvancedDataOpen(false);
+                  }
+                  if (advancedError) {
+                    setAdvancedError(null);
+                  }
+                }}
                 placeholder={t("products.filters.searchPlaceholder")}
                 className={styles.searchInput}
               />
@@ -2133,6 +2331,9 @@ function ProductsPageInner() {
       </Card>
 
       <Card className={styles.tableCard}>
+        {advancedError ? (
+          <MessageBar intent="warning">{advancedError}</MessageBar>
+        ) : null}
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
         {isLoading ? (
           <Spinner label={t("products.loading")} />
@@ -2231,6 +2432,64 @@ function ProductsPageInner() {
                 disabled={!newListName.trim() || isSavingSelection}
               >
                 {t("common.ok")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={advancedDataOpen}
+        onOpenChange={(_, data) => setAdvancedDataOpen(data.open)}
+      >
+        <DialogSurface className={styles.advancedDataDialog}>
+          <DialogBody className={styles.advancedDataBody}>
+            <DialogTitle>{t("products.filters.advancedSearchDataTitle")}</DialogTitle>
+            <div className={styles.advancedDataContent}>
+              <div className={styles.advancedDataSection}>
+                <Text className={styles.advancedDataLabel}>
+                  {t("products.filters.advancedSearchDataInput")}
+                </Text>
+                <pre className={styles.advancedDataBlock}>{searchInput}</pre>
+              </div>
+              {advancedPrompt ? (
+                <div className={styles.advancedDataSection}>
+                  <Text className={styles.advancedDataLabel}>
+                    {t("products.filters.advancedSearchDataPrompt")}
+                  </Text>
+                  <pre className={styles.advancedDataBlock}>{advancedPrompt}</pre>
+                </div>
+              ) : null}
+              {advancedRawResponse ? (
+                <div className={styles.advancedDataSection}>
+                  <Text className={styles.advancedDataLabel}>
+                    {t("products.filters.advancedSearchDataResponse")}
+                  </Text>
+                  <pre className={styles.advancedDataBlock}>{advancedRawResponse}</pre>
+                </div>
+              ) : null}
+              {advancedRawJson ? (
+                <div className={styles.advancedDataSection}>
+                  <Text className={styles.advancedDataLabel}>
+                    {t("products.filters.advancedSearchDataJson")}
+                  </Text>
+                  <pre className={styles.advancedDataBlock}>
+                    {JSON.stringify(advancedRawJson, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+              <div className={styles.advancedDataSection}>
+                <Text className={styles.advancedDataLabel}>
+                  {t("products.filters.advancedSearchDataQuery")}
+                </Text>
+                <pre className={styles.advancedDataBlock}>
+                  {advancedQuery || searchInput}
+                </pre>
+              </div>
+            </div>
+            <DialogActions>
+              <Button appearance="subtle" onClick={() => setAdvancedDataOpen(false)}>
+                {t("common.close")}
               </Button>
             </DialogActions>
           </DialogBody>

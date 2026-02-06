@@ -221,15 +221,15 @@ const useStyles = makeStyles({
     },
   },
   priceMatchRow: {
-    backgroundColor: "#dbeeff",
+    backgroundColor: "#fffdef",
     "& .fui-TableCell": {
-      backgroundColor: "#dbeeff",
+      backgroundColor: "#fffdef",
     },
     "&:hover": {
-      backgroundColor: "#cfe4ff",
+      backgroundColor: "#fff4d6",
     },
     "&:hover .fui-TableCell": {
-      backgroundColor: "#cfe4ff",
+      backgroundColor: "#fff4d6",
     },
   },
   imageCol: {
@@ -254,14 +254,14 @@ const useStyles = makeStyles({
     minWidth: "160px",
   },
   statusCol: {
-    minWidth: "75px",
-    width: "75px",
-    maxWidth: "75px",
+    minWidth: "90px",
+    width: "90px",
+    maxWidth: "90px",
   },
   linkCol: {
-    minWidth: "75px",
-    width: "75px",
-    maxWidth: "75px",
+    minWidth: "90px",
+    width: "90px",
+    maxWidth: "90px",
   },
   estimatedPriceCol: {
     minWidth: "200px",
@@ -274,14 +274,14 @@ const useStyles = makeStyles({
   },
   supplierAddButton: {
     backgroundColor: "#ffe480",
-    borderColor: "#e0c666",
+    border: "1px solid #e0c666",
     "&:hover": {
       backgroundColor: "#f5db70",
-      borderColor: "#d2ba5f",
+      border: "1px solid #d2ba5f",
     },
     "&:active": {
       backgroundColor: "#edd36a",
-      borderColor: "#c8b255",
+      border: "1px solid #c8b255",
     },
   },
   linkButtonContent: {
@@ -311,14 +311,27 @@ const useStyles = makeStyles({
     paddingBlock: "2px",
     border: "1px solid #2e7d32",
     color: "#2e7d32",
-    backgroundColor: "transparent",
+    backgroundColor: "#dfffd4",
+    opacity: 1,
+    "&.fui-Badge": {
+      backgroundColor: "#dfffd4",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#dfffd4",
+      opacity: 1,
+    },
     fontWeight: tokens.fontWeightSemibold,
   },
   estimatedPriceRow: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "4px",
+    gap: "19px",
     flexWrap: "nowrap",
+  },
+  estimatedPriceEditButton: {
+    minWidth: "unset",
+    paddingInline: "8px",
   },
   supplierDialog: {
     minWidth: "420px",
@@ -479,6 +492,13 @@ const useStyles = makeStyles({
   },
   statusBadge: {
     textTransform: "capitalize",
+    backgroundColor: "#ffffff",
+    "&.fui-Badge": {
+      backgroundColor: "#ffffff",
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#ffffff",
+    },
   },
   statusBadgeOnline: {
     color: "#298131",
@@ -871,8 +891,8 @@ export default function DigidealCampaignsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState("");
-  const [status, setStatus] = useState("online");
-  const [sort, setSort] = useState("last_seen_desc");
+  const [status, setStatus] = useState("all");
+  const [sort, setSort] = useState("first_seen_desc");
   const [sellerFilter, setSellerFilter] = useState("all");
   const [priceMatch, setPriceMatch] = useState("all");
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
@@ -1704,7 +1724,7 @@ export default function DigidealCampaignsPage() {
         const shippingCost =
           typeof item.shipping_cost === "number" ? item.shipping_cost : null;
         const shippingCostLabel =
-          shippingCost !== null ? formatCurrency(shippingCost, "SEK") : "";
+          shippingCost !== null ? formatCurrency(shippingCost, "SEK") : "—";
         const discount = item.last_discount_percent;
         const saveKr = item.last_you_save_kr;
         const statusLabel = item.status ?? "-";
@@ -2001,11 +2021,13 @@ export default function DigidealCampaignsPage() {
                       ? formatCurrency(priceValue, "SEK")
                       : "-"}
                   </Text>
-                  {shippingCostLabel ? (
+                  {shippingCost !== null ? (
                     <Text className={styles.priceShipping}>
                       ({shippingCostLabel})
                     </Text>
-                  ) : null}
+                  ) : (
+                    <Text className={styles.priceShipping}>—</Text>
+                  )}
                   {prevPrice !== null && prevPrice > (priceValue ?? 0) ? (
                     <Text className={styles.pricePrevious}>
                       {formatCurrency(prevPrice, "SEK")}
@@ -2125,7 +2147,10 @@ export default function DigidealCampaignsPage() {
                     <Button
                       appearance="outline"
                       size="small"
-                      className={styles.linkButton}
+                      className={mergeClasses(
+                        styles.linkButton,
+                        styles.estimatedPriceEditButton
+                      )}
                       onClick={() => openSupplierDialog(item)}
                     >
                       {t("digideal.supplier.edit")}

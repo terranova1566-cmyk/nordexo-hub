@@ -101,6 +101,17 @@ const getRawText = (raw: Record<string, unknown> | null | undefined, key: string
   return normalizeText((raw as Record<string, unknown>)[key]);
 };
 
+const getRawTextAny = (
+  raw: Record<string, unknown> | null | undefined,
+  keys: string[]
+) => {
+  for (const key of keys) {
+    const value = getRawText(raw, key);
+    if (value) return value;
+  }
+  return null;
+};
+
 const joinUrls = (value: unknown) => {
   if (Array.isArray(value)) {
     const items = value.map((entry) => String(entry || "").trim()).filter(Boolean);
@@ -435,6 +446,15 @@ export async function POST(request: Request) {
     supplier_1688_url: normalizeText(row.draft_supplier_1688_url),
     product_main_image_url: normalizeText(row.draft_main_image_url),
     product_additional_image_urls: joinUrls(row.draft_image_urls),
+    shopify_tingelo_category_keys: getRawTextAny(row.draft_raw_row, [
+      "category_external_key_shopify_tingelo",
+      "shopify_tingelo_category_keys",
+    ]),
+    product_categorizer_keywords: getRawTextAny(row.draft_raw_row, [
+      "product_categorizer_keywords",
+      "poduct_categorizer_keywords",
+      "poduct_keywords",
+    ]),
     image_folder: `${CATALOG_ROOT}/${row.draft_spu}`,
     raw_row: row.draft_raw_row ?? null,
     imported_at: now,

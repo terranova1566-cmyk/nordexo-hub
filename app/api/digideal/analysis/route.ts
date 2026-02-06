@@ -123,13 +123,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: analysisError.message }, { status: 500 });
   }
 
-  return NextResponse.json({
-    product: product
+  const normalizedProduct =
+    product && typeof product === "object"
       ? {
-          ...product,
-          seller_name: normalizeSellerName(product.seller_name),
+          ...(product as Record<string, unknown>),
+          seller_name: normalizeSellerName(
+            (product as { seller_name?: string | null }).seller_name
+          ),
         }
-      : null,
+      : null;
+
+  return NextResponse.json({
+    product: normalizedProduct,
     analysis: analysis ?? null,
   });
 }

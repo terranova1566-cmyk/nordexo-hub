@@ -2483,6 +2483,61 @@
       "context": "Products search placeholder"
     },
     {
+      "key": "products.filters.advancedSearch",
+      "text": "Advanced search",
+      "context": "Products advanced search button"
+    },
+    {
+      "key": "products.filters.advancedSearchLoading",
+      "text": "Advanced search...",
+      "context": "Products advanced search loading label"
+    },
+    {
+      "key": "products.filters.advancedSearchError",
+      "text": "Advanced search failed. Try again.",
+      "context": "Products advanced search error"
+    },
+    {
+      "key": "products.filters.advancedSearchActive",
+      "text": "Advanced search",
+      "context": "Advanced search active label"
+    },
+    {
+      "key": "products.filters.advancedSearchShowData",
+      "text": "Show data",
+      "context": "Advanced search show data button"
+    },
+    {
+      "key": "products.filters.advancedSearchDataTitle",
+      "text": "Advanced search data",
+      "context": "Advanced search data dialog title"
+    },
+    {
+      "key": "products.filters.advancedSearchDataInput",
+      "text": "Input text",
+      "context": "Advanced search data dialog input label"
+    },
+    {
+      "key": "products.filters.advancedSearchDataPrompt",
+      "text": "Prompt",
+      "context": "Advanced search data dialog prompt label"
+    },
+    {
+      "key": "products.filters.advancedSearchDataResponse",
+      "text": "Raw response",
+      "context": "Advanced search data dialog raw response label"
+    },
+    {
+      "key": "products.filters.advancedSearchDataJson",
+      "text": "Parsed JSON",
+      "context": "Advanced search data dialog JSON label"
+    },
+    {
+      "key": "products.filters.advancedSearchDataQuery",
+      "text": "Final search query",
+      "context": "Advanced search data dialog query label"
+    },
+    {
       "key": "products.filters.category",
       "text": "Category",
       "context": "Products filter label"
@@ -3006,6 +3061,441 @@
       "key": "productDetail.tabs.descriptionSe",
       "text": "Description SE",
       "context": "Product detail tab"
+    },
+    {
+      "key": "productDetail.tabs.productData",
+      "text": "Product Data",
+      "context": "Product detail tab"
+    },
+    {
+      "key": "productDetail.data.title",
+      "text": "Product data",
+      "context": "Product detail internal section title"
+    },
+    {
+      "key": "productDetail.data.save",
+      "text": "Save changes",
+      "context": "Product detail internal save button"
+    },
+    {
+      "key": "productDetail.data.saveSuccess",
+      "text": "Product data saved.",
+      "context": "Product detail internal save success"
+    },
+    {
+      "key": "productDetail.data.saveError",
+      "text": "Unable to save product data.",
+      "context": "Product detail internal save error"
+    },
+    {
+      "key": "productDetail.data.section.supplier",
+      "text": "Supplier & source",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.catalog",
+      "text": "Catalog & taxonomy",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.logistics",
+      "text": "Shipping & finance",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.metafields",
+      "text": "Metafields (internal)",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.collections",
+      "text": "Collections & sync",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.media",
+      "text": "Media & assets",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.status",
+      "text": "Status & governance",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.legacy",
+      "text": "Legacy (internal)",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.variantIdentity",
+      "text": "Variant options & identifiers",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.section.pricing",
+      "text": "Variant pricing & logistics",
+      "context": "Product detail internal section heading"
+    },
+    {
+      "key": "productDetail.data.supplier1688",
+      "text": "Supplier 1688 URL",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.brand",
+      "text": "Brand",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.vendor",
+      "text": "Vendor",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.productType",
+      "text": "Product type",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.tags",
+      "text": "Tags",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCategoryName",
+      "text": "Shopify category name",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCategoryPath",
+      "text": "Shopify category path",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCategoryId",
+      "text": "Shopify category ID",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.googleTaxonomyL1",
+      "text": "Google taxonomy L1",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.googleTaxonomyL2",
+      "text": "Google taxonomy L2",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.googleTaxonomyL3",
+      "text": "Google taxonomy L3",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.categorizerKeywords",
+      "text": "Categorizer keywords",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.option1Name",
+      "text": "Option 1 name",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.option2Name",
+      "text": "Option 2 name",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.option3Name",
+      "text": "Option 3 name",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.option4Name",
+      "text": "Option 4 name",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.imageFolder",
+      "text": "Image folder",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.images",
+      "text": "Images (JSON or list)",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.videoFiles",
+      "text": "Video files (JSON or list)",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCollectionHandles",
+      "text": "Shopify collection handles",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCollectionIds",
+      "text": "Shopify collection IDs",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifyCategoryKeys",
+      "text": "Shopify Tingelo category keys",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.shopifySync",
+      "text": "Shopify Tingelo sync (true/false)",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.nordicPartnerEnabled",
+      "text": "Nordic partner enabled (true/false)",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.isBlocked",
+      "text": "Blocked (true/false)",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.blockedAt",
+      "text": "Blocked at",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.blockedBy",
+      "text": "Blocked by",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.legacyTitleSv",
+      "text": "Legacy title SV",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.legacyDescriptionSv",
+      "text": "Legacy description SV",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.legacyBulletsSv",
+      "text": "Legacy bullets SV",
+      "context": "Product detail internal field label"
+    },
+    {
+      "key": "productDetail.data.variantSku",
+      "text": "SKU",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variantSkuNorm",
+      "text": "SKU norm",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variantSkuBak",
+      "text": "SKU bak",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option1",
+      "text": "Option 1",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option2",
+      "text": "Option 2",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option3",
+      "text": "Option 3",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option4",
+      "text": "Option 4",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.optionCombinedZh",
+      "text": "Option combined ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option1Zh",
+      "text": "Option 1 ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option2Zh",
+      "text": "Option 2 ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option3Zh",
+      "text": "Option 3 ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.option4Zh",
+      "text": "Option 4 ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variationColorSe",
+      "text": "Color SE",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variationSizeSe",
+      "text": "Size SE",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variationOtherSe",
+      "text": "Other SE",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variationAmountSe",
+      "text": "Amount SE",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.shortTitleZh",
+      "text": "Short title ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.barcode",
+      "text": "Barcode",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variantImage",
+      "text": "Variant image",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variantSupplier",
+      "text": "Supplier name",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.variantSupplierLocation",
+      "text": "Supplier location",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.shippingName",
+      "text": "Shipping name",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.shippingNameZh",
+      "text": "Shipping name ZH",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.shippingClass",
+      "text": "Shipping class",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.weight",
+      "text": "Weight (kg)",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.purchasePriceCny",
+      "text": "Purchase price (CNY)",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.cost",
+      "text": "Cost",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.price",
+      "text": "Price",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.compareAtPrice",
+      "text": "Compare at price",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.b2bSe",
+      "text": "B2B SE",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.b2bNo",
+      "text": "B2B NO",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.b2bDk",
+      "text": "B2B DK",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.b2bFi",
+      "text": "B2B FI",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.taxable",
+      "text": "Taxable (true/false)",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.taxCode",
+      "text": "Tax code",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.hsCode",
+      "text": "HS code",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.countryOfOrigin",
+      "text": "Country of origin",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.categoryCodeFq",
+      "text": "Category code FQ",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.categoryCodeLd",
+      "text": "Category code LD",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.inventoryQty",
+      "text": "Inventory qty",
+      "context": "Product detail internal variant table header"
+    },
+    {
+      "key": "productDetail.data.saveHint",
+      "text": "Save changes when you are done editing.",
+      "context": "Product detail internal save hint"
+    },
+    {
+      "key": "productDetail.data.metafieldsEmpty",
+      "text": "No internal metafields found.",
+      "context": "Product detail internal metafields empty"
     },
     {
       "key": "productDetail.table.image",

@@ -5,7 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const PRODUCT_SELECT =
-  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment";
+  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr";
 
 const SELLER_GROUPS = [
   {
@@ -200,7 +200,11 @@ const loadPriceMatchIds = async (supabase: any) => {
   }
 
   const ids =
-    response.data?.map((row) => String(row.product_id)).filter(Boolean) ?? [];
+    response.data
+      ?.map((row: { product_id?: string | number | null }) =>
+        String(row.product_id ?? "")
+      )
+      .filter(Boolean) ?? [];
   return { ids, error: null };
 };
 
@@ -531,11 +535,17 @@ export async function GET(request: NextRequest) {
         const supplierUrl = toText(
           detail?.["1688_URL"] ?? detail?.["1688_url"]
         );
-        const shippingCost = extractShippingCost(
-          [toText(product.description_html), toText(product.bullet_points_text)]
-            .filter(Boolean)
-            .join(" ")
-        );
+        const storedShipping =
+          typeof product.shipping_cost_kr === "number"
+            ? toNumber(product.shipping_cost_kr)
+            : null;
+        const shippingCost =
+          storedShipping ??
+          extractShippingCost(
+            [toText(product.description_html), toText(product.bullet_points_text)]
+              .filter(Boolean)
+              .join(" ")
+          );
         const canEstimate =
           purchasePrice !== null &&
           weightKg !== null &&

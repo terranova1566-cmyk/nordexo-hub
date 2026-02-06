@@ -90,12 +90,12 @@ export async function GET(request: NextRequest) {
   const isAdmin = Boolean(userSettings?.is_admin);
 
   const searchParams = request.nextUrl.searchParams;
-  const q = searchParams.get("q")?.trim();
+  const q = searchParams.get("q")?.trim() ?? "";
   const category = searchParams.get("category")?.trim();
   const categoriesParam = searchParams.get("categories")?.trim() ?? null;
   const categorySelections = parseCategorySelections(categoriesParam);
   const tag = searchParams.get("tag")?.trim();
-  const exactSpuQuery = Boolean(q) && q.includes("-") && !/\s/.test(q ?? "");
+  const exactSpuQuery = q.length > 0 && q.includes("-") && !/\s/.test(q);
   const searchTerms = [exactSpuQuery ? null : q, category, tag]
     .filter(Boolean)
     .join(" ")
@@ -119,6 +119,12 @@ export async function GET(request: NextRequest) {
   const sort = searchParams.get("sort") ?? "updated_desc";
   const hasVariants = searchParams.get("hasVariants") === "true";
   const savedFilter = searchParams.get("saved") ?? "all";
+  const coreTermsParam = searchParams.get("coreTerms")?.trim();
+  const coreTerms =
+    coreTermsParam
+      ?.split(/[|,]/)
+      .map((term) => term.trim())
+      .filter(Boolean) ?? [];
 
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(
@@ -187,6 +193,10 @@ export async function GET(request: NextRequest) {
         brandParts.push("brand_is_empty = true");
       }
       addOrGroup(brandParts);
+    }
+
+    if (exactSpuQuery && q) {
+      filters.push(`spu = "${q.replace(/"/g, '\\"')}"`);
     }
 
     const wantsEmptyVendor = vendorFilters.includes("__no_vendor__");
@@ -290,22 +300,53 @@ export async function GET(request: NextRequest) {
           ? ["updated_at:desc"]
           : undefined;
 
-    const searchResult = await index.search(searchTerms, {
+    const maxHits = page * pageSize;
+    const searchConfig = {
       filter: filters.length ? filters.join(" AND ") : undefined,
       sort: sortRules,
-      limit: pageSize,
-      offset,
+      limit: maxHits,
+      offset: 0,
       attributesToRetrieve: ["id"],
-    });
+    };
 
-    const ids =
-      searchResult.hits
+    const expandedResult = await index.search(searchTerms, searchConfig);
+    const expandedIds =
+      expandedResult.hits
         ?.map((hit) => String((hit as { id?: string }).id ?? ""))
         .filter(Boolean) ?? [];
+
+    let mergedIds = expandedIds;
+    if (coreTerms.length > 0) {
+      const coreQuery = coreTerms.join(" ").trim();
+      const coreResult = coreQuery
+        ? await index.search(coreQuery, searchConfig)
+        : null;
+      const coreIds =
+        coreResult?.hits
+          ?.map((hit) => String((hit as { id?: string }).id ?? ""))
+          .filter(Boolean) ?? [];
+      const seen = new Set<string>();
+      mergedIds = [];
+      coreIds.forEach((id) => {
+        if (!seen.has(id)) {
+          seen.add(id);
+          mergedIds.push(id);
+        }
+      });
+      expandedIds.forEach((id) => {
+        if (!seen.has(id)) {
+          seen.add(id);
+          mergedIds.push(id);
+        }
+      });
+    }
+
     totalCount =
-      searchResult.estimatedTotalHits ??
-      (searchResult as { totalHits?: number }).totalHits ??
-      0;
+      expandedResult.estimatedTotalHits ??
+      (expandedResult as { totalHits?: number }).totalHits ??
+      mergedIds.length;
+
+    const ids = mergedIds.slice(offset, offset + pageSize);
 
     if (ids.length === 0) {
       return NextResponse.json({ items: [], page, pageSize, total: totalCount });
@@ -795,6 +836,3 @@ export async function GET(request: NextRequest) {
     active_markets: activeMarkets,
   });
 }
-    if (exactSpuQuery && q) {
-      addOrGroup([`spu = "${q.replace(/"/g, '\\"')}"`]);
-    }

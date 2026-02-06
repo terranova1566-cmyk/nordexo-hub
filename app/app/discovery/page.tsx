@@ -682,6 +682,7 @@ function DiscoveryPageInner() {
   const [openWishlistFor, setOpenWishlistFor] = useState<string | null>(null);
   const wishlistCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
+  const skipUrlSyncRef = useRef(false);
   const searchParams = useSearchParams();
   const urlSearch = searchParams.toString();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -853,6 +854,7 @@ function DiscoveryPageInner() {
         Math.max(1, Number(params.get("pageSize") ?? "100"))
       );
 
+      skipUrlSyncRef.current = true;
       isRestoringRef.current = true;
       setSearchInput(nextSearch);
       setSort(nextSort);
@@ -956,6 +958,10 @@ function DiscoveryPageInner() {
   ]);
 
   useEffect(() => {
+    if (skipUrlSyncRef.current) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (providers.length !== providerValues.length) {
