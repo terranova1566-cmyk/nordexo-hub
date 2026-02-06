@@ -19,6 +19,8 @@ const CATALOG_ROOT =
 const MEDIA_LIBRARY_SCRIPT =
   process.env.MEDIA_LIBRARY_SCRIPT ||
   "/srv/shopify-sync/api/scripts/ingest-media-library.mjs";
+const DEFAULT_TAX_CODE = "HST20";
+const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
 
 type DraftProductRow = {
   id: string;
@@ -94,6 +96,90 @@ type DraftVariantRow = {
 const normalizeText = (value: unknown) => {
   const text = value == null ? "" : String(value).trim();
   return text === "" ? null : text;
+};
+
+const getSpuPrefix = (spu: string | null) => {
+  const normalized = normalizeText(spu);
+  if (!normalized) return null;
+  const upper = normalized.toUpperCase();
+  return upper.length >= 2 ? upper.slice(0, 2) : upper;
+};
+
+const buildFallbackVariant = (product: DraftProductRow): DraftVariantRow => {
+  const raw = product.draft_raw_row && typeof product.draft_raw_row === "object"
+    ? (product.draft_raw_row as Record<string, unknown>)
+    : null;
+  return {
+    id: `fallback-${product.draft_spu || ""}`,
+    draft_spu: product.draft_spu,
+    draft_sku: product.draft_spu,
+    draft_option1: null,
+    draft_option2: null,
+    draft_option3: null,
+    draft_option4: null,
+    draft_option_combined_zh: null,
+    draft_option1_zh: null,
+    draft_option2_zh: null,
+    draft_option3_zh: null,
+    draft_option4_zh: null,
+    draft_price: getRawTextAny(raw, ["price", "product_price", "product_price_cny"]),
+    draft_compare_at_price: null,
+    draft_cost: getRawTextAny(raw, ["cost", "product_cost", "product_cost_cny"]),
+    draft_weight: getRawTextAny(raw, [
+      "product_weights_1688",
+      "product_weight_gram",
+      "product_weight",
+      "weight",
+    ]),
+    draft_weight_unit: null,
+    draft_barcode: null,
+    draft_variant_image_url: null,
+    draft_shipping_name_en: getRawTextAny(raw, [
+      "EN_shipname",
+      "en_shipname",
+      "shipping_name_en",
+    ]),
+    draft_short_title_zh: getRawTextAny(raw, [
+      "CN_title",
+      "cn_title",
+      "short_title_zh",
+    ]),
+    draft_shipping_name_zh: getRawTextAny(raw, [
+      "CN_shipname",
+      "cn_shipname",
+      "shipping_name_zh",
+    ]),
+    draft_shipping_class: getRawTextAny(raw, [
+      "product_shiptype",
+      "product_shipType",
+    ]),
+    draft_taxable: null,
+    draft_tax_code: getRawTextAny(raw, ["tax_code", "taxcode", "tax code"]),
+    draft_hs_code: getRawTextAny(raw, ["hs_code", "HS_code", "hs code"]),
+    draft_country_of_origin: getRawTextAny(raw, [
+      "country_of_origin",
+      "country of origin",
+      "origin_country",
+      "origin",
+    ]),
+    draft_category_code_fq: null,
+    draft_category_code_ld: null,
+    draft_supplier_name: getRawTextAny(raw, [
+      "supplier_name_1688",
+      "supplier_name",
+    ]),
+    draft_supplier_location: null,
+    draft_b2b_dropship_price_se: null,
+    draft_b2b_dropship_price_no: null,
+    draft_b2b_dropship_price_dk: null,
+    draft_b2b_dropship_price_fi: null,
+    draft_purchase_price_cny: getRawTextAny(raw, [
+      "purchase_price_cny",
+      "purchase_price",
+      "purchase price",
+    ]),
+    draft_raw_row: raw ?? null,
+  };
 };
 
 const getRawText = (raw: Record<string, unknown> | null | undefined, key: string) => {
@@ -309,6 +395,21 @@ export async function POST(request: Request) {
   }
 
   const variants = (variantRows ?? []) as DraftVariantRow[];
+  const variantsBySpu = new Map<string, DraftVariantRow[]>();
+  for (const row of variants) {
+    if (!row.draft_spu) continue;
+    const list = variantsBySpu.get(row.draft_spu) ?? [];
+    list.push(row);
+    variantsBySpu.set(row.draft_spu, list);
+  }
+  const fallbackVariants: DraftVariantRow[] = [];
+  for (const product of products) {
+    if (!product.draft_spu) continue;
+    if (!variantsBySpu.has(product.draft_spu)) {
+      fallbackVariants.push(buildFallbackVariant(product));
+    }
+  }
+  const allVariants = variants.concat(fallbackVariants);
   const productBySpu = new Map(products.map((row) => [row.draft_spu, row]));
   const now = new Date().toISOString();
   const runFolders = new Map<string, string[]>();
@@ -423,6 +524,12 @@ export async function POST(request: Request) {
     product_description_main_html: normalizeText(
       row.draft_product_description_main_html ?? row.draft_description_html
     ),
+    brand: normalizeText(
+      getRawTextAny(row.draft_raw_row, ["brand"]) || getSpuPrefix(row.draft_spu)
+    ),
+    vendor: normalizeText(
+      getRawTextAny(row.draft_raw_row, ["vendor"]) || getSpuPrefix(row.draft_spu)
+    ),
     mf_product_short_title: normalizeText(row.draft_mf_product_short_title),
     mf_product_long_title: normalizeText(row.draft_mf_product_long_title),
     mf_product_subtitle: normalizeText(row.draft_mf_product_subtitle),
@@ -455,6 +562,11 @@ export async function POST(request: Request) {
       "poduct_categorizer_keywords",
       "poduct_keywords",
     ]),
+    is_active: "true",
+    status: "active",
+    published: "true",
+    published_scope: "global",
+    shopify_tingelo_sync: true,
     image_folder: `${CATALOG_ROOT}/${row.draft_spu}`,
     raw_row: row.draft_raw_row ?? null,
     imported_at: now,
@@ -462,7 +574,7 @@ export async function POST(request: Request) {
     product_created_at: row.draft_created_at || null,
   }));
 
-  const stgSkuRows = variants.map((row) => {
+  const stgSkuRows = allVariants.map((row) => {
     const parent = row.draft_spu ? productBySpu.get(row.draft_spu) : null;
     const rawRow =
       row.draft_raw_row && typeof row.draft_raw_row === "object"
@@ -515,9 +627,10 @@ export async function POST(request: Request) {
       shipping_name_zh: normalizeText(row.draft_shipping_name_zh),
       shipping_class: shippingClass,
       taxable: normalizeText(row.draft_taxable),
-      tax_code: normalizeText(row.draft_tax_code),
+      tax_code: normalizeText(row.draft_tax_code) || DEFAULT_TAX_CODE,
       hs_code: normalizeText(row.draft_hs_code),
-      country_of_origin: normalizeText(row.draft_country_of_origin),
+      country_of_origin:
+        normalizeText(row.draft_country_of_origin) || DEFAULT_COUNTRY_OF_ORIGIN,
       category_code_fq: normalizeText(row.draft_category_code_fq),
       category_code_ld: normalizeText(row.draft_category_code_ld),
       supplier_name: normalizeText(row.draft_supplier_name),
