@@ -3618,6 +3618,71 @@
       "context": "Product detail empty placeholder"
     },
     {
+      "key": "productDetail.description.actions.save",
+      "text": "Save changes",
+      "context": "Product detail description save button"
+    },
+    {
+      "key": "productDetail.description.actions.regenerate",
+      "text": "Regenerate with GPT",
+      "context": "Product detail regenerate button"
+    },
+    {
+      "key": "productDetail.description.actions.confirmSave",
+      "text": "Confirm and save",
+      "context": "Product detail confirm save button"
+    },
+    {
+      "key": "productDetail.description.actions.revert",
+      "text": "Revert",
+      "context": "Product detail revert button"
+    },
+    {
+      "key": "productDetail.description.regenerateTitle",
+      "text": "Regenerate description",
+      "context": "Product detail regenerate dialog title"
+    },
+    {
+      "key": "productDetail.description.regenerateHint",
+      "text": "Enter instructions to update the product copy. The current text will be rewritten based on this note.",
+      "context": "Product detail regenerate dialog helper text"
+    },
+    {
+      "key": "productDetail.description.regenerateLabel",
+      "text": "Instruction",
+      "context": "Product detail regenerate dialog label"
+    },
+    {
+      "key": "productDetail.description.regeneratePlaceholder",
+      "text": "Example: update sizes to centimeters, adjust the headline to include the new model number.",
+      "context": "Product detail regenerate dialog placeholder"
+    },
+    {
+      "key": "productDetail.description.regenerateRun",
+      "text": "Regenerate",
+      "context": "Product detail regenerate dialog submit button"
+    },
+    {
+      "key": "productDetail.description.regenerateError",
+      "text": "Unable to regenerate description.",
+      "context": "Product detail regenerate error"
+    },
+    {
+      "key": "productDetail.description.saveSuccess",
+      "text": "Description saved.",
+      "context": "Product detail description save success"
+    },
+    {
+      "key": "productDetail.description.saveError",
+      "text": "Unable to save description.",
+      "context": "Product detail description save error"
+    },
+    {
+      "key": "productDetail.description.previewNotice",
+      "text": "AI-generated preview. Confirm and save or revert to keep the previous text.",
+      "context": "Product detail AI preview notice"
+    },
+    {
       "key": "saved.summary.label",
       "text": "Saved selections:",
       "context": "Saved summary label"

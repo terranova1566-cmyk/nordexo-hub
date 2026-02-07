@@ -28,6 +28,7 @@ Output:
 
 Rules:
 - core_terms must be Swedish, short, and high-signal. Only 2 terms.
+- Every term must be a single word (no hyphens, slashes, or multi-word phrases).
 - support_terms must be Swedish, lower priority than core.
 - Do NOT include filler in core/support.
 

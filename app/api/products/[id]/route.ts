@@ -508,6 +508,7 @@ export async function PATCH(
   };
 
   setProductField("supplier_1688_url", productPayload?.supplier_1688_url);
+  setProductField("description_html", productPayload?.description_html);
   setProductField("product_type", productPayload?.product_type);
   setProductField("brand", productPayload?.brand);
   setProductField("vendor", productPayload?.vendor);
@@ -649,9 +650,65 @@ export async function PATCH(
   if (metafieldsPayload.length > 0) {
     const upserts: Array<Record<string, unknown>> = [];
     const deleteIds: string[] = [];
+    const metaKeyMap = new Map<
+      string,
+      Array<{ id: string; key: string; namespace: string | null }>
+    >();
+
+    const metaKeys = Array.from(
+      new Set(
+        metafieldsPayload
+          .map((entry: any) => (entry?.key ? String(entry.key) : ""))
+          .filter(Boolean)
+      )
+    );
+
+    if (metaKeys.length > 0) {
+      const { data: metaDefs } = await adminClient
+        .from("metafield_definitions")
+        .select("id, key, namespace")
+        .eq("resource", "catalog_product")
+        .in("key", metaKeys);
+
+      metaDefs?.forEach((def) => {
+        const key = def.key ?? "";
+        if (!key) return;
+        const list = metaKeyMap.get(key) ?? [];
+        list.push({
+          id: String(def.id),
+          key,
+          namespace: def.namespace ?? null,
+        });
+        metaKeyMap.set(key, list);
+      });
+    }
+
+    const resolveDefinitionId = (entry: any) => {
+      const direct = entry?.definition_id ?? entry?.id;
+      if (direct) return String(direct);
+      const key = entry?.key ? String(entry.key) : "";
+      if (!key) return null;
+      const candidates = metaKeyMap.get(key) ?? [];
+      if (candidates.length === 0) return null;
+      const namespace = entry?.namespace ? String(entry.namespace).toLowerCase() : "";
+      if (namespace) {
+        const match = candidates.find(
+          (candidate) => (candidate.namespace ?? "").toLowerCase() === namespace
+        );
+        if (match) return match.id;
+      }
+      for (const preferred of PRODUCT_META_NAMESPACES) {
+        const match = candidates.find(
+          (candidate) =>
+            (candidate.namespace ?? "").toLowerCase() === preferred.toLowerCase()
+        );
+        if (match) return match.id;
+      }
+      return candidates[0]?.id ?? null;
+    };
 
     for (const entry of metafieldsPayload) {
-      const defId = entry?.definition_id ?? entry?.id;
+      const defId = resolveDefinitionId(entry);
       if (!defId) continue;
       const normalized = normalizeText(entry?.value);
       if (!normalized) {

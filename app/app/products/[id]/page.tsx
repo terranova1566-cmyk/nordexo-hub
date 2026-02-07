@@ -143,6 +143,45 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "16px",
   },
+  descriptionToolbar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  descriptionActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  descriptionContentWrap: {
+    position: "relative",
+  },
+  descriptionContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+  },
+  descriptionContentBusy: {
+    filter: "blur(1px)",
+    opacity: 0.6,
+  },
+  descriptionOverlay: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    backdropFilter: "blur(2px)",
+    zIndex: 2,
+  },
+  descriptionTextarea: {
+    minHeight: "120px",
+    resize: "vertical",
+  },
   descriptionSection: {
     display: "flex",
     flexDirection: "column",
@@ -470,6 +509,19 @@ type InternalMetafieldForm = {
   value: string;
 };
 
+type DescriptionForm = {
+  short_title: string;
+  subtitle: string;
+  long_title: string;
+  description_short: string;
+  description_main: string;
+  description_extended: string;
+  bullets_short: string;
+  bullets: string;
+  bullets_long: string;
+  specs: string;
+};
+
 const TrashIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -549,6 +601,23 @@ export default function ProductDetailPage() {
   const [isSavingInternal, setIsSavingInternal] = useState(false);
   const [internalSaveError, setInternalSaveError] = useState<string | null>(null);
   const [internalSaveSuccess, setInternalSaveSuccess] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState<DescriptionForm | null>(
+    null
+  );
+  const [descriptionBaseline, setDescriptionBaseline] =
+    useState<DescriptionForm | null>(null);
+  const [descriptionSaveError, setDescriptionSaveError] = useState<string | null>(
+    null
+  );
+  const [descriptionSaveSuccess, setDescriptionSaveSuccess] =
+    useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [aiPreviewActive, setAiPreviewActive] = useState(false);
+  const [aiSnapshot, setAiSnapshot] = useState<DescriptionForm | null>(null);
 
   const loadProduct = useCallback(
     async (signal?: AbortSignal) => {
@@ -618,6 +687,39 @@ export default function ProductDetailPage() {
       }
     }
     return String(value);
+  };
+
+  const normalizeHtml = (value: string) =>
+    value
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+  const normalizeListText = (value: unknown) => {
+    const raw = toText(value).trim();
+    if (!raw) return "";
+    if (raw.startsWith("[") || raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((entry) => toText(entry).trim())
+            .filter(Boolean)
+            .join("\n");
+        }
+      } catch {
+        // fall through
+      }
+    }
+    return raw;
+  };
+
+  const toHtmlFromText = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    return trimmed.replace(/\n/g, "<br/>");
   };
 
   useEffect(() => {
@@ -710,6 +812,27 @@ export default function ProductDetailPage() {
         value: toText(field.value),
       }))
     );
+
+    const descriptionHtml = data.product.description_html ?? "";
+    const normalizedMain = descriptionHtml ? normalizeHtml(descriptionHtml) : "";
+    const nextDescription: DescriptionForm = {
+      short_title: normalizeListText(data.short_title),
+      subtitle: normalizeListText(data.subtitle),
+      long_title: normalizeListText(data.long_title ?? data.product.title),
+      description_short: normalizeListText(data.description_short),
+      description_main: normalizeListText(normalizedMain),
+      description_extended: normalizeListText(data.description_extended),
+      bullets_short: normalizeListText(data.bullets_short),
+      bullets: normalizeListText(data.bullets),
+      bullets_long: normalizeListText(data.bullets_long),
+      specs: normalizeListText(data.specs),
+    };
+    setDescriptionDraft(nextDescription);
+    setDescriptionBaseline(nextDescription);
+    setDescriptionSaveError(null);
+    setDescriptionSaveSuccess(false);
+    setAiPreviewActive(false);
+    setAiSnapshot(null);
   }, [data]);
 
   const saveProductToWishlist = async (wishlistId: string) => {
@@ -786,6 +909,141 @@ export default function ProductDetailPage() {
     setInternalMetafields((prev) =>
       prev.map((field) => (field.id === id ? { ...field, value } : field))
     );
+  };
+
+  const updateDescriptionField = (
+    field: keyof DescriptionForm,
+    value: string
+  ) => {
+    setDescriptionDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const descriptionDirty = useMemo(() => {
+    if (!descriptionDraft || !descriptionBaseline) return false;
+    return (Object.keys(descriptionDraft) as Array<keyof DescriptionForm>).some(
+      (key) => descriptionDraft[key] !== descriptionBaseline[key]
+    );
+  }, [descriptionDraft, descriptionBaseline]);
+
+  const saveDescription = async () => {
+    if (!descriptionDraft) return;
+    setIsSavingDescription(true);
+    setDescriptionSaveError(null);
+    setDescriptionSaveSuccess(false);
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product: {
+            description_html: toHtmlFromText(descriptionDraft.description_main),
+          },
+          metafields: [
+            { key: "short_title", value: descriptionDraft.short_title },
+            { key: "long_title", value: descriptionDraft.long_title },
+            { key: "subtitle", value: descriptionDraft.subtitle },
+            { key: "description_short", value: descriptionDraft.description_short },
+            { key: "description_extended", value: descriptionDraft.description_extended },
+            { key: "bullets_short", value: descriptionDraft.bullets_short },
+            { key: "bullets", value: descriptionDraft.bullets },
+            { key: "bullets_long", value: descriptionDraft.bullets_long },
+            { key: "specs", value: descriptionDraft.specs },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        let message = t("productDetail.description.saveError");
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch {
+          // ignore parse failures
+        }
+        throw new Error(message);
+      }
+
+      setDescriptionSaveSuccess(true);
+      setAiPreviewActive(false);
+      setAiSnapshot(null);
+      setDescriptionBaseline(descriptionDraft);
+      await loadProduct();
+    } catch (err) {
+      setDescriptionSaveError((err as Error).message);
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
+  const runRegenerate = async () => {
+    if (!descriptionDraft) return;
+    setIsRegenerating(true);
+    setRegenerateError(null);
+    try {
+      const response = await fetch(
+        `/api/products/${productId}/description/rewrite`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instruction: regenerateInstruction,
+            current: descriptionDraft,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        let message = t("productDetail.description.regenerateError");
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch {
+          // ignore parse failures
+        }
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      const updates = payload?.updates as Partial<DescriptionForm> | undefined;
+      if (!updates) {
+        throw new Error(t("productDetail.description.regenerateError"));
+      }
+
+      setAiSnapshot(descriptionDraft);
+      setDescriptionDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              short_title: updates.short_title ?? prev.short_title,
+              subtitle: updates.subtitle ?? prev.subtitle,
+              long_title: updates.long_title ?? prev.long_title,
+              description_short:
+                updates.description_short ?? prev.description_short,
+              description_main: updates.description_main ?? prev.description_main,
+              description_extended:
+                updates.description_extended ?? prev.description_extended,
+              bullets_short: updates.bullets_short ?? prev.bullets_short,
+              bullets: updates.bullets ?? prev.bullets,
+              bullets_long: updates.bullets_long ?? prev.bullets_long,
+              specs: updates.specs ?? prev.specs,
+            }
+          : prev
+      );
+      setAiPreviewActive(true);
+      setIsRegenerateDialogOpen(false);
+      setRegenerateInstruction("");
+    } catch (err) {
+      setRegenerateError((err as Error).message);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const revertDescription = () => {
+    if (!aiSnapshot) return;
+    setDescriptionDraft(aiSnapshot);
+    setAiSnapshot(null);
+    setAiPreviewActive(false);
   };
 
   const saveInternalData = async () => {
@@ -1017,73 +1275,56 @@ export default function ProductDetailPage() {
     }));
   }, [data, images]);
 
-  const splitList = (value?: string | null) =>
-    value
-      ? value
-          .split(/\r?\n/)
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      : [];
+  const descriptionForm =
+    descriptionDraft ??
+    ({
+      short_title: "",
+      subtitle: "",
+      long_title: "",
+      description_short: "",
+      description_main: "",
+      description_extended: "",
+      bullets_short: "",
+      bullets: "",
+      bullets_long: "",
+      specs: "",
+    } as DescriptionForm);
 
-  const formatList = (items: string[]) =>
-    items.length ? items.map((item) => `- ${item}`).join("\n") : "";
+  const descriptionBusy = isSavingDescription || isRegenerating;
 
-  const shortBullets = useMemo(
-    () => splitList(data?.bullets_short),
-    [data?.bullets_short]
-  );
-  const normalBullets = useMemo(
-    () => splitList(data?.bullets),
-    [data?.bullets]
-  );
-  const longBullets = useMemo(
-    () => splitList(data?.bullets_long),
-    [data?.bullets_long]
-  );
-  const specs = useMemo(() => splitList(data?.specs), [data?.specs]);
-
-  const longDescription = data?.product.description_html ?? "";
-  const longIsHtml = Boolean(data?.product.description_html);
-
-  const normalizeHtml = (value: string) =>
-    value
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-
-  const longText =
-    typeof longDescription === "string"
-      ? longIsHtml
-        ? normalizeHtml(longDescription)
-        : longDescription
-      : "";
-  const extendedText = data?.description_extended?.trim() ?? "";
-
-  const CodeField = ({
+  const EditableField = ({
     label,
     value,
     placeholder,
+    multiline,
+    rows,
+    onChange,
   }: {
     label: string;
-    value: string | null;
+    value: string;
     placeholder: string;
+    multiline?: boolean;
+    rows?: number;
+    onChange: (next: string) => void;
   }) => {
-    const text = value?.trim() ?? "";
-    const display = text || placeholder;
     return (
-      <div className={styles.codeField}>
-        <Text weight="semibold">{label}</Text>
-        <div
-          className={mergeClasses(
-            styles.codeBlock,
-            text ? undefined : styles.codeBlockEmpty
-          )}
-        >
-          {display}
-        </div>
-      </div>
+      <Field label={label}>
+        {multiline ? (
+          <Textarea
+            value={value}
+            onChange={(_, data) => onChange(data.value)}
+            placeholder={placeholder}
+            rows={rows}
+            className={styles.descriptionTextarea}
+          />
+        ) : (
+          <Input
+            value={value}
+            onChange={(_, data) => onChange(data.value)}
+            placeholder={placeholder}
+          />
+        )}
+      </Field>
     );
   };
 
@@ -1243,6 +1484,49 @@ export default function ProductDetailPage() {
               ) : null}
               <Tab value="product-data">{t("productDetail.tabs.productData")}</Tab>
             </TabList>
+            {activeTab === "description" && showDescription ? (
+              <div className={styles.descriptionActions}>
+                {aiPreviewActive ? (
+                  <>
+                    <Button
+                      appearance="primary"
+                      onClick={saveDescription}
+                      disabled={isSavingDescription}
+                    >
+                      {isSavingDescription
+                        ? t("common.loading")
+                        : t("productDetail.description.actions.confirmSave")}
+                    </Button>
+                    <Button
+                      appearance="outline"
+                      onClick={revertDescription}
+                      disabled={isSavingDescription || isRegenerating}
+                    >
+                      {t("productDetail.description.actions.revert")}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      appearance="outline"
+                      onClick={() => setIsRegenerateDialogOpen(true)}
+                      disabled={isRegenerating || isSavingDescription}
+                    >
+                      {t("productDetail.description.actions.regenerate")}
+                    </Button>
+                    <Button
+                      appearance="primary"
+                      onClick={saveDescription}
+                      disabled={!descriptionDirty || isSavingDescription}
+                    >
+                      {isSavingDescription
+                        ? t("common.loading")
+                        : t("productDetail.description.actions.save")}
+                    </Button>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
           <Divider />
           {activeTab === "variants" ? (
@@ -1313,62 +1597,133 @@ export default function ProductDetailPage() {
           ) : null}
           {activeTab === "description" && showDescription ? (
             <div className={styles.descriptionPanel}>
-              <div className={styles.tripleGrid}>
-                <CodeField
-                  label={t("productDetail.description.shortTitle")}
-                  value={data.short_title}
-                  placeholder={t("productDetail.description.shortTitleEmpty")}
-                />
-                <CodeField
-                  label={t("productDetail.description.subtitle")}
-                  value={data.subtitle}
-                  placeholder={t("productDetail.description.subtitleEmpty")}
-                />
+              {descriptionSaveError ? (
+                <MessageBar intent="error">{descriptionSaveError}</MessageBar>
+              ) : null}
+              {descriptionSaveSuccess ? (
+                <MessageBar intent="success">
+                  {t("productDetail.description.saveSuccess")}
+                </MessageBar>
+              ) : null}
+              {aiPreviewActive ? (
+                <MessageBar intent="info">
+                  {t("productDetail.description.previewNotice")}
+                </MessageBar>
+              ) : null}
+              <div className={styles.descriptionContentWrap}>
+                <div
+                  className={mergeClasses(
+                    styles.descriptionContent,
+                    descriptionBusy ? styles.descriptionContentBusy : undefined
+                  )}
+                >
+                  <div className={styles.tripleGrid}>
+                    <EditableField
+                      label={t("productDetail.description.shortTitle")}
+                      value={descriptionForm.short_title}
+                      placeholder={t("productDetail.description.shortTitleEmpty")}
+                      onChange={(value) =>
+                        updateDescriptionField("short_title", value)
+                      }
+                    />
+                    <EditableField
+                      label={t("productDetail.description.subtitle")}
+                      value={descriptionForm.subtitle}
+                      placeholder={t("productDetail.description.subtitleEmpty")}
+                      onChange={(value) =>
+                        updateDescriptionField("subtitle", value)
+                      }
+                    />
+                  </div>
+                  <div className={styles.fullRow}>
+                    <EditableField
+                      label={t("productDetail.description.longTitle")}
+                      value={descriptionForm.long_title}
+                      placeholder={t("productDetail.description.longTitleEmpty")}
+                      onChange={(value) =>
+                        updateDescriptionField("long_title", value)
+                      }
+                    />
+                  </div>
+                  <EditableField
+                    label={t("productDetail.description.shortDescription")}
+                    value={descriptionForm.description_short}
+                    placeholder={t("productDetail.description.shortDescriptionEmpty")}
+                    multiline
+                    rows={4}
+                    onChange={(value) =>
+                      updateDescriptionField("description_short", value)
+                    }
+                  />
+                  <EditableField
+                    label={t("productDetail.description.longDescription")}
+                    value={descriptionForm.description_main}
+                    placeholder={t("productDetail.description.longDescriptionEmpty")}
+                    multiline
+                    rows={6}
+                    onChange={(value) =>
+                      updateDescriptionField("description_main", value)
+                    }
+                  />
+                  <EditableField
+                    label={t("productDetail.description.extendedDescription")}
+                    value={descriptionForm.description_extended}
+                    placeholder={t("productDetail.description.extendedDescriptionEmpty")}
+                    multiline
+                    rows={6}
+                    onChange={(value) =>
+                      updateDescriptionField("description_extended", value)
+                    }
+                  />
+                  <div className={styles.bulletsGrid}>
+                    <EditableField
+                      label={t("productDetail.description.shortBullets")}
+                      value={descriptionForm.bullets_short}
+                      placeholder={t("productDetail.description.shortBulletsEmpty")}
+                      multiline
+                      rows={4}
+                      onChange={(value) =>
+                        updateDescriptionField("bullets_short", value)
+                      }
+                    />
+                    <EditableField
+                      label={t("productDetail.description.bullets")}
+                      value={descriptionForm.bullets}
+                      placeholder={t("productDetail.description.bulletsEmpty")}
+                      multiline
+                      rows={5}
+                      onChange={(value) =>
+                        updateDescriptionField("bullets", value)
+                      }
+                    />
+                    <EditableField
+                      label={t("productDetail.description.longBullets")}
+                      value={descriptionForm.bullets_long}
+                      placeholder={t("productDetail.description.longBulletsEmpty")}
+                      multiline
+                      rows={6}
+                      onChange={(value) =>
+                        updateDescriptionField("bullets_long", value)
+                      }
+                    />
+                  </div>
+                  <EditableField
+                    label={t("productDetail.description.specification")}
+                    value={descriptionForm.specs}
+                    placeholder={t("productDetail.description.specificationEmpty")}
+                    multiline
+                    rows={4}
+                    onChange={(value) =>
+                      updateDescriptionField("specs", value)
+                    }
+                  />
+                </div>
+                {descriptionBusy ? (
+                  <div className={styles.descriptionOverlay}>
+                    <Spinner label={t("common.loading")} />
+                  </div>
+                ) : null}
               </div>
-              <div className={styles.fullRow}>
-                <CodeField
-                  label={t("productDetail.description.longTitle")}
-                  value={data.long_title ?? data.product.title}
-                  placeholder={t("productDetail.description.longTitleEmpty")}
-                />
-              </div>
-              <CodeField
-                label={t("productDetail.description.shortDescription")}
-                value={data.description_short}
-                placeholder={t("productDetail.description.shortDescriptionEmpty")}
-              />
-              <CodeField
-                label={t("productDetail.description.longDescription")}
-                value={longText || null}
-                placeholder={t("productDetail.description.longDescriptionEmpty")}
-              />
-              <CodeField
-                label={t("productDetail.description.extendedDescription")}
-                value={extendedText || null}
-                placeholder={t("productDetail.description.extendedDescriptionEmpty")}
-              />
-              <div className={styles.bulletsGrid}>
-                <CodeField
-                  label={t("productDetail.description.shortBullets")}
-                  value={formatList(shortBullets) || null}
-                  placeholder={t("productDetail.description.shortBulletsEmpty")}
-                />
-                <CodeField
-                  label={t("productDetail.description.bullets")}
-                  value={formatList(normalBullets) || null}
-                  placeholder={t("productDetail.description.bulletsEmpty")}
-                />
-                <CodeField
-                  label={t("productDetail.description.longBullets")}
-                  value={formatList(longBullets) || null}
-                  placeholder={t("productDetail.description.longBulletsEmpty")}
-                />
-              </div>
-              <CodeField
-                label={t("productDetail.description.specification")}
-                value={formatList(specs) || null}
-                placeholder={t("productDetail.description.specificationEmpty")}
-              />
             </div>
           ) : null}
           {activeTab === "product-data" ? (
@@ -2414,6 +2769,52 @@ export default function ProductDetailPage() {
                 disabled={!newListName.trim() || isSavingList}
               >
                 {isSavingList ? t("common.loading") : t("products.lists.new")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={isRegenerateDialogOpen}
+        onOpenChange={(_, data) => {
+          setIsRegenerateDialogOpen(data.open);
+          if (data.open) setRegenerateError(null);
+        }}
+      >
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>{t("productDetail.description.regenerateTitle")}</DialogTitle>
+            <Text size={200} className={styles.metaLabel}>
+              {t("productDetail.description.regenerateHint")}
+            </Text>
+            <Field label={t("productDetail.description.regenerateLabel")}>
+              <Textarea
+                value={regenerateInstruction}
+                onChange={(_, data) => setRegenerateInstruction(data.value)}
+                placeholder={t("productDetail.description.regeneratePlaceholder")}
+                rows={6}
+              />
+            </Field>
+            {regenerateError ? (
+              <MessageBar intent="error">{regenerateError}</MessageBar>
+            ) : null}
+            <DialogActions>
+              <Button
+                appearance="subtle"
+                onClick={() => setIsRegenerateDialogOpen(false)}
+                disabled={isRegenerating}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={runRegenerate}
+                disabled={!regenerateInstruction.trim() || isRegenerating}
+              >
+                {isRegenerating
+                  ? t("common.loading")
+                  : t("productDetail.description.regenerateRun")}
               </Button>
             </DialogActions>
           </DialogBody>
