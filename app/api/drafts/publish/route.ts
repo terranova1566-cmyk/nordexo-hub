@@ -94,8 +94,15 @@ type DraftVariantRow = {
 };
 
 const normalizeText = (value: unknown) => {
-  const text = value == null ? "" : String(value).trim();
-  return text === "" ? null : text;
+  const text = value == null ? "" : String(value);
+  const cleaned = text
+    // Excel sometimes encodes carriage returns as a literal token in the cell text.
+    .replace(/_x000d_/gi, "")
+    // Normalize newlines; keep line breaks but avoid CR artifacts.
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+  return cleaned === "" ? null : cleaned;
 };
 
 const getSpuPrefix = (spu: string | null) => {

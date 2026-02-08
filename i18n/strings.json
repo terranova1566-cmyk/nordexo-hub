@@ -127,6 +127,11 @@
       "context": "Shopify menu item"
     },
     {
+      "key": "nav.shopifyWebshopTexts",
+      "text": "Webshop Texts",
+      "context": "Shopify menu item"
+    },
+    {
       "key": "draftExplorer.title",
       "text": "Product Draft Explorer",
       "context": "Draft explorer page title"
@@ -1811,6 +1816,106 @@
       "key": "shopify.storeSettings.invalidColor",
       "text": "Invalid hex color for {key}.",
       "context": "Shopify store settings invalid color message"
+    },
+    {
+      "key": "shopify.webshopTexts.title",
+      "text": "Webshop Texts",
+      "context": "Webshop texts page title"
+    },
+    {
+      "key": "shopify.webshopTexts.helper",
+      "text": "Edit base theme copy and selectively move fields to store-specific overrides.",
+      "context": "Webshop texts page helper"
+    },
+    {
+      "key": "shopify.webshopTexts.storeLabel",
+      "text": "Store",
+      "context": "Webshop texts store dropdown label"
+    },
+    {
+      "key": "shopify.webshopTexts.assetLabel",
+      "text": "Asset",
+      "context": "Webshop texts asset filter label"
+    },
+    {
+      "key": "shopify.webshopTexts.assetAll",
+      "text": "All assets",
+      "context": "Webshop texts asset filter option"
+    },
+    {
+      "key": "shopify.webshopTexts.searchLabel",
+      "text": "Search",
+      "context": "Webshop texts search label"
+    },
+    {
+      "key": "shopify.webshopTexts.searchPlaceholder",
+      "text": "Search label, section, file, or value",
+      "context": "Webshop texts search placeholder"
+    },
+    {
+      "key": "shopify.webshopTexts.tabs.base",
+      "text": "Base",
+      "context": "Webshop texts tab label"
+    },
+    {
+      "key": "shopify.webshopTexts.tabs.overrides",
+      "text": "Text Edits",
+      "context": "Webshop texts tab label"
+    },
+    {
+      "key": "shopify.webshopTexts.loading",
+      "text": "Loading webshop texts...",
+      "context": "Webshop texts loading label"
+    },
+    {
+      "key": "shopify.webshopTexts.error",
+      "text": "Unable to load webshop texts.",
+      "context": "Webshop texts generic load error"
+    },
+    {
+      "key": "shopify.webshopTexts.saveError",
+      "text": "Unable to save webshop texts.",
+      "context": "Webshop texts generic save error"
+    },
+    {
+      "key": "shopify.webshopTexts.saveSuccess",
+      "text": "Saved.",
+      "context": "Webshop texts save success"
+    },
+    {
+      "key": "shopify.webshopTexts.saving",
+      "text": "Saving...",
+      "context": "Webshop texts saving label"
+    },
+    {
+      "key": "shopify.webshopTexts.noChanges",
+      "text": "No unsaved changes.",
+      "context": "Webshop texts no changes helper"
+    },
+    {
+      "key": "shopify.webshopTexts.removeFromBase",
+      "text": "Remove from base",
+      "context": "Webshop texts action button label"
+    },
+    {
+      "key": "shopify.webshopTexts.removeFromBaseHint",
+      "text": "Make this field store-specific for the selected store.",
+      "context": "Webshop texts remove from base tooltip"
+    },
+    {
+      "key": "shopify.webshopTexts.removeFromBaseDisabled",
+      "text": "Already store-specific.",
+      "context": "Webshop texts remove from base disabled tooltip"
+    },
+    {
+      "key": "shopify.webshopTexts.returnToBase",
+      "text": "Return to base",
+      "context": "Webshop texts action button label"
+    },
+    {
+      "key": "shopify.webshopTexts.overriddenBadge",
+      "text": "store override",
+      "context": "Webshop texts badge"
     },
     {
       "key": "settings.discovery.tab",

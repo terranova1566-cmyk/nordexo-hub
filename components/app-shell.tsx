@@ -187,6 +187,7 @@ const productionMenuItems = [
 
 const shopifyMenuItems = [
   { label: "nav.shopifyStoreSettings", href: "/app/shopify/store-settings" },
+  { label: "nav.shopifyWebshopTexts", href: "/app/shopify/webshop-texts" },
 ];
 
 function ResearchSparkIcon({ className }: { className?: string }) {
