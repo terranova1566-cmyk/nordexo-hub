@@ -9,7 +9,9 @@
     "lint": "eslint",
     "i18n:translate": "node scripts/translate-ui.mjs",
     "i18n:sync": "node scripts/sync-translations.mjs",
-    "meili:index": "node scripts/index-products-meili.mjs"
+    "meili:index": "node scripts/index-products-meili.mjs",
+    "sales:template": "node scripts/generate-sales-template.mjs",
+    "sales:import": "node scripts/import-sales-excel.mjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.72.9",

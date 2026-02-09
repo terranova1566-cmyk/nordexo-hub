@@ -3,8 +3,12 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 200;
-const PRODUCT_SELECT =
+const PRODUCT_SELECT_BASE =
   "provider, product_id, title, product_url, image_url, image_local_path, image_local_url, source_url, last_price, last_previous_price, last_reviews, last_delivery_time, taxonomy_l1, taxonomy_l2, taxonomy_l3, taxonomy_path, taxonomy_confidence, taxonomy_updated_at, first_seen_at, last_seen_at, scrape_date, sold_today, sold_7d, sold_all_time, trending_score, price, previous_price, reviews, delivery_time";
+const PRODUCT_SELECT_WITH_IDENTICAL = `${PRODUCT_SELECT_BASE}, identical_spu`;
+
+const isMissingIdenticalSpuColumn = (message: string) =>
+  message.toLowerCase().includes("identical_spu");
 
 type ProviderKey = "cdon" | "fyndiq";
 const ALL_PROVIDERS: ProviderKey[] = ["cdon", "fyndiq"];
@@ -13,6 +17,7 @@ type DiscoveryItem = {
   provider: ProviderKey;
   product_id: string;
   title: string | null;
+  identical_spu: string | null;
   product_url: string | null;
   image_url: string | null;
   image_local_path: string | null;
@@ -156,6 +161,14 @@ export async function GET(request: NextRequest) {
   const wishlistIdParam = searchParams.get("wishlistId")?.trim();
   const wishlistId =
     wishlistIdParam && wishlistIdParam !== "all" ? wishlistIdParam : null;
+  const showOnlyParam = searchParams.get("showOnly")?.trim() ?? "";
+  const showOnlyTokens = showOnlyParam
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+  const showOnlyLinked = showOnlyTokens.includes("linked");
+  const showOnlyWishlisted = showOnlyTokens.includes("wishlist");
+  const showOnlyProduction = showOnlyTokens.includes("production");
 
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(
@@ -175,6 +188,94 @@ export async function GET(request: NextRequest) {
     const hiddenKeywordLikes = hiddenKeywords.map(
       (keyword) => `%${escapeLikeToken(keyword)}%`
     );
+
+    const collectProviderIds = (rows: Array<{ provider: any; product_id: any }>) => {
+      const byProvider = new Map<ProviderKey, Set<string>>();
+      rows.forEach((row) => {
+        const providerKey = row.provider as ProviderKey;
+        if (providerKey !== "cdon" && providerKey !== "fyndiq") return;
+        const id = String(row.product_id ?? "").trim();
+        if (!id) return;
+        const set = byProvider.get(providerKey) ?? new Set<string>();
+        set.add(id);
+        byProvider.set(providerKey, set);
+      });
+      return byProvider;
+    };
+
+    const intersectProviderIds = (
+      a: Map<ProviderKey, Set<string>>,
+      b: Map<ProviderKey, Set<string>>
+    ) => {
+      const out = new Map<ProviderKey, Set<string>>();
+      for (const providerKey of ALL_PROVIDERS) {
+        const aSet = a.get(providerKey);
+        const bSet = b.get(providerKey);
+        if (!aSet || !bSet) continue;
+        const next = new Set<string>();
+        aSet.forEach((id) => {
+          if (bSet.has(id)) next.add(id);
+        });
+        if (next.size > 0) out.set(providerKey, next);
+      }
+      return out;
+    };
+
+    let allowedProductIds: Map<ProviderKey, Set<string>> | null = null;
+
+    if (showOnlyWishlisted) {
+      const { data: userWishlists, error: wishlistError } = await supabase
+        .from("discovery_wishlists")
+        .select("id")
+        .eq("user_id", user.id);
+
+      if (wishlistError) {
+        throw new Error(wishlistError.message);
+      }
+
+      const wishlistIds = (userWishlists ?? [])
+        .map((row) => String(row.id ?? "").trim())
+        .filter(Boolean);
+
+      if (wishlistIds.length === 0) {
+        return NextResponse.json({ items: [], page, pageSize, total: 0 });
+      }
+
+      const { data: wishlistItems, error: wishlistItemsError } = await supabase
+        .from("discovery_wishlist_items")
+        .select("provider, product_id")
+        .in("wishlist_id", wishlistIds);
+
+      if (wishlistItemsError) {
+        throw new Error(wishlistItemsError.message);
+      }
+
+      allowedProductIds = collectProviderIds((wishlistItems ?? []) as any[]);
+
+      if (allowedProductIds.size === 0) {
+        return NextResponse.json({ items: [], page, pageSize, total: 0 });
+      }
+    }
+
+    if (showOnlyProduction) {
+      const { data: productionItems, error: productionError } = await supabase
+        .from("discovery_production_items")
+        .select("provider, product_id")
+        .eq("user_id", user.id);
+
+      if (productionError) {
+        throw new Error(productionError.message);
+      }
+
+      const productionIds = collectProviderIds((productionItems ?? []) as any[]);
+      allowedProductIds = allowedProductIds
+        ? intersectProviderIds(allowedProductIds, productionIds)
+        : productionIds;
+
+      if (allowedProductIds.size === 0) {
+        return NextResponse.json({ items: [], page, pageSize, total: 0 });
+      }
+    }
 
     const applyFilters = (query: any) => {
       if (q) {
@@ -253,6 +354,10 @@ export async function GET(request: NextRequest) {
         query = query.not("title", "ilike", like);
       });
 
+      if (showOnlyLinked) {
+        query = query.not("identical_spu", "is", null).neq("identical_spu", "");
+      }
+
       return query;
     };
 
@@ -324,7 +429,7 @@ export async function GET(request: NextRequest) {
     const to = from + pageSize - 1;
     let products: any[] = [];
     let totalCount: number | null = null;
-    const useClientPagination = Boolean(wishlistId);
+    const useClientPagination = Boolean(wishlistId) || Boolean(allowedProductIds);
 
     if (wishlistId) {
       const { data: wishlistItems, error: wishlistError } = await supabase
@@ -341,6 +446,14 @@ export async function GET(request: NextRequest) {
         const providerKey = row.provider as ProviderKey;
         if (providerKey !== "cdon" && providerKey !== "fyndiq") return;
         if (filterProviders && !providers.includes(providerKey)) return;
+        if (
+          allowedProductIds &&
+          !allowedProductIds
+            .get(providerKey)
+            ?.has(String(row.product_id ?? "").trim())
+        ) {
+          return;
+        }
         const list = byProvider.get(providerKey) ?? [];
         list.push(row.product_id);
         byProvider.set(providerKey, list);
@@ -348,36 +461,83 @@ export async function GET(request: NextRequest) {
 
       for (const [providerKey, productIds] of byProvider.entries()) {
         if (productIds.length === 0) continue;
-        let providerQuery = supabase
-          .from("discovery_products")
-          .select(PRODUCT_SELECT)
-          .eq("provider", providerKey)
-          .in("product_id", productIds);
-        providerQuery = applyFilters(providerQuery);
-        const { data: providerItems, error: providerError } = await providerQuery;
-        if (providerError) {
-          throw new Error(providerError.message);
+        const runProviderQuery = async (select: string) => {
+          let providerQuery = supabase
+            .from("discovery_products")
+            .select(select)
+            .eq("provider", providerKey)
+            .in("product_id", productIds);
+          providerQuery = applyFilters(providerQuery);
+          return await providerQuery;
+        };
+
+        let { data: providerItems, error: providerError } = await runProviderQuery(
+          PRODUCT_SELECT_WITH_IDENTICAL
+        );
+        if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
+          ({ data: providerItems, error: providerError } = await runProviderQuery(
+            PRODUCT_SELECT_BASE
+          ));
         }
+        if (providerError) throw new Error(providerError.message);
+
         products = products.concat(providerItems ?? []);
       }
       totalCount = products.length;
+    } else if (allowedProductIds) {
+      for (const [providerKey, idSet] of allowedProductIds.entries()) {
+        if (filterProviders && !providers.includes(providerKey)) continue;
+        const productIds = Array.from(idSet);
+        if (productIds.length === 0) continue;
+        const runProviderQuery = async (select: string) => {
+          let providerQuery = supabase
+            .from("discovery_products")
+            .select(select)
+            .eq("provider", providerKey)
+            .in("product_id", productIds);
+          providerQuery = applyFilters(providerQuery);
+          providerQuery = applySort(providerQuery);
+          return await providerQuery;
+        };
+
+        let { data: providerItems, error: providerError } = await runProviderQuery(
+          PRODUCT_SELECT_WITH_IDENTICAL
+        );
+        if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
+          ({ data: providerItems, error: providerError } = await runProviderQuery(
+            PRODUCT_SELECT_BASE
+          ));
+        }
+        if (providerError) throw new Error(providerError.message);
+
+        products = products.concat(providerItems ?? []);
+      }
+
+      totalCount = products.length;
     } else {
-      let query = supabase
-        .from("discovery_products")
-        .select(PRODUCT_SELECT, { count: "exact" });
+      const buildQuery = (select: string) => {
+        let query = supabase
+          .from("discovery_products")
+          .select(select, { count: "exact" });
 
-      if (filterProviders) {
-        query = query.in("provider", providers);
+        if (filterProviders) {
+          query = query.in("provider", providers);
+        }
+
+        query = applyFilters(query);
+        query = applySort(query);
+        query = query.range(from, to);
+        return query;
+      };
+
+      let query = buildQuery(PRODUCT_SELECT_WITH_IDENTICAL);
+      let { data: productRows, error, count } = await query;
+      if (error && isMissingIdenticalSpuColumn(error.message)) {
+        query = buildQuery(PRODUCT_SELECT_BASE);
+        ({ data: productRows, error, count } = await query);
       }
+      if (error) throw new Error(error.message);
 
-      query = applyFilters(query);
-      query = applySort(query);
-      query = query.range(from, to);
-
-      const { data: productRows, error, count } = await query;
-      if (error) {
-        throw new Error(error.message);
-      }
       products = productRows ?? [];
       totalCount = count ?? products.length;
     }
@@ -387,6 +547,7 @@ export async function GET(request: NextRequest) {
         provider: product.provider as ProviderKey,
         product_id: product.product_id,
         title: product.title ?? null,
+        identical_spu: product.identical_spu ?? null,
         product_url: product.product_url ?? null,
         image_url: product.image_url ?? null,
         image_local_path: product.image_local_path ?? null,

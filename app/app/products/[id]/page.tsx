@@ -36,7 +36,14 @@ import {
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { useParams } from "next/navigation";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { extractProductImages } from "@/lib/product-media";
@@ -187,6 +194,10 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "8px",
   },
+  aiPreviewNotice: {
+    backgroundColor: "#fffce5",
+    border: "1px solid #ffd12a",
+  },
   bulletsGrid: {
     display: "grid",
     gridTemplateColumns: "2fr 3fr 4fr",
@@ -268,12 +279,15 @@ const useStyles = makeStyles({
   dataPanel: {
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
+    gap: "24px",
   },
   dataSection: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "14px",
+    padding: "16px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground2,
   },
   dataSectionHeader: {
     display: "flex",
@@ -282,21 +296,45 @@ const useStyles = makeStyles({
     gap: "12px",
     flexWrap: "wrap",
   },
+  dataTableHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  dataScrollControls: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  dataScrollButton: {
+    minWidth: "32px",
+    height: "32px",
+    paddingInline: 0,
+    borderRadius: "999px",
+  },
   dataGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: "12px",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: "16px",
   },
   dataTableWrap: {
     overflowX: "auto",
+    maxWidth: "100%",
+    padding: "8px",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    scrollbarGutter: "stable both-edges",
   },
   dataInput: {
-    minWidth: "140px",
+    minWidth: "180px",
   },
   dataMetaRow: {
     display: "grid",
-    gridTemplateColumns: "220px minmax(0, 1fr)",
-    gap: "12px",
+    gridTemplateColumns: "260px minmax(0, 1fr)",
+    gap: "16px",
     alignItems: "start",
   },
   dataMetaKey: {
@@ -306,6 +344,27 @@ const useStyles = makeStyles({
   },
   dataMetaValue: {
     minHeight: "60px",
+  },
+  dataWideTable: {
+    width: "max-content",
+    minWidth: "100%",
+    "& .fui-TableCell": {
+      verticalAlign: "top",
+    },
+  },
+  dataStickyLeftCell: {
+    position: "sticky",
+    left: 0,
+    zIndex: 2,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: `1px 0 0 ${tokens.colorNeutralStroke2}`,
+  },
+  dataStickyLeftHeaderCell: {
+    position: "sticky",
+    left: 0,
+    zIndex: 3,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: `1px 0 0 ${tokens.colorNeutralStroke2}`,
   },
   dataReadOnly: {
     opacity: 0.6,
@@ -550,6 +609,9 @@ export default function ProductDetailPage() {
   const productId = params.id as string;
   const { t } = useI18n();
 
+  const variantIdentityTableRef = useRef<HTMLDivElement | null>(null);
+  const variantPricingTableRef = useRef<HTMLDivElement | null>(null);
+
   const [data, setData] = useState<ProductResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -716,6 +778,16 @@ export default function ProductDetailPage() {
     return raw;
   };
 
+  // Bullets are stored as newline-separated strings. Treat blank lines as noise.
+  const normalizeBulletLines = (value: string) => {
+    const normalized = value.replace(/\r\n/g, "\n");
+    return normalized
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n");
+  };
+
   const toHtmlFromText = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed) return "";
@@ -822,9 +894,9 @@ export default function ProductDetailPage() {
       description_short: normalizeListText(data.description_short),
       description_main: normalizeListText(normalizedMain),
       description_extended: normalizeListText(data.description_extended),
-      bullets_short: normalizeListText(data.bullets_short),
-      bullets: normalizeListText(data.bullets),
-      bullets_long: normalizeListText(data.bullets_long),
+      bullets_short: normalizeBulletLines(normalizeListText(data.bullets_short)),
+      bullets: normalizeBulletLines(normalizeListText(data.bullets)),
+      bullets_long: normalizeBulletLines(normalizeListText(data.bullets_long)),
       specs: normalizeListText(data.specs),
     };
     setDescriptionDraft(nextDescription);
@@ -918,6 +990,19 @@ export default function ProductDetailPage() {
     setDescriptionDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
+  const scrollTable = (
+    ref: RefObject<HTMLDivElement | null>,
+    direction: "left" | "right"
+  ) => {
+    const node = ref.current;
+    if (!node) return;
+    const delta = Math.max(280, Math.floor(node.clientWidth * 0.75));
+    node.scrollBy({
+      left: direction === "left" ? -delta : delta,
+      behavior: "smooth",
+    });
+  };
+
   const descriptionDirty = useMemo(() => {
     if (!descriptionDraft || !descriptionBaseline) return false;
     return (Object.keys(descriptionDraft) as Array<keyof DescriptionForm>).some(
@@ -931,6 +1016,14 @@ export default function ProductDetailPage() {
     setDescriptionSaveError(null);
     setDescriptionSaveSuccess(false);
     try {
+      const normalizedBulletsShort = normalizeBulletLines(
+        descriptionDraft.bullets_short
+      );
+      const normalizedBullets = normalizeBulletLines(descriptionDraft.bullets);
+      const normalizedBulletsLong = normalizeBulletLines(
+        descriptionDraft.bullets_long
+      );
+
       const response = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -944,9 +1037,9 @@ export default function ProductDetailPage() {
             { key: "subtitle", value: descriptionDraft.subtitle },
             { key: "description_short", value: descriptionDraft.description_short },
             { key: "description_extended", value: descriptionDraft.description_extended },
-            { key: "bullets_short", value: descriptionDraft.bullets_short },
-            { key: "bullets", value: descriptionDraft.bullets },
-            { key: "bullets_long", value: descriptionDraft.bullets_long },
+            { key: "bullets_short", value: normalizedBulletsShort },
+            { key: "bullets", value: normalizedBullets },
+            { key: "bullets_long", value: normalizedBulletsLong },
             { key: "specs", value: descriptionDraft.specs },
           ],
         }),
@@ -995,8 +1088,19 @@ export default function ProductDetailPage() {
       if (!response.ok) {
         let message = t("productDetail.description.regenerateError");
         try {
-          const payload = await response.json();
-          if (payload?.error) message = payload.error;
+          const text = await response.text();
+          try {
+            const payload = JSON.parse(text);
+            if (payload?.error) message = payload.error;
+          } catch {
+            if (text?.trim()) {
+              message = `${message} (${response.status}): ${text
+                .trim()
+                .slice(0, 200)}`;
+            } else {
+              message = `${message} (${response.status})`;
+            }
+          }
         } catch {
           // ignore parse failures
         }
@@ -1022,9 +1126,13 @@ export default function ProductDetailPage() {
               description_main: updates.description_main ?? prev.description_main,
               description_extended:
                 updates.description_extended ?? prev.description_extended,
-              bullets_short: updates.bullets_short ?? prev.bullets_short,
-              bullets: updates.bullets ?? prev.bullets,
-              bullets_long: updates.bullets_long ?? prev.bullets_long,
+              bullets_short: normalizeBulletLines(
+                updates.bullets_short ?? prev.bullets_short
+              ),
+              bullets: normalizeBulletLines(updates.bullets ?? prev.bullets),
+              bullets_long: normalizeBulletLines(
+                updates.bullets_long ?? prev.bullets_long
+              ),
               specs: updates.specs ?? prev.specs,
             }
           : prev
@@ -1606,7 +1714,7 @@ export default function ProductDetailPage() {
                 </MessageBar>
               ) : null}
               {aiPreviewActive ? (
-                <MessageBar intent="info">
+                <MessageBar intent="info" className={styles.aiPreviewNotice}>
                   {t("productDetail.description.previewNotice")}
                 </MessageBar>
               ) : null}
@@ -1650,7 +1758,7 @@ export default function ProductDetailPage() {
                     value={descriptionForm.description_short}
                     placeholder={t("productDetail.description.shortDescriptionEmpty")}
                     multiline
-                    rows={4}
+                    rows={2}
                     onChange={(value) =>
                       updateDescriptionField("description_short", value)
                     }
@@ -1780,8 +1888,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
                 <Text weight="semibold">
                   {t("productDetail.data.section.catalog")}
@@ -1906,8 +2012,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
                 <Text weight="semibold">
                   {t("productDetail.data.section.collections")}
@@ -1971,8 +2075,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
                 <Text weight="semibold">
                   {t("productDetail.data.section.media")}
@@ -2005,8 +2107,6 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
                 <Text weight="semibold">
                   {t("productDetail.data.section.status")}
@@ -2038,8 +2138,6 @@ export default function ProductDetailPage() {
                   </Field>
                 </div>
               </div>
-
-              <Divider />
 
               <div className={styles.dataSection}>
                 <Text weight="semibold">
@@ -2079,17 +2177,40 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.variantIdentity")}
-                </Text>
-                <div className={styles.dataTableWrap}>
-                  <Table size="small" className={styles.variantTable}>
+                <div className={styles.dataTableHeader}>
+                  <Text weight="semibold">
+                    {t("productDetail.data.section.variantIdentity")}
+                  </Text>
+                  <div className={styles.dataScrollControls}>
+                    <Button
+                      appearance="subtle"
+                      className={styles.dataScrollButton}
+                      onClick={() => scrollTable(variantIdentityTableRef, "left")}
+                      aria-label="Scroll left"
+                    >
+                      {"<"}
+                    </Button>
+                    <Button
+                      appearance="subtle"
+                      className={styles.dataScrollButton}
+                      onClick={() => scrollTable(variantIdentityTableRef, "right")}
+                      aria-label="Scroll right"
+                    >
+                      {">"}
+                    </Button>
+                  </div>
+                </div>
+                <div className={styles.dataTableWrap} ref={variantIdentityTableRef}>
+                  <Table
+                    size="small"
+                    className={mergeClasses(styles.variantTable, styles.dataWideTable)}
+                  >
                     <TableHeader>
                       <TableRow>
-                        <TableHeaderCell>{t("productDetail.data.variantSku")}</TableHeaderCell>
+                        <TableHeaderCell className={styles.dataStickyLeftHeaderCell}>
+                          {t("productDetail.data.variantSku")}
+                        </TableHeaderCell>
                         <TableHeaderCell>{t("productDetail.data.variantSkuNorm")}</TableHeaderCell>
                         <TableHeaderCell>{t("productDetail.data.variantSkuBak")}</TableHeaderCell>
                         <TableHeaderCell>{t("productDetail.data.option1")}</TableHeaderCell>
@@ -2113,11 +2234,14 @@ export default function ProductDetailPage() {
                     <TableBody>
                       {internalVariants.map((variant) => (
                         <TableRow key={variant.id}>
-                          <TableCell>{variant.sku}</TableCell>
+                          <TableCell className={styles.dataStickyLeftCell}>
+                            {variant.sku}
+                          </TableCell>
                           <TableCell>
                             <Input
                               value={variant.sku_norm}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2131,6 +2255,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.sku_bak}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2144,6 +2269,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option1}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2157,6 +2283,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option2}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2170,6 +2297,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option3}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2183,6 +2311,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option4}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2196,6 +2325,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option_combined_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2209,6 +2339,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option1_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2222,6 +2353,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option2_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2235,6 +2367,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option3_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2248,6 +2381,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.option4_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2261,6 +2395,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.variation_color_se}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2274,6 +2409,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.variation_size_se}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2287,6 +2423,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.variation_other_se}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2300,6 +2437,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.variation_amount_se}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2313,6 +2451,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.short_title_zh}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2326,6 +2465,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.barcode}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2339,6 +2479,7 @@ export default function ProductDetailPage() {
                             <Input
                               value={variant.variant_image_url}
                               size="small"
+                              className={styles.dataInput}
                               onChange={(_, data) =>
                                 updateInternalVariant(
                                   variant.id,
@@ -2355,17 +2496,40 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              <Divider />
-
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.pricing")}
-                </Text>
-                <div className={styles.dataTableWrap}>
-                  <Table size="small" className={styles.variantTable}>
+                <div className={styles.dataTableHeader}>
+                  <Text weight="semibold">
+                    {t("productDetail.data.section.pricing")}
+                  </Text>
+                  <div className={styles.dataScrollControls}>
+                    <Button
+                      appearance="subtle"
+                      className={styles.dataScrollButton}
+                      onClick={() => scrollTable(variantPricingTableRef, "left")}
+                      aria-label="Scroll left"
+                    >
+                      {"<"}
+                    </Button>
+                    <Button
+                      appearance="subtle"
+                      className={styles.dataScrollButton}
+                      onClick={() => scrollTable(variantPricingTableRef, "right")}
+                      aria-label="Scroll right"
+                    >
+                      {">"}
+                    </Button>
+                  </div>
+                </div>
+                <div className={styles.dataTableWrap} ref={variantPricingTableRef}>
+                  <Table
+                    size="small"
+                    className={mergeClasses(styles.variantTable, styles.dataWideTable)}
+                  >
                     <TableHeader>
                       <TableRow>
-                        <TableHeaderCell>{t("productDetail.data.variantSku")}</TableHeaderCell>
+                        <TableHeaderCell className={styles.dataStickyLeftHeaderCell}>
+                          {t("productDetail.data.variantSku")}
+                        </TableHeaderCell>
                         <TableHeaderCell>{t("productDetail.data.variantSupplier")}</TableHeaderCell>
                         <TableHeaderCell>
                           {t("productDetail.data.variantSupplierLocation")}
@@ -2394,7 +2558,9 @@ export default function ProductDetailPage() {
                     <TableBody>
                       {internalVariants.map((variant) => (
                         <TableRow key={variant.id}>
-                          <TableCell>{variant.sku}</TableCell>
+                          <TableCell className={styles.dataStickyLeftCell}>
+                            {variant.sku}
+                          </TableCell>
                           <TableCell>
                             <Input
                               value={variant.supplier_name}
@@ -2695,8 +2861,6 @@ export default function ProductDetailPage() {
                   </Table>
                 </div>
               </div>
-
-              <Divider />
 
               <div className={styles.dataSection}>
                 <Text weight="semibold">

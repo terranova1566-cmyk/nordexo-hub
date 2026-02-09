@@ -283,7 +283,15 @@ export async function POST(
   if (!fs.existsSync(PROMPT_PATH)) {
     return NextResponse.json({ error: "Prompt file missing." }, { status: 500 });
   }
-  const promptTemplate = fs.readFileSync(PROMPT_PATH, "utf8");
+  let promptTemplate = "";
+  try {
+    promptTemplate = fs.readFileSync(PROMPT_PATH, "utf8");
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Unable to read prompt file: ${(err as Error)?.message || err}` },
+      { status: 500 }
+    );
+  }
 
   const payload = {
     text_output: [originalRow],
@@ -316,14 +324,22 @@ export async function POST(
     bodyPayload.response_format = { type: "json_object" };
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(bodyPayload),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: `OpenAI request failed: ${(err as Error)?.message || err}` },
+      { status: 500 }
+    );
+  }
 
   if (!response.ok) {
     const errText = await response.text();

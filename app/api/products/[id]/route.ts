@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { loadImageUrls, resolveImageUrl } from "@/lib/server-images";
+import { runMeiliIndexSpus } from "@/lib/server/meili-index";
 
 const PRODUCT_META_KEYS = [
   "description_short",
@@ -648,12 +649,13 @@ export async function PATCH(
   }
 
   if (metafieldsPayload.length > 0) {
-    const upserts: Array<Record<string, unknown>> = [];
+    const updatesByDefId = new Map<string, string>();
     const deleteIds: string[] = [];
     const metaKeyMap = new Map<
       string,
       Array<{ id: string; key: string; namespace: string | null }>
     >();
+    const metaDefInfoById = new Map<string, { is_universal: boolean | null }>();
 
     const metaKeys = Array.from(
       new Set(
@@ -666,13 +668,19 @@ export async function PATCH(
     if (metaKeys.length > 0) {
       const { data: metaDefs } = await adminClient
         .from("metafield_definitions")
-        .select("id, key, namespace")
+        .select("id, key, namespace, is_universal")
         .eq("resource", "catalog_product")
         .in("key", metaKeys);
 
       metaDefs?.forEach((def) => {
         const key = def.key ?? "";
         if (!key) return;
+        metaDefInfoById.set(String(def.id), {
+          is_universal:
+            def.is_universal === null || def.is_universal === undefined
+              ? null
+              : Boolean(def.is_universal),
+        });
         const list = metaKeyMap.get(key) ?? [];
         list.push({
           id: String(def.id),
@@ -715,26 +723,135 @@ export async function PATCH(
         deleteIds.push(String(defId));
         continue;
       }
-      upserts.push({
-        definition_id: defId,
-        target_type: "product",
-        target_id: id,
-        value_text: normalized,
-        value_number: null,
-        value_json: null,
-        value: null,
-      });
+      updatesByDefId.set(String(defId), normalized);
     }
 
-    if (upserts.length > 0) {
-      const { error: metaError } = await adminClient
-        .from("metafield_values")
-        .upsert(upserts, {
-          onConflict: "definition_id,target_type,target_id",
-        });
+    if (updatesByDefId.size > 0) {
+      const updateDefIds = Array.from(updatesByDefId.keys());
+      const missingDefIds = updateDefIds.filter((defId) => !metaDefInfoById.has(defId));
+      if (missingDefIds.length > 0) {
+        const { data: extraDefs } = await adminClient
+          .from("metafield_definitions")
+          .select("id, is_universal")
+          .in("id", missingDefIds);
 
-      if (metaError) {
-        return NextResponse.json({ error: metaError.message }, { status: 500 });
+        extraDefs?.forEach((def) => {
+          metaDefInfoById.set(String(def.id), {
+            is_universal:
+              def.is_universal === null || def.is_universal === undefined
+                ? null
+                : Boolean(def.is_universal),
+          });
+        });
+      }
+
+      // Supabase .upsert() requires a unique/exclusion constraint that matches `onConflict`.
+      // Our DB does not enforce one for metafield_values, so we do update/insert manually.
+      const { data: existingRows, error: existingError } = await adminClient
+        .from("metafield_values")
+        .select("id, definition_id, scope_of_value, shop_id")
+        .eq("target_type", "product")
+        .eq("target_id", id)
+        .in("definition_id", updateDefIds);
+
+      if (existingError) {
+        return NextResponse.json(
+          { error: existingError.message },
+          { status: 500 }
+        );
+      }
+
+      const existingByDefId = new Map<string, Array<any>>();
+      (existingRows ?? []).forEach((row) => {
+        const defId = row.definition_id ? String(row.definition_id) : "";
+        if (!defId) return;
+        const list = existingByDefId.get(defId) ?? [];
+        list.push(row);
+        existingByDefId.set(defId, list);
+      });
+
+      let defaultShopId: string | null = null;
+      const needsShopId = updateDefIds.some(
+        (defId) => metaDefInfoById.get(defId)?.is_universal === false
+      );
+      if (needsShopId) {
+        const { data: shopRow } = await adminClient
+          .from("metafield_values")
+          .select("shop_id")
+          .eq("scope_of_value", "shop")
+          .not("shop_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        defaultShopId = shopRow?.shop_id ? String(shopRow.shop_id) : null;
+      }
+
+      const inserts: Array<Record<string, unknown>> = [];
+      const updates: Array<{ id: string; value_text: string }> = [];
+
+      for (const [defId, valueText] of updatesByDefId.entries()) {
+        const defInfo = metaDefInfoById.get(defId);
+        const isUniversal = defInfo?.is_universal !== false;
+
+        // If the definition is not universal, we prefer shop-scoped rows.
+        // If we can't resolve a shop id, fall back to catalog scope so the value still saves.
+        const desiredScope = !isUniversal && defaultShopId ? "shop" : "catalog";
+        const desiredShopId = desiredScope === "shop" ? defaultShopId : null;
+
+        const rows = existingByDefId.get(defId) ?? [];
+        let rowToUpdate: any | null = rows[0] ?? null;
+        if (rows.length > 1) {
+          const scopeMatch = rows.find(
+            (row) => String(row.scope_of_value ?? "") === desiredScope
+          );
+          rowToUpdate = scopeMatch ?? rowToUpdate;
+        }
+
+        if (rowToUpdate?.id) {
+          updates.push({ id: String(rowToUpdate.id), value_text: valueText });
+          continue;
+        }
+
+        inserts.push({
+          definition_id: defId,
+          target_type: "product",
+          target_id: id,
+          scope_of_value: desiredScope,
+          shop_id: desiredShopId,
+          value_text: valueText,
+          value_number: null,
+          value_json: null,
+          value: null,
+        });
+      }
+
+      if (inserts.length > 0) {
+        const { error: insertError } = await adminClient
+          .from("metafield_values")
+          .insert(inserts);
+        if (insertError) {
+          return NextResponse.json(
+            { error: insertError.message },
+            { status: 500 }
+          );
+        }
+      }
+
+      for (const entry of updates) {
+        const { error: updateError } = await adminClient
+          .from("metafield_values")
+          .update({
+            value_text: entry.value_text,
+            value_number: null,
+            value_json: null,
+            value: null,
+          })
+          .eq("id", entry.id);
+        if (updateError) {
+          return NextResponse.json(
+            { error: updateError.message },
+            { status: 500 }
+          );
+        }
       }
     }
 
@@ -753,6 +870,23 @@ export async function PATCH(
         );
       }
     }
+  }
+
+  try {
+    const { data: productRow } = await adminClient
+      .from("catalog_products")
+      .select("spu")
+      .eq("id", id)
+      .maybeSingle();
+    const spu = productRow?.spu ? String(productRow.spu).trim() : "";
+    if (spu) {
+      const meiliIndex = await runMeiliIndexSpus([spu]);
+      if (!meiliIndex.ok) {
+        console.error("Meili index update failed after product edit:", meiliIndex.error);
+      }
+    }
+  } catch (err) {
+    console.error("Meili index update failed after product edit:", (err as Error).message);
   }
 
   return NextResponse.json({ ok: true });

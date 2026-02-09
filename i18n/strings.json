@@ -3214,7 +3214,7 @@
     },
     {
       "key": "productDetail.data.section.collections",
-      "text": "Collections & sync",
+      "text": "Shopify Tingelo: collections & sync",
       "context": "Product detail internal section heading"
     },
     {
@@ -3339,12 +3339,12 @@
     },
     {
       "key": "productDetail.data.shopifyCollectionHandles",
-      "text": "Shopify collection handles",
+      "text": "Shopify Tingelo collection handles",
       "context": "Product detail internal field label"
     },
     {
       "key": "productDetail.data.shopifyCollectionIds",
-      "text": "Shopify collection IDs",
+      "text": "Shopify Tingelo collection IDs",
       "context": "Product detail internal field label"
     },
     {
@@ -4767,6 +4767,11 @@
       "key": "digideal.filters.tagsPlaceholder",
       "text": "Filter by tags",
       "context": "DigiDeal campaigns tags placeholder"
+    },
+    {
+      "key": "digideal.filters.firstSeenRange",
+      "text": "First seen range",
+      "context": "DigiDeal campaigns first seen date range filter label"
     },
     {
       "key": "digideal.filters.status",

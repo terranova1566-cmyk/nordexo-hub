@@ -9,6 +9,10 @@ const PRODUCT_SELECT =
 
 const SELLER_GROUPS = [
   {
+    display: "GadgetBay",
+    variants: ["GadgetBay Limited", "Gadget Bay Limited", "GadgetBay", "Gadget Bay"],
+  },
+  {
     display: "Nordexo",
     variants: [
       "Nordexo",
@@ -127,6 +131,21 @@ const stripHtml = (value: string) =>
 
 const toPgInList = (values: string[]) =>
   `(${values.map((value) => `'${value.replace(/'/g, "''")}'`).join(",")})`;
+
+const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const addDaysIsoDate = (value: string, days: number) => {
+  if (!isIsoDate(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + days);
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 const extractShippingCost = (value?: string | null) => {
   if (!value) return null;
@@ -264,6 +283,8 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category")?.trim();
     const tag = searchParams.get("tag")?.trim();
     const seller = searchParams.get("seller")?.trim();
+    const firstSeenFrom = searchParams.get("firstSeenFrom")?.trim();
+    const firstSeenTo = searchParams.get("firstSeenTo")?.trim();
     const status = (searchParams.get("status") ?? "online").toLowerCase();
     const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
     const priceMatch = searchParams.get("priceMatch")?.trim().toLowerCase();
@@ -282,8 +303,24 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    query = query.not("seller_name", "ilike", "%digideal%");
-    query = query.not("seller_name", "ilike", "%ace lloyds%");
+    // Keep rows where seller_name is NULL (legacy imports can be missing seller info),
+    // but exclude a couple of known internal/test sellers when present.
+    query = query.or(
+      "seller_name.is.null,and(seller_name.not.ilike.%digideal%,seller_name.not.ilike.%ace lloyds%)"
+    );
+
+    if (firstSeenFrom && isIsoDate(firstSeenFrom)) {
+      // Treat the date as UTC start-of-day; good enough for day-granularity filtering.
+      query = query.gte("first_seen_at", `${firstSeenFrom}T00:00:00.000Z`);
+    }
+
+    if (firstSeenTo && isIsoDate(firstSeenTo)) {
+      const nextDay = addDaysIsoDate(firstSeenTo, 1);
+      if (nextDay) {
+        // Use `< nextDay` so the selected end date is inclusive.
+        query = query.lt("first_seen_at", `${nextDay}T00:00:00.000Z`);
+      }
+    }
 
     if (seller && seller.toLowerCase() !== "all") {
       const group = getSellerGroup(seller);

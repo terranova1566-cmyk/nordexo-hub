@@ -51,6 +51,7 @@ type DiscoveryItem = {
   provider: "cdon" | "fyndiq" | "aliexpress";
   product_id: string;
   title: string | null;
+  identical_spu: string | null;
   product_url: string | null;
   image_url: string | null;
   image_local_path: string | null;
@@ -91,6 +92,16 @@ type Wishlist = {
   name: string;
   created_at?: string | null;
   item_count?: number | null;
+};
+
+type CatalogProduct = {
+  id: string;
+  spu: string | null;
+  title: string | null;
+  brand: string | null;
+  vendor: string | null;
+  thumbnail_url: string | null;
+  small_image_url: string | null;
 };
 
 const useStyles = makeStyles({
@@ -397,13 +408,22 @@ const useStyles = makeStyles({
     gap: "8px",
   },
   cardLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
     color: tokens.colorNeutralForeground3,
     textDecorationLine: "none",
     fontWeight: tokens.fontWeightSemibold,
     fontSize: tokens.fontSizeBase100,
     "&:hover": {
       color: tokens.colorNeutralForeground2,
+      textDecorationLine: "underline",
     },
+  },
+  cardLinkIcon: {
+    width: "12px",
+    height: "12px",
+    display: "block",
   },
   cardFooter: {
     display: "flex",
@@ -552,6 +572,10 @@ const useStyles = makeStyles({
     color: tokens.colorBrandForeground1,
     backgroundColor: tokens.colorBrandBackground2,
   },
+  actionIconSimilarLinked: {
+    color: tokens.colorPaletteGreenForeground2,
+    backgroundColor: tokens.colorPaletteLightGreenBackground1,
+  },
   actionIcon: {
     width: "16px",
     height: "16px",
@@ -630,6 +654,186 @@ const useStyles = makeStyles({
     width: "14px",
     height: "14px",
   },
+  similarDialogSurface: {
+    width: "min(1400px, 95vw)",
+  },
+  similarDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    maxHeight: "min(78vh, 720px)",
+  },
+  similarHeader: {
+    display: "grid",
+    gridTemplateColumns: "72px minmax(0, 1fr) auto",
+    gap: "12px",
+    alignItems: "center",
+  },
+  similarHeaderImage: {
+    width: "72px",
+    height: "72px",
+    borderRadius: "12px",
+    objectFit: "contain",
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  similarHeaderTitle: {
+    fontSize: tokens.fontSizeBase300,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase300,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+  },
+  similarHeaderMeta: {
+    display: "grid",
+    gridTemplateColumns: "auto auto",
+    gap: "4px 12px",
+    justifyItems: "end",
+    alignItems: "center",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground4,
+    whiteSpace: "nowrap",
+  },
+  similarDivider: {
+    height: "1px",
+    backgroundColor: tokens.colorNeutralStroke2,
+    marginTop: "4px",
+  },
+  similarLinkedBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  similarLinkedImage: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "10px",
+    objectFit: "cover",
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  similarLinkedText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+    flex: "1 1 auto",
+  },
+  similarLinkedLabel: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground4,
+    lineHeight: tokens.lineHeightBase100,
+  },
+  similarLinkedTitle: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground1,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  similarUnlinkButton: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    width: "32px",
+    height: "32px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "8px",
+    color: tokens.colorNeutralForeground3,
+    cursor: "pointer",
+    flex: "0 0 auto",
+    marginLeft: "auto",
+    transition: "background-color 0.12s ease, color 0.12s ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground3,
+      color: tokens.colorPaletteRedForeground2,
+    },
+    "&:disabled": {
+      cursor: "not-allowed",
+      opacity: 0.55,
+    },
+  },
+  similarUnlinkIcon: {
+    width: "16px",
+    height: "16px",
+  },
+  similarResultsWrap: {
+    flex: "1 1 auto",
+    overflowY: "auto",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  similarResultRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "10px 12px",
+    width: "100%",
+    background: "transparent",
+    border: "none",
+    textAlign: "left",
+    cursor: "pointer",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    transition: "background-color 0.12s ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  similarResultRowSelected: {
+    backgroundColor: tokens.colorBrandBackground2,
+    "&:hover": {
+      backgroundColor: tokens.colorBrandBackground2,
+    },
+  },
+  similarResultImage: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "10px",
+    objectFit: "cover",
+    backgroundColor: tokens.colorNeutralBackground2,
+    flex: "0 0 auto",
+  },
+  similarResultText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+    flex: "1 1 auto",
+  },
+  similarResultPrimary: {
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+    lineHeight: tokens.lineHeightBase200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  similarResultSecondary: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground4,
+    lineHeight: tokens.lineHeightBase100,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  similarResultSpu: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground4,
+    fontWeight: tokens.fontWeightSemibold,
+    flex: "0 0 auto",
+    whiteSpace: "nowrap",
+  },
 });
 
 const providerOptions = [
@@ -637,6 +841,12 @@ const providerOptions = [
   { value: "fyndiq", label: "Fyndiq" },
 ];
 const providerValues = providerOptions.map((option) => option.value);
+const showOnlyOptions = [
+  { value: "linked", label: "Have linked products" },
+  { value: "wishlist", label: "In wishlists" },
+  { value: "production", label: "In production" },
+];
+const showOnlyValues = showOnlyOptions.map((option) => option.value);
 const pageSizeOptions = [25, 50, 100, 200];
 
 function DiscoveryPageInner() {
@@ -646,6 +856,7 @@ function DiscoveryPageInner() {
   const { t } = useI18n();
   const [searchInput, setSearchInput] = useState("");
   const [providers, setProviders] = useState<string[]>(providerValues);
+  const [showOnly, setShowOnly] = useState<string[]>([]);
   const [sort, setSort] = useState("sold_7d");
   const [wishlistFilterId, setWishlistFilterId] = useState("all");
   const [updatedFrom, setUpdatedFrom] = useState("");
@@ -687,6 +898,17 @@ function DiscoveryPageInner() {
   const urlSearch = searchParams.toString();
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const [similarDialogOpen, setSimilarDialogOpen] = useState(false);
+  const [similarItem, setSimilarItem] = useState<DiscoveryItem | null>(null);
+  const [similarResults, setSimilarResults] = useState<CatalogProduct[]>([]);
+  const [similarSelectedId, setSimilarSelectedId] = useState<string | null>(null);
+  const [similarLinkedProduct, setSimilarLinkedProduct] = useState<CatalogProduct | null>(
+    null
+  );
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarSaving, setSimilarSaving] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
+
   const debouncedSearch = useDebouncedValue(searchInput, 400);
   const sortOptions = useMemo(
     () => [
@@ -706,6 +928,16 @@ function DiscoveryPageInner() {
           .map(
             (value) =>
               providerOptions.find((option) => option.value === value)?.label ??
+              value
+          )
+          .join(", ");
+  const showOnlyLabel =
+    showOnly.length === 0
+      ? "All products"
+      : showOnly
+          .map(
+            (value) =>
+              showOnlyOptions.find((option) => option.value === value)?.label ??
               value
           )
           .join(", ");
@@ -778,6 +1010,268 @@ function DiscoveryPageInner() {
     };
   }, []);
 
+  const openSimilarDialog = useCallback((item: DiscoveryItem) => {
+    setSimilarItem(item);
+    setSimilarDialogOpen(true);
+    setSimilarResults([]);
+    setSimilarSelectedId(null);
+    setSimilarLinkedProduct(null);
+    setSimilarError(null);
+  }, []);
+
+  const closeSimilarDialog = useCallback(() => {
+    setSimilarDialogOpen(false);
+    setSimilarItem(null);
+    setSimilarResults([]);
+    setSimilarSelectedId(null);
+    setSimilarLinkedProduct(null);
+    setSimilarError(null);
+    setSimilarLoading(false);
+    setSimilarSaving(false);
+  }, []);
+
+  useEffect(() => {
+    if (!similarDialogOpen || !similarItem) return;
+
+    const controller = new AbortController();
+    let isActive = true;
+
+    const loadMatches = async () => {
+      setSimilarLoading(true);
+      setSimilarError(null);
+      setSimilarResults([]);
+      setSimilarSelectedId(null);
+
+      const inputText = String(similarItem.title ?? similarItem.product_id ?? "")
+        .trim()
+        .slice(0, 600);
+      if (!inputText) {
+        setSimilarLoading(false);
+        return;
+      }
+
+      try {
+        const advancedResponse = await fetch("/api/products/advanced-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: inputText }),
+          signal: controller.signal,
+        });
+        if (!advancedResponse.ok) {
+          const text = await advancedResponse.text();
+          throw new Error(text || "Advanced search failed.");
+        }
+
+        const advancedPayload = await advancedResponse.json();
+        const expandedQuery =
+          String(advancedPayload?.expanded_query ?? inputText).trim() || inputText;
+        const coreTerms = Array.isArray(advancedPayload?.core_terms)
+          ? advancedPayload.core_terms
+              .map((term: unknown) => String(term ?? "").trim())
+              .filter(Boolean)
+          : [];
+
+        const params = new URLSearchParams();
+        params.set("q", expandedQuery);
+        params.set("sort", "relevance");
+        params.set("pageSize", "50");
+        if (coreTerms.length > 0) {
+          params.set("coreTerms", coreTerms.join("|"));
+        }
+
+        const productsResponse = await fetch(`/api/products?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!productsResponse.ok) {
+          const text = await productsResponse.text();
+          throw new Error(text || "Catalog search failed.");
+        }
+
+        const productsPayload = await productsResponse.json();
+        const mapped: CatalogProduct[] = Array.isArray(productsPayload?.items)
+          ? productsPayload.items
+              .map((row: any) => {
+                const id = String(row?.id ?? "").trim();
+                if (!id) return null;
+                return {
+                  id,
+                  spu: row?.spu ?? null,
+                  title: row?.title ?? null,
+                  brand: row?.brand ?? null,
+                  vendor: row?.vendor ?? null,
+                  thumbnail_url: row?.thumbnail_url ?? null,
+                  small_image_url: row?.small_image_url ?? null,
+                } satisfies CatalogProduct;
+              })
+              .filter((row: CatalogProduct | null): row is CatalogProduct => Boolean(row))
+          : [];
+
+        if (isActive) {
+          setSimilarResults(mapped);
+        }
+      } catch (err) {
+        if ((err as Error).name !== "AbortError" && isActive) {
+          setSimilarError((err as Error).message);
+        }
+      } finally {
+        if (isActive) {
+          setSimilarLoading(false);
+        }
+      }
+    };
+
+    void loadMatches();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [similarDialogOpen, similarItem?.provider, similarItem?.product_id]);
+
+  useEffect(() => {
+    if (!similarDialogOpen) return;
+    const spu = String(similarItem?.identical_spu ?? "").trim();
+    if (!spu) {
+      setSimilarLinkedProduct(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let isActive = true;
+
+    const loadLinked = async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("q", spu);
+        params.set("sort", "relevance");
+        params.set("pageSize", "1");
+
+        const response = await fetch(`/api/products?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const row = Array.isArray(payload?.items) ? payload.items[0] : null;
+        if (!row || !isActive) return;
+        setSimilarLinkedProduct({
+          id: String(row?.id ?? "").trim(),
+          spu: row?.spu ?? null,
+          title: row?.title ?? null,
+          brand: row?.brand ?? null,
+          vendor: row?.vendor ?? null,
+          thumbnail_url: row?.thumbnail_url ?? null,
+          small_image_url: row?.small_image_url ?? null,
+        });
+      } catch {
+        // ignore linked lookup errors
+      }
+    };
+
+    void loadLinked();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [similarDialogOpen, similarItem?.identical_spu]);
+
+  const handleSaveIdentical = useCallback(async () => {
+    if (!similarItem) return;
+    if (!similarSelectedId) return;
+    const selected = similarResults.find((row) => row.id === similarSelectedId);
+    const spu = String(selected?.spu ?? "").trim();
+    if (!spu) {
+      setSimilarError("Selected product is missing an SPU.");
+      return;
+    }
+
+    setSimilarSaving(true);
+    setSimilarError(null);
+    try {
+      const response = await fetch("/api/discovery/identical", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: similarItem.provider,
+          product_id: similarItem.product_id,
+          identical_spu: spu,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to save identical product.");
+      }
+
+      const payload = await response.json();
+      const savedSpu = String(payload?.item?.identical_spu ?? spu).trim() || spu;
+
+      setItems((prev) =>
+        prev.map((row) =>
+          row.provider === similarItem.provider &&
+          row.product_id === similarItem.product_id
+            ? { ...row, identical_spu: savedSpu }
+            : row
+        )
+      );
+      setSimilarItem((prev) => (prev ? { ...prev, identical_spu: savedSpu } : prev));
+    } catch (err) {
+      setSimilarError((err as Error).message);
+    } finally {
+      setSimilarSaving(false);
+    }
+  }, [similarItem, similarSelectedId, similarResults]);
+
+  const handleUnlinkIdentical = useCallback(async () => {
+    if (!similarItem) return;
+    if (!similarItem.identical_spu) return;
+
+    setSimilarSaving(true);
+    setSimilarError(null);
+    try {
+      const response = await fetch("/api/discovery/identical", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: similarItem.provider,
+          product_id: similarItem.product_id,
+          identical_spu: null,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to remove identical product.");
+      }
+
+      setItems((prev) => {
+        const next = prev.map((row) =>
+          row.provider === similarItem.provider &&
+          row.product_id === similarItem.product_id
+            ? { ...row, identical_spu: null }
+            : row
+        );
+        if (showOnly.includes("linked")) {
+          return next.filter(
+            (row) =>
+              !(
+                row.provider === similarItem.provider &&
+                row.product_id === similarItem.product_id
+              )
+          );
+        }
+        return next;
+      });
+      if (showOnly.includes("linked")) {
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
+      setSimilarItem((prev) => (prev ? { ...prev, identical_spu: null } : prev));
+      setSimilarLinkedProduct(null);
+    } catch (err) {
+      setSimilarError((err as Error).message);
+    } finally {
+      setSimilarSaving(false);
+    }
+  }, [showOnly, similarItem]);
+
   const parseProviderParam = (value: string | null) => {
     if (!value || value === "all") return providerValues;
     const tokens = value
@@ -786,6 +1280,15 @@ function DiscoveryPageInner() {
       .filter(Boolean)
       .filter((token) => providerValues.includes(token));
     return tokens.length > 0 ? tokens : providerValues;
+  };
+
+  const parseShowOnlyParam = (value: string | null) => {
+    if (!value) return [];
+    return value
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .filter((token) => showOnlyValues.includes(token));
   };
 
   const safeDecode = (value: string) => {
@@ -827,6 +1330,7 @@ function DiscoveryPageInner() {
       const nextSearch = params.get("q") ?? "";
       const nextSort = params.get("sort") ?? "sold_7d";
       const nextProviders = parseProviderParam(params.get("provider"));
+      const nextShowOnly = parseShowOnlyParam(params.get("showOnly"));
       const nextWishlist = params.get("wishlistId") ?? "all";
       const nextUpdatedFrom = params.get("updatedFrom") ?? "";
       const nextAddedFrom = params.get("addedFrom") ?? "";
@@ -859,6 +1363,7 @@ function DiscoveryPageInner() {
       setSearchInput(nextSearch);
       setSort(nextSort);
       setProviders(nextProviders);
+      setShowOnly(nextShowOnly);
       setWishlistFilterId(nextWishlist);
       setUpdatedFrom(nextUpdatedFrom);
       setAddedFrom(nextAddedFrom);
@@ -885,6 +1390,7 @@ function DiscoveryPageInner() {
     debouncedSearch,
     providerParam,
     sort,
+    showOnly,
     wishlistFilterId,
     updatedFrom,
     addedFrom,
@@ -904,6 +1410,7 @@ function DiscoveryPageInner() {
         if (debouncedSearch) params.set("q", debouncedSearch);
         params.set("provider", providerParam);
         if (sort) params.set("sort", sort);
+        if (showOnly.length > 0) params.set("showOnly", showOnly.join(","));
         if (wishlistFilterId !== "all") {
           params.set("wishlistId", wishlistFilterId);
         }
@@ -947,6 +1454,7 @@ function DiscoveryPageInner() {
     debouncedSearch,
     providerParam,
     sort,
+    showOnly,
     wishlistFilterId,
     updatedFrom,
     addedFrom,
@@ -968,6 +1476,7 @@ function DiscoveryPageInner() {
       params.set("provider", providerParam);
     }
     if (sort !== "sold_7d") params.set("sort", sort);
+    if (showOnly.length > 0) params.set("showOnly", showOnly.join(","));
     if (wishlistFilterId !== "all") params.set("wishlistId", wishlistFilterId);
     if (updatedFrom) params.set("updatedFrom", updatedFrom);
     if (addedFrom) params.set("addedFrom", addedFrom);
@@ -992,6 +1501,7 @@ function DiscoveryPageInner() {
     providers,
     providerParam,
     sort,
+    showOnly,
     wishlistFilterId,
     updatedFrom,
     addedFrom,
@@ -1819,6 +2329,27 @@ function DiscoveryPageInner() {
               )}
             </Dropdown>
           </Field>
+          <Field
+            label={<span className={styles.filterLabel}>Show only products</span>}
+            className={styles.filterField}
+          >
+            <Dropdown
+              multiselect
+              value={showOnlyLabel}
+              selectedOptions={showOnly}
+              onOptionSelect={(_, data) => {
+                const next = (data.selectedOptions ?? []) as string[];
+                setShowOnly(next.filter((value) => showOnlyValues.includes(value)));
+              }}
+              className={styles.dropdownCompact}
+            >
+              {showOnlyOptions.map((option) => (
+                <Option key={option.value} value={option.value}>
+                  {option.label}
+                </Option>
+              ))}
+            </Dropdown>
+          </Field>
         </div>
         <div className={styles.controlRow}>
           <Field
@@ -2021,6 +2552,205 @@ function DiscoveryPageInner() {
         </DialogSurface>
       </Dialog>
 
+      <Dialog
+        open={similarDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeSimilarDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.similarDialogSurface}>
+          <DialogBody className={styles.similarDialogBody}>
+            <DialogTitle>Similar products</DialogTitle>
+            {similarItem ? (
+              <>
+                <div className={styles.similarHeader}>
+                  {(() => {
+                    const local =
+                      similarItem.image_local_url ||
+                      (similarItem.image_local_path
+                        ? `/api/discovery/local-image?path=${encodeURIComponent(
+                            similarItem.image_local_path
+                          )}`
+                        : null);
+                    const src = local || similarItem.image_url;
+                    return src ? (
+                      <Image
+                        src={src}
+                        alt={similarItem.title ?? similarItem.product_id}
+                        className={styles.similarHeaderImage}
+                      />
+                    ) : (
+                      <div className={styles.similarHeaderImage} />
+                    );
+                  })()}
+                  <div style={{ minWidth: 0 }}>
+                    <Text className={styles.similarHeaderTitle}>
+                      {similarItem.title ?? similarItem.product_id}
+                    </Text>
+                    <Text size={200} className={styles.cardMeta}>
+                      {similarItem.provider.toUpperCase()} · {similarItem.product_id}
+                    </Text>
+                  </div>
+                  <div className={styles.similarHeaderMeta}>
+                    <span>Price</span>
+                    <span>
+                      {formatCurrency(
+                        similarItem.price ?? similarItem.last_price,
+                        "SEK"
+                      )}
+                    </span>
+                    <span>1d</span>
+                    <span>{similarItem.sold_today ?? 0}</span>
+                    <span>7d</span>
+                    <span>{similarItem.sold_7d ?? 0}</span>
+                    <span>All</span>
+                    <span>{similarItem.sold_all_time ?? 0}</span>
+                  </div>
+                </div>
+
+                {similarItem.identical_spu ? (
+                  <div className={styles.similarLinkedBox}>
+                    {similarLinkedProduct?.small_image_url ||
+                    similarLinkedProduct?.thumbnail_url ? (
+                      <Image
+                        src={
+                          similarLinkedProduct.small_image_url ||
+                          similarLinkedProduct.thumbnail_url ||
+                          ""
+                        }
+                        alt={similarLinkedProduct.title ?? similarItem.identical_spu}
+                        className={styles.similarLinkedImage}
+                      />
+                    ) : null}
+                    <div className={styles.similarLinkedText}>
+                      <Text className={styles.similarLinkedLabel}>Linked SPU</Text>
+                      <Text className={styles.similarLinkedTitle}>
+                        {similarItem.identical_spu}
+                        {similarLinkedProduct?.title
+                          ? ` - ${similarLinkedProduct.title}`
+                          : ""}
+                      </Text>
+                    </div>
+                    {isAdmin ? (
+                      <Tooltip content="Remove linked SPU" relationship="label">
+                        <button
+                          type="button"
+                          className={styles.similarUnlinkButton}
+                          aria-label="Remove linked SPU"
+                          onClick={handleUnlinkIdentical}
+                          disabled={similarSaving}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className={styles.similarUnlinkIcon}
+                            aria-hidden="true"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path stroke="none" d="M0 0h24v24H0z" />
+                            <path d="M4 7l16 0" />
+                            <path d="M10 11l0 6" />
+                            <path d="M14 11l0 6" />
+                            <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                            <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                          </svg>
+                        </button>
+                      </Tooltip>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className={styles.similarDivider} />
+
+                <div className={styles.rowBetween}>
+                  <Text size={200} className={styles.cardMeta}>
+                    Catalog matches
+                  </Text>
+                  {isAdmin ? (
+                    <Button
+                      appearance="primary"
+                      size="small"
+                      onClick={handleSaveIdentical}
+                      disabled={!similarSelectedId || similarSaving}
+                    >
+                      {similarSaving ? "Saving..." : "Save as identical product"}
+                    </Button>
+                  ) : null}
+                </div>
+
+                {similarError ? (
+                  <MessageBar intent="error">{similarError}</MessageBar>
+                ) : null}
+
+                {similarLoading ? (
+                  <Spinner label="Searching..." />
+                ) : (
+                  <div className={styles.similarResultsWrap}>
+                    {similarResults.length === 0 ? (
+                      <Text className={styles.cardMeta} style={{ padding: "12px" }}>
+                        No matches found.
+                      </Text>
+                    ) : (
+                      similarResults.map((row) => {
+                        const rowTitle = row.title ?? row.spu ?? row.id;
+                        const secondary = [row.brand, row.vendor]
+                          .filter(Boolean)
+                          .join(" · ");
+                        const imageSrc = row.small_image_url || row.thumbnail_url;
+                        return (
+                          <button
+                            key={row.id}
+                            type="button"
+                            className={mergeClasses(
+                              styles.similarResultRow,
+                              row.id === similarSelectedId
+                                ? styles.similarResultRowSelected
+                                : undefined
+                            )}
+                            onClick={() => setSimilarSelectedId(row.id)}
+                          >
+                            {imageSrc ? (
+                              <Image
+                                src={imageSrc}
+                                alt={rowTitle}
+                                className={styles.similarResultImage}
+                              />
+                            ) : (
+                              <div className={styles.similarResultImage} />
+                            )}
+                            <div className={styles.similarResultText}>
+                              <span className={styles.similarResultPrimary}>
+                                {rowTitle}
+                              </span>
+                              <span className={styles.similarResultSecondary}>
+                                {secondary || "\u00A0"}
+                              </span>
+                            </div>
+                            <span className={styles.similarResultSpu}>
+                              {row.spu ?? ""}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </>
+            ) : null}
+            <DialogActions>
+              <Button appearance="subtle" onClick={closeSimilarDialog}>
+                Close
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
       {error ? <MessageBar intent="error">{error}</MessageBar> : null}
       {isLoading ? (
         <Spinner label={t("discovery.loading")} />
@@ -2051,6 +2781,7 @@ function DiscoveryPageInner() {
             const wishlistNames = item.wishlist_names ?? [];
             const isWishlisted = wishlistNames.length > 0;
             const heartActive = isWishlisted || item.liked;
+            const hasLinkedProduct = Boolean(String(item.identical_spu ?? "").trim());
             const localImageUrl =
               item.image_local_url ||
               (item.image_local_path
@@ -2370,6 +3101,40 @@ function DiscoveryPageInner() {
                         </svg>
                       </button>
                     ) : null}
+                    <Tooltip content="Similar search" relationship="label">
+                      <button
+                        type="button"
+                        className={mergeClasses(
+                          styles.actionIconButton,
+                          hasLinkedProduct ? styles.actionIconSimilarLinked : undefined
+                        )}
+                        aria-pressed={hasLinkedProduct}
+                        aria-label="Similar search"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openSimilarDialog(item);
+                        }}
+                      >
+                        <svg
+                          className={styles.actionIcon}
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                          <path d="M4 6c0 1.657 3.582 3 8 3s8 -1.343 8 -3s-3.582 -3 -8 -3s-8 1.343 -8 3" />
+                          <path d="M4 6v6c0 1.657 3.582 3 8 3m8 -3.5v-5.5" />
+                          <path d="M4 12v6c0 1.657 3.582 3 8 3" />
+                          <path d="M15 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                          <path d="M20.2 20.2l1.8 1.8" />
+                        </svg>
+                      </button>
+                    </Tooltip>
                     <button
                       type="button"
                       className={mergeClasses(
@@ -2415,7 +3180,18 @@ function DiscoveryPageInner() {
                       className={styles.cardLink}
                       onClick={(event) => event.stopPropagation()}
                     >
-                      {t("discovery.actions.viewOn", { provider: providerLabel })}
+                      {providerLabel}
+                      <svg
+                        viewBox="0 0 16 16"
+                        className={styles.cardLinkIcon}
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path
+                          d="M4 4h6.5l-6.2 6.2 1.4 1.4L12 5.2V11h2V2H4v2z"
+                          fill="currentColor"
+                        />
+                      </svg>
                     </a>
                   ) : null}
                 </div>

@@ -21,6 +21,9 @@ import {
   MenuTrigger,
   MessageBar,
   Option,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Spinner,
   Table,
   TableBody,
@@ -190,6 +193,29 @@ const useStyles = makeStyles({
     minWidth: "unset",
     width: "auto",
     maxWidth: "100%",
+  },
+  rangeButton: {
+    minWidth: "180px",
+    justifyContent: "space-between",
+    fontWeight: tokens.fontWeightRegular,
+  },
+  filterButtonText: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  rangePopover: {
+    padding: "12px",
+    minWidth: "220px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  rangeActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+    marginTop: "4px",
   },
   tableCard: {
     padding: "16px",
@@ -891,6 +917,8 @@ export default function DigidealCampaignsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [tag, setTag] = useState("");
+  const [firstSeenFrom, setFirstSeenFrom] = useState("");
+  const [firstSeenTo, setFirstSeenTo] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("first_seen_desc");
   const [sellerFilter, setSellerFilter] = useState("all");
@@ -1209,12 +1237,23 @@ export default function DigidealCampaignsPage() {
   const debouncedCategory = useDebouncedValue(category, 300);
   const debouncedTag = useDebouncedValue(tag, 300);
 
+  const firstSeenRangeSummary = useMemo(() => {
+    if (!firstSeenFrom && !firstSeenTo) return t("products.filters.rangeAll");
+    if (firstSeenFrom && firstSeenTo) return `${firstSeenFrom} - ${firstSeenTo}`;
+    if (firstSeenFrom) {
+      return `${t("products.filters.rangeFrom")} ${firstSeenFrom}`;
+    }
+    return `${t("products.filters.rangeTo")} ${firstSeenTo}`;
+  }, [firstSeenFrom, firstSeenTo, t]);
+
   useEffect(() => {
     setPage(1);
   }, [
     debouncedSearch,
     debouncedCategory,
     debouncedTag,
+    firstSeenFrom,
+    firstSeenTo,
     status,
     sort,
     pageSize,
@@ -1295,6 +1334,8 @@ export default function DigidealCampaignsPage() {
         if (debouncedSearch) params.set("q", debouncedSearch);
         if (debouncedCategory) params.set("category", debouncedCategory);
         if (debouncedTag) params.set("tag", debouncedTag);
+        if (firstSeenFrom) params.set("firstSeenFrom", firstSeenFrom);
+        if (firstSeenTo) params.set("firstSeenTo", firstSeenTo);
         if (sellerFilter && sellerFilter !== "all") {
           params.set("seller", sellerFilter);
         }
@@ -1355,6 +1396,8 @@ export default function DigidealCampaignsPage() {
     debouncedSearch,
     debouncedCategory,
     debouncedTag,
+    firstSeenFrom,
+    firstSeenTo,
     status,
     sort,
     sellerFilter,
@@ -1724,7 +1767,11 @@ export default function DigidealCampaignsPage() {
         const shippingCost =
           typeof item.shipping_cost === "number" ? item.shipping_cost : null;
         const shippingCostLabel =
-          shippingCost !== null ? formatCurrency(shippingCost, "SEK") : "—";
+          shippingCost !== null
+            ? shippingCost === 0
+              ? "0 kr"
+              : formatCurrency(shippingCost, "SEK")
+            : "—";
         const discount = item.last_discount_percent;
         const saveKr = item.last_you_save_kr;
         const statusLabel = item.status ?? "-";
@@ -2316,6 +2363,51 @@ export default function DigidealCampaignsPage() {
           </Field>
         </div>
         <div className={styles.bottomRow}>
+          <Field
+            label={
+              <span className={styles.filterLabel}>
+                {t("digideal.filters.firstSeenRange")}
+              </span>
+            }
+            className={styles.filterField}
+          >
+            <Popover positioning={{ position: "below", align: "start" }}>
+              <PopoverTrigger disableButtonEnhancement>
+                <Button appearance="outline" className={styles.rangeButton}>
+                  <span className={styles.filterButtonText}>
+                    {firstSeenRangeSummary}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.rangePopover}>
+                <Field label={t("products.filters.rangeFrom")}>
+                  <Input
+                    type="date"
+                    value={firstSeenFrom}
+                    onChange={(_, data) => setFirstSeenFrom(data.value)}
+                  />
+                </Field>
+                <Field label={t("products.filters.rangeTo")}>
+                  <Input
+                    type="date"
+                    value={firstSeenTo}
+                    onChange={(_, data) => setFirstSeenTo(data.value)}
+                  />
+                </Field>
+                <div className={styles.rangeActions}>
+                  <Button
+                    appearance="subtle"
+                    onClick={() => {
+                      setFirstSeenFrom("");
+                      setFirstSeenTo("");
+                    }}
+                  >
+                    {t("common.clear")}
+                  </Button>
+                </div>
+              </PopoverSurface>
+            </Popover>
+          </Field>
           <Field label={<span className={styles.filterLabel}>{t("digideal.filters.status")}</span>}>
             <Dropdown
               value={

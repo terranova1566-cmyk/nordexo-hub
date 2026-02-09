@@ -8,6 +8,7 @@ import {
   normalizeImageNamesInFolder,
   validateImageFolder,
 } from "@/lib/image-names";
+import { runMeiliIndexSpus } from "@/lib/server/meili-index";
 
 export const runtime = "nodejs";
 
@@ -769,11 +770,18 @@ export async function POST(request: Request) {
     .update({ draft_status: "published", draft_updated_at: now })
     .in("draft_spu", spuList);
 
+  const meiliIndex = await runMeiliIndexSpus(spuList);
+  if (!meiliIndex.ok) {
+    console.error("Meili index update failed after publish:", meiliIndex.error);
+  }
+
   return NextResponse.json({
     ok: true,
     spus: spuList,
     staged: { spus: stgSpuRows.length, skus: stgSkuRows.length },
     moved: moveResults,
     archived: archiveResults,
+    meili_index_ok: meiliIndex.ok,
+    meili_index_error: meiliIndex.ok ? null : meiliIndex.error,
   });
 }

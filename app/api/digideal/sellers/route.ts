@@ -3,6 +3,10 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const SELLER_GROUPS = [
   {
+    display: "GadgetBay",
+    variants: ["GadgetBay Limited", "Gadget Bay Limited", "GadgetBay", "Gadget Bay"],
+  },
+  {
     display: "Nordexo",
     variants: [
       "Nordexo",

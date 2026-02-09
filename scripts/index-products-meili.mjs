@@ -5,6 +5,9 @@ import { MeiliSearch } from "meilisearch";
 
 const ROOT = "/srv";
 const ENV_FILES = [
+  // Prefer local env when running inside a project checkout.
+  path.join(process.cwd(), ".env.local"),
+  path.join(process.cwd(), ".env"),
   "/srv/partner-product-explorer/.env.local",
   "/srv/node-tools/.env",
   "/srv/shopify-sync/.env",
@@ -30,6 +33,31 @@ const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
 const MEILI_HOST = process.env.MEILI_HOST;
 const MEILI_API_KEY = process.env.MEILI_API_KEY;
 const MEILI_INDEX_PRODUCTS = process.env.MEILI_INDEX_PRODUCTS ?? "catalog_products";
+const SKIP_SETTINGS =
+  process.env.MEILI_SKIP_SETTINGS === "1" ||
+  String(process.env.MEILI_SKIP_SETTINGS || "").toLowerCase() === "true";
+
+const argv = process.argv.slice(2);
+const readSpuArg = () => {
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === "--spus") {
+      return argv[i + 1] ?? "";
+    }
+    if (token.startsWith("--spus=")) {
+      return token.slice("--spus=".length);
+    }
+  }
+  return "";
+};
+
+const parseSpuList = (value) =>
+  String(value || "")
+    .split(/[,\s]+/g)
+    .map((spu) => spu.trim())
+    .filter(Boolean);
+
+const FILTER_SPUS = parseSpuList(process.env.MEILI_INDEX_SPUS || readSpuArg());
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
   throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE.");
@@ -78,74 +106,78 @@ const chunk = (list, size) => {
 };
 
 const ensureIndex = async () => {
+  let created = false;
   try {
     await meili.getIndex(MEILI_INDEX_PRODUCTS);
   } catch {
     await meili.createIndex(MEILI_INDEX_PRODUCTS, { primaryKey: "id" });
+    created = true;
   }
   const index = meili.index(MEILI_INDEX_PRODUCTS);
-  await index.updateSettings({
-    searchableAttributes: [
-      "title",
-      "spu",
-      "meta_long_title",
-      "meta_short_title",
-      "meta_medium_title",
-      "meta_subtitle",
-      "subtitle",
-      "fallback_long_title",
-      "description_html",
-      "meta_description_short",
-      "meta_description_extended",
-      "fallback_description_html",
-      "legacy_title_sv",
-      "legacy_description_sv",
-      "legacy_bullets_sv",
-      "meta_bullets",
-      "fallback_bullets",
-      "product_categorizer_keywords",
-      "tags",
-      "brand",
-      "vendor",
-      "product_type",
-      "shopify_category_name",
-      "shopify_category_path",
-      "google_taxonomy_l1",
-      "google_taxonomy_l2",
-      "google_taxonomy_l3",
-      "variant_skus",
-      "variant_sku_norms",
-      "variant_barcodes",
-      "variant_options",
-      "option1_zh",
-      "option2_zh",
-      "option3_zh",
-      "option4_zh",
-      "option_combined_zh",
-      "shipping_name_en",
-      "shipping_name_zh",
-      "short_title_zh",
-      "supplier_name",
-    ],
-    filterableAttributes: [
-      "id",
-      "spu",
-      "brand",
-      "vendor",
-      "brand_is_empty",
-      "vendor_is_empty",
-      "google_taxonomy_l1",
-      "google_taxonomy_l2",
-      "google_taxonomy_l3",
-      "nordic_partner_enabled",
-      "is_blocked",
-      "variant_count",
-      "updated_at",
-      "created_at",
-      "tags",
-    ],
-    sortableAttributes: ["updated_at", "title"],
-  });
+  if (!SKIP_SETTINGS || created) {
+    await index.updateSettings({
+      searchableAttributes: [
+        "title",
+        "spu",
+        "meta_long_title",
+        "meta_short_title",
+        "meta_medium_title",
+        "meta_subtitle",
+        "subtitle",
+        "fallback_long_title",
+        "description_html",
+        "meta_description_short",
+        "meta_description_extended",
+        "fallback_description_html",
+        "legacy_title_sv",
+        "legacy_description_sv",
+        "legacy_bullets_sv",
+        "meta_bullets",
+        "fallback_bullets",
+        "product_categorizer_keywords",
+        "tags",
+        "brand",
+        "vendor",
+        "product_type",
+        "shopify_category_name",
+        "shopify_category_path",
+        "google_taxonomy_l1",
+        "google_taxonomy_l2",
+        "google_taxonomy_l3",
+        "variant_skus",
+        "variant_sku_norms",
+        "variant_barcodes",
+        "variant_options",
+        "option1_zh",
+        "option2_zh",
+        "option3_zh",
+        "option4_zh",
+        "option_combined_zh",
+        "shipping_name_en",
+        "shipping_name_zh",
+        "short_title_zh",
+        "supplier_name",
+      ],
+      filterableAttributes: [
+        "id",
+        "spu",
+        "brand",
+        "vendor",
+        "brand_is_empty",
+        "vendor_is_empty",
+        "google_taxonomy_l1",
+        "google_taxonomy_l2",
+        "google_taxonomy_l3",
+        "nordic_partner_enabled",
+        "is_blocked",
+        "variant_count",
+        "updated_at",
+        "created_at",
+        "tags",
+      ],
+      sortableAttributes: ["updated_at", "title"],
+    });
+  }
   return index;
 };
 
@@ -170,23 +202,11 @@ const metaDefIds = Array.from(metaDefMap.keys());
 
 const index = await ensureIndex();
 
-const PAGE_SIZE = Number(process.env.MEILI_BATCH_SIZE ?? 200);
-let offset = 0;
-let indexed = 0;
+const PRODUCT_SELECT =
+  "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_path, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, updated_at, created_at, brand, vendor, nordic_partner_enabled, is_blocked";
 
-while (true) {
-  const { data: products, error } = await supabase
-    .from("catalog_products")
-    .select(
-      "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_path, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, updated_at, created_at, brand, vendor, nordic_partner_enabled, is_blocked"
-    )
-    .range(offset, offset + PAGE_SIZE - 1);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!products || products.length === 0) break;
+const indexChunk = async (products) => {
+  if (!products || products.length === 0) return 0;
 
   const productIds = products.map((product) => product.id);
   const spus = products.map((product) => product.spu).filter(Boolean);
@@ -297,8 +317,7 @@ while (true) {
         text = JSON.stringify(row.value);
       }
       if (!text) return;
-      const entry =
-        metaValuesByProduct.get(row.target_id) ?? new Map();
+      const entry = metaValuesByProduct.get(row.target_id) ?? new Map();
       const key = def.key;
       entry.set(key, text);
       metaValuesByProduct.set(row.target_id, entry);
@@ -307,12 +326,9 @@ while (true) {
 
   const docs = products.map((product) => {
     const fallback = product.spu ? fallbackBySpu.get(product.spu) : null;
-    const resolvedTitle =
-      product.title ?? fallback?.effective_long_title ?? null;
+    const resolvedTitle = product.title ?? fallback?.effective_long_title ?? null;
     const resolvedDescription =
-      product.description_html ??
-      fallback?.effective_description_html ??
-      null;
+      product.description_html ?? fallback?.effective_description_html ?? null;
     const meta = metaValuesByProduct.get(product.id) ?? new Map();
     const variant = variantsByProduct.get(product.id) ?? { count: 0 };
     const updatedAt = toTimestamp(product.updated_at);
@@ -372,7 +388,56 @@ while (true) {
   });
 
   await index.addDocuments(docs);
-  indexed += docs.length;
+  return docs.length;
+};
+
+const loadProductsBySpu = async (spus) => {
+  const out = [];
+  for (const batch of chunk(spus, 200)) {
+    const { data: products, error } = await supabase
+      .from("catalog_products")
+      .select(PRODUCT_SELECT)
+      .in("spu", batch);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    out.push(...(products ?? []));
+  }
+  return out;
+};
+
+let indexed = 0;
+const PAGE_SIZE = Number(process.env.MEILI_BATCH_SIZE ?? 200);
+
+if (FILTER_SPUS.length > 0) {
+  const products = await loadProductsBySpu(FILTER_SPUS);
+  for (const batch of chunk(products, PAGE_SIZE)) {
+    const count = await indexChunk(batch);
+    indexed += count;
+  }
+  process.stdout.write(
+    `Done. Indexed ${indexed} products (filtered by SPU).\\n`
+  );
+  process.exit(0);
+}
+
+let offset = 0;
+while (true) {
+  const { data: products, error } = await supabase
+    .from("catalog_products")
+    .select(PRODUCT_SELECT)
+    .range(offset, offset + PAGE_SIZE - 1);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!products || products.length === 0) break;
+
+  const count = await indexChunk(products);
+  indexed += count;
   offset += PAGE_SIZE;
   process.stdout.write(`Indexed ${indexed} products...\\n`);
 }
