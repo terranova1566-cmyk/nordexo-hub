@@ -5,7 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const PRODUCT_SELECT =
-  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr";
+  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, google_taxonomy_id, google_taxonomy_path, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr, identical_spu";
 
 const SELLER_GROUPS = [
   {
@@ -77,6 +77,34 @@ const buildSearchTokens = (query: string) =>
     .filter(Boolean)
     .map((token) => `%${escapeLikeToken(token)}%`);
 
+type CategorySelection = {
+  level: "l1" | "l2" | "l3";
+  value: string;
+};
+
+const safeDecode = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const parseCategorySelections = (value: string | null): CategorySelection[] => {
+  if (!value) return [];
+  return value
+    .split("|")
+    .map((entry) => {
+      const [levelRaw, ...rest] = entry.split(":");
+      const level = levelRaw as CategorySelection["level"];
+      const encodedValue = rest.join(":");
+      if (level !== "l1" && level !== "l2" && level !== "l3") return null;
+      if (!encodedValue) return null;
+      return { level, value: safeDecode(encodedValue) };
+    })
+    .filter((entry): entry is CategorySelection => Boolean(entry));
+};
+
 const toNumber = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
   const numeric = typeof value === "string" ? Number(value) : (value as number);
@@ -133,6 +161,21 @@ const toPgInList = (values: string[]) =>
   `(${values.map((value) => `'${value.replace(/'/g, "''")}'`).join(",")})`;
 
 const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const normalize1688Url = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+
+  // Most 1688 links are stable up to `.html`; everything after is typically tracking params.
+  const htmlMatch = trimmed.match(/\.html/i);
+  if (htmlMatch?.index !== undefined) {
+    return trimmed.slice(0, htmlMatch.index + htmlMatch[0].length);
+  }
+
+  // Fallback: strip query/hash for non-.html URLs.
+  const cut = trimmed.split(/[?#]/)[0];
+  return cut.trim();
+};
 
 const addDaysIsoDate = (value: string, days: number) => {
   if (!isIsoDate(value)) return null;
@@ -281,8 +324,11 @@ export async function GET(request: NextRequest) {
 
     const q = searchParams.get("q")?.trim();
     const category = searchParams.get("category")?.trim();
+    const categoriesParam = searchParams.get("categories")?.trim() ?? null;
+    const categorySelections = parseCategorySelections(categoriesParam);
     const tag = searchParams.get("tag")?.trim();
     const seller = searchParams.get("seller")?.trim();
+    const sellersParam = searchParams.get("sellers")?.trim();
     const firstSeenFrom = searchParams.get("firstSeenFrom")?.trim();
     const firstSeenTo = searchParams.get("firstSeenTo")?.trim();
     const status = (searchParams.get("status") ?? "online").toLowerCase();
@@ -322,7 +368,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (seller && seller.toLowerCase() !== "all") {
+    const sellers = sellersParam
+      ? sellersParam
+          .split(/[|,]/g)
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0 && value.toLowerCase() !== "all")
+      : [];
+
+    if (sellers.length > 0) {
+      const allowed = new Set<string>();
+      sellers.forEach((name) => {
+        const group = getSellerGroup(name);
+        if (group) {
+          group.variants.forEach((variant) => allowed.add(variant));
+        } else {
+          allowed.add(name);
+        }
+      });
+
+      const allowedList = Array.from(allowed).filter(Boolean);
+      if (allowedList.length > 0) {
+        query = query.in("seller_name", allowedList);
+      }
+    } else if (seller && seller.toLowerCase() !== "all") {
       const group = getSellerGroup(seller);
       if (group) {
         query = query.in("seller_name", group.variants);
@@ -382,6 +450,19 @@ export async function GET(request: NextRequest) {
         ].join(",")
       );
     });
+  }
+
+  if (categorySelections.length > 0) {
+    const prefixes = categorySelections
+      .map((selection) => String(selection.value ?? "").trim())
+      .filter(Boolean);
+    const unique = Array.from(new Set(prefixes));
+    if (unique.length > 0) {
+      const filters = unique.map(
+        (prefix) => `google_taxonomy_path.ilike.${escapeLikeToken(prefix)}%`
+      );
+      query = query.or(filters.join(","));
+    }
   }
 
   if (tag) {
@@ -559,6 +640,112 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const linkedSpus =
+      products
+        ?.map((row) =>
+          typeof (row as any).identical_spu === "string"
+            ? String((row as any).identical_spu).trim()
+            : ""
+        )
+        .filter(Boolean) ?? [];
+    const uniqueLinkedSpus = Array.from(new Set(linkedSpus));
+    const linkedStatsBySpu = new Map<
+      string,
+      { min_purchase_price_cny: number | null; min_weight_kg: number | null }
+    >();
+
+    if (uniqueLinkedSpus.length > 0) {
+      const catalogClient = getAdminClient();
+      if (!catalogClient) {
+        console.error("digideal linked stats skipped: missing Supabase credentials");
+      } else {
+        const { data: linkedProducts, error: linkedProductsError } =
+          await catalogClient
+            .from("catalog_products")
+            .select("id, spu")
+            .in("spu", uniqueLinkedSpus);
+
+        if (linkedProductsError) {
+          console.error("digideal linked product lookup error", {
+            message: linkedProductsError.message,
+            details: linkedProductsError.details,
+            hint: linkedProductsError.hint,
+            code: linkedProductsError.code,
+          });
+        } else if (linkedProducts?.length) {
+          const productIdBySpu = new Map<string, string>();
+          linkedProducts.forEach((row: any) => {
+            const spu = typeof row?.spu === "string" ? row.spu.trim() : "";
+            const id = row?.id ? String(row.id).trim() : "";
+            if (!spu || !id) return;
+            productIdBySpu.set(spu, id);
+          });
+
+          const linkedProductIds = Array.from(new Set(productIdBySpu.values()));
+          if (linkedProductIds.length > 0) {
+            const { data: variantRows, error: variantError } = await catalogClient
+              .from("catalog_variants")
+              .select("product_id, purchase_price_cny, weight")
+              .in("product_id", linkedProductIds);
+
+            if (variantError) {
+              console.error("digideal linked variant lookup error", {
+                message: variantError.message,
+                details: variantError.details,
+                hint: variantError.hint,
+                code: variantError.code,
+              });
+            } else if (variantRows?.length) {
+              const minByProductId = new Map<
+                string,
+                { minPurchase: number | null; minWeight: number | null }
+              >();
+
+              variantRows.forEach((row: any) => {
+                const productId = row?.product_id ? String(row.product_id) : "";
+                if (!productId) return;
+                const purchaseCny = toNumber(row.purchase_price_cny);
+                const weightKg = toNumber(row.weight);
+
+                const current =
+                  minByProductId.get(productId) ?? {
+                    minPurchase: null,
+                    minWeight: null,
+                  };
+
+                if (
+                  purchaseCny !== null &&
+                  purchaseCny > 0 &&
+                  (current.minPurchase === null || purchaseCny < current.minPurchase)
+                ) {
+                  current.minPurchase = purchaseCny;
+                }
+
+                if (
+                  weightKg !== null &&
+                  weightKg > 0 &&
+                  (current.minWeight === null || weightKg < current.minWeight)
+                ) {
+                  current.minWeight = weightKg;
+                }
+
+                minByProductId.set(productId, current);
+              });
+
+              productIdBySpu.forEach((productId, spu) => {
+                const stats = minByProductId.get(productId);
+                if (!stats) return;
+                linkedStatsBySpu.set(spu, {
+                  min_purchase_price_cny: stats.minPurchase,
+                  min_weight_kg: stats.minWeight,
+                });
+              });
+            }
+          }
+        }
+      }
+    }
+
     const items =
       products?.map((product) => {
         const detail = detailMap.get(product.product_id);
@@ -592,52 +779,70 @@ export async function GET(request: NextRequest) {
         const classConfig = marketConfig
           ? resolveClassConfig(classMap, shippingClass)
           : null;
-        const estimatedPrice =
+        let estimatedPrice =
           canEstimate && classConfig && marketConfig
             ? computeEstimatedPrice(purchasePrice, weightKg, marketConfig, classConfig)
             : null;
+        const linkedSpu =
+          typeof (product as any).identical_spu === "string"
+            ? String((product as any).identical_spu).trim()
+            : "";
+        if (!estimatedPrice && linkedSpu && classConfig && marketConfig) {
+          const linked = linkedStatsBySpu.get(linkedSpu);
+          const linkedPurchase = toNumber(linked?.min_purchase_price_cny);
+          const linkedWeightKg = toNumber(linked?.min_weight_kg);
+          if (linkedPurchase !== null && linkedWeightKg !== null) {
+            estimatedPrice = computeEstimatedPrice(
+              linkedPurchase,
+              linkedWeightKg,
+              marketConfig,
+              classConfig
+            );
+          }
+        }
         return {
           product_id: product.product_id,
           listing_title: product.listing_title ?? null,
           title_h1: product.title_h1 ?? null,
-        product_url: product.product_url ?? null,
-        product_slug: product.product_slug ?? null,
-        prodno: product.prodno ?? null,
-        seller_name: normalizeSellerName(product.seller_name),
-        seller_orgnr: product.seller_orgnr ?? null,
-        status: product.status ?? null,
-        last_price: toNumber(product.last_price),
-        last_original_price: toNumber(product.last_original_price),
-        last_discount_percent: toNumber(product.last_discount_percent),
-        last_you_save_kr: toNumber(product.last_you_save_kr),
-        last_purchased_count: toNumber(product.last_purchased_count),
-        last_instock_qty: toNumber(product.last_instock_qty),
-        last_available_qty: toNumber(product.last_available_qty),
-        last_reserved_qty: toNumber(product.last_reserved_qty),
-        primary_image_url: product.primary_image_url ?? null,
-        image_urls: product.image_urls ?? null,
-        first_seen_at: product.first_seen_at ?? null,
-        last_seen_at: product.last_seen_at ?? null,
-        digideal_rerun_added: product.digideal_rerun_added ?? null,
-        digideal_rerun_partner_comment:
-          product.digideal_rerun_partner_comment ?? null,
-        digideal_rerun_status: product.digideal_rerun_status ?? null,
-        digideal_add_rerun: product.digideal_add_rerun ?? null,
-        digideal_add_rerun_at: product.digideal_add_rerun_at ?? null,
-        digideal_add_rerun_comment:
-          product.digideal_add_rerun_comment ?? null,
-        purchase_price: purchasePrice,
-        weight_kg: weightKgValue,
-        weight_grams: weightGramsValue,
-        supplier_url: supplierUrl || null,
-        shipping_cost: shippingCost,
-        estimated_rerun_price: estimatedPrice,
-        sold_today: toNumber(product.sold_today) ?? 0,
-        sold_7d: toNumber(product.sold_7d) ?? 0,
-        sold_all_time: toNumber(product.last_purchased_count) ?? 0,
-        report_exists: reportExistsMap.get(product.product_id) ?? false,
-      };
-    }) ?? [];
+          identical_spu: linkedSpu || null,
+          product_url: product.product_url ?? null,
+          product_slug: product.product_slug ?? null,
+          prodno: product.prodno ?? null,
+          seller_name: normalizeSellerName(product.seller_name),
+          seller_orgnr: product.seller_orgnr ?? null,
+          status: product.status ?? null,
+          last_price: toNumber(product.last_price),
+          last_original_price: toNumber(product.last_original_price),
+          last_discount_percent: toNumber(product.last_discount_percent),
+          last_you_save_kr: toNumber(product.last_you_save_kr),
+          last_purchased_count: toNumber(product.last_purchased_count),
+          last_instock_qty: toNumber(product.last_instock_qty),
+          last_available_qty: toNumber(product.last_available_qty),
+          last_reserved_qty: toNumber(product.last_reserved_qty),
+          primary_image_url: product.primary_image_url ?? null,
+          image_urls: product.image_urls ?? null,
+          first_seen_at: product.first_seen_at ?? null,
+          last_seen_at: product.last_seen_at ?? null,
+          digideal_rerun_added: product.digideal_rerun_added ?? null,
+          digideal_rerun_partner_comment:
+            product.digideal_rerun_partner_comment ?? null,
+          digideal_rerun_status: product.digideal_rerun_status ?? null,
+          digideal_add_rerun: product.digideal_add_rerun ?? null,
+          digideal_add_rerun_at: product.digideal_add_rerun_at ?? null,
+          digideal_add_rerun_comment:
+            product.digideal_add_rerun_comment ?? null,
+          purchase_price: purchasePrice,
+          weight_kg: weightKgValue,
+          weight_grams: weightGramsValue,
+          supplier_url: supplierUrl || null,
+          shipping_cost: shippingCost,
+          estimated_rerun_price: estimatedPrice,
+          sold_today: toNumber(product.sold_today) ?? 0,
+          sold_7d: toNumber(product.sold_7d) ?? 0,
+          sold_all_time: toNumber(product.last_purchased_count) ?? 0,
+          report_exists: reportExistsMap.get(product.product_id) ?? false,
+        };
+      }) ?? [];
 
     return NextResponse.json({
       items,
@@ -811,6 +1016,7 @@ export async function PATCH(request: Request) {
     supplier_url?: string;
     weight_grams?: number;
     purchase_price?: number;
+    remove_supplier?: boolean;
   };
   try {
     payload = (await request.json()) as typeof payload;
@@ -819,14 +1025,46 @@ export async function PATCH(request: Request) {
   }
 
   const productId = String(payload?.product_id ?? "").trim();
+  const removeSupplier = payload?.remove_supplier === true;
   const supplierUrl =
     typeof payload?.supplier_url === "string" ? payload.supplier_url.trim() : "";
+  const normalizedSupplierUrl = supplierUrl ? normalize1688Url(supplierUrl) : "";
   const purchasePrice = toNumber(payload?.purchase_price);
   const weightGramsInput = toNumber(payload?.weight_grams);
   if (!productId) {
     return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
   }
-  if (!supplierUrl) {
+  if (removeSupplier) {
+    const { data, error } = await adminClient
+      .from("digideal_products")
+      .update({
+        purchase_price: null,
+        weight_grams: null,
+        weight_kg: null,
+        "1688_URL": null,
+      })
+      .eq("product_id", productId)
+      .select('product_id, purchase_price, weight_kg, weight_grams, "1688_URL"')
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) {
+      return NextResponse.json({ error: "Product not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      item: {
+        product_id: data.product_id,
+        purchase_price: data.purchase_price,
+        weight_kg: data.weight_kg,
+        weight_grams: data.weight_grams,
+        supplier_url: (data as DigidealDetailRow)["1688_URL"] ?? null,
+      },
+    });
+  }
+  if (!normalizedSupplierUrl) {
     return NextResponse.json({ error: "Missing supplier_url." }, { status: 400 });
   }
   if (purchasePrice === null || purchasePrice <= 0) {
@@ -851,7 +1089,7 @@ export async function PATCH(request: Request) {
       purchase_price: purchasePrice,
       weight_grams: weightGrams,
       weight_kg: weightKg,
-      "1688_URL": supplierUrl,
+      "1688_URL": normalizedSupplierUrl,
     })
     .eq("product_id", productId)
     .select('product_id, purchase_price, weight_kg, weight_grams, "1688_URL"')

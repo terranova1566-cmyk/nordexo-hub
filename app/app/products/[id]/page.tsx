@@ -392,6 +392,10 @@ type ProductResponse = {
     brand: string | null;
     vendor: string | null;
     supplier_1688_url: string | null;
+    google_taxonomy_id: number | null;
+    google_taxonomy_id_secondary: number | null;
+    google_taxonomy_path: string | null;
+    google_taxonomy_path_secondary: string | null;
     google_taxonomy_l1: string | null;
     google_taxonomy_l2: string | null;
     google_taxonomy_l3: string | null;

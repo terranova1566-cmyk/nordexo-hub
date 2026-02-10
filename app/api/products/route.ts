@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { loadImageUrls } from "@/lib/server-images";
+import { loadImageUrls, preferImageUrlFilenameFirst } from "@/lib/server-images";
+import { loadLegacyHeroWhiteBySpu } from "@/lib/legacy-product-image-data";
 import { getProductsIndex } from "@/lib/meili";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -788,6 +789,8 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const heroWhiteBySpu = await loadLegacyHeroWhiteBySpu(spus);
+
   const items = await Promise.all(
     (products ?? []).map(async (product) => {
       const variantCount = variantCountMap.get(product.id) ?? 0;
@@ -799,12 +802,19 @@ export async function GET(request: NextRequest) {
       const resolvedTitle =
         product.title ?? fallback?.effective_long_title ?? null;
 
+      const preferredMain =
+        product.spu && heroWhiteBySpu.size > 0
+          ? heroWhiteBySpu.get(product.spu) ?? null
+          : null;
+
       const [thumbUrls, smallUrls] = await Promise.all([
         loadImageUrls(product.image_folder, { size: "thumb" }),
         loadImageUrls(product.image_folder, { size: "small" }),
       ]);
-      const thumbnailUrl = thumbUrls[0] ?? null;
-      const smallUrl = smallUrls[0] ?? thumbnailUrl;
+      const preferredThumbs = preferImageUrlFilenameFirst(thumbUrls, preferredMain);
+      const preferredSmalls = preferImageUrlFilenameFirst(smallUrls, preferredMain);
+      const thumbnailUrl = preferredThumbs[0] ?? null;
+      const smallUrl = preferredSmalls[0] ?? thumbnailUrl;
 
       return {
         ...product,

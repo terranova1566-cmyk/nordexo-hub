@@ -2008,6 +2008,121 @@
       "context": "Settings tab label"
     },
     {
+      "key": "settings.zimage.tab",
+      "text": "Z-image",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.zimage.title",
+      "text": "ZImage",
+      "context": "Settings section title"
+    },
+    {
+      "key": "settings.zimage.helper",
+      "text": "Manage ZImage credentials and default processing settings used by server-side tools.",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.zimage.refresh",
+      "text": "Refresh",
+      "context": "Settings refresh button label"
+    },
+    {
+      "key": "settings.zimage.loading",
+      "text": "Loading...",
+      "context": "Settings loading label"
+    },
+    {
+      "key": "settings.zimage.forbidden",
+      "text": "You do not have permission to view these settings.",
+      "context": "Settings forbidden message"
+    },
+    {
+      "key": "settings.zimage.error",
+      "text": "Unable to load ZImage settings.",
+      "context": "Settings load error fallback"
+    },
+    {
+      "key": "settings.zimage.saveSuccess",
+      "text": "Settings saved.",
+      "context": "Settings save success message"
+    },
+    {
+      "key": "settings.zimage.saveError",
+      "text": "Unable to save settings.",
+      "context": "Settings save error fallback"
+    },
+    {
+      "key": "settings.zimage.saving",
+      "text": "Saving...",
+      "context": "Settings save loading label"
+    },
+    {
+      "key": "settings.zimage.baseUrl",
+      "text": "Base URL",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.resolution",
+      "text": "Upscale resolution",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.format",
+      "text": "Output format",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.finalSize",
+      "text": "Final size (max px)",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.autoCenter",
+      "text": "Auto-center on white background",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.cookie",
+      "text": "ZImage cookie",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.cookie.placeholder",
+      "text": "Leave blank to keep current value",
+      "context": "Settings input placeholder"
+    },
+    {
+      "key": "settings.zimage.cookie.currentSet",
+      "text": "Current: set ({preview})",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.zimage.cookie.currentMissing",
+      "text": "Current: not set",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.zimage.apiKey",
+      "text": "ZImage API key",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.zimage.apiKey.placeholder",
+      "text": "Leave blank to keep current value",
+      "context": "Settings input placeholder"
+    },
+    {
+      "key": "settings.zimage.apiKey.currentSet",
+      "text": "Current: set ({preview})",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.zimage.apiKey.currentMissing",
+      "text": "Current: not set",
+      "context": "Settings helper text"
+    },
+    {
       "key": "settings.system.tab",
       "text": "System",
       "context": "Settings tab label"
@@ -4924,6 +5039,11 @@
       "context": "DigiDeal campaigns table header"
     },
     {
+      "key": "digideal.table.linkedProduct",
+      "text": "Linked Product",
+      "context": "DigiDeal campaigns table header"
+    },
+    {
       "key": "digideal.table.estimatedRerunPrice",
       "text": "EST Rerun Price",
       "context": "DigiDeal campaigns table header"
@@ -4954,6 +5074,11 @@
       "context": "DigiDeal campaigns supplier dialog URL placeholder"
     },
     {
+      "key": "digideal.supplier.dialog.showProduct",
+      "text": "show product",
+      "context": "DigiDeal supplier dialog link label"
+    },
+    {
       "key": "digideal.supplier.dialog.weightLabel",
       "text": "Supplier weight (g)",
       "context": "DigiDeal campaigns supplier dialog weight label"
@@ -4977,6 +5102,11 @@
       "key": "digideal.supplier.dialog.save",
       "text": "Save",
       "context": "DigiDeal campaigns supplier dialog save button"
+    },
+    {
+      "key": "digideal.supplier.dialog.remove",
+      "text": "Remove",
+      "context": "DigiDeal campaigns supplier dialog remove button"
     },
     {
       "key": "digideal.supplier.dialog.cancel",
@@ -5005,8 +5135,43 @@
     },
     {
       "key": "digideal.optimize.analyze",
-      "text": "Analyze with NX",
+      "text": "AI Report",
       "context": "DigiDeal campaigns optimize button"
+    },
+    {
+      "key": "digideal.linkedProduct.link",
+      "text": "Link product",
+      "context": "DigiDeal campaigns linked product button"
+    },
+    {
+      "key": "digideal.linkedProduct.relink",
+      "text": "Relink",
+      "context": "DigiDeal campaigns linked product button"
+    },
+    {
+      "key": "digideal.linkedProduct.dialog.title",
+      "text": "Link identical product",
+      "context": "DigiDeal campaigns linked product dialog title"
+    },
+    {
+      "key": "digideal.linkedProduct.dialog.manualLabel",
+      "text": "Manual SPU",
+      "context": "DigiDeal campaigns linked product manual SPU label"
+    },
+    {
+      "key": "digideal.linkedProduct.dialog.manualPlaceholder",
+      "text": "Enter an SPU (e.g. ND-22542)",
+      "context": "DigiDeal campaigns linked product manual SPU placeholder"
+    },
+    {
+      "key": "digideal.linkedProduct.dialog.save",
+      "text": "Save link",
+      "context": "DigiDeal campaigns linked product dialog save button"
+    },
+    {
+      "key": "digideal.linkedProduct.dialog.unlink",
+      "text": "Unlink",
+      "context": "DigiDeal campaigns linked product dialog unlink button"
     },
     {
       "key": "digideal.optimize.title",
@@ -5254,6 +5419,11 @@
       "context": "DigiDeal campaigns product metadata label"
     },
     {
+      "key": "digideal.meta.firstLastSeen",
+      "text": "First / Last seen: {first} / {last}",
+      "context": "DigiDeal campaigns product metadata label"
+    },
+    {
       "key": "digideal.discount",
       "text": "Discount {value}%",
       "context": "DigiDeal campaigns discount label"
@@ -5282,6 +5452,111 @@
       "key": "digideal.pagination.pageOf",
       "text": "Page {page} of {pageCount}",
       "context": "DigiDeal campaigns pagination"
+    },
+    {
+      "key": "nav.batchImageEditor",
+      "text": "Batch Image Editor",
+      "context": "Products menu item"
+    },
+    {
+      "key": "batchImageEditor.title",
+      "text": "Batch Image Editor",
+      "context": "Batch image editor page title"
+    },
+    {
+      "key": "batchImageEditor.subtitle",
+      "text": "Create batches from a TXT list of SKUs/SPUs and clean up images faster.",
+      "context": "Batch image editor page subtitle"
+    },
+    {
+      "key": "batchImageEditor.create.title",
+      "text": "Create Batch",
+      "context": "Batch image editor create section title"
+    },
+    {
+      "key": "batchImageEditor.create.nameLabel",
+      "text": "Batch name",
+      "context": "Batch name input label"
+    },
+    {
+      "key": "batchImageEditor.create.fileLabel",
+      "text": "TXT file",
+      "context": "Batch file input label"
+    },
+    {
+      "key": "batchImageEditor.create.button",
+      "text": "Upload batch",
+      "context": "Batch upload button"
+    },
+    {
+      "key": "batchImageEditor.list.title",
+      "text": "Batches",
+      "context": "Batch list section title"
+    },
+    {
+      "key": "batchImageEditor.list.empty",
+      "text": "No batches found.",
+      "context": "Batch list empty state"
+    },
+    {
+      "key": "batchImageEditor.list.startEdit",
+      "text": "Start Edit",
+      "context": "Batch list start edit button label"
+    },
+    {
+      "key": "batchImageEditor.editor.prev",
+      "text": "Prev",
+      "context": "Batch editor previous product button"
+    },
+    {
+      "key": "batchImageEditor.editor.next",
+      "text": "Next",
+      "context": "Batch editor next product button"
+    },
+    {
+      "key": "batchImageEditor.editor.selected",
+      "text": "{count} selected",
+      "context": "Batch editor selected image count"
+    },
+    {
+      "key": "batchImageEditor.editor.delete",
+      "text": "Delete",
+      "context": "Batch editor delete button"
+    },
+    {
+      "key": "batchImageEditor.editor.setMain",
+      "text": "Set Main",
+      "context": "Batch editor set main image button"
+    },
+    {
+      "key": "batchImageEditor.editor.setEnvironment",
+      "text": "Environmental",
+      "context": "Batch editor set environmental role button"
+    },
+    {
+      "key": "batchImageEditor.editor.setVariant",
+      "text": "Variant",
+      "context": "Batch editor set variant role button"
+    },
+    {
+      "key": "batchImageEditor.editor.aiEdit",
+      "text": "AI Edit",
+      "context": "Batch editor AI edit button"
+    },
+    {
+      "key": "batchImageEditor.editor.variantLabel",
+      "text": "Variant",
+      "context": "Batch editor variant selector label"
+    },
+    {
+      "key": "batchImageEditor.editor.assignVariant",
+      "text": "Assign selected",
+      "context": "Batch editor assign selected image to variant button"
+    },
+    {
+      "key": "batchImageEditor.editor.clearVariant",
+      "text": "Clear",
+      "context": "Batch editor clear variant image button"
     },
     {
       "key": "nav.pricing",

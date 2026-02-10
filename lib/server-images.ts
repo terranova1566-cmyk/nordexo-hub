@@ -141,3 +141,13 @@ export async function resolveImageUrl(
 
   return null;
 }
+
+export function preferImageUrlFilenameFirst(
+  urls: string[],
+  preferredFilename: string | null | undefined
+) {
+  if (!preferredFilename || !urls?.length) return urls;
+  const idx = urls.findIndex((url) => url.endsWith(`/${preferredFilename}`));
+  if (idx <= 0) return urls;
+  return [urls[idx], ...urls.slice(0, idx), ...urls.slice(idx + 1)];
+}

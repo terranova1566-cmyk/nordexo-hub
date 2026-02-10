@@ -53,6 +53,14 @@ export default function RootLayout({
             pointer-events: none;
           }
         `}</style>
+        <script
+          // Next deployments can invalidate cached route chunks. If the browser has a stale
+          // JS bundle, navigating to a new/updated page can throw a ChunkLoadError which
+          // surfaces as "client-side exception". One automatic reload is usually enough.
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var KEY="__nordexo_chunk_reload_ts__";var now=Date.now();var last=0;try{last=parseInt(sessionStorage.getItem(KEY)||"0",10)||0;}catch(e){}var canReload=!last||now-last>5*60*1000;function mark(){try{sessionStorage.setItem(KEY,String(Date.now()));}catch(e){}}function isChunkError(msg){if(!msg)return false;msg=String(msg);return msg.indexOf("ChunkLoadError")>=0||msg.indexOf("Loading chunk")>=0||msg.indexOf("Failed to fetch dynamically imported module")>=0;}function handler(ev){var msg=\"\";try{msg=(ev&&ev.message)||\"\";}catch(e){}if(!msg){try{msg=(ev&&ev.reason&&ev.reason.message)||ev&&ev.reason||\"\";}catch(e){}}if(isChunkError(msg)&&canReload){mark();try{window.location.reload();}catch(e){}}}window.addEventListener(\"error\",handler);window.addEventListener(\"unhandledrejection\",handler);}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         <div id="app-preload" aria-hidden="true">

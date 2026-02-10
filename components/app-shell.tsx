@@ -160,6 +160,11 @@ const productMenuItems = [
   { label: "nav.allProducts", href: "/app/products?view=all" },
   { label: "nav.saved", href: "/app/saved" },
   { label: "nav.exports", href: "/app/exports" },
+  {
+    label: "nav.batchImageEditor",
+    href: "/app/products/batch-image-editor",
+    adminOnly: true,
+  },
   { label: "nav.pricing", href: "/app/products/pricing", adminOnly: true },
 ];
 

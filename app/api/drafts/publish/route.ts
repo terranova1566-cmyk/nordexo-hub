@@ -22,6 +22,71 @@ const MEDIA_LIBRARY_SCRIPT =
   "/srv/shopify-sync/api/scripts/ingest-media-library.mjs";
 const DEFAULT_TAX_CODE = "HST20";
 const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
+const PRODUCT_CATEGORIZER_SCRIPT =
+  process.env.PRODUCT_CATEGORIZER_SCRIPT ||
+  "/srv/node-tools/product-categorizer/scripts/product_categorizer.mjs";
+
+const shouldDisableTaxonomyCategorizer = () => {
+  const raw = String(process.env.DISABLE_PRODUCT_TAXONOMY_CATEGORIZER || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(raw);
+};
+
+const spawnTaxonomyCategorizerForSpus = async (spus: string[]) => {
+  if (shouldDisableTaxonomyCategorizer()) return;
+  const uniq = Array.from(new Set(spus.map((v) => String(v || "").trim()).filter(Boolean)));
+  if (!uniq.length) return;
+
+  const model = process.env.PRODUCT_TAXONOMY_MODEL || "gpt-5-mini";
+  const pass1Provider = process.env.PRODUCT_TAXONOMY_PASS1_PROVIDER || "openai";
+
+  const argsBase = [
+    PRODUCT_CATEGORIZER_SCRIPT,
+    "--table",
+    "catalog_products",
+    "--spu-only",
+    "--only-missing",
+    "--pass1-provider",
+    pass1Provider,
+    "--model-pass1",
+    model,
+    "--model-pass2",
+    model,
+    "--rpm",
+    String(process.env.PRODUCT_TAXONOMY_RPM || "180"),
+    "--concurrency",
+    String(process.env.PRODUCT_TAXONOMY_CONCURRENCY || "4"),
+    "--page-size",
+    String(process.env.PRODUCT_TAXONOMY_PAGE_SIZE || "50"),
+    "--upsert-batch-size",
+    String(process.env.PRODUCT_TAXONOMY_UPSERT_BATCH_SIZE || "50"),
+    "--title-fields",
+    String(process.env.PRODUCT_TAXONOMY_TITLE_FIELDS || "title,legacy_title_sv"),
+    "--desc-fields",
+    String(process.env.PRODUCT_TAXONOMY_DESC_FIELDS || "description_html,legacy_description_sv"),
+    "--desc-words",
+    String(process.env.PRODUCT_TAXONOMY_DESC_WORDS || "80"),
+  ];
+
+  // Avoid extremely long command lines by using a temp file when needed.
+  const joined = uniq.join(",");
+  let args = [...argsBase];
+  if (joined.length > 6000 || uniq.length > 400) {
+    const filePath = `/tmp/spu_list_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`;
+    await fs.writeFile(filePath, `${uniq.join("\n")}\n`, "utf8");
+    args.push("--spu-file", filePath);
+  } else {
+    args.push("--spu-in", joined);
+  }
+
+  try {
+    const child = spawn("node", args, { detached: true, stdio: "ignore" });
+    child.unref();
+  } catch {
+    // Best-effort only. Publish should not fail due to categorization.
+  }
+};
 
 type DraftProductRow = {
   id: string;
@@ -701,6 +766,10 @@ export async function POST(request: Request) {
   if (skuRpcError) {
     return NextResponse.json({ error: skuRpcError.message }, { status: 500 });
   }
+
+  // Kick off Google taxonomy categorization for the newly created/updated SPUs.
+  // This is async to avoid blocking publish; the DB will be updated shortly after publish completes.
+  await spawnTaxonomyCategorizerForSpus(spuList);
 
   const moveResults: Array<{ spu: string; moved: boolean; error?: string }> = [];
   for (const row of products) {

@@ -94,6 +94,22 @@ type ServiceStatus = {
   checkedAt: string;
 };
 
+type ZImageSettings = {
+  base_url: string;
+  resolution: string;
+  format: string;
+  final_size: number;
+  auto_center: boolean;
+  cookie: {
+    is_set: boolean;
+    preview: string;
+  };
+  api_key: {
+    is_set: boolean;
+    preview: string;
+  };
+};
+
 const createImage = (url: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -461,6 +477,23 @@ export default function SettingsPage() {
   const [systemLoading, setSystemLoading] = useState(false);
   const [systemError, setSystemError] = useState<string | null>(null);
   const [systemForbidden, setSystemForbidden] = useState(false);
+  const [zimageBaseUrl, setZimageBaseUrl] = useState("");
+  const [zimageResolution, setZimageResolution] = useState("4k");
+  const [zimageFormat, setZimageFormat] = useState("jpeg");
+  const [zimageFinalSize, setZimageFinalSize] = useState("1000");
+  const [zimageAutoCenter, setZimageAutoCenter] = useState(true);
+  const [zimageCookie, setZimageCookie] = useState("");
+  const [zimageApiKey, setZimageApiKey] = useState("");
+  const [zimageCookieIsSet, setZimageCookieIsSet] = useState(false);
+  const [zimageCookiePreview, setZimageCookiePreview] = useState("");
+  const [zimageApiKeyIsSet, setZimageApiKeyIsSet] = useState(false);
+  const [zimageApiKeyPreview, setZimageApiKeyPreview] = useState("");
+  const [zimageLoading, setZimageLoading] = useState(false);
+  const [zimageError, setZimageError] = useState<string | null>(null);
+  const [zimageForbidden, setZimageForbidden] = useState(false);
+  const [zimageSaving, setZimageSaving] = useState(false);
+  const [zimageSaveError, setZimageSaveError] = useState<string | null>(null);
+  const [zimageSaveSuccess, setZimageSaveSuccess] = useState(false);
   const [serviceRestarting, setServiceRestarting] = useState<
     Record<string, boolean>
   >({});
@@ -529,6 +562,93 @@ export default function SettingsPage() {
     if (activeTab !== "system") return;
     loadSystemInfo();
   }, [activeTab, loadSystemInfo]);
+
+  const loadZImageSettings = useCallback(async () => {
+    setZimageLoading(true);
+    setZimageError(null);
+    setZimageForbidden(false);
+    try {
+      const response = await fetch("/api/settings/zimage");
+      if (response.status === 403 || response.status === 401) {
+        setZimageForbidden(true);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(t("settings.zimage.error"));
+      }
+      const payload = (await response.json()) as ZImageSettings;
+      setZimageBaseUrl(payload.base_url ?? "");
+      setZimageResolution(payload.resolution ?? "4k");
+      setZimageFormat(payload.format ?? "jpeg");
+      setZimageFinalSize(String(payload.final_size ?? 1000));
+      setZimageAutoCenter(Boolean(payload.auto_center));
+      setZimageCookieIsSet(Boolean(payload.cookie?.is_set));
+      setZimageCookiePreview(payload.cookie?.preview ?? "");
+      setZimageApiKeyIsSet(Boolean(payload.api_key?.is_set));
+      setZimageApiKeyPreview(payload.api_key?.preview ?? "");
+      // Never hydrate secrets into the UI; user pastes new values when needed.
+      setZimageCookie("");
+      setZimageApiKey("");
+    } catch (err) {
+      setZimageError((err as Error).message);
+    } finally {
+      setZimageLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab !== "zimage") return;
+    loadZImageSettings();
+  }, [activeTab, loadZImageSettings]);
+
+  const handleZImageSave = async () => {
+    setZimageSaving(true);
+    setZimageSaveError(null);
+    setZimageSaveSuccess(false);
+    try {
+      const body: Record<string, unknown> = {
+        base_url: zimageBaseUrl,
+        resolution: zimageResolution,
+        format: zimageFormat,
+        final_size: Number(zimageFinalSize),
+        auto_center: zimageAutoCenter,
+      };
+      if (zimageCookie.trim()) {
+        body.cookie = zimageCookie.trim();
+      }
+      if (zimageApiKey.trim()) {
+        body.api_key = zimageApiKey.trim();
+      }
+
+      const response = await fetch("/api/settings/zimage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || t("settings.zimage.saveError"));
+      }
+      const payload = (await response.json()) as ZImageSettings;
+      setZimageBaseUrl(payload.base_url ?? "");
+      setZimageResolution(payload.resolution ?? "4k");
+      setZimageFormat(payload.format ?? "jpeg");
+      setZimageFinalSize(String(payload.final_size ?? 1000));
+      setZimageAutoCenter(Boolean(payload.auto_center));
+      setZimageCookieIsSet(Boolean(payload.cookie?.is_set));
+      setZimageCookiePreview(payload.cookie?.preview ?? "");
+      setZimageApiKeyIsSet(Boolean(payload.api_key?.is_set));
+      setZimageApiKeyPreview(payload.api_key?.preview ?? "");
+      setZimageCookie("");
+      setZimageApiKey("");
+      setZimageSaveSuccess(true);
+      setTimeout(() => setZimageSaveSuccess(false), 2500);
+    } catch (err) {
+      setZimageSaveError((err as Error).message);
+    } finally {
+      setZimageSaving(false);
+    }
+  };
 
   const handleSpuUpload = async () => {
     if (!spuUploadFile) return;
@@ -959,6 +1079,7 @@ export default function SettingsPage() {
           <Tab value="discovery">{t("settings.discovery.tab")}</Tab>
           <Tab value="user">{t("settings.user.tab")}</Tab>
           <Tab value="production">{t("settings.production.tab")}</Tab>
+          <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
         </TabList>
       </Card>
@@ -1493,6 +1614,142 @@ export default function SettingsPage() {
               {isProfileSaving ? t("settings.user.saving") : t("common.save")}
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {activeTab === "zimage" ? (
+        <div className={styles.sectionGrid}>
+          <Card className={styles.card}>
+            <div className={styles.systemHeader}>
+              <Text weight="semibold">{t("settings.zimage.title")}</Text>
+              <Button
+                appearance="subtle"
+                onClick={loadZImageSettings}
+                disabled={zimageLoading}
+              >
+                {t("settings.zimage.refresh")}
+              </Button>
+            </div>
+            <Text size={200} className={styles.helperText}>
+              {t("settings.zimage.helper")}
+            </Text>
+
+            {zimageForbidden ? (
+              <MessageBar>{t("settings.zimage.forbidden")}</MessageBar>
+            ) : zimageError ? (
+              <MessageBar>{zimageError}</MessageBar>
+            ) : null}
+
+            {zimageSaveError ? <MessageBar>{zimageSaveError}</MessageBar> : null}
+            {zimageSaveSuccess ? (
+              <MessageBar>{t("settings.zimage.saveSuccess")}</MessageBar>
+            ) : null}
+
+            {zimageLoading ? (
+              <Spinner label={t("settings.zimage.loading")} />
+            ) : (
+              <>
+                <Field label={t("settings.zimage.baseUrl")}>
+                  <Input
+                    value={zimageBaseUrl}
+                    onChange={(_, data) => setZimageBaseUrl(data.value)}
+                    placeholder="https://z-image.ai"
+                    disabled={zimageForbidden}
+                  />
+                </Field>
+
+                <Field label={t("settings.zimage.resolution")}>
+                  <Dropdown
+                    value={zimageResolution}
+                    selectedOptions={[zimageResolution]}
+                    onOptionSelect={(_, data) =>
+                      setZimageResolution(String(data.optionValue))
+                    }
+                    disabled={zimageForbidden}
+                  >
+                    <Option value="2k">2k</Option>
+                    <Option value="4k">4k</Option>
+                    <Option value="8k">8k</Option>
+                  </Dropdown>
+                </Field>
+
+                <Field label={t("settings.zimage.format")}>
+                  <Dropdown
+                    value={zimageFormat}
+                    selectedOptions={[zimageFormat]}
+                    onOptionSelect={(_, data) =>
+                      setZimageFormat(String(data.optionValue))
+                    }
+                    disabled={zimageForbidden}
+                  >
+                    <Option value="jpeg">jpeg</Option>
+                    <Option value="png">png</Option>
+                    <Option value="webp">webp</Option>
+                  </Dropdown>
+                </Field>
+
+                <Field label={t("settings.zimage.finalSize")}>
+                  <Input
+                    type="number"
+                    value={zimageFinalSize}
+                    onChange={(_, data) => setZimageFinalSize(data.value)}
+                    disabled={zimageForbidden}
+                  />
+                </Field>
+
+                <Checkbox
+                  checked={zimageAutoCenter}
+                  onChange={(_, data) => setZimageAutoCenter(Boolean(data.checked))}
+                  label={t("settings.zimage.autoCenter")}
+                  disabled={zimageForbidden}
+                />
+
+                <Field label={t("settings.zimage.cookie")}>
+                  <Input
+                    type="password"
+                    value={zimageCookie}
+                    onChange={(_, data) => setZimageCookie(data.value)}
+                    placeholder={t("settings.zimage.cookie.placeholder")}
+                    disabled={zimageForbidden}
+                  />
+                </Field>
+                <Text size={200} className={styles.helperText}>
+                  {zimageCookieIsSet
+                    ? t("settings.zimage.cookie.currentSet", {
+                        preview: zimageCookiePreview || "********",
+                      })
+                    : t("settings.zimage.cookie.currentMissing")}
+                </Text>
+
+                <Field label={t("settings.zimage.apiKey")}>
+                  <Input
+                    type="password"
+                    value={zimageApiKey}
+                    onChange={(_, data) => setZimageApiKey(data.value)}
+                    placeholder={t("settings.zimage.apiKey.placeholder")}
+                    disabled={zimageForbidden}
+                  />
+                </Field>
+                <Text size={200} className={styles.helperText}>
+                  {zimageApiKeyIsSet
+                    ? t("settings.zimage.apiKey.currentSet", {
+                        preview: zimageApiKeyPreview || "********",
+                      })
+                    : t("settings.zimage.apiKey.currentMissing")}
+                </Text>
+
+                <div className={styles.saveRow}>
+                  <Button
+                    appearance="primary"
+                    onClick={handleZImageSave}
+                    disabled={zimageSaving || zimageForbidden}
+                  >
+                    {zimageSaving ? t("settings.zimage.saving") : t("common.save")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
         </div>
       ) : null}
 

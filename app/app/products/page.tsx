@@ -334,6 +334,8 @@ const useStyles = makeStyles({
   tableCard: {
     padding: "16px",
     borderRadius: "var(--app-radius)",
+    // Allow the hover preview image to render outside the card without getting clipped.
+    overflow: "visible",
   },
   table: {
     width: "100%",
@@ -434,7 +436,8 @@ const useStyles = makeStyles({
     position: "absolute",
     left: "calc(100% + 12px)",
     top: 0,
-    zIndex: 10,
+    // Keep the preview above table/card chrome.
+    zIndex: 1000,
     opacity: 0,
     transform: "translateY(-4px)",
     transition: "opacity 120ms ease, transform 120ms ease",

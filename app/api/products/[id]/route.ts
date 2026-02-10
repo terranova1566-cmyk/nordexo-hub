@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { loadImageUrls, resolveImageUrl } from "@/lib/server-images";
+import {
+  loadImageUrls,
+  preferImageUrlFilenameFirst,
+  resolveImageUrl,
+} from "@/lib/server-images";
+import {
+  loadLegacyHeroWhiteBySpu,
+  loadLegacyVariantLocksBySku,
+} from "@/lib/legacy-product-image-data";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
 
 const PRODUCT_META_KEYS = [
@@ -164,13 +172,29 @@ export async function GET(
       : ["SE"];
   const isAdmin = Boolean(userSettings?.is_admin);
 
-  const { data: product, error: productError } = await supabase
+  const productSelectV2 =
+    "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_id, shopify_category_path, image_folder, images, updated_at, created_at, visible_updated_at, brand, vendor, nordic_partner_enabled, option1_name, option2_name, option3_name, option4_name, supplier_1688_url, google_taxonomy_id, google_taxonomy_id_secondary, google_taxonomy_path, google_taxonomy_path_secondary, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, shopify_tingelo_sync, shopify_collection_handles, shopify_collection_ids, shopify_tingelo_category_keys, video_files, is_blocked, blocked_at, blocked_by, legacy_title_sv, legacy_description_sv, legacy_bullets_sv";
+  const productSelectV1 =
+    "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_id, shopify_category_path, image_folder, images, updated_at, created_at, visible_updated_at, brand, vendor, nordic_partner_enabled, option1_name, option2_name, option3_name, option4_name, supplier_1688_url, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, shopify_tingelo_sync, shopify_collection_handles, shopify_collection_ids, shopify_tingelo_category_keys, video_files, is_blocked, blocked_at, blocked_by, legacy_title_sv, legacy_description_sv, legacy_bullets_sv";
+
+  let productResp = await supabase
     .from("catalog_products")
-    .select(
-      "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_id, shopify_category_path, image_folder, images, updated_at, created_at, visible_updated_at, brand, vendor, nordic_partner_enabled, option1_name, option2_name, option3_name, option4_name, supplier_1688_url, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, shopify_tingelo_sync, shopify_collection_handles, shopify_collection_ids, shopify_tingelo_category_keys, video_files, is_blocked, blocked_at, blocked_by, legacy_title_sv, legacy_description_sv, legacy_bullets_sv"
-    )
+    .select(productSelectV2)
     .eq("id", id)
     .maybeSingle();
+
+  if (
+    productResp.error?.message &&
+    productResp.error.message.toLowerCase().includes("google_taxonomy_id")
+  ) {
+    productResp = await supabase
+      .from("catalog_products")
+      .select(productSelectV1)
+      .eq("id", id)
+      .maybeSingle();
+  }
+
+  const { data: product, error: productError } = productResp;
 
   if (productError) {
     return NextResponse.json({ error: productError.message }, { status: 500 });
@@ -211,6 +235,15 @@ export async function GET(
   if (variantError) {
     return NextResponse.json({ error: variantError.message }, { status: 500 });
   }
+
+  const spu = product.spu ? String(product.spu) : null;
+  const heroWhiteMap = spu ? await loadLegacyHeroWhiteBySpu([spu]) : new Map();
+  const preferredMain = spu ? heroWhiteMap.get(spu) ?? null : null;
+
+  const variantSkus = (variants ?? [])
+    .map((variant) => variant.sku)
+    .filter(Boolean) as string[];
+  const legacyVariantLocks = await loadLegacyVariantLocksBySku(variantSkus);
 
   const { data: savedRow } = await supabase
     .from("partner_saved_products")
@@ -310,7 +343,8 @@ export async function GET(
         ),
         variant_image_url: await resolveImageUrl(
           product.image_folder,
-          variant.variant_image_url,
+          variant.variant_image_url ||
+            (variant.sku ? legacyVariantLocks.get(variant.sku) ?? null : null),
           { size: "thumb" }
         ),
       };
@@ -439,11 +473,18 @@ export async function GET(
       return a.key.localeCompare(b.key);
     });
 
-  const [imageUrls, thumbnailUrls, originalUrls] = await Promise.all([
+  const [rawImageUrls, rawThumbnailUrls, rawOriginalUrls] = await Promise.all([
     loadImageUrls(product.image_folder, { size: "standard" }),
     loadImageUrls(product.image_folder, { size: "thumb" }),
     loadImageUrls(product.image_folder, { size: "original" }),
   ]);
+
+  const imageUrls = preferImageUrlFilenameFirst(rawImageUrls, preferredMain);
+  const thumbnailUrls = preferImageUrlFilenameFirst(
+    rawThumbnailUrls,
+    preferredMain
+  );
+  const originalUrls = preferImageUrlFilenameFirst(rawOriginalUrls, preferredMain);
 
   return NextResponse.json({
     product: resolvedProduct,
