@@ -63,25 +63,11 @@ type DraftFolder = {
   modifiedAt: string;
 };
 
-type DraftRunPreviewItem = {
-  draft_spu: string;
-  title: string;
-  draft_main_image_url: string | null;
-  preview_image_path?: string | null;
-  preview_image_modified_at?: string | null;
-};
-
 type DraftFolderTreeNode = {
   name: string;
   path: string;
   modifiedAt: string;
-  fileCount: number;
   children: DraftFolderTreeNode[];
-};
-
-type RunSpuOption = {
-  name: string;
-  path: string;
 };
 
 type ExplorerContextMenuState = {
@@ -89,38 +75,6 @@ type ExplorerContextMenuState = {
   image: boolean;
   x: number;
   y: number;
-};
-
-type AiEditProvider = "chatgpt" | "gemini" | "zimage";
-type AiPromptMode =
-  | "template"
-  | "direct"
-  | "white_background"
-  | "auto_center_white"
-  | "eraser"
-  | "upscale";
-type AiTemplatePreset = "standard" | "digideal_main" | "product_scene";
-type AiResolveDecision = "keep_original" | "replace_with_ai" | "keep_both";
-type AiEditJobStatus = "queued" | "running";
-
-type PendingAiEditRecord = {
-  id: string;
-  originalPath: string;
-  pendingPath: string;
-  pendingPixelQualityScore?: number | null;
-  provider: AiEditProvider;
-  mode: AiPromptMode;
-  prompt: string;
-  status: "pending";
-  createdAt: string;
-  updatedAt: string;
-};
-
-type AiEditRuntimeJob = {
-  provider: AiEditProvider;
-  mode: AiPromptMode;
-  status: AiEditJobStatus;
-  startedAt: number;
 };
 
 type DraftSpuRow = {
@@ -334,276 +288,9 @@ const useStyles = makeStyles({
     justifyContent: "flex-end",
     marginLeft: "auto",
   },
-  iconButton: {
-    minWidth: "34px",
-    width: "34px",
-    height: "34px",
-    padding: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  explorerWhiteButton: {
-    backgroundColor: "#ffffff",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
-    ":active": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-    ":disabled": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-  },
-  iconWithZipLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-  iconSvg: {
-    width: "18px",
-    height: "18px",
-    flexShrink: 0,
-  },
-  imageResizeIconSvg: {
-    width: "19px",
-    height: "19px",
-    flexShrink: 0,
-  },
-  batchPickerTrigger: {
-    minWidth: "432px",
-    maxWidth: "605px",
-    justifyContent: "space-between",
-    paddingLeft: "12px",
-    paddingRight: "10px",
-  },
-  batchPickerTriggerLabel: {
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-    maxWidth: "100%",
-    textAlign: "left",
-  },
-  batchPickerChevron: {
-    width: "16px",
-    height: "16px",
-    flexShrink: 0,
-    marginLeft: "8px",
-    opacity: 0.8,
-  },
-  batchPickerSurface: {
-    padding: "6px",
-    borderRadius: "12px",
-    minWidth: "560px",
-    maxWidth: "720px",
-    maxHeight: "520px",
-    overflow: "auto",
-  },
-  batchPickerRow: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto auto",
-    gap: "6px",
-    alignItems: "center",
-    padding: "4px 6px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
-  },
-  batchPickerRowActive: {
-    backgroundColor: tokens.colorBrandBackground2,
-  },
-  batchPickerRowName: {
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: tokens.lineHeightBase200,
-  },
-  batchPickerViewButton: {
-    minWidth: "48px",
-    height: "26px",
-    padding: "0 9px",
-  },
-  whiteActionButton: {
-    backgroundColor: "#ffffff",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
-    ":active": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-    ":disabled": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-  },
-  batchPickerActions: {
-    display: "flex",
-    gap: "6px",
-    paddingTop: "6px",
-    marginTop: "6px",
-    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
-    flexWrap: "wrap",
-  },
-  spuPickerTrigger: {
-    minWidth: "108px",
-    maxWidth: "136px",
-    justifyContent: "space-between",
-    paddingLeft: "12px",
-    paddingRight: "10px",
-  },
-  spuPickerSurface: {
-    padding: "6px",
-    borderRadius: "12px",
-    minWidth: "140px",
-    maxWidth: "190px",
-    maxHeight: "520px",
-    overflow: "auto",
-  },
-  spuPickerRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "5px 8px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
-  },
-  spuPickerRowActive: {
-    backgroundColor: tokens.colorBrandBackground2,
-  },
-  spuPickerRowCompleted: {
-    backgroundColor: "#e7f5e8",
-    ":hover": {
-      backgroundColor: "#d9efdb",
-    },
-  },
-  spuPickerRowName: {
-    flex: "1 1 auto",
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: tokens.lineHeightBase200,
-    minWidth: 0,
-  },
-  spuPickerRowCheck: {
-    width: "16px",
-    height: "16px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#107c10",
-    flexShrink: 0,
-  },
-  runPreviewSurface: {
-    width: "820px",
-    maxWidth: "92vw",
-  },
-  runPreviewBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    padding: "16px 18px 14px",
-  },
-  runPreviewTableWrap: {
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: "12px",
-    overflow: "auto",
-    maxHeight: "62vh",
-  },
-  runPreviewTable: {
-    width: "100%",
-    tableLayout: "fixed",
-  },
-  runPreviewHeaderRow: {
-    backgroundColor: "#fafafa",
-  },
-  runPreviewImageHeaderCell: {
-    width: "69px",
-    paddingLeft: 0,
-    paddingRight: 0,
-    textAlign: "center",
-  },
-  runPreviewSpuHeaderCell: {
-    width: "180px",
-  },
-  runPreviewImageCell: {
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  runPreviewCellCenter: {
-    width: "100%",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  runPreviewSelectHeaderCell: {
-    width: "54px",
-    textAlign: "center",
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  // Backwards-compatible aliases (older code referenced these names).
-  runPreviewActionHeaderCell: {
-    width: "54px",
-    textAlign: "center",
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  runPreviewActionHeaderInner: {
-    width: "100%",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  runPreviewSelectCell: {
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  runPreviewDeleteHeaderCell: {
-    width: "130px",
-    textAlign: "center",
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  runPreviewDeleteCell: {
-    paddingLeft: 0,
-    paddingRight: 0,
-  },
-  runPreviewTitleCell: {
-    whiteSpace: "normal",
-    wordBreak: "break-word",
-  },
-  runPreviewTitleText: {
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase200,
-  },
-  runPreviewThumb: {
-    width: "46px",
-    height: "46px",
-    borderRadius: "8px",
-    objectFit: "cover",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-  },
-  runPreviewDeleteButton: {
-    minWidth: "70px",
-    height: "30px",
-  },
-  runPreviewActions: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "8px",
-    alignItems: "center",
-  },
-  runPreviewActionsRight: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "8px",
+  folderDropdown: {
+    minWidth: "300px",
+    maxWidth: "420px",
   },
   viewToggle: {
     display: "flex",
@@ -620,17 +307,14 @@ const useStyles = makeStyles({
       gridTemplateColumns: "1fr",
     },
   },
-  explorerLayoutSingleColumn: {
-    gridTemplateColumns: "minmax(0, 1fr)",
-  },
   folderPane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "12px",
-    backgroundColor: "#ffffff",
+    backgroundColor: tokens.colorNeutralBackground1,
     padding: "10px",
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
     maxHeight: "780px",
     overflow: "auto",
   },
@@ -639,29 +323,44 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  folderPaneActions: {
-    display: "flex",
-    gap: "8px",
-    marginTop: "6px",
-    flexWrap: "wrap",
-  },
   folderTreeRoot: {
     display: "flex",
     flexDirection: "column",
-    gap: 0,
+    gap: "2px",
+  },
+  folderFileList: {
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    paddingTop: "8px",
+    marginTop: "4px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+  },
+  folderFileRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    borderRadius: "8px",
+    padding: "4px 6px",
+    minHeight: "28px",
+    minWidth: 0,
+    cursor: "pointer",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
   },
   folderTreeChildren: {
     display: "flex",
     flexDirection: "column",
-    gap: 0,
+    gap: "2px",
   },
   folderTreeRow: {
     display: "flex",
     alignItems: "center",
-    gap: "2px",
+    gap: "6px",
     borderRadius: "8px",
-    padding: "1px 2px",
-    minHeight: "22px",
+    padding: "4px 6px",
+    minHeight: "30px",
     cursor: "pointer",
     minWidth: 0,
     ":hover": {
@@ -671,81 +370,26 @@ const useStyles = makeStyles({
   folderTreeRowActive: {
     backgroundColor: tokens.colorBrandBackground2,
   },
-  folderTreeRowCompleted: {
-    backgroundColor: "#e7f5e8",
-    ":hover": {
-      backgroundColor: "#d9efdb",
-    },
-  },
   folderTreeRowDrop: {
     outline: `1px solid ${tokens.colorBrandStroke1}`,
-    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
-    backgroundColor: tokens.colorBrandBackground2,
+    backgroundColor: tokens.colorBrandBackground,
   },
-  folderTreeConnector: {
+  folderTreeIndent: {
     display: "inline-flex",
-    alignItems: "center",
     flexShrink: 0,
-    marginRight: "1px",
-  },
-  folderTreeConnectorSegment: {
-    position: "relative",
-    width: "10px",
-    height: "16px",
-    flexShrink: 0,
-  },
-  folderTreeConnectorLine: {
-    position: "absolute",
-    left: "5px",
-    top: 0,
-    bottom: 0,
-    borderLeft: `1px solid ${tokens.colorNeutralStroke3}`,
-  },
-  folderTreeConnectorJoin: {
-    position: "relative",
-    width: "12px",
-    height: "16px",
-    flexShrink: 0,
-  },
-  folderTreeConnectorJoinVertical: {
-    position: "absolute",
-    left: "5px",
-    borderLeft: `1px solid ${tokens.colorNeutralStroke3}`,
-  },
-  folderTreeConnectorJoinHorizontal: {
-    position: "absolute",
-    left: "5px",
-    top: "8px",
-    width: "8px",
-    borderTop: `1px solid ${tokens.colorNeutralStroke3}`,
   },
   folderTreeCaretButton: {
     border: "none",
     background: "transparent",
     cursor: "pointer",
-    color: tokens.colorNeutralForeground2,
-    width: "16px",
-    height: "16px",
+    color: tokens.colorNeutralForeground3,
+    width: "18px",
+    height: "18px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
     flexShrink: 0,
-    fontSize: "14px",
-    fontWeight: tokens.fontWeightSemibold,
-    lineHeight: "1",
-  },
-  folderTreeCaretSpacer: {
-    width: "16px",
-    height: "16px",
-    flexShrink: 0,
-  },
-  folderTreeFolderIcon: {
-    width: "14px",
-    height: "14px",
-    color: "#E7B325",
-    flexShrink: 0,
-    marginRight: "2px",
   },
   folderTreeName: {
     border: "none",
@@ -755,59 +399,20 @@ const useStyles = makeStyles({
     padding: 0,
     cursor: "pointer",
     fontWeight: tokens.fontWeightSemibold,
-    minWidth: 0,
-    flex: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "2px",
-  },
-  folderTreeNameText: {
-    minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  },
-  folderTreeCount: {
-    color: tokens.colorNeutralForeground3,
-    fontWeight: tokens.fontWeightRegular,
-    marginLeft: "4px",
-    flexShrink: 0,
-  },
-  contentColumn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
     minWidth: 0,
+    flex: 1,
   },
   filePane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "12px",
-    backgroundColor: "#ffffff",
+    backgroundColor: tokens.colorNeutralBackground1,
     padding: "10px",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-  },
-  entriesContentArea: {
-    position: "relative",
-    minHeight: "44px",
-  },
-  entriesContentAreaCompleted: {
-    backgroundColor: "#e7f5e8",
-    borderRadius: "10px",
-    padding: "8px",
-  },
-  entriesContentOverlay: {
-    position: "absolute",
-    inset: 0,
-    zIndex: 6,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.55)",
-    borderRadius: "10px",
-    pointerEvents: "all",
-    cursor: "wait",
   },
   explorerPathLabel: {
     color: tokens.colorNeutralForeground3,
@@ -819,30 +424,15 @@ const useStyles = makeStyles({
     gridTemplateColumns: "repeat(auto-fill, minmax(228px, 1fr))",
     gap: "12px",
   },
-  dualGridTagging: {
-    filter: "blur(1.9px)",
-    opacity: 0.86,
-    pointerEvents: "none",
-    userSelect: "none",
-  },
   mediaCard: {
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: "#ffffff",
+    backgroundColor: tokens.colorNeutralBackground1,
     padding: "8px",
     display: "flex",
     flexDirection: "column",
     gap: "8px",
     minWidth: 0,
-  },
-  mediaCardSelected: {
-    border: `1px solid ${tokens.colorBrandStroke1}`,
-    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
-    backgroundColor: tokens.colorBrandBackground2,
-  },
-  mediaCardDropTarget: {
-    border: `1px dashed ${tokens.colorBrandStroke1}`,
-    boxShadow: `0 0 0 2px ${tokens.colorBrandStroke1} inset`,
   },
   mediaSquare: {
     width: "100%",
@@ -856,104 +446,14 @@ const useStyles = makeStyles({
     position: "relative",
     cursor: "pointer",
     "&:hover .thumbDownloadButton": {
-      opacity: 0.8,
+      opacity: 1,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
     "&:focus-within .thumbDownloadButton": {
-      opacity: 0.8,
+      opacity: 1,
       transform: "translateY(0)",
       pointerEvents: "auto",
-    },
-  },
-  mediaTagStack: {
-    position: "absolute",
-    top: "8px",
-    left: "8px",
-    zIndex: 2,
-    display: "inline-flex",
-    flexDirection: "row",
-    gap: "4px",
-    pointerEvents: "none",
-    alignItems: "center",
-  },
-  mediaTagStackShifted: {
-    left: "42px",
-  },
-  mediaTagBadge: {
-    borderRadius: "6px",
-    padding: "2px 6px",
-    fontSize: "10px",
-    fontWeight: tokens.fontWeightSemibold,
-    color: "#ffffff",
-    letterSpacing: "0.02em",
-    lineHeight: 1.2,
-    opacity: 1,
-    textTransform: "uppercase",
-  },
-  mediaTagMain: {
-    backgroundColor: "#0f6cbd",
-  },
-  mediaTagEnv: {
-    backgroundColor: "#0f7b0f",
-  },
-  mediaTagVar: {
-    backgroundColor: "#006c6f",
-  },
-  mediaTagInf: {
-    backgroundColor: "#b65a00",
-  },
-  mediaTagDigi: {
-    backgroundColor: "#6f42ff",
-  },
-  mediaImageBusy: {
-    filter: "blur(2.4px)",
-    transform: "scale(1.015)",
-  },
-  mediaBusyOverlay: {
-    position: "absolute",
-    inset: 0,
-    zIndex: 3,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    pointerEvents: "none",
-  },
-  mediaBusyContent: {
-    display: "inline-flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "6px",
-    color: tokens.colorBrandForeground1,
-    fontSize: tokens.fontSizeBase100,
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  aiPendingBadge: {
-    position: "absolute",
-    top: "8px",
-    left: "8px",
-    borderRadius: "8px",
-    backgroundColor: "#854aff",
-    color: "#ffffff",
-    width: "28px",
-    height: "28px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2,
-    border: "1px solid #6f35e6",
-    boxShadow: tokens.shadow4,
-    padding: 0,
-    cursor: "pointer",
-    transition: "background-color 120ms ease, border-color 120ms ease",
-    ":hover": {
-      backgroundColor: "#9660ff",
-      border: "1px solid #7a3ff0",
-    },
-    ":focus-visible": {
-      outline: `2px solid ${tokens.colorStrokeFocus2}`,
-      outlineOffset: "1px",
     },
   },
   mediaFooter: {
@@ -961,13 +461,6 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     minWidth: 0,
-  },
-  mediaFooterColumn: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    flex: 1,
-    gap: "2px",
   },
   mediaLabel: {
     border: "none",
@@ -984,388 +477,30 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  mediaMeta: {
-    color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  mediaMetaDimLow: {
-    color: "#8B1D1D",
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  mediaMetaDivider: {
-    color: tokens.colorNeutralForeground4,
-    marginLeft: "4px",
-    marginRight: "4px",
-  },
-  mediaMetaQuality: {
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  mediaMetaQualityUnknown: {
-    color: tokens.colorNeutralForeground3,
-  },
-  mediaMetaQualityGood: {
-    color: "#107C10",
-  },
-  mediaMetaQualityMedium: {
-    color: "#B65A00",
-  },
-  mediaMetaQualityBad: {
-    color: "#A4262C",
-  },
-  mediaMetaUpscaleIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    color: "#0f6cbd",
-    verticalAlign: "middle",
-  },
-  mediaMetaUpscaleIconSvg: {
-    width: "14px",
-    height: "14px",
-    display: "block",
-  },
-  imageToolbar: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-  },
-  imageToolbarTabs: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    marginRight: "auto",
-    flexWrap: "wrap",
-  },
-  imageTabLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-  imageTabMainBadgeSpacer: {
-    display: "inline-block",
-    width: "6px",
-    flexShrink: 0,
-  },
-  imageTabBadge: {
-    minWidth: "22px",
-    height: "22px",
-    borderRadius: "999px",
-    padding: "0 7px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: tokens.fontSizeBase100,
-    fontWeight: tokens.fontWeightSemibold,
-    lineHeight: 1,
-    backgroundColor: "#0f6cbd",
-    color: "#ffffff",
-    boxSizing: "border-box",
-  },
-  imageTabBadgeDisabled: {
-    backgroundColor: tokens.colorNeutralBackground3,
-    color: tokens.colorNeutralForeground3,
-  },
-  imageToolbarRight: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  imageToolbarActions: {
-    marginRight: "2px",
-  },
-  dangerOutlineButton: {
-    color: "#a4262c",
-    border: "1px solid #d13438",
-    ":hover": {
-      color: "#a4262c",
-      border: "1px solid #d13438",
-      backgroundColor: "#fde7e9",
-    },
-    ":active": {
-      color: "#a4262c",
-      border: "1px solid #d13438",
-      backgroundColor: "#f9d7da",
-    },
-    ":disabled": {
-      color: tokens.colorNeutralForeground4,
-      border: `1px solid ${tokens.colorNeutralStroke2}`,
-      backgroundColor: tokens.colorNeutralBackground1,
-    },
-  },
-  imageToolbarIconGroup: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-  imageToggleIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: tokens.colorNeutralForeground3,
-  },
-  fileActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    flexWrap: "nowrap",
-    justifyContent: "flex-end",
-    whiteSpace: "nowrap",
-  },
-  fileActionButton: {
-    borderRadius: "8px",
-    boxShadow: "none",
-    minWidth: "auto",
-    paddingLeft: "10px",
-    paddingRight: "10px",
-  },
-  fileActionButtonNarrow: {
-    paddingLeft: "8px",
-    paddingRight: "8px",
-  },
-  textViewerSurface: {
-    width: "min(1350px, 96vw)",
-    maxHeight: "86vh",
-    padding: "14px",
-  },
-  textViewerBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    minHeight: "72vh",
-  },
-  textViewerArea: {
-    flex: 1,
-    minHeight: "60vh",
-    fontFamily:
-      '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: tokens.lineHeightBase300,
-    "& textarea": {
-      minHeight: "60vh",
-      height: "60vh",
-      fontFamily:
-        '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
-      fontSize: tokens.fontSizeBase200,
-      lineHeight: tokens.lineHeightBase300,
-    },
-  },
-  textViewerActions: {
-    justifyContent: "flex-end",
-  },
-  photopeaSurface: {
-    width: "min(1500px, 94vw)",
-    height: "92vh",
-    maxWidth: "94vw",
-    maxHeight: "92vh",
-    padding: "12px",
-    overflow: "hidden",
-  },
-  photopeaBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    height: "100%",
-    minHeight: 0,
-  },
-  photopeaFrameWrap: {
-    position: "relative",
-    flex: 1,
-    minHeight: 0,
-    borderRadius: "10px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    overflow: "hidden",
-    backgroundColor: tokens.colorNeutralBackground1,
-  },
-  photopeaFrame: {
-    width: "100%",
-    height: "100%",
-    border: "none",
-    display: "block",
-  },
-  filesSection: {
-    borderRadius: "12px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: "#ffffff",
-    padding: "10px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    minWidth: 0,
-  },
-  filesHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  filesTable: {
-    tableLayout: "fixed",
-    width: "100%",
-    "& [role='cell'], & [role='columnheader']": {
-      paddingTop: "4px",
-      paddingBottom: "4px",
-    },
-  },
-  filesColSelect: {
-    width: "42px",
-  },
-  filesColName: {
-    width: "44%",
-  },
-  filesColSize: {
-    width: "14%",
-  },
-  filesColDate: {
-    width: "22%",
-  },
-  filesColAction: {
-    width: "20%",
-  },
-  filesInfo: {
-    color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase100,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  filesNameButton: {
-    fontWeight: tokens.fontWeightSemibold,
-    color: tokens.colorNeutralForeground1,
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    textAlign: "left",
-    cursor: "text",
-    width: "100%",
-    minWidth: 0,
-    whiteSpace: "normal",
-    overflowWrap: "anywhere",
-    lineHeight: 1.2,
-  },
   contextMenu: {
     position: "fixed",
-    // Needs to sit above Fluent Dialog layers.
-    zIndex: 2000000,
+    zIndex: 2000,
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow16,
-    padding: "4px",
-    minWidth: "212px",
+    padding: "6px",
+    minWidth: "220px",
     display: "flex",
     flexDirection: "column",
-    gap: "1px",
+    gap: "2px",
   },
   contextMenuButton: {
     border: "none",
     background: "transparent",
     color: tokens.colorNeutralForeground1,
     textAlign: "left",
-    padding: "6px 9px",
-    borderRadius: "6px",
+    padding: "8px 10px",
+    borderRadius: "8px",
     cursor: "pointer",
     fontSize: tokens.fontSizeBase200,
-    lineHeight: 1.2,
-    display: "flex",
-    width: "100%",
-    alignItems: "center",
-    gap: "8px",
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
-    },
-    ":disabled": {
-      color: tokens.colorNeutralForeground4,
-      cursor: "not-allowed",
-      backgroundColor: "transparent",
-      opacity: 0.65,
-    },
-  },
-  contextMenuButtonCaret: {
-    marginLeft: "auto",
-    color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: 1,
-  },
-  contextMenuSubmenuWrap: {
-    position: "relative",
-    width: "100%",
-  },
-  contextMenuSubmenu: {
-    position: "absolute",
-    left: "calc(100% + 4px)",
-    top: 0,
-    zIndex: 2000001,
-    borderRadius: "10px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-    boxShadow: tokens.shadow16,
-    padding: "4px",
-    minWidth: "158px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1px",
-  },
-  contextMenuSubmenuLeft: {
-    left: "auto",
-    right: "calc(100% + 4px)",
-  },
-  contextMenuIcon: {
-    width: "16px",
-    height: "16px",
-    flexShrink: 0,
-    color: tokens.colorNeutralForeground3,
-  },
-  contextMenuTagCheckbox: {
-    marginLeft: "auto",
-    width: "16px",
-    height: "16px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: "4px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    boxSizing: "border-box",
-  },
-  contextMenuTagCheckboxChecked: {
-    border: "1px solid #0f6cbd",
-    backgroundColor: "#0f6cbd",
-    color: "#ffffff",
-  },
-  contextMenuTagCheckboxMixed: {
-    border: "1px solid #0f6cbd",
-    backgroundColor: "#deecff",
-  },
-  contextMenuTagCheckboxIcon: {
-    width: "11px",
-    height: "11px",
-    display: "block",
-  },
-  contextMenuTagCheckboxBar: {
-    width: "8px",
-    height: "2px",
-    borderRadius: "999px",
-    backgroundColor: "#0f6cbd",
-    display: "block",
-  },
-  contextMenuTagLabel: {
-    flex: 1,
-    lineHeight: 1,
-  },
-  compactMenuList: {
-    paddingTop: "2px",
-    paddingBottom: "2px",
-    "& [role='menuitem']": {
-      minHeight: "26px",
-      paddingTop: "5px",
-      paddingBottom: "5px",
-      lineHeight: "1.2",
     },
   },
   explorerTable: {
@@ -1625,12 +760,12 @@ const useStyles = makeStyles({
     position: "relative",
     cursor: "pointer",
     "&:hover .thumbDownloadButton": {
-      opacity: 0.5,
+      opacity: 1,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
     "&:focus-within .thumbDownloadButton": {
-      opacity: 0.5,
+      opacity: 1,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
@@ -1654,7 +789,7 @@ const useStyles = makeStyles({
     borderRadius: "999px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    color: "#b7b7b7",
+    color: tokens.colorNeutralForeground1,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1663,109 +798,11 @@ const useStyles = makeStyles({
     boxShadow: tokens.shadow4,
     opacity: 0,
     transform: "translateY(-2px)",
-    transition:
-      "opacity 120ms ease, transform 120ms ease, color 120ms ease, border-color 120ms ease, background-color 120ms ease",
+    transition: "opacity 120ms ease, transform 120ms ease",
     pointerEvents: "none",
     ":hover": {
-      opacity: 1,
-      color: tokens.colorBrandForeground1,
-      border: `1px solid ${tokens.colorBrandStroke1}`,
-      backgroundColor: "#ffffff",
+      backgroundColor: tokens.colorNeutralBackground2,
     },
-    ":focus-visible": {
-      opacity: 1,
-      color: tokens.colorBrandForeground1,
-      border: `1px solid ${tokens.colorBrandStroke1}`,
-      outline: `2px solid ${tokens.colorStrokeFocus2}`,
-      outlineOffset: "1px",
-    },
-  },
-  thumbAiButton: {
-    right: "42px",
-  },
-  aiPromptSurface: {
-    width: "min(620px, 92vw)",
-    padding: "14px",
-  },
-  aiPromptBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
-  aiPromptImageWrap: {
-    width: "100%",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: "4px 0 8px",
-  },
-  aiPromptImagePreview: {
-    width: "100%",
-    maxWidth: "500px",
-    maxHeight: "500px",
-    objectFit: "contain",
-    borderRadius: "10px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground2,
-  },
-  aiCompareSurface: {
-    width: "70vw",
-    maxWidth: "70vw",
-    height: "85vh",
-    maxHeight: "85vh",
-    padding: "14px",
-  },
-  aiCompareBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    height: "100%",
-    minHeight: 0,
-    overflow: "hidden",
-  },
-  aiCompareGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "16px",
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    alignItems: "start",
-    "@media (max-width: 960px)": {
-      gridTemplateColumns: "1fr",
-    },
-  },
-  aiComparePanel: {
-    borderRadius: "10px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground2,
-    padding: "8px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    alignItems: "center",
-  },
-  aiCompareImageFrame: {
-    width: "min(100%, calc(85vh - 260px))",
-    aspectRatio: "1 / 1",
-    borderRadius: "8px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    "@media (max-width: 1200px)": {
-      minHeight: "320px",
-    },
-  },
-  aiCompareLabel: {
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  aiCompareImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "contain",
   },
   thumbName: {
     fontSize: tokens.fontSizeBase200,
@@ -1838,79 +875,6 @@ const useStyles = makeStyles({
   },
   tableCell: {
     verticalAlign: "middle",
-    overflow: "visible",
-  },
-  tableEditInputWrap: {
-    position: "relative",
-    width: "100%",
-    overflow: "visible",
-    minHeight: "28px",
-  },
-  tableEditInput: {
-    minWidth: "100%",
-    maxWidth: "none",
-  },
-  expandedInlineInput: {
-    position: "relative",
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 6,
-    boxSizing: "border-box",
-  },
-  tableCellLinkButton: {
-    border: "none",
-    background: "transparent",
-    color: tokens.colorBrandForeground1,
-    padding: 0,
-    textAlign: "left",
-    cursor: "pointer",
-    font: "inherit",
-    width: "100%",
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  tableCellLinkRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    minWidth: 0,
-  },
-  tableCellInlineEditable: {
-    flex: "1 1 auto",
-    minWidth: 0,
-    overflow: "hidden",
-  },
-  tableCellLinkActionButton: {
-    flexShrink: 0,
-    width: "auto",
-    minWidth: "76px",
-    textAlign: "left",
-  },
-  tableActionButton: {
-    backgroundColor: "#ffffff",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
-    ":active": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-    ":disabled": {
-      backgroundColor: tokens.colorNeutralBackground3,
-    },
-  },
-  tableActionButtonCompleted: {
-    backgroundColor: "#e7f5e8",
-    ":hover": {
-      backgroundColor: "#d9efdb",
-    },
-    ":active": {
-      backgroundColor: "#cbe6cf",
-    },
-    ":disabled": {
-      backgroundColor: "#d9efdb",
-    },
   },
   selectionCol: {
     width: "44px",
@@ -2632,66 +1596,6 @@ const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
 };
 
 const USE_NEW_FILE_EXPLORER = true;
-const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
-
-const estimateExpandedInputWidthPx = (
-  value: string,
-  options?: { minPx?: number; maxPx?: number }
-) => {
-  const text = String(value ?? "");
-  const wideCharCount = (text.match(/[^\u0000-\u00ff]/g) ?? []).length;
-  const approximateCharCount = text.length + wideCharCount;
-  const estimated = approximateCharCount * 8 + 56;
-  const minPx = options?.minPx ?? 0;
-  const maxPx = options?.maxPx ?? 1400;
-  if (estimated < minPx) return minPx;
-  if (estimated > maxPx) return maxPx;
-  return estimated;
-};
-
-const normalizeColumnSampleText = (value: unknown, maxChars = 120) => {
-  const text = String(value ?? "").trim().replace(/\s+/g, " ");
-  if (!text) return "";
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}...`;
-};
-
-const estimateTableTextWidthPx = (value: unknown) => {
-  const text = normalizeColumnSampleText(value, 160);
-  if (!text) return 0;
-  const wideCharCount = (text.match(/[^\u0000-\u00ff]/g) ?? []).length;
-  const asciiCount = text.length - wideCharCount;
-  return Math.ceil(asciiCount * 7.1 + wideCharCount * 12.4);
-};
-
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const computeAdaptiveColumnWidthPx = (
-  headerText: string,
-  values: unknown[],
-  options: {
-    minPx: number;
-    maxPx: number;
-    headerAsMax?: boolean;
-    headerPaddingPx?: number;
-    contentPaddingPx?: number;
-  }
-) => {
-  const headerPaddingPx = options.headerPaddingPx ?? 24;
-  const contentPaddingPx = options.contentPaddingPx ?? 24;
-  const headerWidth = estimateTableTextWidthPx(headerText) + headerPaddingPx;
-  const contentWidth =
-    values.length > 0
-      ? Math.max(...values.map((value) => estimateTableTextWidthPx(value))) + contentPaddingPx
-      : 0;
-
-  let target = Math.max(headerWidth, contentWidth, options.minPx);
-  if (options.headerAsMax) {
-    target = Math.min(target, Math.max(headerWidth, options.minPx));
-  }
-  return Math.round(clampNumber(target, options.minPx, options.maxPx));
-};
 
 export default function DraftExplorerPage() {
   const styles = useStyles();
@@ -2735,16 +1639,6 @@ export default function DraftExplorerPage() {
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [completedSpuFolders, setCompletedSpuFolders] = useState<Set<string>>(
-    new Set()
-  );
-  const [imageViewMode, setImageViewMode] = useState<"small" | "big">("small");
-  const [imageResizeActionIcon, setImageResizeActionIcon] = useState<
-    "grow" | "shrink"
-  >("grow");
-  const [imageDimensions, setImageDimensions] = useState<
-    Record<string, { width: number; height: number }>
-  >({});
   const [selectedTreeFolders, setSelectedTreeFolders] = useState<Set<string>>(
     new Set()
   );
@@ -2753,60 +1647,14 @@ export default function DraftExplorerPage() {
   );
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
-  const [folderTreeHidden, setFolderTreeHidden] = useState(true);
   const [movingEntry, setMovingEntry] = useState(false);
-  const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
+  const [draggingEntryPath, setDraggingEntryPath] = useState<string | null>(null);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
     null
   );
-  const [imageReorderDropPath, setImageReorderDropPath] = useState<string | null>(
-    null
-  );
-  const [imageOrderPersisting, setImageOrderPersisting] = useState(false);
   const [contextMenu, setContextMenu] = useState<ExplorerContextMenuState | null>(
     null
   );
-  const [contextMenuSubmenu, setContextMenuSubmenu] = useState<
-    "tag-image" | "edit-chatgpt" | "edit-gemini" | null
-  >(null);
-  const [contextMenuNestedSubmenu, setContextMenuNestedSubmenu] = useState<
-    | "chatgpt-digideal"
-    | "chatgpt-scene"
-    | "gemini-digideal"
-    | "gemini-scene"
-    | null
-  >(null);
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const [contextMenuSubmenuSide, setContextMenuSubmenuSide] = useState<
-    "right" | "left"
-  >("right");
-  const nonImageFileSelectAllRef = useRef<HTMLInputElement | null>(null);
-  const [pendingAiEditsByOriginal, setPendingAiEditsByOriginal] = useState<
-    Record<string, PendingAiEditRecord>
-  >({});
-  const [aiEditTargets, setAiEditTargets] = useState<DraftEntry[]>([]);
-  const [aiEditProvider, setAiEditProvider] = useState<AiEditProvider>("chatgpt");
-  const [aiEditMode, setAiEditMode] = useState<AiPromptMode>("template");
-  const [aiEditTemplatePreset, setAiEditTemplatePreset] =
-    useState<AiTemplatePreset>("standard");
-  const [aiEditOutputCount, setAiEditOutputCount] = useState(1);
-  const [aiEditPrompt, setAiEditPrompt] = useState("");
-  const [aiEditSubmitting, setAiEditSubmitting] = useState(false);
-  const [aiEditError, setAiEditError] = useState<string | null>(null);
-  const [aiEditJobsByPath, setAiEditJobsByPath] = useState<Record<string, AiEditRuntimeJob>>(
-    {}
-  );
-  const [aiReviewOriginalPath, setAiReviewOriginalPath] = useState<string | null>(null);
-  const [aiReviewSubmitting, setAiReviewSubmitting] = useState(false);
-  const [confirmAiEditsPending, setConfirmAiEditsPending] = useState(false);
-  const [confirmingAiEditPaths, setConfirmingAiEditPaths] = useState<Set<string>>(
-    new Set()
-  );
-  const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
-  const [fileViewerContent, setFileViewerContent] = useState("");
-  const [fileViewerLoading, setFileViewerLoading] = useState(false);
-  const [fileViewerSaving, setFileViewerSaving] = useState(false);
-  const [fileViewerError, setFileViewerError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [reloadingImagePaths, setReloadingImagePaths] = useState<Set<string>>(
     new Set()
@@ -3218,13 +2066,6 @@ export default function DraftExplorerPage() {
       fetchSkuRows();
     }
   }, [draftTab, fetchSpuRows, fetchSkuRows]);
-
-  useEffect(() => {
-    setSelectedSpus(new Set());
-    setSelectedSkus(new Set());
-    setExpandedSkus(new Set());
-    setDraftTableShowAll(false);
-  }, [selectedFolder]);
 
   useEffect(() => {
     fetchSkuStatus().catch(() => {
@@ -4314,47 +3155,6 @@ export default function DraftExplorerPage() {
     }
   }, []);
 
-  const isArchiveFolder = useCallback((value: string) => {
-    const normalized = value.toLowerCase().replace(/[_-]+/g, " ");
-    return normalized.includes("archive");
-  }, []);
-
-  const isChunksDirectory = useCallback((value: string) => {
-    const normalized = value.toLowerCase().replace(/[\s_-]+/g, "");
-    return normalized === "chunks";
-  }, []);
-
-  const pickPreferredRunFolder = useCallback(
-    (items: DraftFolder[]) => {
-      if (items.length === 0) return null;
-      const nonArchive = items.filter(
-        (item) => !isArchiveFolder(`${item.name} ${item.path}`)
-      );
-      const pool = nonArchive.length > 0 ? nonArchive : items;
-      const draftedProducts = pool.filter((item) =>
-        /drafted[-_\s]*products/i.test(`${item.name} ${item.path}`)
-      );
-      return draftedProducts[0] ?? pool[0] ?? null;
-    },
-    [isArchiveFolder]
-  );
-
-  const resolveInitialExplorerPath = useCallback(
-    async (runPath: string) => {
-      if (!runPath) return "";
-      try {
-        const rootEntries = await listPathEntries(runPath);
-        const preferredDir = rootEntries.find(
-          (entry) => entry.type === "dir" && !isChunksDirectory(entry.name)
-        );
-        return preferredDir?.path ?? runPath;
-      } catch {
-        return runPath;
-      }
-    },
-    [isChunksDirectory, listPathEntries]
-  );
-
   const fetchFolders = useCallback(async () => {
     try {
       const response = await fetch("/api/drafts/folders");
@@ -4368,22 +3168,15 @@ export default function DraftExplorerPage() {
         setFolderTree(null);
         return;
       }
-      const selectedStillExists = items.some((item) => item.path === selectedFolder);
-      if (selectedFolder && selectedStillExists) {
+      if (selectedFolder && !items.some((item) => item.path === selectedFolder)) {
+        setSelectedFolder(items[0].path);
+        setCurrentPath(items[0].path);
         return;
       }
-
-      const preferredRun = pickPreferredRunFolder(items);
-      const nextRunPath = preferredRun?.path ?? items[0]?.path ?? "";
-      if (!nextRunPath) return;
-      const nextPath = await resolveInitialExplorerPath(nextRunPath);
-      pendingFolderOpenPathRef.current = nextPath;
-      setSelectedFolder(nextRunPath);
-      setCurrentPath(nextPath);
-    } catch {
-      return;
-    }
-  }, [pickPreferredRunFolder, resolveInitialExplorerPath, selectedFolder]);
+      if (items.length > 0 && !selectedFolder) {
+        setSelectedFolder(items[0].path);
+        setCurrentPath(items[0].path);
+      }
 
   const fetchEntries = useCallback(
     async (pathValue: string) => {
@@ -4405,68 +3198,6 @@ export default function DraftExplorerPage() {
     },
     [listPathEntries]
   );
-
-  const refreshEntries = useCallback(
-    async (pathValue: string) => {
-      if (!pathValue || entriesRefreshing) return;
-      setEntriesRefreshing(true);
-      try {
-        const items = await listPathEntries(pathValue);
-        const available = new Set(items.map((entry) => entry.path));
-        setEntries(items);
-        setSelectedFiles((prev) => {
-          if (prev.size === 0) return prev;
-          const next = new Set<string>();
-          prev.forEach((value) => {
-            if (available.has(value)) next.add(value);
-          });
-          return next;
-        });
-        setPreviewPath((prev) => (prev && available.has(prev) ? prev : null));
-        setImageDimensions((prev) => {
-          const next: Record<string, { width: number; height: number }> = {};
-          Object.entries(prev).forEach(([pathValue, dims]) => {
-            if (available.has(pathValue)) {
-              next[pathValue] = dims;
-            }
-          });
-          return next;
-        });
-      } catch {
-        // Keep previous entries on refresh failure to avoid flicker.
-      } finally {
-        setEntriesRefreshing(false);
-      }
-    },
-    [entriesRefreshing, listPathEntries]
-  );
-
-  const fetchPendingAiEdits = useCallback(async (pathValue: string) => {
-    if (!pathValue) {
-      setPendingAiEditsByOriginal({});
-      return;
-    }
-    try {
-      const response = await fetch(
-        `/api/drafts/ai-edits?folder=${encodeURIComponent(pathValue)}`
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load AI edit state.");
-      }
-      const items = Array.isArray(payload?.items)
-        ? (payload.items as PendingAiEditRecord[])
-        : [];
-      const next: Record<string, PendingAiEditRecord> = {};
-      for (const item of items) {
-        if (!item?.originalPath) continue;
-        next[item.originalPath] = item;
-      }
-      setPendingAiEditsByOriginal(next);
-    } catch {
-      setPendingAiEditsByOriginal({});
-    }
-  }, []);
 
   const handleSelectFolder = useCallback(
     async (nextFolderValue: string) => {
@@ -4596,14 +3327,7 @@ export default function DraftExplorerPage() {
     if (selectedFolder) {
       fetchFolderTree(selectedFolder);
     }
-  }, [
-    fetchFolders,
-    currentPath,
-    refreshEntries,
-    fetchPendingAiEdits,
-    fetchFolderTree,
-    selectedFolder,
-  ]);
+  }, [fetchFolders, currentPath, fetchEntries, fetchFolderTree, selectedFolder]);
 
   const handleDeleteFolder = useCallback(async () => {
     if (!selectedFolder) return;
@@ -4905,35 +3629,12 @@ export default function DraftExplorerPage() {
 
   useEffect(() => {
     if (!selectedFolder) return;
-    const pendingPath = pendingFolderOpenPathRef.current;
-    const nextPath =
-      pendingPath &&
-      (pendingPath === selectedFolder ||
-        pendingPath.startsWith(`${selectedFolder}/`))
-        ? pendingPath
-        : selectedFolder;
-    pendingFolderOpenPathRef.current = null;
-    setCurrentPath(nextPath);
+    setCurrentPath(selectedFolder);
     setSelectedTreeFolders(new Set());
     setCollapsedTreeFolders(new Set());
     setContextMenu(null);
     fetchFolderTree(selectedFolder);
   }, [selectedFolder, fetchFolderTree]);
-
-  useEffect(() => {
-    currentPathRef.current = String(currentPath || "");
-  }, [currentPath]);
-
-  useEffect(() => {
-    if (!currentPath) {
-      setPendingAiEditsByOriginal({});
-      return;
-    }
-    fetchEntries(currentPath);
-    fetchPendingAiEdits(currentPath);
-    setImageDimensions({});
-    setAiReviewOriginalPath(null);
-  }, [currentPath, fetchEntries, fetchPendingAiEdits]);
 
   useEffect(() => {
     if (!currentPath) return;
@@ -4953,63 +3654,30 @@ export default function DraftExplorerPage() {
     });
   }, [currentPath]);
 
-  useLayoutEffect(() => {
-    if (!contextMenu) return;
-    const menu = contextMenuRef.current;
-    if (!menu) return;
-
-    const clampToViewport = () => {
-      const padding = 8;
-      const rect = menu.getBoundingClientRect();
-      const maxX = window.innerWidth - rect.width - padding;
-      const maxY = window.innerHeight - rect.height - padding;
-      const nextX = Math.min(Math.max(padding, contextMenu.x), Math.max(padding, maxX));
-      const nextY = Math.min(Math.max(padding, contextMenu.y), Math.max(padding, maxY));
-
-      if (nextX !== contextMenu.x || nextY !== contextMenu.y) {
-        setContextMenu((prev) => (prev ? { ...prev, x: nextX, y: nextY } : prev));
-        return;
-      }
-
-      const submenuWidthEstimate = 180;
-      const gap = 8;
-      const finalRect = menu.getBoundingClientRect();
-      const needed = submenuWidthEstimate + gap;
-      const availableRight = window.innerWidth - padding - finalRect.right;
-      const availableLeft = finalRect.left - padding;
-      const nextSide: "right" | "left" =
-        availableRight >= needed
-          ? "right"
-          : availableLeft >= needed
-            ? "left"
-            : availableRight >= availableLeft
-              ? "right"
-              : "left";
-      setContextMenuSubmenuSide(nextSide);
-    };
-
-    clampToViewport();
-    const handleResize = () => {
-      window.requestAnimationFrame(() => clampToViewport());
-    };
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [contextMenu]);
+  useEffect(() => {
+    if (!currentPath) return;
+    const segments = currentPath.split("/").filter(Boolean);
+    const ancestors: string[] = [];
+    let accumulated = "";
+    segments.forEach((segment) => {
+      accumulated = accumulated ? `${accumulated}/${segment}` : segment;
+      ancestors.push(accumulated);
+    });
+    setCollapsedTreeFolders((prev) => {
+      const next = new Set(prev);
+      ancestors.forEach((folderPath) => {
+        next.delete(folderPath);
+      });
+      return next;
+    });
+  }, [currentPath]);
 
   useEffect(() => {
     if (!contextMenu) return;
-    const close = () => {
-      setContextMenu(null);
-      setContextMenuSubmenu(null);
-      setContextMenuNestedSubmenu(null);
-    };
+    const close = () => setContextMenu(null);
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenu(null);
-        setContextMenuSubmenu(null);
-        setContextMenuNestedSubmenu(null);
       }
     };
     window.addEventListener("click", close);
@@ -5022,53 +3690,7 @@ export default function DraftExplorerPage() {
     };
   }, [contextMenu]);
 
-  useEffect(() => {
-    setContextMenuNestedSubmenu(null);
-  }, [contextMenuSubmenu]);
-
-  const handleToggleFile = useCallback(
-    (
-      pathValue: string,
-      options?: { shiftKey?: boolean; imageRange?: boolean }
-    ) => {
-      const shiftRangeRequested = Boolean(options?.shiftKey && options?.imageRange);
-      setSelectedFiles((prev) => {
-        const next = new Set(prev);
-        if (shiftRangeRequested) {
-          const anchorPath = selectionAnchorImagePathRef.current;
-          const imagePaths = displayImageEntriesRef.current
-            .filter(
-              (entry) => entry.type === "file" && isImage(entry.name)
-            )
-            .map((entry) => entry.path);
-          const anchorIndex = anchorPath ? imagePaths.indexOf(anchorPath) : -1;
-          const targetIndex = imagePaths.indexOf(pathValue);
-          if (anchorIndex >= 0 && targetIndex >= 0) {
-            const [start, end] =
-              anchorIndex <= targetIndex
-                ? [anchorIndex, targetIndex]
-                : [targetIndex, anchorIndex];
-            for (let index = start; index <= end; index += 1) {
-              next.add(imagePaths[index]);
-            }
-            selectionAnchorImagePathRef.current = pathValue;
-            return next;
-          }
-        }
-
-        if (next.has(pathValue)) {
-          next.delete(pathValue);
-        } else {
-          next.add(pathValue);
-        }
-        selectionAnchorImagePathRef.current = pathValue;
-        return next;
-      });
-    },
-    [isImage]
-  );
-
-  const handleToggleAllNonImageFiles = useCallback(() => {
+  const handleToggleFile = (pathValue: string) => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
       const nonImageFilePaths = entries
@@ -6143,6 +4765,18 @@ export default function DraftExplorerPage() {
     });
   };
 
+  const handleToggleTreeFolder = (pathValue: string) => {
+    setSelectedTreeFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(pathValue)) {
+        next.delete(pathValue);
+      } else {
+        next.add(pathValue);
+      }
+      return next;
+    });
+  };
+
   const toggleTreeFolder = (pathValue: string) => {
     setCollapsedTreeFolders((prev) => {
       const next = new Set(prev);
@@ -6155,931 +4789,40 @@ export default function DraftExplorerPage() {
     });
   };
 
-  const handleMoveEntriesToFolder = async (sourcePaths: string[], targetPath: string) => {
-    if (!targetPath || movingEntry) {
+  const handleMoveEntryToFolder = async (sourcePath: string, targetPath: string) => {
+    if (!sourcePath || !targetPath || sourcePath === targetPath || movingEntry) {
       return;
     }
-    const uniqueSources = Array.from(
-      new Set(
-        sourcePaths
-          .map((value) => String(value || "").trim())
-          .filter((value) => Boolean(value))
-      )
-    );
-    if (uniqueSources.length === 0) {
-      return;
-    }
-
-    const validSources = uniqueSources.filter(
-      (sourcePath) =>
-        sourcePath !== targetPath && !targetPath.startsWith(`${sourcePath}/`)
-    );
-    const visibleImageSourcePaths = new Set(
-      displayImageEntriesRef.current.map((entry) => entry.path)
-    );
-    const existingSources = validSources.filter(
-      (sourcePath) =>
-        entryByPath.has(sourcePath) || visibleImageSourcePaths.has(sourcePath)
-    );
-    if (existingSources.length === 0) {
-      setFolderDropTargetPath(null);
-      setDraggingEntryPaths([]);
-      return;
-    }
-
-    const locked = existingSources.filter(
-      (sourcePath) =>
-        Boolean(pendingAiEditsByOriginal[sourcePath]) ||
-        Boolean(aiEditJobsByPath[sourcePath])
-    );
-    if (locked.length > 0) {
-      setError("Resolve pending/running AI edits before moving those files.");
-      return;
-    }
-
     setMovingEntry(true);
     setError(null);
-    const failures: string[] = [];
-    const moved = new Set<string>();
     try {
-      for (const sourcePath of existingSources) {
-        try {
-          const response = await fetch("/api/drafts/move", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourcePath, targetPath }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload?.error || "Move failed.");
-          }
-          moved.add(sourcePath);
-        } catch (err) {
-          failures.push(`${sourcePath}: ${(err as Error).message}`);
-        }
+      const response = await fetch("/api/drafts/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcePath, targetPath }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Move failed.");
       }
 
-      if (moved.size > 0) {
-        setEntries((prev) => prev.filter((entry) => !moved.has(entry.path)));
-        setMainViewVariantImageEntries((prev) =>
-          prev.filter((entry) => !moved.has(entry.path))
-        );
-        setSelectedFiles((prev) => {
-          const next = new Set(prev);
-          moved.forEach((sourcePath) => next.delete(sourcePath));
-          return next;
-        });
-        setPendingAiEditsByOriginal((prev) => {
-          const next: Record<string, PendingAiEditRecord> = {};
-          Object.entries(prev).forEach(([pathValue, row]) => {
-            if (moved.has(pathValue) || moved.has(row.pendingPath)) return;
-            next[pathValue] = row;
-          });
-          return next;
-        });
-        setAiEditJobsByPath((prev) => {
-          const next: Record<string, AiEditRuntimeJob> = {};
-          Object.entries(prev).forEach(([pathValue, job]) => {
-            if (moved.has(pathValue)) return;
-            next[pathValue] = job;
-          });
-          return next;
-        });
-        setImageDimensions((prev) => {
-          const next: Record<string, { width: number; height: number }> = {};
-          Object.entries(prev).forEach(([pathValue, dims]) => {
-            if (moved.has(pathValue)) return;
-            next[pathValue] = dims;
-          });
-          return next;
-        });
-        setPreviewPath((prev) => (prev && moved.has(prev) ? null : prev));
+      if (currentPath) {
+        await fetchEntries(currentPath);
       }
-
       if (selectedFolder) {
         await fetchFolderTree(selectedFolder);
       }
-      if (failures.length > 0) {
-        setError(
-          `Moved ${moved.size}/${existingSources.length}. Errors: ${failures
-            .slice(0, 2)
-            .join("; ")}${failures.length > 2 ? "..." : ""}`
-        );
+      if (previewPath === sourcePath) {
+        setPreviewPath(null);
       }
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setMovingEntry(false);
-      setDraggingEntryPaths([]);
+      setDraggingEntryPath(null);
       setFolderDropTargetPath(null);
-      setImageReorderDropPath(null);
     }
   };
-
-  const handleCreateCopy = useCallback(
-    async (entry: DraftEntry) => {
-      if (entry.type !== "file") return;
-      setError(null);
-      try {
-        const response = await fetch("/api/drafts/files/copy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: entry.path }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to create copy.");
-        }
-        const copy = payload?.item as {
-          name?: string;
-          path?: string;
-          zimageUpscaled?: boolean;
-        } | undefined;
-        const copyName = String(copy?.name || "").trim();
-        const copyPath = String(copy?.path || "").trim();
-        const copyZimageUpscaled =
-          typeof copy?.zimageUpscaled === "boolean"
-            ? copy.zimageUpscaled
-            : false;
-        if (copyName && copyPath) {
-          const now = new Date().toISOString();
-          setEntries((prev) => {
-            if (prev.some((row) => row.path === copyPath)) return prev;
-            const copyEntry: DraftEntry = {
-              type: "file",
-              name: copyName,
-              path: copyPath,
-              size: entry.size,
-              modifiedAt: now,
-              zimageUpscaled: copyZimageUpscaled,
-            };
-            const sourceIndex = prev.findIndex((row) => row.path === entry.path);
-            if (sourceIndex < 0) return [...prev, copyEntry];
-            const next = [...prev];
-            next.splice(sourceIndex + 1, 0, copyEntry);
-            return next;
-          });
-        } else if (currentPath) {
-          await refreshEntries(currentPath);
-        }
-        if (selectedFolder) {
-          fetchFolderTree(selectedFolder);
-        }
-      } catch (err) {
-        setError((err as Error).message);
-      }
-    },
-    [currentPath, fetchFolderTree, refreshEntries, selectedFolder]
-  );
-
-  const handleCopyImageToClipboard = useCallback(
-    async (entry: DraftEntry) => {
-      if (entry.type !== "file" || !isImage(entry.name)) return;
-      if (!navigator?.clipboard || typeof ClipboardItem === "undefined") {
-        setError("Clipboard image copy is not supported in this browser.");
-        return;
-      }
-      try {
-        setError(null);
-        const response = await fetch(buildDraftDownloadUrl(entry.path, entry.modifiedAt), {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Unable to download image for clipboard copy.");
-        }
-        const blob = await response.blob();
-        let pngBlob: Blob = blob;
-        if (blob.type !== "image/png") {
-          const objectUrl = URL.createObjectURL(blob);
-          try {
-            const image = new Image();
-            image.decoding = "async";
-            image.src = objectUrl;
-            await new Promise<void>((resolve, reject) => {
-              image.onload = () => resolve();
-              image.onerror = () =>
-                reject(new Error("Unable to prepare image for clipboard copy."));
-            });
-            const canvas = document.createElement("canvas");
-            canvas.width = image.naturalWidth || image.width || 1;
-            canvas.height = image.naturalHeight || image.height || 1;
-            const context = canvas.getContext("2d");
-            if (!context) {
-              throw new Error("Unable to prepare image for clipboard copy.");
-            }
-            context.drawImage(image, 0, 0);
-            const converted = await new Promise<Blob | null>((resolve) =>
-              canvas.toBlob(resolve, "image/png")
-            );
-            if (!converted) {
-              throw new Error("Unable to prepare image for clipboard copy.");
-            }
-            pngBlob = converted;
-          } finally {
-            URL.revokeObjectURL(objectUrl);
-          }
-        }
-        const clipboardItem = new ClipboardItem({
-          "image/png": pngBlob,
-        });
-        await navigator.clipboard.write([clipboardItem]);
-      } catch (err) {
-        setError((err as Error).message || "Unable to copy image to clipboard.");
-      }
-    },
-    [buildDraftDownloadUrl, isImage]
-  );
-
-  const handleCreateCopiesForEntries = useCallback(
-    async (sourceEntries: DraftEntry[]) => {
-      clearSelectedFilesForImageActions();
-      if (bulkImageActionPending) return;
-      const targets = sourceEntries.filter((entry) => entry.type === "file");
-      if (targets.length === 0) return;
-      setBulkImageActionPending(true);
-      setError(null);
-      const failures: string[] = [];
-      const created: Array<{
-        sourcePath: string;
-        name: string;
-        path: string;
-        size: number;
-        pixelQualityScore: number | null;
-        zimageUpscaled: boolean;
-      }> = [];
-      try {
-        for (const entry of targets) {
-          try {
-            const response = await fetch("/api/drafts/files/copy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "Unable to create copy.");
-            }
-            const copy = payload?.item as {
-              name?: string;
-              path?: string;
-              pixelQualityScore?: number | null;
-              zimageUpscaled?: boolean;
-            } | undefined;
-            const copyName = String(copy?.name || "").trim();
-            const copyPath = String(copy?.path || "").trim();
-            const copyPixelQualityScore =
-              typeof copy?.pixelQualityScore === "number" &&
-              Number.isFinite(copy.pixelQualityScore)
-                ? Math.round(copy.pixelQualityScore)
-                : null;
-            const copyZimageUpscaled =
-              typeof copy?.zimageUpscaled === "boolean"
-                ? copy.zimageUpscaled
-                : false;
-            if (copyName && copyPath) {
-              created.push({
-                sourcePath: entry.path,
-                name: copyName,
-                path: copyPath,
-                size: entry.size,
-                pixelQualityScore: copyPixelQualityScore,
-                zimageUpscaled: copyZimageUpscaled,
-              });
-            }
-          } catch (err) {
-            failures.push(`${entry.name}: ${(err as Error).message}`);
-          }
-        }
-        if (created.length > 0) {
-          const now = new Date().toISOString();
-          setEntries((prev) => {
-            const existing = new Set(prev.map((row) => row.path));
-            const next = [...prev];
-            for (const item of created) {
-              if (existing.has(item.path)) continue;
-              existing.add(item.path);
-              const copyEntry: DraftEntry = {
-                type: "file",
-                name: item.name,
-                path: item.path,
-                size: item.size,
-                modifiedAt: now,
-                pixelQualityScore: item.pixelQualityScore,
-                zimageUpscaled: item.zimageUpscaled,
-              };
-              const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
-              if (sourceIndex < 0) {
-                next.push(copyEntry);
-              } else {
-                next.splice(sourceIndex + 1, 0, copyEntry);
-              }
-            }
-            return next;
-          });
-        } else if (currentPath) {
-          await refreshEntries(currentPath);
-        }
-        if (selectedFolder) {
-          await fetchFolderTree(selectedFolder);
-        }
-      } finally {
-        setBulkImageActionPending(false);
-        clearSelectedFilesForImageActions();
-      }
-      if (failures.length > 0) {
-        setError(
-          `Failed to copy ${failures.length} image(s): ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-    },
-    [
-      bulkImageActionPending,
-      clearSelectedFilesForImageActions,
-      currentPath,
-      fetchFolderTree,
-      refreshEntries,
-      selectedFolder,
-    ]
-  );
-
-  const handleUndoLastChangeForEntries = useCallback(
-    async (sourceEntries: DraftEntry[]) => {
-      clearSelectedFilesForImageActions();
-      if (bulkImageActionPending) return;
-      const targets = sourceEntries.filter(
-        (entry) => entry.type === "file" && isImage(entry.name)
-      );
-      if (targets.length === 0) return;
-      const locked = targets.filter(
-        (entry) =>
-          Boolean(pendingAiEditsByOriginal[entry.path]) ||
-          Boolean(aiEditJobsByPath[entry.path])
-      );
-      if (locked.length > 0) {
-        setError("Resolve pending/running AI edits before undo.");
-        return;
-      }
-
-      setBulkImageActionPending(true);
-      setError(null);
-      const failures: string[] = [];
-      const updates: Record<
-        string,
-        {
-          path: string;
-          name: string;
-          size: number;
-          modifiedAt: string;
-          pixelQualityScore: number | null;
-          zimageUpscaled: boolean;
-        }
-      > = {};
-
-      try {
-        for (const entry of targets) {
-          try {
-            const response = await fetch("/api/drafts/images/undo", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "Undo failed.");
-            }
-            const nextPath = String(payload?.path || entry.path).trim() || entry.path;
-            const nextName = String(payload?.name || entry.name).trim() || entry.name;
-            const nextSize =
-              typeof payload?.size === "number" && Number.isFinite(payload.size)
-                ? payload.size
-                : entry.size;
-            const nextModifiedAt =
-              String(payload?.modifiedAt || "").trim() || new Date().toISOString();
-            const nextPixelQualityScore =
-              typeof payload?.pixelQualityScore === "number" &&
-              Number.isFinite(payload.pixelQualityScore)
-                ? Math.round(payload.pixelQualityScore)
-                : null;
-            const nextZimageUpscaled =
-              typeof payload?.zimageUpscaled === "boolean"
-                ? payload.zimageUpscaled
-                : false;
-            updates[entry.path] = {
-              path: nextPath,
-              name: nextName,
-              size: nextSize,
-              modifiedAt: nextModifiedAt,
-              pixelQualityScore: nextPixelQualityScore,
-              zimageUpscaled: nextZimageUpscaled,
-            };
-          } catch (err) {
-            failures.push(`${entry.name}: ${(err as Error).message}`);
-          }
-        }
-
-        if (Object.keys(updates).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const update = updates[item.path];
-              if (!update) return item;
-              return {
-                ...item,
-                path: update.path,
-                name: update.name,
-                size: update.size,
-                modifiedAt: update.modifiedAt,
-                pixelQualityScore: update.pixelQualityScore,
-                zimageUpscaled: update.zimageUpscaled,
-              };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(updates).forEach(([oldPath, update]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(update.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const update = updates[prev];
-            return update ? update.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = {
-              ...prev,
-            };
-            Object.entries(updates).forEach(([oldPath, update]) => {
-              delete next[oldPath];
-              delete next[update.path];
-            });
-            return next;
-          });
-        }
-
-        if (selectedFolder) {
-          await fetchFolderTree(selectedFolder);
-        }
-      } finally {
-        setBulkImageActionPending(false);
-        clearSelectedFilesForImageActions();
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Failed to undo ${failures.length} image(s): ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-    },
-    [
-      aiEditJobsByPath,
-      bulkImageActionPending,
-      clearSelectedFilesForImageActions,
-      fetchFolderTree,
-      isImage,
-      pendingAiEditsByOriginal,
-      selectedFolder,
-    ]
-  );
-
-  const runAiEditsForEntries = useCallback(
-    async (
-      sourceEntries: DraftEntry[],
-      provider: AiEditProvider,
-      mode: AiPromptMode,
-      promptText: string,
-      options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
-    ) => {
-      clearSelectedFilesForImageActions();
-      const pathAtStart = String(currentPathRef.current || "");
-      const deduped = sourceEntries.filter(
-        (entry, index, arr) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          arr.findIndex((candidate) => candidate.path === entry.path) === index
-      );
-      if (deduped.length === 0) return;
-      if (deduped.length > 1) {
-        const providerLabel =
-          provider === "chatgpt" ? "ChatGPT" : provider === "gemini" ? "Gemini" : "Z-Image";
-        const modeLabel =
-          options?.templatePreset === "digideal_main"
-            ? "Digideal Main"
-            : options?.templatePreset === "product_scene"
-              ? "Product Scene"
-              : mode === "template"
-                ? "Standard Template"
-                : mode === "direct"
-                  ? "Direct"
-                  : mode === "white_background"
-                    ? "White BG"
-                    : mode === "auto_center_white"
-                      ? "Auto Center Wide"
-                      : mode === "eraser"
-                        ? "Eraser"
-                        : "Upscale";
-        const outputCount = Number(options?.outputCount ?? 1);
-        const outputSuffix =
-          Number.isFinite(outputCount) && outputCount > 1
-            ? ` (${outputCount} outputs per image)`
-            : "";
-        const confirmed = window.confirm(
-          `Run ${providerLabel} ${modeLabel} on ${deduped.length} selected images${outputSuffix}?`
-        );
-        if (!confirmed) return;
-      }
-
-      const skippedPendingOrRunning: string[] = [];
-      const skippedAlreadyUpscaled: string[] = [];
-      const runnable = deduped.filter((entry) => {
-        if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
-          skippedPendingOrRunning.push(entry.name);
-          return false;
-        }
-        if (provider === "zimage" && mode === "upscale" && isImageEntryUpscaled(entry)) {
-          skippedAlreadyUpscaled.push(entry.name);
-          return false;
-        }
-        return true;
-      });
-
-      if (runnable.length === 0) {
-        const reasons: string[] = [];
-        if (skippedPendingOrRunning.length > 0) {
-          reasons.push("all selected images already have pending/running AI edits");
-        }
-        if (skippedAlreadyUpscaled.length > 0) {
-          reasons.push("all selected images already have Z-image upscale applied");
-        }
-        setError(
-          reasons.length > 0
-            ? `Cannot run action: ${reasons.join(" and ")}.`
-            : "No images can be processed."
-        );
-        return;
-      }
-
-      setAiEditJobsByPath((prev) => {
-        const next = { ...prev };
-        for (const entry of runnable) {
-          next[entry.path] = {
-            provider,
-            mode,
-            status: "queued",
-            startedAt: Date.now(),
-          };
-        }
-        return next;
-      });
-
-      const failures: string[] = [];
-      let nextIndex = 0;
-      const maxWorkers = Math.min(3, runnable.length);
-      const worker = async () => {
-        while (true) {
-          const index = nextIndex;
-          if (index >= runnable.length) return;
-          nextIndex += 1;
-          const entry = runnable[index];
-          setAiEditJobsByPath((prev) => ({
-            ...prev,
-            [entry.path]: {
-              provider,
-              mode,
-              status: "running",
-              startedAt: Date.now(),
-            },
-          }));
-	          try {
-	            const response = await fetch("/api/drafts/ai-edits", {
-	              method: "POST",
-	              headers: { "Content-Type": "application/json" },
-	              body: JSON.stringify({
-	                path: entry.path,
-	                provider,
-	                mode,
-	                prompt: promptText,
-	                templatePreset: options?.templatePreset,
-                  outputCount: options?.outputCount,
-	              }),
-	            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "AI image edit failed.");
-            }
-            if (
-              payload?.applied === true &&
-              typeof payload?.originalPath === "string" &&
-              payload.originalPath.trim()
-            ) {
-              const originalPath = String(payload.originalPath).trim();
-              const now = new Date().toISOString();
-              const nextPixelQualityScore =
-                typeof payload?.pixelQualityScore === "number" &&
-                Number.isFinite(payload.pixelQualityScore)
-                  ? Math.round(payload.pixelQualityScore)
-                  : null;
-              setReloadingImagePaths((prev) => {
-                const next = new Set(prev);
-                next.add(originalPath);
-                return next;
-              });
-              setEntries((prev) =>
-                prev.map((item) =>
-                      item.path === originalPath
-                    ? {
-                        ...item,
-                        modifiedAt: now,
-                        pixelQualityScore:
-                          nextPixelQualityScore !== null
-                            ? nextPixelQualityScore
-                            : item.pixelQualityScore ?? null,
-                        zimageUpscaled:
-                          provider === "zimage" && mode === "upscale"
-                            ? true
-                            : item.zimageUpscaled,
-                      }
-                    : item
-                )
-              );
-              // Safety timeout to avoid stuck spinners if the browser never fires onLoad.
-              setTimeout(() => {
-                setReloadingImagePaths((prev) => {
-                  if (!prev.has(originalPath)) return prev;
-                  const next = new Set(prev);
-                  next.delete(originalPath);
-                  return next;
-                });
-              }, 45000);
-            }
-            const item = payload?.item as PendingAiEditRecord | undefined;
-            if (item?.originalPath) {
-              setPendingAiEditsByOriginal((prev) => ({
-                ...prev,
-                [item.originalPath]: item,
-              }));
-            }
-          } catch (err) {
-            failures.push(`${entry.name}: ${(err as Error).message}`);
-          } finally {
-            setAiEditJobsByPath((prev) => {
-              const next = { ...prev };
-              delete next[entry.path];
-              return next;
-            });
-          }
-        }
-      };
-      try {
-        await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
-
-        const latestPath = String(currentPathRef.current || "");
-        if (pathAtStart && latestPath === pathAtStart) {
-          await refreshEntries(pathAtStart);
-          await fetchPendingAiEdits(pathAtStart);
-        }
-
-        const messages: string[] = [];
-        if (skippedPendingOrRunning.length > 0) {
-          messages.push(
-            `Skipped ${skippedPendingOrRunning.length} image(s) with existing pending/running edits.`
-          );
-        }
-        if (skippedAlreadyUpscaled.length > 0) {
-          messages.push(
-            `Skipped ${skippedAlreadyUpscaled.length} image(s) already upscaled with Z-image.`
-          );
-        }
-        if (failures.length > 0) {
-          messages.push(
-            `Failed ${failures.length} image(s): ${failures
-              .slice(0, 3)
-              .join("; ")}${failures.length > 3 ? "..." : ""}`
-          );
-        }
-        if (messages.length > 0) {
-          setError(messages.join(" "));
-        }
-      } finally {
-        clearSelectedFilesForImageActions();
-      }
-    },
-    [
-      aiEditJobsByPath,
-      clearSelectedFilesForImageActions,
-      fetchPendingAiEdits,
-      refreshEntries,
-      isImage,
-      isImageEntryUpscaled,
-      pendingAiEditsByOriginal,
-    ]
-  );
-
-  const startAiEditForEntries = useCallback(
-    (sourceEntries: DraftEntry[], provider: AiEditProvider, mode: AiPromptMode) => {
-      clearSelectedFilesForImageActions();
-      const targets = sourceEntries.filter(
-        (entry, index, arr) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          arr.findIndex((candidate) => candidate.path === entry.path) === index
-      );
-      if (targets.length === 0) return;
-      if (
-        provider === "zimage" &&
-        (mode === "upscale" || mode === "white_background" || mode === "auto_center_white")
-      ) {
-        setAiEditTargets([]);
-        setAiEditProvider(provider);
-        setAiEditMode(mode);
-        setAiEditTemplatePreset("standard");
-        setAiEditOutputCount(1);
-        setAiEditPrompt("");
-        setAiEditError(null);
-        setError(null);
-        void runAiEditsForEntries(targets, provider, mode, "");
-        return;
-      }
-      setAiEditTargets(targets);
-      setAiEditProvider(provider);
-      setAiEditMode(mode);
-      setAiEditTemplatePreset("standard");
-      setAiEditOutputCount(1);
-      setAiEditPrompt("");
-      setAiEditError(null);
-    },
-    [clearSelectedFilesForImageActions, isImage, runAiEditsForEntries]
-  );
-
-  const startAiTemplatePresetForEntries = useCallback(
-    (
-      sourceEntries: DraftEntry[],
-      provider: Exclude<AiEditProvider, "zimage">,
-      templatePreset: Exclude<AiTemplatePreset, "standard">,
-      outputCount: number
-    ) => {
-      clearSelectedFilesForImageActions();
-      const targets = sourceEntries.filter(
-        (entry, index, arr) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          arr.findIndex((candidate) => candidate.path === entry.path) === index
-      );
-      if (targets.length === 0) return;
-      setAiEditTargets(targets);
-      setAiEditProvider(provider);
-      setAiEditMode("template");
-      setAiEditTemplatePreset(templatePreset);
-      setAiEditOutputCount(
-        Number.isFinite(outputCount)
-          ? Math.max(1, Math.min(3, Math.floor(outputCount)))
-          : 1
-      );
-      setAiEditPrompt("");
-      setAiEditError(null);
-      setError(null);
-    },
-    [clearSelectedFilesForImageActions, isImage]
-  );
-
-  const startAiEdit = useCallback(
-    (entry: DraftEntry, provider: AiEditProvider, mode: AiPromptMode) => {
-      startAiEditForEntries([entry], provider, mode);
-    },
-    [startAiEditForEntries]
-  );
-
-  const cancelAiEdit = useCallback(() => {
-    if (aiEditSubmitting) return;
-    setAiEditTargets([]);
-    setAiEditTemplatePreset("standard");
-    setAiEditOutputCount(1);
-    setAiEditPrompt("");
-    setAiEditError(null);
-  }, [aiEditSubmitting]);
-
-  const submitAiEdit = useCallback(async () => {
-    if (aiEditTargets.length === 0 || aiEditSubmitting) return;
-    const promptText = aiEditPrompt.trim();
-    if ((aiEditMode === "direct" || aiEditMode === "eraser") && !promptText) {
-      setAiEditError(
-        aiEditMode === "eraser"
-          ? "Prompt is required for Z-image eraser."
-          : "Prompt is required in direct mode."
-      );
-      return;
-    }
-    const targets = [...aiEditTargets];
-    const provider = aiEditProvider;
-    const mode = aiEditMode;
-    const templatePreset = mode === "template" ? aiEditTemplatePreset : undefined;
-    const outputCount =
-      mode === "template" && aiEditTemplatePreset !== "standard"
-        ? aiEditOutputCount
-        : undefined;
-    setAiEditSubmitting(true);
-    setAiEditTargets([]);
-    setAiEditTemplatePreset("standard");
-    setAiEditOutputCount(1);
-    setAiEditPrompt("");
-    setAiEditError(null);
-    setError(null);
-    setAiEditSubmitting(false);
-    void runAiEditsForEntries(targets, provider, mode, promptText, {
-      templatePreset,
-      outputCount,
-    });
-  }, [
-    aiEditOutputCount,
-    aiEditTemplatePreset,
-    aiEditTargets,
-    aiEditMode,
-    aiEditPrompt,
-    aiEditProvider,
-    aiEditSubmitting,
-    runAiEditsForEntries,
-  ]);
-
-  const resolveAiEdit = useCallback(
-    async (originalPath: string, decision: AiResolveDecision) => {
-      if (aiReviewSubmitting) return;
-      const pathAtStart = String(currentPathRef.current || "");
-      setAiReviewSubmitting(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/drafts/ai-edits/resolve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ originalPath, decision }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to resolve AI edit.");
-        }
-        setPendingAiEditsByOriginal((prev) => {
-          const next = { ...prev };
-          delete next[originalPath];
-          return next;
-        });
-        const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
-          ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
-          : [];
-        const refreshedScoreByPath = new Map<string, number | null>();
-        refreshedScoresRaw.forEach((row) => {
-          const pathValue = String(row?.path || "").trim();
-          if (!pathValue) return;
-          const scoreValue =
-            typeof row?.pixelQualityScore === "number" &&
-            Number.isFinite(row.pixelQualityScore)
-              ? Math.round(row.pixelQualityScore)
-              : null;
-          refreshedScoreByPath.set(pathValue, scoreValue);
-        });
-        if (refreshedScoreByPath.size > 0) {
-          const now = new Date().toISOString();
-          setEntries((prev) =>
-            prev.map((item) => {
-              if (!refreshedScoreByPath.has(item.path)) return item;
-              return {
-                ...item,
-                modifiedAt: now,
-                pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
-              };
-            })
-          );
-        }
-        const latestPath = String(currentPathRef.current || "");
-        const canRefreshActiveFolder = Boolean(pathAtStart && latestPath === pathAtStart);
-        if (decision === "replace_with_ai") {
-          if (canRefreshActiveFolder) {
-            await refreshEntries(pathAtStart);
-            await fetchPendingAiEdits(pathAtStart);
-          } else {
-            const now = new Date().toISOString();
-            setEntries((prev) =>
-              prev.map((item) =>
-                item.path === originalPath ? { ...item, modifiedAt: now } : item
-              )
-            );
-          }
-        } else if (decision === "keep_both" && canRefreshActiveFolder) {
-          await refreshEntries(pathAtStart);
-          await fetchPendingAiEdits(pathAtStart);
-        }
-        setAiReviewOriginalPath(null);
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setAiReviewSubmitting(false);
-      }
-    },
-    [aiReviewSubmitting, fetchPendingAiEdits, refreshEntries]
-  );
 
   const startRename = (entry: DraftEntry) => {
     if (entry.type !== "file") return;
@@ -7137,11 +4880,16 @@ export default function DraftExplorerPage() {
       const now = new Date().toISOString();
 
       setEntries((prev) => {
-        return prev.map((item) =>
+        const next = prev.map((item) =>
           item.path === entry.path
             ? { ...item, name: newName, path: newPath, modifiedAt: now }
             : item
         );
+        next.sort((a, b) => {
+          if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return next;
       });
       setSelectedFiles((prev) => {
         if (!prev.has(entry.path)) return prev;
@@ -7151,17 +4899,6 @@ export default function DraftExplorerPage() {
         return next;
       });
       setPreviewPath((prev) => (prev === entry.path ? newPath : prev));
-      setImageDimensions((prev) => {
-        const dims = prev[entry.path];
-        if (!dims) return prev;
-        const next: Record<string, { width: number; height: number }> = { ...prev };
-        delete next[entry.path];
-        next[newPath] = dims;
-        return next;
-      });
-      if (currentPath) {
-        fetchPendingAiEdits(currentPath);
-      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -7194,32 +4931,30 @@ export default function DraftExplorerPage() {
     link.remove();
   };
 
-  const handleDownloadEntries = async (sourceEntries: DraftEntry[]) => {
-    clearSelectedFilesForImageActions();
-    for (const entry of sourceEntries) {
-      if (entry.type === "dir") {
-        triggerBrowserDownload(`/api/drafts/zip?path=${encodeURIComponent(entry.path)}`);
-      } else {
-        triggerBrowserDownload(`/api/drafts/download?path=${encodeURIComponent(entry.path)}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  };
-
-  const handleDownloadAllFolders = async () => {
-    if (!selectedFolder) return;
+  const handleDownloadAllFromCurrentFolder = async () => {
+    if (!currentPath) return;
     triggerBrowserDownload(
-      `/api/drafts/zip?path=${encodeURIComponent(selectedFolder)}`
+      `/api/drafts/zip?path=${encodeURIComponent(currentPath)}`
     );
   };
 
   const handleDownloadSelectedIndividually = async () => {
     if (selectedFiles.size === 0) return;
     const selected = Array.from(selectedFiles);
-    const selectedEntries = selected
-      .map((relativePath) => entries.find((candidate) => candidate.path === relativePath))
-      .filter((entry): entry is DraftEntry => Boolean(entry));
-    await handleDownloadEntries(selectedEntries);
+    for (const relativePath of selected) {
+      const entry = entries.find((candidate) => candidate.path === relativePath);
+      if (entry?.type === "dir") {
+        triggerBrowserDownload(
+          `/api/drafts/zip?path=${encodeURIComponent(relativePath)}`
+        );
+      } else {
+        triggerBrowserDownload(
+          `/api/drafts/download?path=${encodeURIComponent(relativePath)}`
+        );
+      }
+      // Give the browser a moment between downloads to reduce blocking.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   };
 
   const handleDownloadSelectedZip = async () => {
@@ -7231,20 +4966,9 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleDeleteSelectedFolders = async () => {
-    const paths = Array.from(selectedTreeFolders);
+  const handleDeleteSelected = async () => {
+    const paths = Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
     if (paths.length === 0) return;
-    const locked = Object.values(pendingAiEditsByOriginal).some((row) =>
-      paths.some(
-        (folderPath) =>
-          row.originalPath.startsWith(`${folderPath}/`) ||
-          row.pendingPath.startsWith(`${folderPath}/`)
-      )
-    );
-    if (locked) {
-      setError("Resolve pending/running AI edits before deleting those folders.");
-      return;
-    }
     const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
     if (!confirmed) return;
     try {
@@ -7257,45 +4981,10 @@ export default function DraftExplorerPage() {
         const message = await response.text();
         throw new Error(message || "Delete failed.");
       }
-      const isDeletedPath = (candidatePath: string) =>
-        paths.some(
-          (deletedPath) =>
-            candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
-        );
-      setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
+      setSelectedFiles(new Set());
       setSelectedTreeFolders(new Set());
-      setPendingAiEditsByOriginal((prev) => {
-        const next: Record<string, PendingAiEditRecord> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setAiEditJobsByPath((prev) => {
-        const next: Record<string, AiEditRuntimeJob> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setImageDimensions((prev) => {
-        const next: Record<string, { width: number; height: number }> = {};
-        Object.entries(prev).forEach(([pathValue, dims]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = dims;
-        });
-        return next;
-      });
-      if (
-        currentPath &&
-        paths.some(
-          (deletedPath) =>
-            currentPath === deletedPath || currentPath.startsWith(`${deletedPath}/`)
-        )
-      ) {
-        setCurrentPath(selectedFolder || "");
+      if (currentPath) {
+        fetchEntries(currentPath);
       }
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
@@ -7360,6 +5049,10 @@ export default function DraftExplorerPage() {
         return next;
       });
       setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
+      if (selectedFolder) {
+        fetchFolderTree(selectedFolder);
+      }
+      fetchEntries(currentPath);
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
       }
@@ -7757,1096 +5450,23 @@ export default function DraftExplorerPage() {
     triggerBrowserDownload(`/api/drafts/download?path=${encodeURIComponent(entry.path)}`);
   };
 
-  const resolveContextActionTargets = useCallback(
-    (entry: DraftEntry, options?: { imageOnly?: boolean }) => {
-      const selectedSource = options?.imageOnly
-        ? displayImageEntriesRef.current
-        : entries;
-      const selected = selectedSource.filter(
-        (candidate) => candidate.type === "file" && selectedFiles.has(candidate.path)
-      );
-      if (entry.type === "file" && selected.length > 1) {
-        const filtered = options?.imageOnly
-          ? selected.filter((candidate) => isImage(candidate.name))
-          : selected;
-        if (filtered.length > 0) {
-          return filtered;
-        }
-      }
-      if (options?.imageOnly) {
-        return entry.type === "file" && isImage(entry.name) ? [entry] : [];
-      }
-      return [entry];
-    },
-    [entries, isImage, selectedFiles]
-  );
-
-  const restoreSelectionAfterContextAction = useCallback(
-    (_targets: DraftEntry[]) => {
-      void _targets;
-      clearSelectedFilesForImageActions();
-    },
-    [clearSelectedFilesForImageActions]
-  );
-
-  const handleApplyImageTag = useCallback(
-    async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
-      clearSelectedFilesForImageActions();
-      const targets = sourceEntries.filter(
-        (entry, index, arr) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          arr.findIndex((candidate) => candidate.path === entry.path) === index
-      );
-      if (targets.length === 0 || bulkImageActionPending) return;
-
-      setBulkImageActionPending(true);
-      setError(null);
-      const failures: string[] = [];
-      const renames: Record<string, { name: string; path: string }> = {};
-
-      try {
-        for (const entry of targets) {
-          if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
-            failures.push(`${entry.name}: resolve AI status first.`);
-            continue;
-          }
-          const requestedName = buildTaggedImageFileName(entry.name, tag);
-          if (!requestedName || requestedName === entry.name) continue;
-          try {
-            const response = await fetch("/api/drafts/images/rename", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path, name: requestedName }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "Rename failed.");
-            }
-            const renamedPath = String(payload?.path || entry.path);
-            const renamedName = String(payload?.name || requestedName);
-            renames[entry.path] = { path: renamedPath, name: renamedName };
-          } catch (err) {
-            failures.push(`${entry.name}: ${(err as Error).message}`);
-          }
-        }
-
-        if (Object.keys(renames).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const renamed = renames[item.path];
-              if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(renamed.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev];
-            return renamed ? renamed.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = { ...prev };
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              const dims = next[oldPath];
-              if (!dims) return;
-              delete next[oldPath];
-              next[renamed.path] = dims;
-            });
-            return next;
-          });
-          setContextMenu((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev.entry.path];
-            if (!renamed) return prev;
-            return {
-              ...prev,
-              entry: {
-                ...prev.entry,
-                path: renamed.path,
-                name: renamed.name,
-              },
-            };
-          });
-        }
-      } finally {
-        setBulkImageActionPending(false);
-        clearSelectedFilesForImageActions();
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Failed to tag ${failures.length} image(s): ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-    },
-    [
-      aiEditJobsByPath,
-      bulkImageActionPending,
-      clearSelectedFilesForImageActions,
-      isImage,
-      pendingAiEditsByOriginal,
-    ]
-  );
-
-  const handleToggleImageTag = useCallback(
-    async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
-      clearSelectedFilesForImageActions();
-      const targets = sourceEntries.filter(
-        (entry, index, arr) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          arr.findIndex((candidate) => candidate.path === entry.path) === index
-      );
-      if (targets.length === 0 || bulkImageActionPending) return;
-
-      setBulkImageActionPending(true);
-      setError(null);
-      const failures: string[] = [];
-      const renames: Record<string, { name: string; path: string }> = {};
-
-      try {
-        for (const sourceEntry of targets) {
-          const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
-          if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
-            failures.push(`${entry.name}: resolve AI status first.`);
-            continue;
-          }
-          const requestedName = toggleImageTagInFileName(entry.name, tag);
-          if (!requestedName || requestedName === entry.name) continue;
-          try {
-            const response = await fetch("/api/drafts/images/rename", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path, name: requestedName }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "Rename failed.");
-            }
-            const renamedPath = String(payload?.path || entry.path);
-            const renamedName = String(payload?.name || requestedName);
-            renames[entry.path] = { path: renamedPath, name: renamedName };
-          } catch (err) {
-            failures.push(`${entry.name}: ${(err as Error).message}`);
-          }
-        }
-
-        if (Object.keys(renames).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const renamed = renames[item.path];
-              if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(renamed.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev];
-            return renamed ? renamed.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = { ...prev };
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              const dims = next[oldPath];
-              if (!dims) return;
-              delete next[oldPath];
-              next[renamed.path] = dims;
-            });
-            return next;
-          });
-          setContextMenu((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev.entry.path];
-            if (!renamed) return prev;
-            return {
-              ...prev,
-              entry: {
-                ...prev.entry,
-                path: renamed.path,
-                name: renamed.name,
-              },
-            };
-          });
-        }
-      } finally {
-        setBulkImageActionPending(false);
-        clearSelectedFilesForImageActions();
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Failed to update tags for ${failures.length} image(s): ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-    },
-    [
-      aiEditJobsByPath,
-      bulkImageActionPending,
-      clearSelectedFilesForImageActions,
-      entryByPath,
-      isImage,
-      pendingAiEditsByOriginal,
-    ]
-  );
-
-  const collectVariantHintsForSpu = useCallback(
-    async (spu: string) => {
-      const normalizedSpu = String(spu || "").trim();
-      if (!normalizedSpu) return [] as string[];
-
-      const collectFromRows = (rows: Array<Record<string, unknown>>) => {
-        const out: string[] = [];
-        const seen = new Set<string>();
-        rows.forEach((row) => {
-          const combined = buildVariantCombinedZhValue({
-            draft_option1: String(row.draft_option1 ?? ""),
-            draft_option2: String(row.draft_option2 ?? ""),
-            draft_option3: String(row.draft_option3 ?? ""),
-            draft_option4: String(row.draft_option4 ?? ""),
-            fallback: String(row.draft_option_combined_zh ?? ""),
-          }).trim();
-          if (!combined) return;
-          const key = combined.toLowerCase();
-          if (seen.has(key)) return;
-          seen.add(key);
-          out.push(combined);
-        });
-        return out;
-      };
-
-      const localRows = skuRows
-        .filter(
-          (row) => String(row.draft_spu || "").trim().toUpperCase() === normalizedSpu.toUpperCase()
-        )
-        .map((row) => row as unknown as Record<string, unknown>);
-      const localHints = collectFromRows(localRows);
-      if (localHints.length > 0) {
-        return localHints.slice(0, 24);
-      }
-
-      try {
-        const url = new URL("/api/drafts/variants", window.location.origin);
-        url.searchParams.set("spu", normalizedSpu);
-        const response = await fetch(url.toString());
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load variant hints.");
-        }
-        const items = Array.isArray(payload?.items) ? (payload.items as unknown[]) : [];
-        const hints = collectFromRows(
-          items.filter((value) => value && typeof value === "object") as Array<
-            Record<string, unknown>
-          >
-        );
-        return hints.slice(0, 24);
-      } catch {
-        return [];
-      }
-    },
-    [skuRows]
-  );
-
-  const applyTagAssignments = useCallback(
-    async (assignments: Array<{ path: string; tag: ImageTagOption }>) => {
-      const normalizedAssignments = assignments
-        .map((assignment) => ({
-          path: String(assignment.path || "").trim(),
-          tag: String(assignment.tag || "").trim().toUpperCase(),
-        }))
-        .filter(
-          (assignment): assignment is { path: string; tag: ImageTagOption } =>
-            Boolean(assignment.path) &&
-            (assignment.tag === "MAIN" ||
-              assignment.tag === "ENV" ||
-              assignment.tag === "VAR" ||
-              assignment.tag === "INF" ||
-              assignment.tag === "DIGI")
-        );
-
-      if (normalizedAssignments.length === 0) {
-        return { applied: 0, failures: [] as string[] };
-      }
-
-      setBulkImageActionPending(true);
-      const failures: string[] = [];
-      const renames: Record<string, { name: string; path: string }> = {};
-      const workingEntries = new Map(
-        entries
-          .filter((entry) => entry.type === "file" && isImage(entry.name))
-          .map((entry) => [entry.path, { path: entry.path, name: entry.name }])
-      );
-
-      let applied = 0;
-
-      try {
-        for (const assignment of normalizedAssignments) {
-          const target =
-            workingEntries.get(assignment.path) ?? {
-              path: assignment.path,
-              name: extractFileNameFromPath(assignment.path),
-            };
-          if (!target.path || !target.name) {
-            failures.push(`${assignment.path}: file not found`);
-            continue;
-          }
-          if (
-            pendingAiEditsByOriginal[target.path] ||
-            aiEditJobsByPath[target.path]
-          ) {
-            failures.push(`${target.name}: resolve AI status first.`);
-            continue;
-          }
-
-          const requestedName = buildTaggedImageFileName(target.name, assignment.tag);
-          if (!requestedName || requestedName === target.name) {
-            continue;
-          }
-
-          try {
-            const response = await fetch("/api/drafts/images/rename", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: target.path, name: requestedName }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(payload?.error || "Rename failed.");
-            }
-            const renamedPath = String(payload?.path || target.path);
-            const renamedName = String(payload?.name || requestedName);
-            renames[target.path] = { path: renamedPath, name: renamedName };
-            if (workingEntries.has(target.path)) {
-              workingEntries.delete(target.path);
-              workingEntries.set(renamedPath, { path: renamedPath, name: renamedName });
-            }
-            applied += 1;
-          } catch (err) {
-            failures.push(`${target.name}: ${(err as Error).message}`);
-          }
-        }
-
-        if (Object.keys(renames).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const renamed = renames[item.path];
-              if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(renamed.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev];
-            return renamed ? renamed.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = { ...prev };
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              const dims = next[oldPath];
-              if (!dims) return;
-              delete next[oldPath];
-              next[renamed.path] = dims;
-            });
-            return next;
-          });
-        }
-      } finally {
-        setBulkImageActionPending(false);
-        clearSelectedFilesForImageActions();
-      }
-
-      return { applied, failures };
-    },
-    [
-      aiEditJobsByPath,
-      clearSelectedFilesForImageActions,
-      entries,
-      isImage,
-      pendingAiEditsByOriginal,
-    ]
-  );
-
-  const persistImageOrderForFolder = useCallback(
-    async (folderPath: string, orderedPaths: string[]) => {
-      const normalizedFolderPath = String(folderPath || "").trim();
-      if (!normalizedFolderPath) return;
-      setImageOrderPersisting(true);
-      try {
-        const response = await fetch("/api/drafts/images/order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            folderPath: normalizedFolderPath,
-            orderedPaths,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to save image order.");
-        }
-      } catch (err) {
-        setError((err as Error).message);
-        if (currentPathRef.current === normalizedFolderPath) {
-          refreshEntries(normalizedFolderPath);
-        }
-        throw err;
-      } finally {
-        setImageOrderPersisting(false);
-      }
-    },
-    [refreshEntries]
-  );
-
-  const persistImageOrder = useCallback(
-    async (orderedPaths: string[]) => {
-      const normalizedCurrentPath = String(currentPath || "").trim();
-      if (!normalizedCurrentPath) return;
-      try {
-        await persistImageOrderForFolder(normalizedCurrentPath, orderedPaths);
-      } catch {
-        // Error state is already handled in persistImageOrderForFolder.
-      }
-    },
-    [currentPath, persistImageOrderForFolder]
-  );
-
-  const completedSpuPathsInSelectedRun = useMemo(() => {
-    const run = String(selectedFolder || "").trim();
-    if (!run) return [] as string[];
-    return Array.from(completedSpuFolders)
-      .map((pathValue) => String(pathValue || "").trim())
-      .filter((pathValue) => pathValue.startsWith(`${run}/`))
-      .filter((pathValue) => pathValue.split("/").filter(Boolean).length === 2)
-      .sort((left, right) => left.localeCompare(right));
-  }, [completedSpuFolders, selectedFolder]);
-
-  const runImageClassifierTaggingForFolder = useCallback(
-    async ({
-      folderPath,
-      imagePaths,
-      spu,
-      variantHints,
-    }: {
-      folderPath: string;
-      imagePaths: string[];
-      spu?: string;
-      variantHints?: string[];
-    }) => {
-      const normalizedImages = imagePaths
-        .map((pathValue) => String(pathValue || "").trim())
-        .filter(Boolean)
-        .filter((pathValue) => !/\(\s*DIGI\s*\)/i.test(extractFileNameFromPath(pathValue)));
-      if (normalizedImages.length === 0) {
-        return { failures: [] as string[], applied: 0 };
-      }
-
-      const response = await fetch("/api/drafts/images/tag-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          folderPath,
-          imagePaths: normalizedImages,
-          spu: String(spu || "").trim(),
-          variantHints: Array.isArray(variantHints) ? variantHints : [],
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to classify images.");
-      }
-
-      const decisions = Array.isArray(payload?.decisions)
-        ? (payload.decisions as Array<Record<string, unknown>>)
-        : [];
-
-      const decisionRows = decisions
-        .map((row) => {
-          const confidenceRaw = Number(row.confidence);
-          return {
-            path: String(row.path || "").trim(),
-            tag: String(row.primary_tag || "").trim().toUpperCase(),
-            confidence:
-              Number.isFinite(confidenceRaw) && confidenceRaw >= 0
-                ? confidenceRaw
-                : null,
-          };
-        })
-        .filter(
-          (
-            row
-          ): row is {
-            path: string;
-            tag: ImageTagOption;
-            confidence: number | null;
-          } =>
-            Boolean(row.path) &&
-            (row.tag === "MAIN" ||
-              row.tag === "ENV" ||
-              row.tag === "VAR" ||
-              row.tag === "INF" ||
-              row.tag === "DIGI")
-        );
-
-      const mainCandidates = decisionRows
-        .filter((row) => row.tag === "MAIN")
-        .sort((left, right) => {
-          const leftConfidence = left.confidence ?? -1;
-          const rightConfidence = right.confidence ?? -1;
-          return rightConfidence - leftConfidence;
-        });
-      const primaryMainPath = mainCandidates[0]?.path ?? "";
-
-      const assignments = decisionRows
-        .filter((row) => row.tag !== "MAIN" || row.path === primaryMainPath)
-        .map((row) => ({
-          path: row.path,
-          tag: row.tag,
-        }));
-
-      const { failures, applied } = await applyTagAssignments(assignments);
-
-      try {
-        const folderEntries = await listPathEntries(folderPath);
-        const folderImageEntries = folderEntries.filter(
-          (entry) => entry.type === "file" && isImage(entry.name)
-        );
-        if (folderImageEntries.length > 1) {
-          const currentOrder = folderImageEntries.map((entry) => entry.path);
-          const prioritizedOrder = buildTaggedImageOrderPaths(folderImageEntries);
-          const orderChanged =
-            prioritizedOrder.length === currentOrder.length &&
-            prioritizedOrder.some((pathValue, index) => pathValue !== currentOrder[index]);
-          if (orderChanged) {
-            await persistImageOrderForFolder(folderPath, prioritizedOrder);
-          }
-        }
-      } catch (err) {
-        failures.push(
-          `Unable to reorder tagged images: ${
-            err instanceof Error ? err.message : "unknown error"
-          }`
-        );
-      }
-      return { failures, applied };
-    },
-    [applyTagAssignments, isImage, listPathEntries, persistImageOrderForFolder]
-  );
-
-  const handleRunImageClassifierTagging = useCallback(async () => {
-    if (!currentPath || tagImagesRunning || bulkImageActionPending || tagAllImagesRunning) {
-      return;
-    }
-    const pathAtStart = String(currentPath || "");
-
-    const targets = entries
-      .filter(
-        (entry) =>
-          entry.type === "file" &&
-          isImage(entry.name) &&
-          !isDigiTaggedImageName(entry.name)
-      )
-      .map((entry) => entry.path);
-    if (targets.length === 0) return;
-
-    clearSelectedFilesForImageActions();
-    setError(null);
-    setTagImagesRunningPaths((prev) => {
-      const next = new Set(prev);
-      next.add(pathAtStart);
-      return next;
-    });
-
-    try {
-      const pathParts = pathAtStart.split("/").filter(Boolean);
-      const currentSpu = pathParts.length >= 2 ? pathParts[1] : "";
-      const variantHints = currentSpu
-        ? await collectVariantHintsForSpu(currentSpu)
-        : [];
-
-      const { failures } = await runImageClassifierTaggingForFolder({
-        folderPath: pathAtStart,
-        imagePaths: targets,
-        spu: currentSpu,
-        variantHints,
-      });
-
-      if (currentPathRef.current === pathAtStart) {
-        await refreshEntries(pathAtStart);
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Classifier tagged images with ${failures.length} rename issue(s): ${failures
-            .slice(0, 2)
-            .join("; ")}${failures.length > 2 ? "..." : ""}`
-        );
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setTagImagesRunningPaths((prev) => {
-        if (!prev.has(pathAtStart)) return prev;
-        const next = new Set(prev);
-        next.delete(pathAtStart);
-        return next;
-      });
-      clearSelectedFilesForImageActions();
-    }
-  }, [
-    bulkImageActionPending,
-    clearSelectedFilesForImageActions,
-    collectVariantHintsForSpu,
-    currentPath,
-    entries,
-    isImage,
-    refreshEntries,
-    runImageClassifierTaggingForFolder,
-    setTagImagesRunningPaths,
-    tagAllImagesRunning,
-    tagImagesRunning,
-  ]);
-
-  const handleTagAllImagesForCompletedSpuFolders = useCallback(async () => {
-    if (
-      !selectedFolder ||
-      tagAllImagesRunning ||
-      tagImagesRunning ||
-      bulkImageActionPending
-    ) {
-      return;
-    }
-
-    const targets = completedSpuPathsInSelectedRun;
-    if (targets.length === 0) {
-      setError("No completed SPU folders were found for this run.");
-      return;
-    }
-
-    clearSelectedFilesForImageActions();
-    setError(null);
-    setTagAllImagesRunning(true);
-
-    try {
-      let processedFolders = 0;
-      let totalFailures = 0;
-      const failureMessages: string[] = [];
-
-      for (const spuPath of targets) {
-        const pathParts = spuPath.split("/").filter(Boolean);
-        const spu = pathParts.length >= 2 ? pathParts[1] : "";
-        try {
-          const folderEntries = await listPathEntries(spuPath);
-          const imagePaths = folderEntries
-            .filter(
-              (entry) =>
-                entry.type === "file" &&
-                isImage(entry.name) &&
-                !isDigiTaggedImageName(entry.name)
-            )
-            .map((entry) => entry.path);
-          if (imagePaths.length === 0) continue;
-
-          processedFolders += 1;
-          const variantHints = spu ? await collectVariantHintsForSpu(spu) : [];
-          const { failures } = await runImageClassifierTaggingForFolder({
-            folderPath: spuPath,
-            imagePaths,
-            spu,
-            variantHints,
-          });
-          if (failures.length > 0) {
-            totalFailures += failures.length;
-            failureMessages.push(
-              `${spu || spuPath}: ${failures[0]}${failures.length > 1 ? "..." : ""}`
-            );
-          }
-        } catch (err) {
-          totalFailures += 1;
-          failureMessages.push(
-            `${spu || spuPath}: ${
-              err instanceof Error ? err.message : "Unable to tag images."
-            }`
-          );
-        }
-      }
-
-      if (
-        currentPath &&
-        currentPath.startsWith(`${selectedFolder}/`)
-      ) {
-        await refreshEntries(currentPath);
-      }
-
-      if (processedFolders === 0) {
-        setError("No direct images were found in completed SPU folders.");
-      } else if (totalFailures > 0) {
-        setError(
-          `Tag All Images finished with ${totalFailures} issue(s): ${failureMessages
-            .slice(0, 3)
-            .join("; ")}${failureMessages.length > 3 ? "..." : ""}`
-        );
-      }
-    } finally {
-      setTagAllImagesRunning(false);
-      clearSelectedFilesForImageActions();
-    }
-  }, [
-    bulkImageActionPending,
-    clearSelectedFilesForImageActions,
-    collectVariantHintsForSpu,
-    completedSpuPathsInSelectedRun,
-    currentPath,
-    isImage,
-    listPathEntries,
-    refreshEntries,
-    runImageClassifierTaggingForFolder,
-    selectedFolder,
-    tagAllImagesRunning,
-    tagImagesRunning,
-  ]);
-
-  const getContextMenuImageTagState = useCallback(
-    (tag: ImageTagOption): "none" | "some" | "all" => {
-      if (!contextMenu?.image) return "none";
-      const targets = resolveContextActionTargets(contextMenu.entry, {
-        imageOnly: true,
-      });
-      if (targets.length === 0) return "none";
-      const taggedCount = targets.reduce((count, sourceEntry) => {
-        const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
-        const tags = extractImageTagsFromFileName(entry.name);
-        return tags.includes(tag) ? count + 1 : count;
-      }, 0);
-      if (taggedCount === 0) return "none";
-      if (taggedCount === targets.length) return "all";
-      return "some";
-    },
-    [contextMenu, entryByPath, resolveContextActionTargets]
-  );
-  const contextMenuLiveEntry = contextMenu
-    ? entryByPath.get(contextMenu.entry.path) ?? contextMenu.entry
-    : null;
-  const contextMenuUpscaleDisabled =
-    contextMenuLiveEntry &&
-    contextMenuLiveEntry.type === "file" &&
-    isImage(contextMenuLiveEntry.name)
-      ? isImageEntryUpscaled(contextMenuLiveEntry)
-      : false;
-  const contextMenuMoveToMainPath = useMemo(() => {
-    if (!contextMenu?.image) return "";
-    const targets = resolveContextActionTargets(contextMenu.entry, {
-      imageOnly: true,
-    });
-    const anchorPath = String(targets[0]?.path || contextMenu.entry.path || "").trim();
-    const parts = anchorPath.split("/").filter(Boolean);
-    if (parts.length < 2) return "";
-    return `${parts[0]}/${parts[1]}`;
-  }, [contextMenu, resolveContextActionTargets]);
-  const contextMenuMoveToMainSourcePaths = useMemo(() => {
-    if (!contextMenu?.image || !contextMenuMoveToMainPath) {
-      return [] as string[];
-    }
-    const targets = resolveContextActionTargets(contextMenu.entry, {
-      imageOnly: true,
-    });
-    if (targets.length === 0) return [] as string[];
-    return Array.from(
-      new Set(
-        targets
-          .map((sourceEntry) => String(sourceEntry.path || "").trim())
-          .filter((pathValue) => Boolean(pathValue))
-          .filter((pathValue) => {
-            const slashIndex = pathValue.lastIndexOf("/");
-            if (slashIndex <= 0) return false;
-            const parentPath = pathValue.slice(0, slashIndex);
-            return parentPath !== contextMenuMoveToMainPath;
-          })
-      )
-    );
-  }, [contextMenu, contextMenuMoveToMainPath, resolveContextActionTargets]);
-  const contextMenuMoveToMainDisabled =
-    movingEntry || contextMenuMoveToMainSourcePaths.length === 0;
-
   const handleContextMenuAction = (action: string) => {
     if (!contextMenu) return;
     const { entry } = contextMenu;
-    if (action.startsWith("tag-image-toggle:")) {
-      const tag = action.slice("tag-image-toggle:".length).trim().toUpperCase();
-      if (
-        tag === "MAIN" ||
-        tag === "ENV" ||
-        tag === "VAR" ||
-        tag === "INF" ||
-        tag === "DIGI"
-      ) {
-        const targets = resolveContextActionTargets(entry, { imageOnly: true });
-        restoreSelectionAfterContextAction(targets);
-        void handleToggleImageTag(targets, tag);
-      }
-      return;
-    }
     setContextMenu(null);
-    setContextMenuSubmenu(null);
-    setContextMenuNestedSubmenu(null);
-    if (action.startsWith("tag-image:")) {
-      const tag = action.slice("tag-image:".length).trim().toUpperCase();
-      if (
-        tag === "MAIN" ||
-        tag === "ENV" ||
-        tag === "VAR" ||
-        tag === "INF" ||
-        tag === "DIGI"
-      ) {
-        const targets = resolveContextActionTargets(entry, { imageOnly: true });
-        restoreSelectionAfterContextAction(targets);
-        void handleApplyImageTag(targets, tag);
-        return;
-      }
-    }
     if (action === "open") {
-      clearSelectedFilesForImageActions();
       openEntry(entry);
       return;
     }
-    if (action === "move-to-main") {
-      if (!contextMenuMoveToMainPath) {
-        setError("Main folder could not be resolved for this product.");
-        return;
-      }
-      if (contextMenuMoveToMainSourcePaths.length === 0) {
-        setError("Selected image(s) are already in Main.");
-        return;
-      }
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      restoreSelectionAfterContextAction(targets);
-      void handleMoveEntriesToFolder(
-        contextMenuMoveToMainSourcePaths,
-        contextMenuMoveToMainPath
-      );
-      return;
-    }
     if (action === "download") {
-      clearSelectedFilesForImageActions();
       downloadEntry(entry);
       return;
     }
-    if (action === "view") {
-      clearSelectedFilesForImageActions();
-      handleOpenFileViewer(entry);
-      return;
-    }
-    if (action === "create-copy") {
-      const targets = resolveContextActionTargets(entry);
-      restoreSelectionAfterContextAction(targets);
-      void handleCreateCopiesForEntries(targets);
-      return;
-    }
-    if (action === "copy-to-clipboard") {
-      if (entry.type === "file" && isImage(entry.name)) {
-        clearSelectedFilesForImageActions();
-        void handleCopyImageToClipboard(entry);
-      }
-      return;
-    }
-    if (action === "undo-last-change") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        void handleUndoLastChangeForEntries(targets);
-      }
-      return;
-    }
-    if (action === "photopea") {
-      clearSelectedFilesForImageActions();
-      void openPhotopeaEditor(entry);
-      return;
-    }
-    if (action === "ai-auto-center-white") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "zimage", "auto_center_white");
-      }
-      return;
-    }
-    if (action === "ai-chatgpt-template") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "chatgpt", "template");
-      }
-      return;
-    }
-	    if (action.startsWith("ai-chatgpt-digideal-main")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-          startAiTemplatePresetForEntries(
-            targets,
-            "chatgpt",
-            "digideal_main",
-            Number.isFinite(outputCount)
-              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
-              : 1
-          );
-	      }
-	      return;
-	    }
-	    if (action.startsWith("ai-chatgpt-product-scene")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-	        setError(null);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
-	          templatePreset: "product_scene",
-            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
-	        });
-	      }
-	      return;
-	    }
-    if (action === "ai-chatgpt-direct") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "chatgpt", "direct");
-      }
-      return;
-    }
-    if (action === "ai-gemini-template") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "gemini", "template");
-      }
-      return;
-    }
-	    if (action.startsWith("ai-gemini-digideal-main")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-          startAiTemplatePresetForEntries(
-            targets,
-            "gemini",
-            "digideal_main",
-            Number.isFinite(outputCount)
-              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
-              : 1
-          );
-	      }
-	      return;
-	    }
-	    if (action.startsWith("ai-gemini-product-scene")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-	        setError(null);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-	        void runAiEditsForEntries(targets, "gemini", "template", "", {
-	          templatePreset: "product_scene",
-            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
-	        });
-	      }
-	      return;
-	    }
-    if (action === "ai-gemini-direct") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "gemini", "direct");
-      }
-      return;
-    }
-    if (action === "ai-zimage-white") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "zimage", "white_background");
-      }
-      return;
-    }
-    if (action === "ai-zimage-eraser") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "zimage", "eraser");
-      }
-      return;
-    }
-    if (action === "ai-zimage-direct") {
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "zimage", "direct");
-      }
-      return;
-    }
-    if (action === "ai-zimage-upscale") {
-      if (contextMenuUpscaleDisabled) {
-        setError("Z-image upscale has already been applied to this image.");
-        return;
-      }
-      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length > 0) {
-        restoreSelectionAfterContextAction(targets);
-        startAiEditForEntries(targets, "zimage", "upscale");
-      }
-      return;
-    }
-    if (action === "ai-review" && pendingAiEditsByOriginal[entry.path]) {
-      clearSelectedFilesForImageActions();
-      setAiReviewOriginalPath(entry.path);
-      return;
-    }
-    setError(`Unknown action "${action}".`);
+    setError(`Action "${action}" is not implemented yet.`);
   };
 
-  const renderFolderTreeNode = (
-    node: DraftFolderTreeNode,
-    ancestorHasNext: boolean[],
-    isLast: boolean
-  ) => {
+  const renderFolderTreeNode = (node: DraftFolderTreeNode, depth: number) => {
     const isCurrent = currentPath === node.path;
-    const isCompleted = completedSpuFolders.has(node.path);
     const isCollapsed = collapsedTreeFolders.has(node.path);
     const isSelected = selectedTreeFolders.has(node.path);
     const isDropTarget = folderDropTargetPath === node.path;
@@ -8858,57 +5478,33 @@ export default function DraftExplorerPage() {
           className={mergeClasses(
             styles.folderTreeRow,
             isCurrent ? styles.folderTreeRowActive : undefined,
-            isCompleted ? styles.folderTreeRowCompleted : undefined,
             isDropTarget ? styles.folderTreeRowDrop : undefined
           )}
           onClick={() => setCurrentPath(node.path)}
           onDragOver={(event) => {
-            if (draggingEntryPaths.length === 0) return;
-            event.stopPropagation();
+            if (!draggingEntryPath) return;
             event.preventDefault();
             setFolderDropTargetPath(node.path);
           }}
-          onDragLeave={(event) => {
-            event.stopPropagation();
+          onDragLeave={() => {
             if (folderDropTargetPath === node.path) {
               setFolderDropTargetPath(null);
             }
           }}
           onDrop={(event) => {
-            event.stopPropagation();
             event.preventDefault();
-            const draggedPaths = readDraggedPaths(event.dataTransfer);
-            if (draggedPaths.length === 0) return;
-            if (
-              draggedPaths.every(
-                (draggedPath) =>
-                  draggedPath === node.path || node.path.startsWith(`${draggedPath}/`)
-              )
-            ) {
+            const draggedPath =
+              event.dataTransfer.getData("text/plain") || draggingEntryPath;
+            if (!draggedPath) return;
+            if (draggedPath === node.path || node.path.startsWith(`${draggedPath}/`)) {
               setFolderDropTargetPath(null);
-              setDraggingEntryPaths([]);
+              setDraggingEntryPath(null);
               return;
             }
-            handleMoveEntriesToFolder(draggedPaths, node.path);
+            handleMoveEntryToFolder(draggedPath, node.path);
           }}
         >
-          <span className={styles.folderTreeConnector} aria-hidden="true">
-            {ancestorHasNext.map((hasNext, index) => (
-              <span
-                key={`${node.path}-segment-${index}`}
-                className={styles.folderTreeConnectorSegment}
-              >
-                {hasNext ? <span className={styles.folderTreeConnectorLine} /> : null}
-              </span>
-            ))}
-            <span className={styles.folderTreeConnectorJoin}>
-              <span
-                className={styles.folderTreeConnectorJoinVertical}
-                style={isLast ? { top: 0, bottom: "8px" } : { top: 0, bottom: 0 }}
-              />
-              <span className={styles.folderTreeConnectorJoinHorizontal} />
-            </span>
-          </span>
+          <span className={styles.folderTreeIndent} style={{ width: `${depth * 14}px` }} />
           {hasChildren ? (
             <button
               type="button"
@@ -8919,10 +5515,14 @@ export default function DraftExplorerPage() {
               }}
               aria-label={isCollapsed ? "Expand folder" : "Collapse folder"}
             >
-              {isCollapsed ? "▸" : "▾"}
+              {isCollapsed ? ">" : "v"}
             </button>
           ) : (
-            <span className={styles.folderTreeCaretSpacer} aria-hidden="true" />
+            <span
+              className={styles.folderTreeCaretButton}
+              aria-hidden="true"
+              style={{ cursor: "default" }}
+            />
           )}
           <input
             type="checkbox"
@@ -8941,1290 +5541,15 @@ export default function DraftExplorerPage() {
               setCurrentPath(node.path);
             }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              className={styles.folderTreeFolderIcon}
-            >
-              <path
-                fill="currentColor"
-                d="M9.5 4h-5A2.5 2.5 0 0 0 2 6.5v11A2.5 2.5 0 0 0 4.5 20h15A2.5 2.5 0 0 0 22 17.5v-9A2.5 2.5 0 0 0 19.5 6H12l-2-2.5A2.5 2.5 0 0 0 9.5 4Z"
-              />
-            </svg>
-            <span className={styles.folderTreeNameText}>{node.name}</span>
-            {node.fileCount > 0 ? (
-              <span className={styles.folderTreeCount}>({node.fileCount})</span>
-            ) : null}
+            {node.name}
           </button>
         </div>
         {!isCollapsed && hasChildren ? (
           <div className={styles.folderTreeChildren}>
-            {node.children.map((child, index) =>
-              renderFolderTreeNode(
-                child,
-                [...ancestorHasNext, !isLast],
-                index === node.children.length - 1
-              )
-            )}
+            {node.children.map((child) => renderFolderTreeNode(child, depth + 1))}
           </div>
         ) : null}
       </div>
-    );
-  };
-
-  const imageEntries = entries.filter(
-    (entry) => entry.type === "file" && isImage(entry.name)
-  );
-
-  const normalizeFolderToken = useCallback(
-    (value: string) => String(value || "").toLowerCase().replace(/[\s_-]+/g, ""),
-    []
-  );
-
-  const isVariantImagesFolderName = useCallback(
-    (name: string) => {
-      const normalized = normalizeFolderToken(name);
-      if (!normalized) return false;
-      if (normalized === "variants" || normalized === "variant") return true;
-      if (normalized === "variantimages" || normalized === "variantimage") return true;
-      return normalized.includes("variant") && normalized.includes("image");
-    },
-    [normalizeFolderToken]
-  );
-
-  const isOcrImagesFolderName = useCallback(
-    (name: string) => {
-      const normalized = normalizeFolderToken(name);
-      if (!normalized) return false;
-      if (normalized === "ocrchinese" || normalized === "ocr") return true;
-      return normalized.includes("ocr") && normalized.includes("chinese");
-    },
-    [normalizeFolderToken]
-  );
-
-  const isOtherImagesFolderName = useCallback(
-    (name: string) => {
-      const normalized = normalizeFolderToken(name);
-      if (!normalized) return false;
-      if (
-        normalized === "other" ||
-        normalized === "others" ||
-        normalized === "otherimage" ||
-        normalized === "otherimages" ||
-        normalized === "nonsquare"
-      ) {
-        return true;
-      }
-      return normalized.includes("otherimages");
-    },
-    [normalizeFolderToken]
-  );
-
-  const isRejectVariantMismatchFolderName = useCallback(
-    (name: string) => {
-      const normalized = normalizeFolderToken(name);
-      if (!normalized) return false;
-      if (normalized.includes("variantmismatch")) return true;
-      return (
-        normalized.includes("rejectvariant") && normalized.includes("mismatch")
-      );
-    },
-    [normalizeFolderToken]
-  );
-
-  const isLegacyOthersFolderName = useCallback(
-    (name: string) => {
-      const normalized = normalizeFolderToken(name);
-      if (!normalized) return false;
-
-      const rejectBadComposite =
-        normalized === "rejectbadcomposite" ||
-        (normalized.includes("reject") &&
-          normalized.includes("bad") &&
-          normalized.includes("composite"));
-
-      const rejectNotSuitable =
-        normalized === "rejectnotsuitable" ||
-        (normalized.includes("reject") && normalized.includes("notsuitable")) ||
-        (normalized.includes("reject") &&
-          normalized.includes("not") &&
-          normalized.includes("suitable"));
-
-      const rejectVariant =
-        (normalized === "rejectvariant" ||
-          (normalized.includes("reject") && normalized.includes("variant"))) &&
-        !isRejectVariantMismatchFolderName(name);
-
-      return rejectBadComposite || rejectNotSuitable || rejectVariant;
-    },
-    [isRejectVariantMismatchFolderName, normalizeFolderToken]
-  );
-
-  const imageTabTargets = useMemo(() => {
-    if (!currentPath) {
-      return {
-        mainPath: null as string | null,
-        variantsPath: null as string | null,
-        ocrPath: null as string | null,
-        othersPath: null as string | null,
-        othersPaths: [] as string[],
-        active: null as ImageFolderTabValue | null,
-      };
-    }
-
-    const parts = currentPath.split("/").filter(Boolean);
-    if (parts.length < 2) {
-      return {
-        mainPath: null,
-        variantsPath: null,
-        ocrPath: null,
-        othersPath: null,
-        othersPaths: [] as string[],
-        active: null,
-      };
-    }
-
-    const run = parts[0];
-    const top = parts[1];
-    if (!run || !top || isChunksDirectory(top)) {
-      return {
-        mainPath: null,
-        variantsPath: null,
-        ocrPath: null,
-        othersPath: null,
-        othersPaths: [] as string[],
-        active: null,
-      };
-    }
-
-    const mainPath = `${run}/${top}`;
-    let variantsPath: string | null = null;
-    let ocrPath: string | null = null;
-    let othersPath: string | null = null;
-    let othersPaths: string[] = [];
-
-    const findNodeByPath = (
-      node: DraftFolderTreeNode,
-      targetPath: string
-    ): DraftFolderTreeNode | null => {
-      if (node.path === targetPath) return node;
-      for (const child of node.children) {
-        const hit = findNodeByPath(child, targetPath);
-        if (hit) return hit;
-      }
-      return null;
-    };
-
-    const findVariantNode = (
-      node: DraftFolderTreeNode
-    ): DraftFolderTreeNode | null => {
-      const findFirstMatchingNode = (
-        predicate: (child: DraftFolderTreeNode) => boolean
-      ) => {
-        const directMatch = node.children.find((child) => predicate(child));
-        if (directMatch) return directMatch;
-        const queue = [...node.children];
-        while (queue.length > 0) {
-          const next = queue.shift();
-          if (!next) break;
-          if (predicate(next)) return next;
-          queue.push(...next.children);
-        }
-        return null;
-      };
-
-      const direct = findFirstMatchingNode((child) =>
-        isVariantImagesFolderName(child.name)
-      );
-      if (direct) return direct;
-      const fallback = findFirstMatchingNode((child) =>
-        normalizeFolderToken(child.name).includes("variant")
-      );
-      if (fallback) return fallback;
-      return null;
-    };
-
-    const findOcrNode = (node: DraftFolderTreeNode): DraftFolderTreeNode | null => {
-      const queue = [...node.children];
-      while (queue.length > 0) {
-        const next = queue.shift();
-        if (!next) break;
-        if (isOcrImagesFolderName(next.name)) return next;
-        queue.push(...next.children);
-      }
-      return null;
-    };
-
-    const findOtherNodes = (
-      node: DraftFolderTreeNode
-    ): DraftFolderTreeNode[] => {
-      const hits: DraftFolderTreeNode[] = [];
-      const queue = [...node.children];
-      while (queue.length > 0) {
-        const next = queue.shift();
-        if (!next) break;
-        if (
-          !isRejectVariantMismatchFolderName(next.name) &&
-          (isOtherImagesFolderName(next.name) ||
-            isLegacyOthersFolderName(next.name))
-        ) {
-          hits.push(next);
-        }
-        queue.push(...next.children);
-      }
-      return hits;
-    };
-
-    if (folderTree) {
-      const mainNode = findNodeByPath(folderTree, mainPath);
-      if (mainNode) {
-        const variantNode = findVariantNode(mainNode);
-        variantsPath = variantNode?.path ?? null;
-        const ocrNode = findOcrNode(mainNode);
-        ocrPath = ocrNode?.path ?? null;
-        const otherNodes = findOtherNodes(mainNode);
-        othersPaths = Array.from(
-          new Set(
-            otherNodes
-              .map((node) => String(node.path || "").trim())
-              .filter((value) => Boolean(value))
-          )
-        );
-        othersPath = othersPaths[0] ?? null;
-      }
-    }
-
-    let active: ImageFolderTabValue | null = null;
-    if (
-      variantsPath &&
-      (currentPath === variantsPath || currentPath.startsWith(`${variantsPath}/`))
-    ) {
-      active = "variants";
-    } else if (
-      ocrPath &&
-      (currentPath === ocrPath || currentPath.startsWith(`${ocrPath}/`))
-    ) {
-      active = "ocr";
-    } else if (
-      othersPaths.some(
-        (pathValue) =>
-          currentPath === pathValue || currentPath.startsWith(`${pathValue}/`)
-      )
-    ) {
-      active = "others";
-    } else if (currentPath === mainPath || currentPath.startsWith(`${mainPath}/`)) {
-      active = "main";
-    }
-
-    return { mainPath, variantsPath, ocrPath, othersPath, othersPaths, active };
-  }, [
-    currentPath,
-    folderTree,
-    isLegacyOthersFolderName,
-    isOcrImagesFolderName,
-    isOtherImagesFolderName,
-    isRejectVariantMismatchFolderName,
-    isChunksDirectory,
-    isVariantImagesFolderName,
-    normalizeFolderToken,
-  ]);
-
-  const countImagesInEntryList = useCallback(
-    (items: DraftEntry[]) =>
-      items.reduce(
-        (count, item) =>
-          item.type === "file" && isImage(item.name) ? count + 1 : count,
-        0
-      ),
-    [isImage]
-  );
-
-  const countImagesForPath = useCallback(
-    async (pathValue: string | null) => {
-      const normalizedPath = String(pathValue || "").trim();
-      if (!normalizedPath) return 0;
-      if (normalizedPath === currentPath) {
-        return countImagesInEntryList(entries);
-      }
-      try {
-        const items = await listPathEntries(normalizedPath);
-        return countImagesInEntryList(items);
-      } catch {
-        return 0;
-      }
-    },
-    [countImagesInEntryList, currentPath, entries, listPathEntries]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadImageTabCounts = async () => {
-      const uniqueOthersPaths = Array.from(
-        new Set(
-          imageTabTargets.othersPaths
-            .map((pathValue) => String(pathValue || "").trim())
-            .filter(Boolean)
-        )
-      );
-
-      const [mainDirectCount, variantsCount, ocrCount, othersCounts] =
-        await Promise.all([
-          countImagesForPath(imageTabTargets.mainPath),
-          countImagesForPath(imageTabTargets.variantsPath),
-          countImagesForPath(imageTabTargets.ocrPath),
-          Promise.all(uniqueOthersPaths.map((pathValue) => countImagesForPath(pathValue))),
-        ]);
-
-      if (cancelled) return;
-
-      const othersCount = othersCounts.reduce((total, value) => total + value, 0);
-      setImageTabImageCounts({
-        // Main view intentionally includes merged variant images.
-        main: mainDirectCount + variantsCount,
-        variants: variantsCount,
-        ocr: ocrCount,
-        others: othersCount,
-      });
-    };
-
-    void loadImageTabCounts();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    countImagesForPath,
-    imageTabTargets.mainPath,
-    imageTabTargets.ocrPath,
-    imageTabTargets.othersPaths,
-    imageTabTargets.variantsPath,
-  ]);
-
-  const mainViewShowsMergedImages =
-    imageTabTargets.active === "main" && currentPath === imageTabTargets.mainPath;
-
-  useEffect(() => {
-    let cancelled = false;
-    const variantsPath = mainViewShowsMergedImages
-      ? imageTabTargets.variantsPath
-      : null;
-    if (!variantsPath) {
-      setMainViewVariantImageEntries([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const loadVariantEntries = async () => {
-      try {
-        const items = await listPathEntries(variantsPath);
-        if (cancelled) return;
-        const variantImages = items.filter(
-          (entry) => entry.type === "file" && isImage(entry.name)
-        );
-        setMainViewVariantImageEntries(variantImages);
-      } catch {
-        if (!cancelled) {
-          setMainViewVariantImageEntries([]);
-        }
-      }
-    };
-
-    void loadVariantEntries();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    entries,
-    imageTabTargets.variantsPath,
-    isImage,
-    listPathEntries,
-    mainViewShowsMergedImages,
-  ]);
-
-  const displayImageEntries = useMemo(() => {
-    const combined: DraftEntry[] = [];
-    const seenPaths = new Set<string>();
-
-    const pushUnique = (entry: DraftEntry) => {
-      if (seenPaths.has(entry.path)) return;
-      seenPaths.add(entry.path);
-      combined.push(entry);
-    };
-
-    imageEntries.forEach(pushUnique);
-    if (mainViewShowsMergedImages) {
-      mainViewVariantImageEntries.forEach(pushUnique);
-    }
-
-    if (combined.length <= 1) return combined;
-
-    const variantPath = String(imageTabTargets.variantsPath || "").trim();
-    const variantPathPrefix = variantPath ? `${variantPath}/` : "";
-    const regular: DraftEntry[] = [];
-    const variantTail: DraftEntry[] = [];
-
-    combined.forEach((entry) => {
-      const tags = extractImageTagsFromFileName(entry.name);
-      const taggedVariant = tags.includes("VAR");
-      const fromVariantFolder =
-        variantPath &&
-        (entry.path === variantPath || entry.path.startsWith(variantPathPrefix));
-      if (taggedVariant || fromVariantFolder) {
-        variantTail.push(entry);
-      } else {
-        regular.push(entry);
-      }
-    });
-
-    return [...regular, ...variantTail];
-  }, [
-    imageEntries,
-    imageTabTargets.variantsPath,
-    mainViewShowsMergedImages,
-    mainViewVariantImageEntries,
-  ]);
-
-  useEffect(() => {
-    displayImageEntriesRef.current = displayImageEntries;
-  }, [displayImageEntries]);
-
-  const currentSpuMainPath = imageTabTargets.mainPath;
-  const currentMainProductContext = useMemo(() => {
-    const parts = String(currentSpuMainPath || "").split("/").filter(Boolean);
-    if (parts.length < 2) {
-      return { run: "", spu: "" };
-    }
-    return { run: parts[0], spu: parts[1] };
-  }, [currentSpuMainPath]);
-  const currentSpuMarkedCompleted = currentSpuMainPath
-    ? completedSpuFolders.has(currentSpuMainPath)
-    : false;
-  const confirmablePendingAiPaths = useMemo(() => {
-    if (!mainViewShowsMergedImages) return [] as string[];
-    const unique = new Set<string>();
-    displayImageEntries.forEach((entry) => {
-      if (pendingAiEditsByOriginal[entry.path]) {
-        unique.add(entry.path);
-      }
-    });
-    return Array.from(unique);
-  }, [displayImageEntries, mainViewShowsMergedImages, pendingAiEditsByOriginal]);
-
-  const handleToggleCurrentSpuCompleted = useCallback(() => {
-    if (!currentSpuMainPath) return;
-    setCompletedSpuFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(currentSpuMainPath)) {
-        next.delete(currentSpuMainPath);
-      } else {
-        next.add(currentSpuMainPath);
-      }
-      return next;
-    });
-  }, [currentSpuMainPath]);
-
-  const handleDeleteCurrentProduct = useCallback(async () => {
-    if (deleteProductPending) return;
-    if (!mainViewShowsMergedImages) return;
-
-    const run = String(currentMainProductContext.run || "").trim();
-    const spu = String(currentMainProductContext.spu || "").trim();
-    const spuMainPath = run && spu ? `${run}/${spu}` : "";
-    if (!run || !spu || !spuMainPath) return;
-
-    const confirmed = window.confirm(
-      [
-        `Delete product ${spu}?`,
-        "",
-        "This will permanently delete:",
-        `- ${spuMainPath} and all subfolders`,
-        "- related draft SPU and SKU rows",
-        "",
-        "This cannot be undone.",
-      ].join("\n")
-    );
-    if (!confirmed) return;
-
-    setDeleteProductPending(true);
-    setError(null);
-    setDraftError(null);
-    try {
-      const response = await fetch(
-        `/api/drafts/folders/${encodeURIComponent(run)}/cleanup`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ spus: [spu] }),
-        }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to delete this product.");
-      }
-
-      setCompletedSpuFolders((prev) => {
-        if (prev.size === 0) return prev;
-        const next = new Set(prev);
-        Array.from(next).forEach((pathValue) => {
-          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
-            next.delete(pathValue);
-          }
-        });
-        return next;
-      });
-      setSelectedTreeFolders((prev) => {
-        if (prev.size === 0) return prev;
-        const next = new Set(prev);
-        Array.from(next).forEach((pathValue) => {
-          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
-            next.delete(pathValue);
-          }
-        });
-        return next;
-      });
-      setCollapsedTreeFolders((prev) => {
-        if (prev.size === 0) return prev;
-        const next = new Set(prev);
-        Array.from(next).forEach((pathValue) => {
-          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
-            next.delete(pathValue);
-          }
-        });
-        return next;
-      });
-      setMainViewVariantImageEntries([]);
-      setSelectedFiles(new Set());
-      setSelectedSpus(new Set());
-      setSelectedSkus(new Set());
-      setPreviewPath(null);
-
-      const nextPath = run;
-      setCurrentPath(nextPath);
-      await Promise.all([fetchSpuRows(), fetchSkuRows(), fetchFolderTree(run)]);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unable to delete this product.";
-      setError(message);
-      setDraftError(message);
-    } finally {
-      setDeleteProductPending(false);
-    }
-  }, [
-    currentMainProductContext.run,
-    currentMainProductContext.spu,
-    deleteProductPending,
-    fetchFolderTree,
-    fetchSkuRows,
-    fetchSpuRows,
-    mainViewShowsMergedImages,
-  ]);
-
-  const handleConfirmCurrentProductAiEdits = useCallback(async () => {
-    if (confirmAiEditsPending) return;
-    if (!mainViewShowsMergedImages) return;
-    if (confirmablePendingAiPaths.length === 0) return;
-
-    const confirmed = window.confirm(
-      [
-        `Confirm ${confirmablePendingAiPaths.length} pending AI edit${
-          confirmablePendingAiPaths.length === 1 ? "" : "s"
-        }?`,
-        "",
-        "This will replace the original images with the pending AI versions and discard the old pending files.",
-      ].join("\n")
-    );
-    if (!confirmed) return;
-
-    const pendingPaths = [...confirmablePendingAiPaths];
-    const refreshedScoreByPath = new Map<string, number | null>();
-    const failures: string[] = [];
-    const pathAtStart = String(currentPathRef.current || "");
-
-    setConfirmAiEditsPending(true);
-    setConfirmingAiEditPaths(new Set(pendingPaths));
-    setAiReviewOriginalPath(null);
-    setError(null);
-
-    try {
-      for (const originalPath of pendingPaths) {
-        try {
-          const response = await fetch("/api/drafts/ai-edits/resolve", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              originalPath,
-              decision: "replace_with_ai",
-            }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload?.error || "Unable to confirm AI edit.");
-          }
-          setPendingAiEditsByOriginal((prev) => {
-            const next = { ...prev };
-            delete next[originalPath];
-            return next;
-          });
-          const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
-            ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
-            : [];
-          refreshedScoresRaw.forEach((row) => {
-            const pathValue = String(row?.path || "").trim();
-            if (!pathValue) return;
-            const scoreValue =
-              typeof row?.pixelQualityScore === "number" &&
-              Number.isFinite(row.pixelQualityScore)
-                ? Math.round(row.pixelQualityScore)
-                : null;
-            refreshedScoreByPath.set(pathValue, scoreValue);
-          });
-        } catch (err) {
-          failures.push(
-            `${originalPath.split("/").filter(Boolean).pop() || originalPath}: ${
-              (err as Error).message
-            }`
-          );
-        }
-      }
-
-      if (refreshedScoreByPath.size > 0) {
-        const now = new Date().toISOString();
-        setEntries((prev) =>
-          prev.map((item) => {
-            if (!refreshedScoreByPath.has(item.path)) return item;
-            return {
-              ...item,
-              modifiedAt: now,
-              pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
-            };
-          })
-        );
-      }
-
-      const latestPath = String(currentPathRef.current || "");
-      if (pathAtStart && latestPath === pathAtStart) {
-        await refreshEntries(pathAtStart);
-        await fetchPendingAiEdits(pathAtStart);
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Confirmed ${
-            pendingPaths.length - failures.length
-          }/${pendingPaths.length} pending AI edits. Failed: ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-    } finally {
-      setConfirmingAiEditPaths(new Set());
-      setConfirmAiEditsPending(false);
-    }
-  }, [
-    confirmAiEditsPending,
-    confirmablePendingAiPaths,
-    fetchPendingAiEdits,
-    mainViewShowsMergedImages,
-    refreshEntries,
-  ]);
-
-  const reorderImagesInGrid = useCallback(
-    (draggedPaths: string[], dropTargetPath: string | null) => {
-      const currentImagePaths = imageEntries.map((entry) => entry.path);
-      if (currentImagePaths.length <= 1) return;
-      const movingPaths = draggedPaths.filter((pathValue) =>
-        currentImagePaths.includes(pathValue)
-      );
-      if (movingPaths.length === 0) return;
-      const uniqueMoving = Array.from(new Set(movingPaths));
-      if (dropTargetPath && uniqueMoving.includes(dropTargetPath)) {
-        return;
-      }
-      const remaining = currentImagePaths.filter(
-        (pathValue) => !uniqueMoving.includes(pathValue)
-      );
-      let insertAt = remaining.length;
-      if (dropTargetPath) {
-        const targetIndex = remaining.indexOf(dropTargetPath);
-        if (targetIndex >= 0) {
-          insertAt = targetIndex;
-        }
-      }
-      const nextImagePaths = [
-        ...remaining.slice(0, insertAt),
-        ...uniqueMoving,
-        ...remaining.slice(insertAt),
-      ];
-      if (
-        nextImagePaths.length !== currentImagePaths.length ||
-        nextImagePaths.every((pathValue, index) => pathValue === currentImagePaths[index])
-      ) {
-        return;
-      }
-
-      const nextImageOrder = new Map<string, number>();
-      nextImagePaths.forEach((pathValue, index) => {
-        nextImageOrder.set(pathValue, index);
-      });
-      setEntries((prev) => {
-        const dirs = prev.filter((entry) => entry.type === "dir");
-        const files = prev.filter((entry) => entry.type === "file");
-        const sortedFiles = [...files].sort((left, right) => {
-          const leftOrder = nextImageOrder.get(left.path);
-          const rightOrder = nextImageOrder.get(right.path);
-          if (leftOrder !== undefined && rightOrder !== undefined) {
-            return leftOrder - rightOrder;
-          }
-          if (leftOrder !== undefined) return -1;
-          if (rightOrder !== undefined) return 1;
-          return left.name.localeCompare(right.name);
-        });
-        return [...dirs, ...sortedFiles];
-      });
-      void persistImageOrder(nextImagePaths);
-    },
-    [imageEntries, persistImageOrder]
-  );
-
-  const selectedImageEntries = displayImageEntries.filter((entry) =>
-    selectedFiles.has(entry.path)
-  );
-  const selectedImageUpscaleEligibleCount = selectedImageEntries.reduce(
-    (count, entry) => count + (isImageEntryUpscaled(entry) ? 0 : 1),
-    0
-  );
-  const nonImageFileEntries = entries.filter(
-    (entry) => entry.type === "file" && !isImage(entry.name)
-  );
-  const nonImageFilesSelectedCount = nonImageFileEntries.reduce(
-    (count, entry) => count + (selectedFiles.has(entry.path) ? 1 : 0),
-    0
-  );
-  const nonImageFilesAllSelected =
-    nonImageFileEntries.length > 0 &&
-    nonImageFilesSelectedCount === nonImageFileEntries.length;
-  const nonImageFilesSomeSelected =
-    nonImageFilesSelectedCount > 0 && !nonImageFilesAllSelected;
-  const mainTabDisabled =
-    !imageTabTargets.mainPath || movingEntry || imageTabImageCounts.main === 0;
-  const variantsTabDisabled =
-    !imageTabTargets.variantsPath ||
-    movingEntry ||
-    imageTabImageCounts.variants === 0;
-  const ocrTabDisabled =
-    !imageTabTargets.ocrPath || movingEntry || imageTabImageCounts.ocr === 0;
-  const othersTabDisabled =
-    imageTabTargets.othersPaths.length === 0 ||
-    movingEntry ||
-    imageTabImageCounts.others === 0;
-
-  useEffect(() => {
-    const el = nonImageFileSelectAllRef.current;
-    if (!el) return;
-    el.indeterminate = nonImageFilesSomeSelected;
-  }, [nonImageFilesSomeSelected]);
-  const aiReviewRecord = aiReviewOriginalPath
-    ? pendingAiEditsByOriginal[aiReviewOriginalPath] ?? null
-    : null;
-  const aiReviewOriginalScoreRaw = aiReviewRecord
-    ? entryByPath.get(aiReviewRecord.originalPath)?.pixelQualityScore
-    : null;
-  const aiReviewOriginalScore =
-    typeof aiReviewOriginalScoreRaw === "number" && Number.isFinite(aiReviewOriginalScoreRaw)
-      ? Math.round(aiReviewOriginalScoreRaw)
-      : null;
-  const aiReviewPendingScore =
-    aiReviewRecord &&
-    typeof aiReviewRecord.pendingPixelQualityScore === "number" &&
-    Number.isFinite(aiReviewRecord.pendingPixelQualityScore)
-      ? Math.round(aiReviewRecord.pendingPixelQualityScore)
-      : null;
-  const aiReviewScoreDelta =
-    aiReviewPendingScore !== null && aiReviewOriginalScore !== null
-      ? aiReviewPendingScore - aiReviewOriginalScore
-      : null;
-  const displayEntryByPath = useMemo(() => {
-    const next = new Map(entryByPath);
-    displayImageEntries.forEach((entry) => {
-      if (!next.has(entry.path)) {
-        next.set(entry.path, entry);
-      }
-    });
-    return next;
-  }, [displayImageEntries, entryByPath]);
-  const previewEntry = previewPath ? displayEntryByPath.get(previewPath) ?? null : null;
-  const previewDimensions = previewPath ? imageDimensions[previewPath] ?? null : null;
-  const previewFileName =
-    previewEntry?.name ??
-    (previewPath ? previewPath.split("/").filter(Boolean).pop() ?? previewPath : "");
-  const previewFileSizeText =
-    previewEntry && previewEntry.type === "file" ? formatSizeKb(previewEntry.size) : "-";
-  const previewPendingAi = previewPath
-    ? pendingAiEditsByOriginal[previewPath] ?? null
-    : null;
-  const previewDisplayPath = previewPendingAi?.pendingPath ?? previewPath;
-  const previewDisplayModifiedAt =
-    previewPendingAi?.updatedAt ??
-    (previewPath ? displayEntryByPath.get(previewPath)?.modifiedAt ?? null : null);
-  const previewRuntimeJob = previewPath ? aiEditJobsByPath[previewPath] ?? null : null;
-  const previewNav = useMemo(() => {
-    if (!previewPath) {
-      return {
-        index: -1,
-        prevPath: null as string | null,
-        nextPath: null as string | null,
-        next2Path: null as string | null,
-      };
-    }
-    const paths = displayImageEntries.map((entry) => entry.path);
-    const index = paths.indexOf(previewPath);
-    const prevPath = index > 0 ? paths[index - 1] ?? null : null;
-    const nextPath =
-      index >= 0 && index < paths.length - 1 ? paths[index + 1] ?? null : null;
-    const next2Path =
-      index >= 0 && index < paths.length - 2 ? paths[index + 2] ?? null : null;
-    return { index, prevPath, nextPath, next2Path };
-  }, [displayImageEntries, previewPath]);
-  const previewBusy =
-    Boolean(previewRuntimeJob) ||
-    Boolean(
-      previewPath &&
-        (reloadingImagePaths.has(previewPath) || confirmingAiEditPaths.has(previewPath))
-    );
-
-  useEffect(() => {
-    if (!previewPath) return;
-    const candidates = [previewNav.nextPath, previewNav.next2Path].filter(Boolean) as string[];
-    candidates.forEach((pathValue) => {
-      const entry = displayEntryByPath.get(pathValue);
-      const pendingAi = pendingAiEditsByOriginal[pathValue] ?? null;
-      const displayPath = pendingAi?.pendingPath ?? pathValue;
-      const displayModifiedAt = pendingAi?.updatedAt ?? entry?.modifiedAt;
-      const img = new Image();
-      img.decoding = "async";
-      img.src = buildDraftDownloadUrl(displayPath, displayModifiedAt);
-      // Best-effort decode to make next/next+1 swaps feel instantaneous.
-      if (typeof img.decode === "function") {
-        void img.decode().catch(() => undefined);
-      }
-    });
-  }, [
-    buildDraftDownloadUrl,
-    displayEntryByPath,
-    pendingAiEditsByOriginal,
-    previewNav.next2Path,
-    previewNav.nextPath,
-    previewPath,
-  ]);
-
-  const handlePreviewNavigate = useCallback(
-    (direction: "prev" | "next") => {
-      if (!previewPath) return;
-      const target =
-        direction === "prev" ? previewNav.prevPath : previewNav.nextPath;
-      if (!target) return;
-      setPreviewPath(target);
-    },
-    [previewNav.nextPath, previewNav.prevPath, previewPath]
-  );
-
-  const handlePreviewDelete = useCallback(async () => {
-    if (!previewPath || !currentPath || previewDeletePending) return;
-    if (pendingAiEditsByOriginal[previewPath] || aiEditJobsByPath[previewPath]) {
-      setError("Resolve pending/running AI edits before deleting this image.");
-      return;
-    }
-    const nextPreviewPath = previewNav.nextPath ?? previewNav.prevPath ?? null;
-    setPreviewDeletePending(true);
-    setError(null);
-    try {
-      const deletedImagesPath = `${currentPath}/deleted images`.replace(/\/{2,}/g, "/");
-      const response = await fetch("/api/drafts/move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourcePath: previewPath,
-          targetPath: deletedImagesPath,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Delete failed.");
-      }
-
-      setEntries((prev) => prev.filter((entry) => entry.path !== previewPath));
-      setMainViewVariantImageEntries((prev) =>
-        prev.filter((entry) => entry.path !== previewPath)
-      );
-      setSelectedFiles((prev) => {
-        if (!prev.has(previewPath)) return prev;
-        const next = new Set(prev);
-        next.delete(previewPath);
-        return next;
-      });
-      setPendingAiEditsByOriginal((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, PendingAiEditRecord> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setAiEditJobsByPath((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, AiEditRuntimeJob> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setImageDimensions((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, { width: number; height: number }> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setReloadingImagePaths((prev) => {
-        if (!prev.has(previewPath)) return prev;
-        const next = new Set(prev);
-        next.delete(previewPath);
-        return next;
-      });
-
-      setPreviewPath(nextPreviewPath);
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPreviewDeletePending(false);
-    }
-  }, [
-    aiEditJobsByPath,
-    currentPath,
-    fetchFolderTree,
-    pendingAiEditsByOriginal,
-    previewDeletePending,
-    previewNav.nextPath,
-    previewNav.prevPath,
-    previewPath,
-    selectedFolder,
-  ]);
-  const aiEditHasPromptInput =
-    aiEditMode === "template" || aiEditMode === "direct" || aiEditMode === "eraser";
-  const aiEditProviderLabel =
-    aiEditProvider === "chatgpt"
-      ? "ChatGPT"
-      : aiEditProvider === "gemini"
-        ? "Gemini"
-        : "ZImage";
-  const aiEditModeLabel =
-    aiEditMode === "template"
-      ? aiEditTemplatePreset === "digideal_main"
-        ? "DigiDL Main"
-        : aiEditTemplatePreset === "product_scene"
-          ? "Product Scene"
-          : "Standard Template"
-      : aiEditMode === "direct"
-        ? "Direct"
-        : aiEditMode === "white_background"
-          ? "White Background"
-          : aiEditMode === "auto_center_white"
-            ? "Auto Center Wide"
-            : aiEditMode === "eraser"
-              ? "Eraser"
-              : "Upscale";
-  const variantsEditorAllSelected =
-    variantsEditorRows.length > 0 &&
-    variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
-  const variantsEditorSomeSelected =
-    variantsEditorRows.some((row) => variantsEditorSelectedRows.has(row.key));
-  const getVariantSortIndicator = (key: VariantEditorSortKey) => {
-    if (variantsEditorSort.key !== key) return "";
-    return variantsEditorSort.direction === "asc" ? "▲" : "▼";
-  };
-  const renderContextMenuIcon = (
-    type:
-      | "open"
-      | "move-main"
-      | "download"
-      | "duplicate"
-      | "clipboard"
-      | "undo"
-      | "tag"
-      | "ai"
-      | "photopea"
-      | "focuscenter"
-      | "background"
-      | "eraser"
-      | "upscale"
-  ) => {
-    if (type === "open") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
-          <path d="M4 16v2a2 2 0 0 0 2 2h2" />
-          <path d="M16 4h2a2 2 0 0 1 2 2v2" />
-          <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
-          <path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
-          <path d="M16 16l-2.5 -2.5" />
-        </svg>
-      );
-    }
-    if (type === "move-main") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v8" />
-          <path d="M20 18h-17" />
-          <path d="M6 15l-3 3l3 3" />
-        </svg>
-      );
-    }
-    if (type === "download") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-          <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
-          <path d="M12 17v-6" />
-          <path d="M9.5 14.5l2.5 2.5l2.5 -2.5" />
-        </svg>
-      );
-    }
-    if (type === "duplicate") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
-          <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
-        </svg>
-      );
-    }
-    if (type === "clipboard") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h3m9 -9v-5a2 2 0 0 0 -2 -2h-2" />
-          <path d="M13 17v-1a1 1 0 0 1 1 -1h1m3 0h1a1 1 0 0 1 1 1v1m0 3v1a1 1 0 0 1 -1 1h-1m-3 0h-1a1 1 0 0 1 -1 -1v-1" />
-          <path d="M9 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2" />
-        </svg>
-      );
-    }
-    if (type === "undo") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M9 14l-4 -4l4 -4" />
-          <path d="M5 10h10a4 4 0 1 1 0 8h-1" />
-        </svg>
-      );
-    }
-    if (type === "photopea") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3l-11 11l-4 1l1 -4l11 -11z" />
-        </svg>
-      );
-    }
-    if (type === "tag") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M7 7h.01" />
-          <path d="M3 11l8.586 8.586a2 2 0 0 0 2.828 0l5.172 -5.172a2 2 0 0 0 0 -2.828l-8.586 -8.586h-6v6" />
-        </svg>
-      );
-    }
-    if (type === "focuscenter") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-          <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
-          <path d="M4 16v2a2 2 0 0 0 2 2h2" />
-          <path d="M16 4h2a2 2 0 0 1 2 2v2" />
-          <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
-        </svg>
-      );
-    }
-    if (type === "background") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M4 8l4 -4" />
-          <path d="M14 4l-10 10" />
-          <path d="M4 20l16 -16" />
-          <path d="M20 10l-10 10" />
-          <path d="M20 16l-4 4" />
-        </svg>
-      );
-    }
-    if (type === "upscale") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M16 4l4 0l0 4" />
-          <path d="M14 10l6 -6" />
-          <path d="M8 20l-4 0l0 -4" />
-          <path d="M4 20l6 -6" />
-          <path d="M16 20l4 0l0 -4" />
-          <path d="M14 14l6 6" />
-          <path d="M8 4l-4 0l0 4" />
-          <path d="M4 4l6 6" />
-        </svg>
-      );
-    }
-    if (type === "eraser") {
-      return (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={styles.contextMenuIcon}
-          aria-hidden="true"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3" />
-          <path d="M18 13.3l-6.3 -6.3" />
-        </svg>
-      );
-    }
-    return (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={styles.contextMenuIcon}
-        aria-hidden="true"
-      >
-        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-        <path d="M15 8h.01" />
-        <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
-        <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
-        <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-        <path d="M14 19h4" />
-        <path d="M21 15v6" />
-      </svg>
     );
   };
 
@@ -11729,262 +7054,66 @@ export default function DraftExplorerPage() {
 
         <div className={styles.explorerControlsRow}>
           <div className={styles.explorerControlsLeft}>
-            <Popover
-              open={batchPickerOpen}
-              onOpenChange={(_, data) => setBatchPickerOpen(data.open)}
-              positioning="below-start"
+            <Dropdown
+              value={selectedFolder}
+              selectedOptions={selectedFolder ? [selectedFolder] : []}
+              placeholder={t("bulkProcessing.explorer.selectFolder")}
+              className={styles.folderDropdown}
+              onOptionSelect={(_, data) =>
+                setSelectedFolder(String(data.optionValue ?? ""))
+              }
             >
-              <PopoverTrigger disableButtonEnhancement>
-                <Button
-                  appearance="outline"
-                  className={mergeClasses(
-                    styles.batchPickerTrigger,
-                    styles.explorerWhiteButton
-                  )}
-                  aria-label={t("bulkProcessing.explorer.selectFolder")}
-                  title={t("bulkProcessing.explorer.selectFolder")}
-                >
-                  <span className={styles.batchPickerTriggerLabel}>
-                    {selectedFolder ||
-                      t("bulkProcessing.explorer.selectFolder")}
-                  </span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.batchPickerChevron}
-                    aria-hidden="true"
-                  >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M6 9l6 6l6 -6" />
-                  </svg>
-                </Button>
-              </PopoverTrigger>
-              <PopoverSurface className={styles.batchPickerSurface}>
-                {folders.map((folder) => {
-                  const active = folder.path === selectedFolder;
-                  const checked = selectedRunsForMerge.has(folder.path);
-                  return (
-                    <div
-                      key={folder.path}
-                      className={mergeClasses(
-                        styles.batchPickerRow,
-                        active ? styles.batchPickerRowActive : undefined
-                      )}
-                      onClick={() => {
-                        setBatchPickerOpen(false);
-                        void handleSelectFolder(folder.path);
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setBatchPickerOpen(false);
-                          void handleSelectFolder(folder.path);
-                        }
-                      }}
-                    >
-                      <span className={styles.batchPickerRowName}>
-                        {folder.name}
-                      </span>
-                      <Button
-                        size="small"
-                        appearance="outline"
-                        className={mergeClasses(
-                          styles.batchPickerViewButton,
-                          styles.whiteActionButton
-                        )}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void openRunPreview(folder.path);
-                        }}
-                      >
-                        Preview
-                      </Button>
-                      <span
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                        }}
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onChange={() => toggleRunForMerge(folder.path)}
-                        />
-                      </span>
-                    </div>
-                  );
-                })}
-                <div className={styles.batchPickerActions}>
-                  <Button
-                    appearance="outline"
-                    onClick={handleSelectAllRunsForMerge}
-                    disabled={mergeRunsPending || deleteRunsPending}
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    onClick={handleUnselectRunsForMerge}
-                    disabled={
-                      selectedRunsForMerge.size === 0 ||
-                      mergeRunsPending ||
-                      deleteRunsPending
-                    }
-                  >
-                    Unselect
-                  </Button>
-                  <Button
-                    appearance="primary"
-                    disabled={
-                      selectedRunsForMerge.size < 2 ||
-                      mergeRunsPending ||
-                      deleteRunsPending
-                    }
-                    onClick={() => void handleMergeRuns()}
-                  >
-                    {mergeRunsPending ? "Merging..." : "Merge"}
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    disabled={
-                      selectedRunsForMerge.size === 0 ||
-                      mergeRunsPending ||
-                      deleteRunsPending
-                    }
-                    onClick={() => void handleDeleteRuns()}
-                  >
-                    {deleteRunsPending ? "Deleting..." : "Delete"}
-                  </Button>
-                </div>
-              </PopoverSurface>
-            </Popover>
-            <Popover
-              open={spuPickerOpen}
-              onOpenChange={(_, data) => setSpuPickerOpen(data.open)}
-              positioning="below-start"
+              {folders.map((folder) => (
+                <Option key={folder.path} value={folder.path}>
+                  {folder.name}
+                </Option>
+              ))}
+            </Dropdown>
+            <Button
+              appearance="outline"
+              onClick={() => {
+                if (!currentPath) return;
+                const parts = currentPath.split("/");
+                if (parts.length <= 1) return;
+                parts.pop();
+                setCurrentPath(parts.join("/"));
+              }}
+              disabled={!currentPath || currentPath === selectedFolder}
             >
-              <PopoverTrigger disableButtonEnhancement>
-                <Button
-                  appearance="outline"
-                  disabled={!selectedFolder || runSpuOptions.length === 0}
-                  className={mergeClasses(
-                    styles.spuPickerTrigger,
-                    styles.explorerWhiteButton
-                  )}
-                  aria-label="Select SPU folder"
-                  title="Select SPU folder"
-                >
-                  <span className={styles.batchPickerTriggerLabel}>
-                    {selectedRunSpuLabel}
-                  </span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.batchPickerChevron}
-                    aria-hidden="true"
-                  >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M6 9l6 6l6 -6" />
-                  </svg>
-                </Button>
-              </PopoverTrigger>
-              <PopoverSurface className={styles.spuPickerSurface}>
-                {runSpuOptions.length === 0 ? (
-                  <Text size={100}>No SPU folders in this batch.</Text>
-                ) : (
-                  runSpuOptions.map((option) => {
-                    const active = option.path === selectedSpuPathInRun;
-                    const isCompleted = completedSpuFolders.has(option.path);
-                    return (
-                      <div
-                        key={option.path}
-                        className={mergeClasses(
-                          styles.spuPickerRow,
-                          active ? styles.spuPickerRowActive : undefined,
-                          isCompleted ? styles.spuPickerRowCompleted : undefined
-                        )}
-                        onClick={() => handleSelectRunSpu(option.path)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleSelectRunSpu(option.path);
-                          }
-                        }}
-                      >
-                        <span className={styles.spuPickerRowName}>{option.name}</span>
-                        {isCompleted ? (
-                          <span className={styles.spuPickerRowCheck} aria-hidden="true">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className={styles.iconSvg}
-                              aria-hidden="true"
-                            >
-                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                              <path d="M5 12l5 5l9 -9" />
-                            </svg>
-                          </span>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </PopoverSurface>
-            </Popover>
-            <Menu>
-              <MenuTrigger disableButtonEnhancement>
-                <Button
-                  appearance="outline"
-                  disabled={
-                    !selectedFolder ||
-                    tagAllImagesRunning ||
-                    tagImagesRunning ||
-                    bulkImageActionPending
-                  }
-                  className={styles.explorerWhiteButton}
-                >
-                  {tagAllImagesRunning ? "Working..." : "Actions"}
-                </Button>
-              </MenuTrigger>
-              <MenuPopover>
-                <MenuList className={styles.compactMenuList}>
-                  <MenuItem
-                    disabled={
-                      !selectedFolder ||
-                      completedSpuPathsInSelectedRun.length === 0 ||
-                      tagAllImagesRunning ||
-                      tagImagesRunning ||
-                      bulkImageActionPending
-                    }
-                    onClick={() => void handleTagAllImagesForCompletedSpuFolders()}
-                  >
-                    Tag All Images
-                  </MenuItem>
-                </MenuList>
-              </MenuPopover>
-            </Menu>
+              {t("bulkProcessing.explorer.up")}
+            </Button>
+          </div>
+          <div className={styles.explorerControlsCenter}>
+            <Button
+              appearance="outline"
+              onClick={handleDownloadSelectedZip}
+              disabled={selectedTreeFolders.size === 0}
+            >
+              Download selected ZIP
+            </Button>
+            <Button
+              appearance="outline"
+              onClick={handleDownloadAllFromCurrentFolder}
+              disabled={!currentPath || entriesLoading}
+            >
+              Download all ZIP
+            </Button>
+            <Button
+              appearance="outline"
+              onClick={handleDownloadSelectedIndividually}
+              disabled={selectedFiles.size === 0}
+            >
+              {t("bulkProcessing.explorer.downloadSelected")}
+            </Button>
+          </div>
+          <div className={styles.explorerControlsRight}>
+            <Button
+              appearance="outline"
+              onClick={handleExplorerRefresh}
+              disabled={entriesLoading || movingEntry}
+            >
+              {t("bulkProcessing.explorer.refresh")}
+            </Button>
             <Button
               appearance="outline"
               onClick={handleDeleteFolder}
@@ -12014,98 +7143,11 @@ export default function DraftExplorerPage() {
             </Button>
             <Button
               appearance="outline"
-              onClick={() => setFolderTreeHidden((prev) => !prev)}
-              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-              disabled={!USE_NEW_FILE_EXPLORER}
-              aria-label={folderTreeHidden ? "Show folders" : "Hide folders"}
-              title={folderTreeHidden ? "Show folders" : "Hide folders"}
+              onClick={handleDeleteSelected}
+              disabled={selectedFiles.size + selectedTreeFolders.size === 0}
             >
-              {folderTreeHidden ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className={styles.iconSvg}
-                  aria-hidden="true"
-                >
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M12 2a1 1 0 0 1 .707 .293l1.708 1.707h4.585a3 3 0 0 1 2.995 2.824l.005 .176v7a3 3 0 0 1 -3 3h-1v1a3 3 0 0 1 -3 3h-10a3 3 0 0 1 -3 -3v-9a3 3 0 0 1 3 -3h1v-1a3 3 0 0 1 3 -3zm-6 6h-1a1 1 0 0 0 -1 1v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1 -1v-1h-7a3 3 0 0 1 -3 -3z" />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={styles.iconSvg}
-                  aria-hidden="true"
-                >
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M17 17h-8a2 2 0 0 1 -2 -2v-8m1.177 -2.823c.251 -.114 .53 -.177 .823 -.177h3l2 2h5a2 2 0 0 1 2 2v7c0 .55 -.223 1.05 -.583 1.411" />
-                  <path d="M17 17v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h2" />
-                  <path d="M3 3l18 18" />
-                </svg>
-              )}
+              {t("bulkProcessing.explorer.deleteSelected")}
             </Button>
-          </div>
-          <div className={styles.explorerControlsRight}>
-            {USE_NEW_FILE_EXPLORER ? (
-              <>
-                <Button
-                  appearance="outline"
-                  onClick={() => handleNavigateRunSpu(-1)}
-                  disabled={!canNavigatePrevSpu}
-                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                  aria-label="Previous SPU folder"
-                  title="Previous SPU folder"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.iconSvg}
-                    aria-hidden="true"
-                  >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M5 12h14" />
-                    <path d="M5 12l6 6" />
-                    <path d="M5 12l6 -6" />
-                  </svg>
-                </Button>
-                <Button
-                  appearance="outline"
-                  onClick={() => handleNavigateRunSpu(1)}
-                  disabled={!canNavigateNextSpu}
-                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                  aria-label="Next SPU folder"
-                  title="Next SPU folder"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.iconSvg}
-                    aria-hidden="true"
-                  >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M5 12h14" />
-                    <path d="M13 6l6 6" />
-                    <path d="M13 18l6 -6" />
-                  </svg>
-                </Button>
-              </>
-            ) : null}
             {!USE_NEW_FILE_EXPLORER ? (
               <div className={styles.viewToggle}>
                 <Text size={100}>{t("bulkProcessing.explorer.viewSmall")}</Text>
@@ -12122,40 +7164,8 @@ export default function DraftExplorerPage() {
         </div>
 
         {USE_NEW_FILE_EXPLORER ? (
-          <div
-            className={mergeClasses(
-              styles.explorerLayout,
-              folderTreeHidden ? styles.explorerLayoutSingleColumn : undefined
-            )}
-          >
-            {!folderTreeHidden ? (
-            <div
-              className={styles.folderPane}
-              onDragOver={(event) => {
-                if (draggingEntryPaths.length === 0 || !selectedFolder) return;
-                event.preventDefault();
-                setFolderDropTargetPath(selectedFolder);
-              }}
-              onDragLeave={() => {
-                if (folderDropTargetPath === selectedFolder) {
-                  setFolderDropTargetPath(null);
-                }
-              }}
-              onDrop={(event) => {
-                if (!selectedFolder) return;
-                event.preventDefault();
-                const draggedPaths = readDraggedPaths(event.dataTransfer);
-                if (
-                  draggedPaths.length === 0 ||
-                  draggedPaths.every((draggedPath) => draggedPath === selectedFolder)
-                ) {
-                  setFolderDropTargetPath(null);
-                  setDraggingEntryPaths([]);
-                  return;
-                }
-                handleMoveEntriesToFolder(draggedPaths, selectedFolder);
-              }}
-            >
+          <div className={styles.explorerLayout}>
+            <div className={styles.folderPane}>
               <div className={styles.folderPaneHeader}>
                 <Text size={200} weight="semibold">
                   Folders
@@ -12168,1364 +7178,217 @@ export default function DraftExplorerPage() {
                 <Spinner size="tiny" />
               ) : folderTree ? (
                 <div className={styles.folderTreeRoot}>
-                  {folderTree.children.length > 0 ? (
-                    folderTree.children.map((child, index) =>
-                      renderFolderTreeNode(
-                        child,
-                        [],
-                        index === folderTree.children.length - 1
-                      )
-                    )
-                  ) : (
-                    <Text size={100}>No subfolders in this folder.</Text>
-                  )}
+                  {renderFolderTreeNode(folderTree, 0)}
                 </div>
               ) : (
                 <Text size={100}>Unable to load folder tree.</Text>
               )}
-              <div className={styles.folderPaneActions}>
-                <Button
-                  appearance="outline"
-                  onClick={handleDownloadAllFolders}
-                  disabled={!selectedFolder}
-                  className={styles.explorerWhiteButton}
-                >
-                  Download all
-                </Button>
-                <Button
-                  appearance="outline"
-                  onClick={handleDownloadSelectedZip}
-                  disabled={selectedTreeFolders.size === 0}
-                  className={styles.explorerWhiteButton}
-                >
-                  <span className={styles.iconWithZipLabel}>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.iconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
-                      <path d="M7 11l5 5l5 -5" />
-                      <path d="M12 4l0 12" />
-                    </svg>
-                    <span>(ZIP)</span>
-                  </span>
-                </Button>
-                <Button
-                  appearance="outline"
-                  onClick={handleDeleteSelectedFolders}
-                  disabled={selectedTreeFolders.size === 0}
-                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                  aria-label={t("bulkProcessing.explorer.deleteSelected")}
-                  title={t("bulkProcessing.explorer.deleteSelected")}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={styles.iconSvg}
-                    aria-hidden="true"
-                  >
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                    <path d="M4 7l16 0" />
-                    <path d="M10 11l0 6" />
-                    <path d="M14 11l0 6" />
-                    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-                  </svg>
-                </Button>
-              </div>
+              {entries.filter((entry) => entry.type === "file" && !isImage(entry.name)).length >
+              0 ? (
+                <div className={styles.folderFileList}>
+                  <Text size={100} weight="semibold">
+                    Files
+                  </Text>
+                  {entries
+                    .filter((entry) => entry.type === "file" && !isImage(entry.name))
+                    .map((entry) => (
+                      <div
+                        key={`side-${entry.path}`}
+                        className={styles.folderFileRow}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", entry.path);
+                          setDraggingEntryPath(entry.path);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingEntryPath(null);
+                          setFolderDropTargetPath(null);
+                        }}
+                        onClick={() => openEntry(entry)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedFiles.has(entry.path)}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            handleToggleFile(entry.path);
+                          }}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                        <Text size={100} style={{ minWidth: 0 }}>
+                          {entry.name}
+                        </Text>
+                      </div>
+                    ))}
+                </div>
+              ) : null}
             </div>
-            ) : null}
 
-            <div className={styles.contentColumn}>
             <div className={styles.filePane}>
-              <div className={styles.imageToolbar}>
-                <div className={styles.imageToolbarTabs}>
-                  <TabList
-                    size="small"
-                    selectedValue={imageTabTargets.active ?? undefined}
-                    onTabSelect={(_, data) => {
-                      const value = data.value as ImageFolderTabValue;
-                      const nextPath =
-                        value === "main"
-                          ? imageTabTargets.mainPath
-                          : value === "variants"
-                            ? imageTabTargets.variantsPath
-                            : value === "ocr"
-                              ? imageTabTargets.ocrPath
-                              : value === "others"
-                                ? imageTabTargets.othersPaths[0] ?? null
-                                : null;
-                      if (nextPath) setCurrentPath(nextPath);
-                    }}
-                  >
-                    <Tab value="main" disabled={mainTabDisabled}>
-                      <span className={styles.imageTabLabel}>
-                        <span>Main</span>
-                        <span
-                          className={styles.imageTabMainBadgeSpacer}
-                          aria-hidden="true"
-                        >
-                          {" "}
-                        </span>
-                        <span
-                          className={mergeClasses(
-                            styles.imageTabBadge,
-                            mainTabDisabled ? styles.imageTabBadgeDisabled : undefined
-                          )}
-                        >
-                          {imageTabImageCounts.main}
-                        </span>
-                      </span>
-                    </Tab>
-                    <Tab value="variants" disabled={variantsTabDisabled}>
-                      <span className={styles.imageTabLabel}>
-                        <span>Variants</span>
-                        <span
-                          className={mergeClasses(
-                            styles.imageTabBadge,
-                            variantsTabDisabled ? styles.imageTabBadgeDisabled : undefined
-                          )}
-                        >
-                          {imageTabImageCounts.variants}
-                        </span>
-                      </span>
-                    </Tab>
-                    <Tab value="ocr" disabled={ocrTabDisabled}>
-                      <span className={styles.imageTabLabel}>
-                        <span>OCR</span>
-                        <span
-                          className={mergeClasses(
-                            styles.imageTabBadge,
-                            ocrTabDisabled ? styles.imageTabBadgeDisabled : undefined
-                          )}
-                        >
-                          {imageTabImageCounts.ocr}
-                        </span>
-                      </span>
-                    </Tab>
-                    <Tab value="others" disabled={othersTabDisabled}>
-                      <span className={styles.imageTabLabel}>
-                        <span>Others</span>
-                        <span
-                          className={mergeClasses(
-                            styles.imageTabBadge,
-                            othersTabDisabled ? styles.imageTabBadgeDisabled : undefined
-                          )}
-                        >
-                          {imageTabImageCounts.others}
-                        </span>
-                      </span>
-                    </Tab>
-                  </TabList>
+              <Text size={100} className={styles.explorerPathLabel}>
+                {currentPath || "-"}
+              </Text>
+              {entriesLoading ? (
+                <div style={{ padding: "12px" }}>
+                  <Spinner size="tiny" />
                 </div>
-
-                <div className={styles.imageToolbarRight}>
-                  {mainViewShowsMergedImages && currentMainProductContext.spu ? (
-                    <>
-                      <Button
-                        appearance="outline"
-                        disabled={
-                          confirmAiEditsPending ||
-                          deleteProductPending ||
-                          aiReviewSubmitting ||
-                          movingEntry ||
-                          confirmablePendingAiPaths.length === 0
-                        }
-                        className={mergeClasses(
-                          styles.imageToolbarActions,
-                          styles.explorerWhiteButton
-                        )}
-                        onClick={() => void handleConfirmCurrentProductAiEdits()}
+              ) : entries.length === 0 ? (
+                <Text size={200}>{t("bulkProcessing.explorer.empty")}</Text>
+              ) : (
+                <div className={styles.dualGrid}>
+                  {entries.map((entry) => {
+                    const imageEntry = entry.type === "file" && isImage(entry.name);
+                    return (
+                      <div
+                        key={entry.path}
+                        className={styles.mediaCard}
+                        draggable={entry.type === "file"}
+                        onDragStart={(event) => {
+                          if (entry.type !== "file") return;
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", entry.path);
+                          setDraggingEntryPath(entry.path);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingEntryPath(null);
+                          setFolderDropTargetPath(null);
+                        }}
+                        onContextMenu={(event) => {
+                          if (entry.type !== "file") return;
+                          event.preventDefault();
+                          setContextMenu({
+                            entry,
+                            image: imageEntry,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
                       >
-                        {confirmAiEditsPending ? "Confirming..." : "Confirm AI Edits"}
-                      </Button>
-                      <Button
-                        appearance="outline"
-                        disabled={confirmAiEditsPending || deleteProductPending || movingEntry}
-                        className={mergeClasses(
-                          styles.imageToolbarActions,
-                          styles.explorerWhiteButton,
-                          styles.dangerOutlineButton
-                        )}
-                        onClick={() => void handleDeleteCurrentProduct()}
-                      >
-                        {deleteProductPending ? "Deleting..." : "Delete product"}
-                      </Button>
-                    </>
-                  ) : null}
-                  <Menu>
-                    <MenuTrigger disableButtonEnhancement>
-                      <Button
-                        appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        className={mergeClasses(
-                          styles.imageToolbarActions,
-                          selectedImageEntries.length > 1 ? undefined : styles.explorerWhiteButton
-                        )}
-                      >
-                        {bulkImageActionPending ? "Working..." : "Actions"}
-                      </Button>
-                    </MenuTrigger>
-                    <MenuPopover>
-                      <MenuList className={styles.compactMenuList}>
-                        <MenuItem
-                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                          onClick={() => handleDownloadEntries(selectedImageEntries)}
+                        <div
+                          className={styles.mediaSquare}
+                          onClick={() => openEntry(entry)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            openEntry(entry);
+                          }}
                         >
-                          Download Selected Images
-                        </MenuItem>
-                        <MenuItem
-                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                          onClick={() => handleCreateCopiesForEntries(selectedImageEntries)}
-                        >
-                          Create Copy
-                        </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "template"
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Standard Template
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "direct"
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Direct
-	                      </MenuItem>
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit ChatGPT: Digideal Main
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    1
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    2
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    3
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit ChatGPT: Product Scene
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 1 }
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 2 }
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 3 }
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "template"
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Standard Template
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "direct"
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Direct
-	                      </MenuItem>
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit Gemini: Digideal Main
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    1
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    2
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    3
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit Gemini: Product Scene
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 1 }
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 2 }
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 3 }
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(selectedImageEntries, "zimage", "direct")
-                        }
-                      >
-                        Edit Z-Image: Direct
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "zimage",
-                            "white_background"
-                          )
-                        }
-                      >
-                        Edit Z-Image: White BG
-                      </MenuItem>
-                      <MenuItem
-                        disabled={
-                          selectedImageEntries.length === 0 ||
-                          selectedImageUpscaleEligibleCount === 0 ||
-                          bulkImageActionPending
-                        }
-                        onClick={() =>
-                          startAiEditForEntries(selectedImageEntries, "zimage", "upscale")
-                        }
-                      >
-                        Edit Z-Image: Upscale
-                      </MenuItem>
-                    </MenuList>
-                  </MenuPopover>
-                  </Menu>
-                  <Button
-                    appearance={tagImagesRunningInCurrentPath ? "primary" : "outline"}
-                    disabled={
-                      imageEntries.length === 0 ||
-                      bulkImageActionPending ||
-                      tagImagesRunning ||
-                      tagAllImagesRunning ||
-                      !currentPath
-                    }
-                    className={mergeClasses(
-                      styles.imageToolbarActions,
-                      tagImagesRunningInCurrentPath
-                        ? undefined
-                        : styles.explorerWhiteButton
-                    )}
-                    onClick={() => void handleRunImageClassifierTagging()}
-                  >
-                    {tagImagesRunningInCurrentPath ? "Tagging..." : "Tag Images"}
-                  </Button>
-                  <Button
-                    appearance={currentSpuMarkedCompleted ? "primary" : "outline"}
-                    disabled={!currentSpuMainPath}
-                    className={mergeClasses(
-                      styles.imageToolbarActions,
-                      currentSpuMarkedCompleted ? undefined : styles.explorerWhiteButton
-                    )}
-                    onClick={handleToggleCurrentSpuCompleted}
-                  >
-                    {currentSpuMarkedCompleted ? "Uncomplete" : "Completed"}
-                  </Button>
-                  <div className={styles.imageToolbarIconGroup}>
-                    {entriesRefreshing ? <Spinner size="tiny" /> : null}
-                    <Button
-                      appearance="outline"
-                      onClick={handleExplorerRefresh}
-                      disabled={entriesLoading || entriesRefreshing || movingEntry}
-                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                      aria-label={t("bulkProcessing.explorer.refresh")}
-                      title={t("bulkProcessing.explorer.refresh")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={styles.iconSvg}
-                        aria-hidden="true"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                      </svg>
-                    </Button>
-                    <Button
-                      appearance="outline"
-                      onClick={handleDownloadSelectedIndividually}
-                      disabled={selectedFiles.size === 0}
-                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                      aria-label={t("bulkProcessing.explorer.downloadSelected")}
-                      title={t("bulkProcessing.explorer.downloadSelected")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={styles.iconSvg}
-                        aria-hidden="true"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
-                        <path d="M7 11l5 5l5 -5" />
-                        <path d="M12 4l0 12" />
-                      </svg>
-                    </Button>
-                    <Button
-                      appearance="outline"
-                      onClick={handleDeleteSelected}
-                      disabled={selectedFiles.size + selectedTreeFolders.size === 0}
-                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                      aria-label={t("bulkProcessing.explorer.deleteSelected")}
-                      title={t("bulkProcessing.explorer.deleteSelected")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={styles.iconSvg}
-                        aria-hidden="true"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M4 7l16 0" />
-                        <path d="M10 11l0 6" />
-                        <path d="M14 11l0 6" />
-                        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                        <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-                      </svg>
-                    </Button>
-                  </div>
-                  <Button
-                    appearance="outline"
-                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                    disabled={displayImageEntries.length === 0}
-                    aria-label={
-                      imageResizeActionIcon === "grow"
-                        ? "Make images bigger"
-                        : "Make images smaller"
-                    }
-                    title={
-                      imageResizeActionIcon === "grow"
-                        ? "Make images bigger"
-                        : "Make images smaller"
-                    }
-                    onClick={() => {
-                      if (imageResizeActionIcon === "grow") {
-                        setImageViewMode("big");
-                      } else {
-                        setImageViewMode("small");
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      setImageResizeActionIcon(
-                        imageViewMode === "big" ? "shrink" : "grow"
-                      );
-                    }}
-                  >
-                  {imageResizeActionIcon === "grow" ? (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.imageResizeIconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M3 17a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1l0 -3" />
-                      <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-6" />
-                      <path d="M12 8h4v4" />
-                      <path d="M16 8l-5 5" />
-                    </svg>
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.imageResizeIconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M3 17a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1l0 -3" />
-                      <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-6" />
-                      <path d="M15 13h-4v-4" />
-                      <path d="M11 13l5 -5" />
-                    </svg>
-                  )}
-                </Button>
-                </div>
-              </div>
-              <div
-                className={mergeClasses(
-                  styles.entriesContentArea,
-                  currentSpuMarkedCompleted ? styles.entriesContentAreaCompleted : undefined
-                )}
-                aria-busy={entriesLoading}
-              >
-                  {displayImageEntries.length === 0 ? (
-                    <Text size={200}>No images in this folder.</Text>
-                  ) : (
-                    <div
-                      className={mergeClasses(
-                        styles.dualGrid,
-                        tagImagesRunningInCurrentPath
-                          ? styles.dualGridTagging
-                          : undefined
-                      )}
-                      aria-busy={imageOrderPersisting}
-                      style={{
-                        gridTemplateColumns:
-                          imageViewMode === "big"
-                            ? "repeat(auto-fill, minmax(320px, 1fr))"
-                            : "repeat(auto-fill, minmax(180px, 1fr))",
-                      }}
-                      onDragOver={(event) => {
-                        const draggedPaths = readDraggedPaths(event.dataTransfer);
-                        const hasImageDrag = draggedPaths.some((pathValue) => {
-                          const draggedEntry = entryByPath.get(pathValue);
-                          return Boolean(
-                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
-                          );
-                        });
-                        if (!hasImageDrag) return;
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        const draggedPaths = readDraggedPaths(event.dataTransfer);
-                        const hasImageDrag = draggedPaths.some((pathValue) => {
-                          const draggedEntry = entryByPath.get(pathValue);
-                          return Boolean(
-                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
-                          );
-                        });
-                        if (!hasImageDrag) return;
-                        event.preventDefault();
-                        reorderImagesInGrid(draggedPaths, null);
-                        setImageReorderDropPath(null);
-                        setFolderDropTargetPath(null);
-                        setDraggingEntryPaths([]);
-                      }}
-                      onDragLeave={() => {
-                        setImageReorderDropPath(null);
-                      }}
-                    >
-                      {displayImageEntries.map((entry) => {
-                        const pendingAi = pendingAiEditsByOriginal[entry.path] ?? null;
-                        const displayPath = pendingAi?.pendingPath ?? entry.path;
-                        const displayModifiedAt = pendingAi?.updatedAt ?? entry.modifiedAt;
-                        const runtimeJob = aiEditJobsByPath[entry.path] ?? null;
-                        const reloadBusy = reloadingImagePaths.has(entry.path);
-                        const confirmBusy = confirmingAiEditPaths.has(entry.path);
-                        const busy = Boolean(runtimeJob) || reloadBusy || confirmBusy;
-                        const imageTags = extractImageTagsFromFileName(entry.name);
-                        const isDisplayOnlyMainVariant =
-                          mainViewShowsMergedImages && !entryByPath.has(entry.path);
-                        const originalPixelQualityScore =
-                          typeof entry.pixelQualityScore === "number" &&
-                          Number.isFinite(entry.pixelQualityScore)
-                            ? Math.round(entry.pixelQualityScore)
-                            : null;
-                        const pendingPixelQualityScore =
-                          typeof pendingAi?.pendingPixelQualityScore === "number" &&
-                          Number.isFinite(pendingAi.pendingPixelQualityScore)
-                            ? Math.round(pendingAi.pendingPixelQualityScore)
-                            : null;
-                        const pixelQualityScore =
-                          pendingPixelQualityScore ?? originalPixelQualityScore;
-                        const pixelQualityDelta =
-                          pendingPixelQualityScore !== null &&
-                          originalPixelQualityScore !== null
-                            ? pendingPixelQualityScore - originalPixelQualityScore
-                            : null;
-                        const pixelQualityClass =
-                          pixelQualityScore === null
-                            ? styles.mediaMetaQualityUnknown
-                            : pixelQualityScore > 60
-                              ? styles.mediaMetaQualityGood
-                              : pixelQualityScore >= 40
-                                ? styles.mediaMetaQualityMedium
-                                : styles.mediaMetaQualityBad;
-                        const pixelQualityLabel =
-                          pixelQualityDelta === null
-                            ? `Q ${pixelQualityScore ?? "-"}`
-                            : `Q ${pixelQualityScore ?? "-"} (${
-                                pixelQualityDelta > 0
-                                  ? `+${pixelQualityDelta}`
-                                  : pixelQualityDelta
-                              })`;
-                        const hasZimageUpscaled = isImageEntryUpscaled(entry);
-                        return (
-                          <div
-                            key={buildStableImageCardKey(entry)}
+                          <button
+                            type="button"
                             className={mergeClasses(
-                              styles.mediaCard,
-                              imageReorderDropPath === entry.path
-                                ? styles.mediaCardDropTarget
-                                : undefined,
-                              selectedFiles.has(entry.path)
-                                ? styles.mediaCardSelected
-                                : undefined
+                              styles.thumbDownloadButton,
+                              "thumbDownloadButton"
                             )}
-                            draggable={!isDisplayOnlyMainVariant}
-                            onDragStart={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
-                              const draggedPaths = buildDraggedPathsForEntry(entry);
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData(
-                                "text/plain",
-                                draggedPaths[0] ?? entry.path
-                              );
-                              event.dataTransfer.setData(
-                                "application/x-nordexo-paths",
-                                JSON.stringify(draggedPaths)
-                              );
-                              setDraggingEntryPaths(draggedPaths);
-                              setImageReorderDropPath(null);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingEntryPaths([]);
-                              setFolderDropTargetPath(null);
-                              setImageReorderDropPath(null);
-                            }}
-                            onDragOver={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
-                              const draggedPaths = readDraggedPaths(event.dataTransfer);
-                              const hasImageDrag = draggedPaths.some((pathValue) => {
-                                const draggedEntry = entryByPath.get(pathValue);
-                                return Boolean(
-                                  draggedEntry?.type === "file" &&
-                                    isImage(draggedEntry.name)
-                                );
-                              });
-                              if (!hasImageDrag) return;
-                              event.preventDefault();
+                            aria-label={
+                              entry.type === "dir"
+                                ? `Download ${entry.name} as ZIP`
+                                : `Download ${entry.name}`
+                            }
+                            onClick={(event) => {
                               event.stopPropagation();
-                              setImageReorderDropPath(entry.path);
-                            }}
-                            onDragLeave={(event) => {
-                              event.stopPropagation();
-                              if (imageReorderDropPath === entry.path) {
-                                setImageReorderDropPath(null);
-                              }
-                            }}
-                            onDrop={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
-                              const draggedPaths = readDraggedPaths(event.dataTransfer);
-                              const hasImageDrag = draggedPaths.some((pathValue) => {
-                                const draggedEntry = entryByPath.get(pathValue);
-                                return Boolean(
-                                  draggedEntry?.type === "file" &&
-                                    isImage(draggedEntry.name)
-                                );
-                              });
-                              if (!hasImageDrag) return;
-                              event.preventDefault();
-                              event.stopPropagation();
-                              reorderImagesInGrid(draggedPaths, entry.path);
-                              setImageReorderDropPath(null);
-                              setFolderDropTargetPath(null);
-                              setDraggingEntryPaths([]);
-                            }}
-                            onContextMenu={(event) => {
-                              event.preventDefault();
-                              setContextMenuSubmenu(null);
-                              setContextMenu({
-                                entry,
-                                image: true,
-                                x: event.clientX,
-                                y: event.clientY,
-                              });
+                              downloadEntry(entry);
                             }}
                           >
-                            <div
-                              className={styles.mediaSquare}
-                              onClick={(event) => {
-                                handleToggleFile(entry.path, {
-                                  shiftKey: event.shiftKey,
-                                  imageRange: true,
-                                });
-                              }}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                handleToggleFile(entry.path, {
-                                  shiftKey: event.shiftKey,
-                                  imageRange: true,
-                                });
-                              }}
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="16"
+                              height="16"
+                              aria-hidden="true"
                             >
-                              {imageTags.length > 0 ? (
-                                <div
-                                  className={mergeClasses(
-                                    styles.mediaTagStack,
-                                    pendingAi ? styles.mediaTagStackShifted : undefined
-                                  )}
-                                >
-                                  {imageTags.map((tag) => (
-                                    <span
-                                      key={`${entry.path}-${tag}`}
-                                      className={mergeClasses(
-                                        styles.mediaTagBadge,
-                                        tag === "MAIN"
-                                          ? styles.mediaTagMain
-                                          : tag === "ENV"
-                                            ? styles.mediaTagEnv
-                                            : tag === "VAR"
-                                              ? styles.mediaTagVar
-                                              : tag === "DIGI"
-                                                ? styles.mediaTagDigi
-                                              : styles.mediaTagInf
-                                      )}
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
-                              {pendingAi ? (
-                                <button
-                                  type="button"
-                                  className={styles.aiPendingBadge}
-                                  title={`Review AI edit for ${entry.name}`}
-                                  aria-label={`Review AI edit for ${entry.name}`}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setAiReviewOriginalPath(entry.path);
-                                  }}
-                                >
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    width="16"
-                                    height="16"
-                                    aria-hidden="true"
-                                  >
-                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                    <path d="M15 8h.01" />
-                                    <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
-                                    <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
-                                    <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-                                    <path d="M14 19h4" />
-                                    <path d="M21 15v6" />
-                                  </svg>
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className={mergeClasses(
-                                  styles.thumbDownloadButton,
-                                  "thumbDownloadButton"
-                                )}
-                                aria-label={`Preview ${entry.name}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setPreviewPath(entry.path);
-                                }}
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  width="16"
-                                  height="16"
-                                  aria-hidden="true"
-                                >
-                                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                  <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
-                                  <path d="M7 10l6 0" />
-                                  <path d="M10 7l0 6" />
-                                  <path d="M21 21l-6 -6" />
-                                </svg>
-                              </button>
-                              <img
-                                src={buildDraftDownloadUrl(
-                                  displayPath,
-                                  displayModifiedAt
-                                )}
-                                alt={entry.name}
-                                className={mergeClasses(
-                                  styles.thumbImage,
-                                  busy ? styles.mediaImageBusy : undefined
-                                )}
-                                onLoad={(event) => {
-                                  const img = event.currentTarget;
-                                  const pathValue = entry.path;
-                                  setImageDimensions((prev) => ({
-                                    ...prev,
-                                    [pathValue]: {
-                                      width: img.naturalWidth,
-                                      height: img.naturalHeight,
-                                    },
-                                  }));
-                                  setReloadingImagePaths((prev) => {
-                                    if (!prev.has(pathValue)) return prev;
-                                    const next = new Set(prev);
-                                    next.delete(pathValue);
-                                    return next;
-                                  });
-                                }}
+                              <path
+                                d="M12 3v10m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                               />
-                              {busy ? (
-                                <div className={styles.mediaBusyOverlay}>
-                                  <div className={styles.mediaBusyContent}>
-                                    <Spinner size="small" />
-                                    <span>Updating</span>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          <div className={styles.mediaFooter}>
-                            <div className={styles.mediaFooterColumn}>
-                              {renamingPath === entry.path ? (
-                                <Input
-                                  size="small"
-                                  value={renameValue}
-                                  onChange={(_, data) => setRenameValue(data.value)}
-                                  onBlur={() => commitRename(entry)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter") {
-                                      event.preventDefault();
-                                      commitRename(entry);
-                                    }
-                                    if (event.key === "Escape") {
-                                      event.preventDefault();
-                                      cancelRename();
-                                    }
-                                  }}
-                                  autoFocus
-                                  className={styles.renameInput}
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  className={styles.mediaLabel}
-                                  onClick={() => startRename(entry)}
-                                >
-                                  {entry.name}
-                                </button>
-                              )}
-                              <Text size={100} className={styles.mediaMeta}>
-                                {imageDimensions[entry.path] ? (
-                                  <>
-                                    <span
-                                      className={mergeClasses(
-                                        imageDimensions[entry.path].width < 800 ||
-                                          imageDimensions[entry.path].height < 800
-                                          ? styles.mediaMetaDimLow
-                                          : undefined
-                                      )}
-                                    >
-                                      {`${imageDimensions[entry.path].width} x ${
-                                        imageDimensions[entry.path].height
-                                      }`}
-                                    </span>
-                                    <span className={styles.mediaMetaDivider}>|</span>
-                                    <span>{formatSizeKb(entry.size)}</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>-</span>
-                                    <span className={styles.mediaMetaDivider}>|</span>
-                                    <span>{formatSizeKb(entry.size)}</span>
-                                  </>
-                                )}
-                                <span className={styles.mediaMetaDivider}>|</span>
-                                <span
-                                  className={mergeClasses(
-                                    styles.mediaMetaQuality,
-                                    pixelQualityClass
-                                  )}
-                                >
-                                  {pixelQualityLabel}
-                                </span>
-                                {hasZimageUpscaled ? (
-                                  <>
-                                    <span className={styles.mediaMetaDivider}>|</span>
-                                    <span
-                                      className={styles.mediaMetaUpscaleIcon}
-                                      title="Upscaled with Z-image"
-                                      aria-label="Upscaled with Z-image"
-                                    >
-                                      <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className={styles.mediaMetaUpscaleIconSvg}
-                                        aria-hidden="true"
-                                      >
-                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                        <path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10" />
-                                        <path d="M7 9v2a1 1 0 0 0 1 1h1" />
-                                        <path d="M10 9v6" />
-                                        <path d="M14 9v6" />
-                                        <path d="M17 9l-2 3l2 3" />
-                                        <path d="M15 12h-1" />
-                                      </svg>
-                                    </span>
-                                  </>
-                                ) : null}
-                              </Text>
-                            </div>
-                          </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                {entriesLoading || tagImagesRunningInCurrentPath ? (
-                  <div className={styles.entriesContentOverlay}>
-                    <div className={styles.mediaBusyContent}>
-                      <Spinner size="tiny" />
-                      <span>
-                        {tagImagesRunningInCurrentPath
-                          ? "Classifying images..."
-                          : "Loading"}
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-              <div className={styles.filesUploadRow}>
-                <div className={styles.filesSection}>
-                  <div className={styles.entriesContentArea} aria-busy={entriesLoading}>
-                  {nonImageFileEntries.length === 0 ? (
-                    <Text size={100}>No files in this folder.</Text>
-		                  ) : (
-		                    <Table size="small" className={styles.filesTable}>
-	                      <TableHeader>
-	                        <TableRow>
-	                          <TableHeaderCell className={styles.filesColSelect}>
-	                            <input
-	                              ref={nonImageFileSelectAllRef}
-	                              type="checkbox"
-	                              checked={nonImageFilesAllSelected}
-	                              onChange={handleToggleAllNonImageFiles}
-	                              aria-label="Select all files"
-	                            />
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColName}>
-	                            File Name
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColSize}>
-	                            File Size
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColDate}>
-	                            Date
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColAction}>
-	                            Actions
-	                          </TableHeaderCell>
-	                        </TableRow>
-	                      </TableHeader>
-	                      <TableBody>
-	                        {nonImageFileEntries.map((entry) => (
-                          <TableRow
-                            key={`file-${entry.path}`}
-                            draggable
-                            onDragStart={(event) => {
-                              const draggedPaths = buildDraggedPathsForEntry(entry);
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData(
-                                "text/plain",
-                                draggedPaths[0] ?? entry.path
-                              );
-                              event.dataTransfer.setData(
-                                "application/x-nordexo-paths",
-                                JSON.stringify(draggedPaths)
-                              );
-                              setDraggingEntryPaths(draggedPaths);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingEntryPaths([]);
-                              setFolderDropTargetPath(null);
-                            }}
-                            onContextMenu={(event) => {
-                              event.preventDefault();
-                              setContextMenuSubmenu(null);
-                              setContextMenu({
-                                entry,
-                                image: false,
-                                x: event.clientX,
-                                y: event.clientY,
-                              });
-	                            }}
-	                          >
-	                            <TableCell className={styles.filesColSelect}>
-	                              <input
-	                                type="checkbox"
-	                                checked={selectedFiles.has(entry.path)}
-	                                onChange={() => handleToggleFile(entry.path)}
-	                              />
-	                            </TableCell>
-	                            <TableCell className={styles.filesColName}>
-	                              {renamingPath === entry.path ? (
-	                                <Input
-	                                  size="small"
-	                                  value={renameValue}
-	                                  onChange={(_, data) => setRenameValue(data.value)}
-	                                  onBlur={() => commitRename(entry)}
-	                                  onKeyDown={(event) => {
-	                                    if (event.key === "Enter") {
-	                                      event.preventDefault();
-	                                      commitRename(entry);
-	                                    }
-	                                    if (event.key === "Escape") {
-	                                      event.preventDefault();
-	                                      cancelRename();
-	                                    }
-	                                  }}
-	                                  autoFocus
-	                                  className={styles.renameInput}
-	                                />
-	                              ) : (
-	                                <button
-	                                  type="button"
-	                                  className={styles.filesNameButton}
-	                                  onClick={() => startRename(entry)}
-	                                >
-	                                  {entry.name}
-	                                </button>
-	                              )}
-	                            </TableCell>
-	                            <TableCell className={styles.filesColSize}>
-	                              <Text size={100} className={styles.filesInfo}>
-	                                {formatFileSize(entry.size)}
-	                              </Text>
-	                            </TableCell>
-	                            <TableCell className={styles.filesColDate}>
-	                              <Text size={100} className={styles.filesInfo}>
-	                                {formatDateTime(entry.modifiedAt)}
-	                              </Text>
-	                            </TableCell>
-	                            <TableCell className={styles.filesColAction}>
-	                              <div className={styles.fileActions}>
-	                                <Button
-	                                  appearance="outline"
-	                                  size="small"
-	                                  onClick={() => downloadEntry(entry)}
-	                                  className={styles.fileActionButton}
-	                                >
-	                                  {t("bulkProcessing.explorer.download")}
-	                                </Button>
-	                                <Button
-	                                  appearance="outline"
-	                                  size="small"
-	                                  onClick={() => handleOpenFileViewer(entry)}
-	                                  disabled={!isTextFileEditable(entry)}
-	                                  className={mergeClasses(
-	                                    styles.fileActionButton,
-	                                    styles.fileActionButtonNarrow
-	                                  )}
-	                                >
-	                                  View
-	                                </Button>
-	                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                  {entriesLoading ? (
-                    <div className={styles.entriesContentOverlay}>
-                      <Spinner size="tiny" />
-                    </div>
-                  ) : null}
-                  </div>
+                            </svg>
+                          </button>
+                          {entry.type === "dir" ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              className={styles.thumbIcon}
+                            >
+                              <path
+                                fill="currentColor"
+                                d="M9.5 4h-5A2.5 2.5 0 0 0 2 6.5v11A2.5 2.5 0 0 0 4.5 20h15A2.5 2.5 0 0 0 22 17.5v-9A2.5 2.5 0 0 0 19.5 6H12l-2-2.5A2.5 2.5 0 0 0 9.5 4Z"
+                              />
+                            </svg>
+                          ) : imageEntry ? (
+                            <img
+                              src={`/api/drafts/download?path=${encodeURIComponent(
+                                entry.path
+                              )}`}
+                              alt={entry.name}
+                              className={styles.thumbImage}
+                            />
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                              className={styles.thumbIcon}
+                            >
+                              <path
+                                fill="currentColor"
+                                d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <div className={styles.mediaFooter}>
+                          <input
+                            type="checkbox"
+                            checked={selectedFiles.has(entry.path)}
+                            onChange={() => handleToggleFile(entry.path)}
+                          />
+                          {renamingPath === entry.path ? (
+                            <Input
+                              size="small"
+                              value={renameValue}
+                              onChange={(_, data) => setRenameValue(data.value)}
+                              onBlur={() => commitRename(entry)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitRename(entry);
+                                }
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelRename();
+                                }
+                              }}
+                              autoFocus
+                              className={styles.renameInput}
+                            />
+                          ) : entry.type === "dir" ? (
+                            <button
+                              type="button"
+                              className={styles.mediaLabel}
+                              onClick={() => setCurrentPath(entry.path)}
+                              style={{ cursor: "pointer" }}
+                            >
+                              {entry.name}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.mediaLabel}
+                              onClick={() => startRename(entry)}
+                            >
+                              {entry.name}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className={styles.urlUploadPanel}>
-                  <Text size={100} weight="semibold">
-                    Image URL Input
-                  </Text>
-                  <Textarea
-                    rows={3}
-                    resize="vertical"
-                    value={imageUrlInput}
-                    onChange={(_, data) => setImageUrlInput(data.value)}
-                    placeholder="Paste image URLs separated by commas"
-                    className={styles.urlUploadInput}
-                  />
-                  <div className={styles.urlUploadActions}>
-                    <Button
-                      appearance="primary"
-                      size="small"
-                      onClick={handleAddImageUrls}
-                      disabled={!currentPath || addingImageUrls}
-                    >
-                      {addingImageUrls ? "Adding..." : "Add Images"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div
-                  className={mergeClasses(
-                    styles.dropZone,
-                    isDragging ? styles.dropZoneActive : undefined
-                  )}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDragging(false);
-                    const files = Array.from(event.dataTransfer.files ?? []);
-                    handleUploadFiles(files);
-                  }}
-                >
-                  <Text size={100} className={styles.uploadDropHint}>
-                    Drag and drop files, or choose from your computer.
-                  </Text>
-                  <div className={styles.uploadDropCenter}>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.uploadDropIcon}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                      <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
-                      <path d="M12 11v6" />
-                      <path d="M9.5 13.5l2.5 -2.5l2.5 2.5" />
-                    </svg>
-                  </div>
-                  <div className={styles.uploadInputWrap}>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={(event) =>
-                        handleUploadFiles(Array.from(event.target.files ?? []))
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         ) : explorerView === "list" ? (
@@ -13859,634 +7722,70 @@ export default function DraftExplorerPage() {
           </div>
         )}
 
-	        {contextMenu ? (
-	          <div
-	            className={styles.contextMenu}
-	            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-	            ref={contextMenuRef}
-	            onContextMenu={(event) => event.preventDefault()}
-              onClick={(event) => event.stopPropagation()}
-	          >
-	            {contextMenu.image ? (
-	              <div
-	                className={styles.contextMenuSubmenuWrap}
-	                onMouseEnter={() => setContextMenuSubmenu("tag-image")}
-	              >
+        {contextMenu ? (
+          <div
+            className={styles.contextMenu}
+            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <button
+              type="button"
+              className={styles.contextMenuButton}
+              onClick={() => handleContextMenuAction("open")}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              className={styles.contextMenuButton}
+              onClick={() => handleContextMenuAction("download")}
+            >
+              Download
+            </button>
+            {contextMenu.image ? (
+              <>
                 <button
                   type="button"
                   className={styles.contextMenuButton}
-                  onMouseEnter={() => setContextMenuSubmenu("tag-image")}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setContextMenuSubmenu("tag-image");
-                  }}
+                  onClick={() => handleContextMenuAction("run-ai-tool")}
                 >
-	                  {renderContextMenuIcon("tag")}
-	                  <span>Tag Image</span>
-	                  <span className={styles.contextMenuButtonCaret}>
-	                    {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-	                  </span>
-	                </button>
-	                {contextMenuSubmenu === "tag-image" ? (
-	                  <div
-	                    className={mergeClasses(
-	                      styles.contextMenuSubmenu,
-	                      contextMenuSubmenuSide === "left"
-	                        ? styles.contextMenuSubmenuLeft
-	                        : undefined
-	                    )}
-	                  >
-	                    {TAG_IMAGE_OPTIONS.map((tag) => {
-	                      const state = getContextMenuImageTagState(tag);
-	                      return (
-	                        <button
-	                          type="button"
-	                          className={styles.contextMenuButton}
-	                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            handleContextMenuAction(`tag-image-toggle:${tag}`);
-                          }}
-	                          key={`tag-toggle-${tag}`}
-	                        >
-                          <span className={styles.contextMenuTagLabel}>{tag}</span>
-                          <span
-                            className={mergeClasses(
-                              styles.contextMenuTagCheckbox,
-                              state === "all"
-                                ? styles.contextMenuTagCheckboxChecked
-                                : undefined,
-                              state === "some"
-                                ? styles.contextMenuTagCheckboxMixed
-                                : undefined
-                            )}
-                            aria-hidden="true"
-                          >
-                            {state === "all" ? (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 12 12"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className={styles.contextMenuTagCheckboxIcon}
-                              >
-                                <path d="M2.4 6.4l2.2 2.2l5 -5" />
-                              </svg>
-                            ) : state === "some" ? (
-                              <span className={styles.contextMenuTagCheckboxBar} />
-                            ) : null}
-                          </span>
-	                        </button>
-	                      );
-	                    })}
-	                  </div>
-                ) : null}
-              </div>
-            ) : null}
-	            <button
-	              type="button"
-	              className={styles.contextMenuButton}
-	              onMouseEnter={() => setContextMenuSubmenu(null)}
-	              onClick={() => handleContextMenuAction("open")}
-	            >
-              {renderContextMenuIcon("open")}
-              <span>Open</span>
-            </button>
-            {contextMenu.image ? (
+                  Run AI tool (placeholder)
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("auto-enhance")}
+                >
+                  Auto enhance (placeholder)
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 className={styles.contextMenuButton}
-                disabled={contextMenuMoveToMainDisabled}
-                onMouseEnter={() => setContextMenuSubmenu(null)}
-                onClick={() => handleContextMenuAction("move-to-main")}
+                onClick={() => handleContextMenuAction("quick-action")}
               >
-                {renderContextMenuIcon("move-main")}
-                <span>Move to Main</span>
+                Quick action (placeholder)
               </button>
-            ) : null}
-	            <button
-	              type="button"
-	              className={styles.contextMenuButton}
-	              onMouseEnter={() => setContextMenuSubmenu(null)}
-	              onClick={() => handleContextMenuAction("download")}
-	            >
-              {renderContextMenuIcon("download")}
-              <span>Download</span>
-            </button>
-	            {isTextFileEditable(contextMenu.entry) ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
-	                onClick={() => handleContextMenuAction("view")}
-	              >
-                {renderContextMenuIcon("open")}
-                <span>View</span>
-              </button>
-            ) : null}
-	            <button
-		              type="button"
-		              className={styles.contextMenuButton}
-		              onMouseEnter={() => setContextMenuSubmenu(null)}
-		              onClick={() => handleContextMenuAction("create-copy")}
-		            >
-	              {renderContextMenuIcon("duplicate")}
-	              <span>Duplicate</span>
-	            </button>
-	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
-	                onClick={() => handleContextMenuAction("copy-to-clipboard")}
-	              >
-	                {renderContextMenuIcon("clipboard")}
-	                <span>Copy to Clipboard</span>
-	              </button>
-	            ) : null}
-	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
-	                onClick={() => handleContextMenuAction("undo-last-change")}
-	              >
-	                {renderContextMenuIcon("undo")}
-	                <span>Undo last change</span>
-	              </button>
-	            ) : null}
-	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
-	                onClick={() => handleContextMenuAction("photopea")}
-	              >
-	                {renderContextMenuIcon("photopea")}
-	                <span>Edit with Photopea</span>
-	              </button>
-	            ) : null}
-	            {contextMenu.image ? (
-	              <>
-			                <button
-			                  type="button"
-			                  className={styles.contextMenuButton}
-		                  onMouseEnter={() => setContextMenuSubmenu(null)}
-		                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
-		                >
-	                  {renderContextMenuIcon("focuscenter")}
-	                  <span>Edit Auto Center Wide</span>
-	                </button>
-	                <div
-	                  className={styles.contextMenuSubmenuWrap}
-	                  onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
-	                >
-                  <button
-                    type="button"
-                    className={styles.contextMenuButton}
-                    onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setContextMenuSubmenu("edit-chatgpt");
-                    }}
-                  >
-	                    {renderContextMenuIcon("ai")}
-	                    <span>Edit ChatGPT</span>
-	                    <span className={styles.contextMenuButtonCaret}>
-	                      {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-	                    </span>
-	                  </button>
-		                  {contextMenuSubmenu === "edit-chatgpt" ? (
-		                    <div
-		                      className={mergeClasses(
-		                        styles.contextMenuSubmenu,
-		                        contextMenuSubmenuSide === "left"
-		                          ? styles.contextMenuSubmenuLeft
-		                          : undefined
-		                      )}
-		                    >
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-template")}
-	                      >
-	                        <span>Standard Template</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
-	                      >
-	                        <span>Direct</span>
-	                      </button>
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
-                        >
-                          <button
-                            type="button"
-                            className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-digideal");
-                            }}
-                          >
-                            <span>Digideal Main</span>
-                            <span className={styles.contextMenuButtonCaret}>
-                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-                            </span>
-                          </button>
-                          {contextMenuNestedSubmenu === "chatgpt-digideal" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:1")
-                                }
-                              >
-                                <span>1 image</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:2")
-                                }
-                              >
-                                <span>2 images</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:3")
-                                }
-                              >
-                                <span>3 images</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
+            )}
+          </div>
+        ) : null}
 
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
-                        >
-                          <button
-                            type="button"
-                            className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-scene");
-                            }}
-                          >
-                            <span>Product Scene</span>
-                            <span className={styles.contextMenuButtonCaret}>
-                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-                            </span>
-                          </button>
-                          {contextMenuNestedSubmenu === "chatgpt-scene" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-product-scene:1")
-                                }
-                              >
-                                <span>1 image</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-product-scene:2")
-                                }
-                              >
-                                <span>2 images</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-product-scene:3")
-                                }
-                              >
-                                <span>3 images</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-	                    </div>
-	                  ) : null}
-	                </div>
-
-	                <div
-	                  className={styles.contextMenuSubmenuWrap}
-	                  onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
-	                >
-                  <button
-                    type="button"
-                    className={styles.contextMenuButton}
-                    onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setContextMenuSubmenu("edit-gemini");
-                    }}
-                  >
-	                    {renderContextMenuIcon("ai")}
-	                    <span>Edit Gemini</span>
-	                    <span className={styles.contextMenuButtonCaret}>
-	                      {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-	                    </span>
-	                  </button>
-		                  {contextMenuSubmenu === "edit-gemini" ? (
-		                    <div
-		                      className={mergeClasses(
-		                        styles.contextMenuSubmenu,
-		                        contextMenuSubmenuSide === "left"
-		                          ? styles.contextMenuSubmenuLeft
-		                          : undefined
-		                      )}
-		                    >
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-template")}
-	                      >
-	                        <span>Standard Template</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-direct")}
-	                      >
-	                        <span>Direct</span>
-	                      </button>
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
-                        >
-                          <button
-                            type="button"
-                            className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-digideal");
-                            }}
-                          >
-                            <span>Digideal Main</span>
-                            <span className={styles.contextMenuButtonCaret}>
-                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-                            </span>
-                          </button>
-                          {contextMenuNestedSubmenu === "gemini-digideal" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:1")
-                                }
-                              >
-                                <span>1 image</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:2")
-                                }
-                              >
-                                <span>2 images</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:3")
-                                }
-                              >
-                                <span>3 images</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
-                        >
-                          <button
-                            type="button"
-                            className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-scene");
-                            }}
-                          >
-                            <span>Product Scene</span>
-                            <span className={styles.contextMenuButtonCaret}>
-                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
-                            </span>
-                          </button>
-                          {contextMenuNestedSubmenu === "gemini-scene" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-product-scene:1")
-                                }
-                              >
-                                <span>1 image</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-product-scene:2")
-                                }
-                              >
-                                <span>2 images</span>
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.contextMenuButton}
-                                onClick={() =>
-                                  handleContextMenuAction("ai-gemini-product-scene:3")
-                                }
-                              >
-                                <span>3 images</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-	                    </div>
-	                  ) : null}
-	                </div>
-	                <button
-	                  type="button"
-	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
-	                  onClick={() => handleContextMenuAction("ai-zimage-direct")}
-	                >
-                  {renderContextMenuIcon("ai")}
-                  <span>Edit Z-Image: Direct</span>
-                </button>
-	                <button
-	                  type="button"
-	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
-	                  onClick={() => handleContextMenuAction("ai-zimage-white")}
-	                >
-                  {renderContextMenuIcon("background")}
-                  <span>Edit Z-Image: White BG</span>
-                </button>
-	                <button
-	                  type="button"
-	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
-	                  onClick={() => handleContextMenuAction("ai-zimage-eraser")}
-	                >
-                  {renderContextMenuIcon("eraser")}
-                  <span>Edit Z-image: Eraser</span>
-                </button>
-	                <button
-	                  type="button"
-	                  className={styles.contextMenuButton}
-                    disabled={contextMenuUpscaleDisabled}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
-	                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
-	                >
-                  {renderContextMenuIcon("upscale")}
-                  <span>Edit Z-Image: Upscale</span>
-                </button>
-              </>
-            ) : null}
-	          </div>
-	        ) : null}
-
-	        <Dialog
-	          open={photopeaOpen}
-	          onOpenChange={(_, data) => {
-	            if (!data.open) {
-	              if (photopeaExporting || photopeaPersisting) return;
-	              closePhotopea();
-	            }
-	          }}
-	        >
-	          <DialogSurface className={styles.photopeaSurface}>
-	            <DialogBody className={styles.photopeaBody}>
-	              <DialogTitle>
-	                {`Photopea - ${photopeaEntry?.name ?? ""}`}
-	              </DialogTitle>
-	              {photopeaError ? (
-	                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
-	                  {photopeaError}
-	                </Text>
-	              ) : (
-	                <Text size={100} className={styles.filesInfo}>
-	                  Click Save below to export a JPG from Photopea and replace the draft file.
-	                </Text>
-	              )}
-	              <div className={styles.photopeaFrameWrap}>
-	                <iframe
-	                  key={`photopea-${photopeaSessionKey}`}
-	                  ref={photopeaIframeRef}
-	                  className={styles.photopeaFrame}
-	                  src={buildPhotopeaUrl()}
-	                  title="Photopea"
-	                  allow="clipboard-read; clipboard-write"
-	                  onLoad={() => {
-	                    const win = photopeaIframeRef.current?.contentWindow;
-	                    if (!win) return;
-	                    // Ping Photopea so it echoes a ready marker back to us (and then "done").
-	                    win.postMessage(
-	                      'app.echoToOE("__hub_photopea_ready__");',
-	                      "https://www.photopea.com"
-	                    );
-	                  }}
-	                />
-	                {photopeaLoading || photopeaExporting || photopeaPersisting ? (
-	                  <div className={styles.entriesContentOverlay}>
-	                    <Spinner size="tiny" />
-	                  </div>
-	                ) : null}
-	              </div>
-	              <DialogActions>
-	                <Button
-	                  appearance="outline"
-	                  onClick={requestPhotopeaExport}
-	                  disabled={!photopeaReady || photopeaLoading || photopeaExporting || photopeaPersisting}
-	                >
-	                  {photopeaExporting
-	                    ? "Exporting..."
-	                    : photopeaPersisting
-	                      ? "Saving..."
-	                      : "Save"}
-	                </Button>
-	                <Button
-	                  appearance="primary"
-	                  onClick={closePhotopea}
-	                  disabled={photopeaExporting || photopeaPersisting}
-	                >
-	                  {t("common.close")}
-	                </Button>
-	              </DialogActions>
-	            </DialogBody>
-	          </DialogSurface>
-	        </Dialog>
-
-	        <Dialog
-	          open={aiEditTargets.length > 0}
-	          onOpenChange={(_, data) => {
-	            if (!data.open) {
-              cancelAiEdit();
-            }
+        <div
+          className={mergeClasses(
+            styles.dropZone,
+            isDragging ? styles.dropZoneActive : undefined
+          )}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            const files = Array.from(event.dataTransfer.files ?? []);
+            handleUploadFiles(files);
           }}
         >
           <DialogSurface className={styles.aiPromptSurface}>

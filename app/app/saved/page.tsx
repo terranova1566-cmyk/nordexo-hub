@@ -56,6 +56,7 @@ type ListProduct = {
   variant_count: number;
   thumbnail_url?: string | null;
   small_image_url?: string | null;
+  legacy_text?: boolean;
 };
 
 const formatShortDate = (value?: string | null) => {
@@ -763,6 +764,7 @@ function SavedListsView() {
 function SavedListDetailView({ listId }: { listId: string }) {
   const styles = useStyles();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useI18n();
   const supabase = useMemo(() => createClient(), []);
 
@@ -774,9 +776,12 @@ function SavedListDetailView({ listId }: { listId: string }) {
   const [pageSize] = useState(25);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [convertDebugPath, setConvertDebugPath] = useState<string | null>(null);
+  const [convertDebugReady, setConvertDebugReady] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportName, setExportName] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [isConvertingLegacy, setIsConvertingLegacy] = useState(false);
   const [exportMode, setExportMode] = useState<"excel" | "images">("excel");
   const [exportImageMode, setExportImageMode] = useState<"all" | "original">(
     "all"
@@ -855,6 +860,64 @@ function SavedListDetailView({ listId }: { listId: string }) {
     }
   };
 
+  const handleConvertAllLegacy = async () => {
+    setIsConvertingLegacy(true);
+    setError(null);
+    setConvertDebugPath(null);
+    setConvertDebugReady(false);
+    try {
+      const debug =
+        (searchParams?.get("debug") ?? "").trim() === "1" ||
+        (searchParams?.get("debug") ?? "").trim().toLowerCase() === "true";
+      const response = await fetch(
+        "/api/products/wishlists/convert-legacy-text",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listId, debug }),
+        }
+      );
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Legacy conversion failed.");
+      }
+      try {
+        const payload = await response.json();
+        if (payload?.debug_path) {
+          const debugPath = String(payload.debug_path);
+          setConvertDebugPath(debugPath);
+          try {
+            sessionStorage.setItem("saved_convert_debug_path", debugPath);
+          } catch {
+            // ignore storage errors
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+      if (debug) {
+        setConvertDebugReady(true);
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsConvertingLegacy(false);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("saved_convert_debug_path");
+      if (stored && !convertDebugPath) {
+        setConvertDebugPath(stored);
+      }
+    } catch {
+      // ignore
+    }
+  }, [convertDebugPath]);
+
   useEffect(() => {
     const controller = new AbortController();
     const loadList = async () => {
@@ -893,6 +956,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
         params.set("wishlistId", listId);
         params.set("page", String(page));
         params.set("pageSize", String(pageSize));
+        params.set("includeLegacyText", "true");
 
         const response = await fetch(`/api/products?${params.toString()}`, {
           signal: controller.signal,
@@ -999,6 +1063,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
                 </Text>
               )}
             </TableCell>
+            <TableCell>{item.legacy_text ? "Yes" : "No"}</TableCell>
             <TableCell>{item.spu ?? t("common.notAvailable")}</TableCell>
             <TableCell>
               <div className={styles.dateStack}>
@@ -1069,6 +1134,19 @@ function SavedListDetailView({ listId }: { listId: string }) {
             </Text>
           </div>
           <div className={styles.detailActions}>
+            <Button
+              appearance="outline"
+              onClick={handleConvertAllLegacy}
+              disabled={
+                listMissing ||
+                items.length === 0 ||
+                isLoading ||
+                isExporting ||
+                isConvertingLegacy
+              }
+            >
+              {isConvertingLegacy ? "Converting..." : "Convert All Legacy"}
+            </Button>
             <Menu>
               <MenuTrigger disableButtonEnhancement>
                 <Button
@@ -1122,6 +1200,22 @@ function SavedListDetailView({ listId }: { listId: string }) {
         </div>
 
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
+        {convertDebugPath ? (
+          <MessageBar intent="info">
+            Debug written: <code>{convertDebugPath}</code>
+            {convertDebugReady ? (
+              <>
+                {" "}
+                <Button
+                  appearance="subtle"
+                  onClick={() => window.location.reload()}
+                >
+                  Reload Now
+                </Button>
+              </>
+            ) : null}
+          </MessageBar>
+        ) : null}
         {listMissing ? (
           <Text className={styles.metaText}>{t("products.lists.notFound")}</Text>
         ) : isLoading ? (
@@ -1135,6 +1229,9 @@ function SavedListDetailView({ listId }: { listId: string }) {
                 <TableHeaderCell className={styles.imageCol} />
                 <TableHeaderCell className={styles.headerCell}>
                   {t("products.table.product")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.headerCell}>
+                  Legacy Text
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.headerCell}>
                   {t("products.table.spu")}

@@ -27,8 +27,9 @@ Output:
 }
 
 Rules:
-- core_terms must be Swedish, short, and high-signal. Only 2 terms.
-- Every term must be a single word (no hyphens, slashes, or multi-word phrases).
+- core_terms must be Swedish, short, and high-signal. Exactly 2 terms.
+- Every term must be a single-word token: letters only (a-z + a-umlaut / o-umlaut style letters like a/o with dots). No spaces, hyphens, slashes, digits, or punctuation.
+- If a strong keyword appears hyphenated or with separators, split it and choose the best single word(s) (do not return the hyphenated form).
 - support_terms must be Swedish, lower priority than core.
 - Do NOT include filler in core/support.
 

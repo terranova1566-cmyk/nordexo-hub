@@ -18,6 +18,9 @@ type ProductRow = {
   title: string | null;
   subtitle: string | null;
   description_html: string | null;
+  legacy_title_sv?: string | null;
+  legacy_description_sv?: string | null;
+  legacy_bullets_sv?: string | null;
   tags: string | null;
   product_type: string | null;
   shopify_category_name: string | null;
@@ -32,6 +35,14 @@ type ProductRow = {
   vendor: string | null;
   nordic_partner_enabled: boolean | null;
 };
+
+const normalizeHtml = (value: string) =>
+  value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const safeDecode = (value: string) => {
   try {
@@ -120,6 +131,8 @@ export async function GET(request: NextRequest) {
   const sort = searchParams.get("sort") ?? "updated_desc";
   const hasVariants = searchParams.get("hasVariants") === "true";
   const savedFilter = searchParams.get("saved") ?? "all";
+  const includeLegacyText =
+    (searchParams.get("includeLegacyText") ?? "").toLowerCase() === "true";
   const coreTermsParam = searchParams.get("coreTerms")?.trim();
   const coreTerms =
     coreTermsParam
@@ -135,6 +148,10 @@ export async function GET(request: NextRequest) {
 
   let products: ProductRow[] = [];
   let totalCount = 0;
+
+  const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
+    ? "id, spu, title, subtitle, description_html, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled"
+    : "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled";
 
   if (useMeili) {
     const filters: string[] = [];
@@ -355,9 +372,7 @@ export async function GET(request: NextRequest) {
 
     let productQuery = supabase
       .from("catalog_products")
-      .select(
-        "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled"
-      )
+      .select(PRODUCT_SELECT_COLUMNS)
       .in("id", ids)
       .neq("is_blocked", true);
 
@@ -372,19 +387,16 @@ export async function GET(request: NextRequest) {
     }
 
     const orderMap = new Map(ids.map((id, index) => [id, index]));
-    products =
-      (data ?? []).slice().sort((a, b) => {
-        const left = orderMap.get(a.id) ?? 0;
-        const right = orderMap.get(b.id) ?? 0;
-        return left - right;
-      }) as ProductRow[];
+    const rows = (data ?? []) as unknown as ProductRow[];
+    products = rows.slice().sort((a, b) => {
+      const left = orderMap.get(a.id) ?? 0;
+      const right = orderMap.get(b.id) ?? 0;
+      return left - right;
+    });
   } else {
     let query = supabase
       .from("catalog_products")
-      .select(
-        "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled",
-        { count: "exact" }
-      )
+      .select(PRODUCT_SELECT_COLUMNS, { count: "exact" })
       .neq("is_blocked", true);
 
     if (!isAdmin) {
@@ -582,7 +594,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    products = (data ?? []) as ProductRow[];
+    products = (data ?? []) as unknown as ProductRow[];
     totalCount = count ?? 0;
   }
 
@@ -604,6 +616,87 @@ export async function GET(request: NextRequest) {
   }
 
   const productIds = products?.map((product) => product.id) ?? [];
+
+  const legacyTextByProductId = new Map<string, boolean>();
+  if (includeLegacyText && productIds.length > 0) {
+    const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
+    // Treat any of these metafields as an indicator that the product has been converted.
+    const CONVERTED_KEYS = [
+      "short_title",
+      "long_title",
+      "subtitle",
+      "bullets_short",
+      "bullets",
+      "bullets_long",
+      "description_short",
+      "description_extended",
+      "specs",
+    ];
+
+    const { data: metaDefs } = await supabase
+      .from("metafield_definitions")
+      .select("id, key, namespace")
+      .eq("resource", "catalog_product")
+      .in("key", CONVERTED_KEYS)
+      .in("namespace", PRODUCT_META_NAMESPACES);
+
+    const defMap = new Map<string, { key: string; namespace: string | null }>();
+    (metaDefs ?? []).forEach((def) => {
+      if (!def?.id) return;
+      defMap.set(String(def.id), {
+        key: String(def.key ?? ""),
+        namespace: def.namespace ?? null,
+      });
+    });
+    const defIds = Array.from(defMap.keys());
+
+    const convertedSet = new Set<string>();
+    if (defIds.length > 0) {
+      const { data: metaValues } = await supabase
+        .from("metafield_values")
+        .select("definition_id, target_id, value_text, value, value_number, value_json")
+        .eq("target_type", "product")
+        .in("definition_id", defIds)
+        .in("target_id", productIds);
+
+      metaValues?.forEach((row) => {
+        const productId = row.target_id ? String(row.target_id) : "";
+        if (!productId) return;
+        const text =
+          (typeof row.value_text === "string" && row.value_text.trim()
+            ? row.value_text
+            : null) ??
+          (row.value_number !== null && row.value_number !== undefined
+            ? String(row.value_number)
+            : null) ??
+          (typeof row.value === "string" && row.value.trim() ? row.value : null) ??
+          (row.value_json !== null && row.value_json !== undefined
+            ? JSON.stringify(row.value_json)
+            : null);
+        if (text && text.trim()) {
+          convertedSet.add(productId);
+        }
+      });
+    }
+
+    (products ?? []).forEach((product) => {
+      const legacyTitle = String(product.legacy_title_sv ?? "").trim();
+      const legacyDesc = String(product.legacy_description_sv ?? "").trim();
+      const legacyBullets = String(product.legacy_bullets_sv ?? "").trim();
+      const hasLegacy = Boolean(legacyTitle || legacyDesc || legacyBullets);
+      const hasConverted = convertedSet.has(product.id);
+      const normalizedDescription = normalizeHtml(product.description_html ?? "");
+      const legacyPointerActive =
+        Boolean(legacyDesc) &&
+        Boolean(normalizedDescription) &&
+        normalizedDescription === legacyDesc;
+      legacyTextByProductId.set(
+        product.id,
+        hasLegacy && (!hasConverted || legacyPointerActive)
+      );
+    });
+  }
+
   const variantCountMap = new Map<string, number>();
   const variantPriceMap = new Map<string, { min: number; max: number }>();
   const variantB2CPriceMap = new Map<string, { min: number; max: number }>();
@@ -820,6 +913,9 @@ export async function GET(request: NextRequest) {
         ...product,
         title: resolvedTitle,
         variant_count: variantCount,
+        legacy_text: includeLegacyText
+          ? legacyTextByProductId.get(product.id) ?? false
+          : undefined,
         price_min: variantPriceMap.get(product.id)?.min ?? null,
         price_max: variantPriceMap.get(product.id)?.max ?? null,
         b2c_price_min: variantB2CPriceMap.get(product.id)?.min ?? null,

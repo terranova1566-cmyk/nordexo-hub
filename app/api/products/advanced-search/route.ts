@@ -36,7 +36,14 @@ const sanitizeTerms = (value: unknown) => {
   value.forEach((entry) => {
     const term = String(entry || "").trim();
     if (!term) return;
-    if (!out.includes(term)) out.push(term);
+    // Enforce "single word" terms even if the model returns separators like "-" or "/".
+    term
+      .split(/[^\p{L}]+/gu)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .forEach((token) => {
+        if (!out.includes(token)) out.push(token);
+      });
   });
   return out;
 };

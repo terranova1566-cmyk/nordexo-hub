@@ -2588,6 +2588,11 @@
       "context": "Cancel action"
     },
     {
+      "key": "common.delete",
+      "text": "Delete",
+      "context": "Delete action"
+    },
+    {
       "key": "common.close",
       "text": "Close",
       "context": "Close action"
@@ -4700,7 +4705,7 @@
     ,
     {
       "key": "production.title",
-      "text": "Production",
+      "text": "Production Queue",
       "context": "Production page title"
     },
     {
@@ -4734,6 +4739,11 @@
       "context": "Production table header"
     },
     {
+      "key": "production.table.price",
+      "text": "Price",
+      "context": "Production table header"
+    },
+    {
       "key": "production.table.updated",
       "text": "Updated",
       "context": "Production table header"
@@ -4754,6 +4764,16 @@
       "context": "Production table header"
     },
     {
+      "key": "production.table.suppliers",
+      "text": "Suppliers",
+      "context": "Production table header"
+    },
+    {
+      "key": "production.table.linkedProduct",
+      "text": "Linked product",
+      "context": "Production table header"
+    },
+    {
       "key": "production.table.comments",
       "text": "Comments",
       "context": "Production table header"
@@ -4762,6 +4782,16 @@
       "key": "production.table.actions",
       "text": "Actions",
       "context": "Production table header"
+    },
+    {
+      "key": "production.table.selectAll",
+      "text": "Select all",
+      "context": "Production table select-all checkbox aria-label"
+    },
+    {
+      "key": "production.table.selectRow",
+      "text": "Select row",
+      "context": "Production table row checkbox aria-label"
     },
     {
       "key": "production.link.view",
@@ -4839,6 +4869,256 @@
       "context": "Production comments fallback name"
     },
     {
+      "key": "production.suppliers.search",
+      "text": "Search suppliers",
+      "context": "Production suppliers button label when no cached search exists"
+    },
+    {
+      "key": "production.suppliers.searching",
+      "text": "Looking for suppliers...",
+      "context": "Production suppliers button label while background searching is running"
+    },
+    {
+      "key": "production.suppliers.count",
+      "text": "{count} suppliers",
+      "context": "Production suppliers button label showing supplier result count"
+    },
+    {
+      "key": "production.suppliers.selected",
+      "text": "Supplier Selected",
+      "context": "Production suppliers button label after a supplier has been selected"
+    },
+    {
+      "key": "production.suppliers.title",
+      "text": "Supplier suggestions",
+      "context": "Production suppliers dialog title"
+    },
+    {
+      "key": "production.suppliers.loading",
+      "text": "Searching suppliers...",
+      "context": "Production suppliers dialog loading label"
+    },
+    {
+      "key": "production.suppliers.searchingFooter",
+      "text": "Looking for suppliers...",
+      "context": "Production suppliers dialog footer while background searching is running"
+    },
+    {
+      "key": "production.suppliers.empty",
+      "text": "No suppliers found.",
+      "context": "Production suppliers dialog empty state"
+    },
+    {
+      "key": "production.suppliers.translating",
+      "text": "Translating title...",
+      "context": "Production suppliers dialog placeholder while translating Chinese titles to English"
+    },
+    {
+      "key": "production.suppliers.filterByPrice",
+      "text": "Filter by Price",
+      "context": "Production suppliers dialog sort button label"
+    },
+    {
+      "key": "production.suppliers.open1688",
+      "text": "See on 1688.com",
+      "context": "Production suppliers link label"
+    },
+    {
+      "key": "production.suppliers.seller",
+      "text": "Seller",
+      "context": "Production suppliers seller label"
+    },
+    {
+      "key": "production.suppliers.sales",
+      "text": "Sales",
+      "context": "Production suppliers sales label"
+    },
+    {
+      "key": "production.suppliers.price",
+      "text": "Price",
+      "context": "Production suppliers price label (RMB)"
+    },
+    {
+      "key": "production.suppliers.moq",
+      "text": "MOQ",
+      "context": "Production suppliers minimum order quantity label"
+    },
+    {
+      "key": "production.suppliers.location",
+      "text": "Location",
+      "context": "Production suppliers location label"
+    },
+    {
+      "key": "production.suppliers.supply",
+      "text": "Supply",
+      "context": "Production suppliers supply label"
+    },
+    {
+      "key": "production.suppliers.selectedHeader",
+      "text": "Selected supplier",
+      "context": "Production suppliers dialog section header for saved supplier"
+    },
+    {
+      "key": "production.suppliers.otherHeader",
+      "text": "Other suppliers",
+      "context": "Production suppliers dialog section header for remaining suppliers"
+    },
+    {
+      "key": "production.suppliers.rowSelected",
+      "text": "Selected",
+      "context": "Production suppliers dialog badge for currently selected row"
+    },
+    {
+      "key": "production.suppliers.clickToSelect",
+      "text": "Click to select",
+      "context": "Production suppliers dialog hint text for selecting a supplier row"
+    },
+    {
+      "key": "production.suppliers.pinned",
+      "text": "Saved",
+      "context": "Production suppliers dialog badge for pinned saved supplier"
+    },
+    {
+      "key": "production.suppliers.savedHint",
+      "text": "This supplier is saved for this product.",
+      "context": "Production suppliers dialog hint under pinned saved supplier"
+    },
+    {
+      "key": "production.suppliers.save",
+      "text": "Save",
+      "context": "Production suppliers save button"
+    },
+    {
+      "key": "production.suppliers.close",
+      "text": "Close",
+      "context": "Production suppliers close button"
+    },
+    {
+      "key": "production.suppliers.recrop",
+      "text": "Recrop Image",
+      "context": "Production suppliers button label to recrop the image used for supplier search"
+    },
+    {
+      "key": "production.suppliers.recropTitle",
+      "text": "Recrop image for supplier search",
+      "context": "Production suppliers recrop dialog title"
+    },
+    {
+      "key": "production.suppliers.recropMissingImage",
+      "text": "Image unavailable for recropping.",
+      "context": "Production suppliers recrop dialog empty state when image is missing"
+    },
+    {
+      "key": "production.suppliers.zoom",
+      "text": "Zoom",
+      "context": "Production suppliers recrop dialog zoom label"
+    },
+    {
+      "key": "production.suppliers.recropSearch",
+      "text": "Search",
+      "context": "Production suppliers recrop dialog search button label"
+    },
+    {
+      "key": "production.suppliers.errorLoad",
+      "text": "Unable to load supplier suggestions.",
+      "context": "Production suppliers load error"
+    },
+    {
+      "key": "production.suppliers.errorSave",
+      "text": "Unable to save selected supplier.",
+      "context": "Production suppliers save error"
+    },
+    {
+      "key": "production.suppliers.locked",
+      "text": "Supplier is already set in DigiDeal (EST rerun price) and takes precedence.",
+      "context": "Production suppliers locked message"
+    },
+    {
+      "key": "production.suppliers.lockedSelectedTitle",
+      "text": "Locked supplier (from DigiDeal)",
+      "context": "Production suppliers dialog title for locked selected supplier"
+    },
+    {
+      "key": "production.suppliers.lockedBadge",
+      "text": "Locked",
+      "context": "Production suppliers dialog badge for locked supplier"
+    },
+    {
+      "key": "production.suppliers.openLocked",
+      "text": "Open locked supplier",
+      "context": "Production suppliers locked link label"
+    },
+    {
+      "key": "production.linked.title",
+      "text": "Linked product",
+      "context": "Production linked dialog title"
+    },
+    {
+      "key": "production.linked.current",
+      "text": "Current:",
+      "context": "Production linked current label"
+    },
+    {
+      "key": "production.linked.manualLabel",
+      "text": "Manual SPU",
+      "context": "Production linked manual label"
+    },
+    {
+      "key": "production.linked.manualPlaceholder",
+      "text": "Enter an SPU (optional)",
+      "context": "Production linked manual placeholder"
+    },
+    {
+      "key": "production.linked.loading",
+      "text": "Searching catalog...",
+      "context": "Production linked dialog loading"
+    },
+    {
+      "key": "production.linked.empty",
+      "text": "No matches found.",
+      "context": "Production linked dialog empty state"
+    },
+    {
+      "key": "production.linked.close",
+      "text": "Close",
+      "context": "Production linked dialog close button"
+    },
+    {
+      "key": "production.linked.save",
+      "text": "Save",
+      "context": "Production linked dialog save button"
+    },
+    {
+      "key": "production.linked.unlink",
+      "text": "Unlink",
+      "context": "Production linked dialog unlink button"
+    },
+    {
+      "key": "production.linked.relink",
+      "text": "Relink product",
+      "context": "Production linked relink aria label"
+    },
+    {
+      "key": "production.linked.link",
+      "text": "Link",
+      "context": "Production linked link button"
+    },
+    {
+      "key": "production.linked.errorSearch",
+      "text": "Catalog search failed.",
+      "context": "Production linked search error"
+    },
+    {
+      "key": "production.linked.errorSelect",
+      "text": "Select a product or enter an SPU.",
+      "context": "Production linked select error"
+    },
+    {
+      "key": "production.linked.errorSave",
+      "text": "Failed to save linked product.",
+      "context": "Production linked save error"
+    },
+    {
       "key": "production.error.load",
       "text": "Unable to load production list.",
       "context": "Production load error"
@@ -4912,6 +5192,46 @@
       "key": "digideal.filters.pages",
       "text": "Pages",
       "context": "DigiDeal campaigns page size filter label"
+    },
+    {
+      "key": "digideal.filters.minSold",
+      "text": "Min sold",
+      "context": "DigiDeal campaigns minimum sales filter label"
+    },
+    {
+      "key": "digideal.filters.minSoldPlaceholder",
+      "text": "e.g. 100",
+      "context": "DigiDeal campaigns minimum sales filter placeholder"
+    },
+    {
+      "key": "digideal.filters.inactivity",
+      "text": "Inactivity",
+      "context": "DigiDeal campaigns inactivity filter label"
+    },
+    {
+      "key": "digideal.filters.inactiveMode.any",
+      "text": "Any",
+      "context": "DigiDeal campaigns inactivity mode option"
+    },
+    {
+      "key": "digideal.filters.inactiveMode.noSales",
+      "text": "No sales in",
+      "context": "DigiDeal campaigns inactivity mode option"
+    },
+    {
+      "key": "digideal.filters.inactiveMode.offline",
+      "text": "Offline for",
+      "context": "DigiDeal campaigns inactivity mode option"
+    },
+    {
+      "key": "digideal.filters.inactiveDaysPlaceholder",
+      "text": "Days",
+      "context": "DigiDeal campaigns inactivity days input placeholder"
+    },
+    {
+      "key": "digideal.filters.resetAll",
+      "text": "Reset All Filters",
+      "context": "DigiDeal campaigns reset all filters button"
     },
     {
       "key": "digideal.status.online",
@@ -5052,6 +5372,16 @@
       "key": "digideal.supplier.add",
       "text": "Add Supplier",
       "context": "DigiDeal campaigns add supplier button"
+    },
+    {
+      "key": "digideal.supplier.manualInput",
+      "text": "Manual Input",
+      "context": "DigiDeal campaigns supplier menu manual option"
+    },
+    {
+      "key": "digideal.supplier.imageSearch",
+      "text": "Image Search",
+      "context": "DigiDeal campaigns supplier menu image search option"
     },
     {
       "key": "digideal.supplier.edit",
@@ -5299,6 +5629,11 @@
       "context": "DigiDeal campaigns rerun action button"
     },
     {
+      "key": "digideal.rerun.addToProduction",
+      "text": "Add to production",
+      "context": "DigiDeal campaigns rerun menu option"
+    },
+    {
       "key": "digideal.rerun.added",
       "text": "Added",
       "context": "DigiDeal campaigns rerun added button label"
@@ -5310,8 +5645,63 @@
     },
     {
       "key": "digideal.rerun.addWithComment",
-      "text": "Add with comment",
+      "text": "Add to production + comment",
       "context": "DigiDeal campaigns rerun menu option"
+    },
+    {
+      "key": "digideal.views.show",
+      "text": "Show lists",
+      "context": "DigiDeal campaigns lists filter label"
+    },
+    {
+      "key": "digideal.views.all",
+      "text": "All products",
+      "context": "DigiDeal campaigns lists filter default option"
+    },
+    {
+      "key": "digideal.views.addToView",
+      "text": "Add to list",
+      "context": "DigiDeal campaigns add-to-list menu option"
+    },
+    {
+      "key": "digideal.views.addNew",
+      "text": "Add to new list",
+      "context": "DigiDeal campaigns add-to-list menu create option"
+    },
+    {
+      "key": "digideal.views.loading",
+      "text": "Loading...",
+      "context": "DigiDeal campaigns views loading label"
+    },
+    {
+      "key": "digideal.views.empty",
+      "text": "No lists yet",
+      "context": "DigiDeal campaigns lists empty label"
+    },
+    {
+      "key": "digideal.views.createTitle",
+      "text": "Create new list",
+      "context": "DigiDeal campaigns create list dialog title"
+    },
+    {
+      "key": "digideal.views.nameLabel",
+      "text": "List name",
+      "context": "DigiDeal campaigns create list dialog field label"
+    },
+    {
+      "key": "digideal.views.namePlaceholder",
+      "text": "Enter a name",
+      "context": "DigiDeal campaigns create view dialog field placeholder"
+    },
+    {
+      "key": "digideal.views.deletePrompt",
+      "text": "Delete list \"{name}\"?",
+      "context": "DigiDeal campaigns delete list confirmation prompt"
+    },
+    {
+      "key": "digideal.views.deleteAria",
+      "text": "Delete list {name}",
+      "context": "DigiDeal campaigns delete list button aria-label"
     },
     {
       "key": "digideal.rerun.addedOn",

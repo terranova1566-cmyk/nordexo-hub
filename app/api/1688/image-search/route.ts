@@ -21,6 +21,11 @@ const parseNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const clampInt = (value: number, min: number, max: number) => {
+  const v = Math.trunc(value);
+  return Math.min(max, Math.max(min, v));
+};
+
 const normalizeFields = (value: unknown): string | null => {
   if (Array.isArray(value)) {
     const out = value
@@ -118,7 +123,7 @@ export async function POST(request: Request) {
         : typeof payload.imageUrl === "string"
           ? payload.imageUrl.trim()
           : null;
-    limit = parseNumber(payload.limit, limit);
+    limit = clampInt(parseNumber(payload.limit, limit), 1, 10);
     page = parseNumber(payload.page, page);
     cpsFirst = isTruthy(payload.cps_first ?? payload.cpsFirst);
     sortFields = typeof payload.sort_fields === "string" ? payload.sort_fields : "";
@@ -134,7 +139,7 @@ export async function POST(request: Request) {
     if (typeof urlEntry === "string") {
       imageUrl = urlEntry.trim();
     }
-    limit = parseNumber(form.get("limit"), limit);
+    limit = clampInt(parseNumber(form.get("limit"), limit), 1, 10);
     page = parseNumber(form.get("page"), page);
     cpsFirst = isTruthy(form.get("cps_first") ?? form.get("cpsFirst"));
     const sortEntry = form.get("sort_fields") ?? form.get("sortFields");

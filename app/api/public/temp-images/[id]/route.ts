@@ -8,7 +8,13 @@ export const runtime = "nodejs";
 const ROOT_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
 const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"] as const;
 
-const isValidId = (id: string) => /^[a-f0-9]{32}$/i.test(id);
+const parseId = (raw: string) => {
+  const text = String(raw || "").trim();
+  // Accept both `/api/public/temp-images/<id>` and `/api/public/temp-images/<id>.jpg`
+  // because some upstream fetchers expect a file extension.
+  const match = text.match(/^([a-f0-9]{32})(?:\.(jpg|jpeg|png|webp))?$/i);
+  return match?.[1] ? match[1] : null;
+};
 
 const metaPathFor = (id: string) => path.join(ROOT_DIR, `${id}.json`);
 
@@ -42,8 +48,9 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
-  if (!isValidId(id)) {
+  const { id: rawId } = await context.params;
+  const id = parseId(rawId);
+  if (!id) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 

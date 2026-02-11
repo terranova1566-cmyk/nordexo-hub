@@ -5,7 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const PRODUCT_SELECT =
-  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, google_taxonomy_id, google_taxonomy_path, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr, identical_spu";
+  "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, google_taxonomy_id, google_taxonomy_path, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr, identical_spu, digideal_group_id, digideal_group_count";
 
 const SELLER_GROUPS = [
   {
@@ -162,6 +162,23 @@ const toPgInList = (values: string[]) =>
 
 const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const daysSinceDate = (isoDate: string | null) => {
+  if (!isoDate) return Number.POSITIVE_INFINITY;
+  const date = new Date(`${isoDate}T00:00:00.000Z`);
+  const time = date.getTime();
+  if (Number.isNaN(time)) return Number.POSITIVE_INFINITY;
+  return Math.floor((Date.now() - time) / MS_PER_DAY);
+};
+
+const daysSinceTimestamp = (timestamp: string | null) => {
+  if (!timestamp) return Number.POSITIVE_INFINITY;
+  const time = Date.parse(timestamp);
+  if (Number.isNaN(time)) return Number.POSITIVE_INFINITY;
+  return Math.floor((Date.now() - time) / MS_PER_DAY);
+};
+
 const normalize1688Url = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
@@ -231,6 +248,79 @@ const computeEstimatedPrice = (
       ? Number(rawPrice.toFixed(2))
       : Math.round(rawPrice);
   return Number.isFinite(price) ? price : null;
+};
+
+const loadLastSoldAtMap = async (supabase: any) => {
+  const lastSoldAt = new Map<string, string | null>();
+  const chunkSize = 1000;
+  let offset = 0;
+
+  let currentProductId = "";
+  let prevCount: number | null = null;
+  let lastSoldDate: string | null = null;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("digideal_product_daily")
+      .select("product_id, scrape_date, purchased_count")
+      .order("product_id", { ascending: true })
+      .order("scrape_date", { ascending: true })
+      .range(offset, offset + chunkSize - 1);
+
+    if (error) {
+      return { map: lastSoldAt, error };
+    }
+
+    const rows = (data ?? []) as Array<{
+      product_id?: string | null;
+      scrape_date?: string | null;
+      purchased_count?: number | null;
+    }>;
+
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      const productId = typeof row.product_id === "string" ? row.product_id : "";
+      const scrapeDate =
+        typeof row.scrape_date === "string" ? row.scrape_date : null;
+      const purchased =
+        typeof row.purchased_count === "number"
+          ? row.purchased_count
+          : row.purchased_count === null || row.purchased_count === undefined
+            ? null
+            : Number(row.purchased_count);
+
+      if (!productId) continue;
+
+      if (productId !== currentProductId) {
+        if (currentProductId) {
+          lastSoldAt.set(currentProductId, lastSoldDate);
+        }
+        currentProductId = productId;
+        prevCount = null;
+        lastSoldDate = null;
+      }
+
+      if (prevCount !== null && purchased !== null && scrapeDate) {
+        const delta = purchased - prevCount;
+        if (Number.isFinite(delta) && delta > 0) {
+          lastSoldDate = scrapeDate;
+        }
+      }
+
+      // Match the view logic: a NULL breaks delta detection until a non-NULL appears again.
+      prevCount = purchased;
+    }
+
+    if (rows.length < chunkSize) break;
+    offset += chunkSize;
+  }
+
+  if (currentProductId) {
+    lastSoldAt.set(currentProductId, lastSoldDate);
+  }
+
+  return { map: lastSoldAt, error: null };
 };
 
 const loadPriceMatchIds = async (supabase: any) => {
@@ -334,6 +424,22 @@ export async function GET(request: NextRequest) {
     const status = (searchParams.get("status") ?? "online").toLowerCase();
     const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
     const priceMatch = searchParams.get("priceMatch")?.trim().toLowerCase();
+    const groupId = searchParams.get("groupId")?.trim();
+    const viewId = searchParams.get("viewId")?.trim();
+    const minSoldMetric = (
+      searchParams.get("minSoldMetric") ?? "sold_all_time"
+    )
+      .trim()
+      .toLowerCase();
+    const minSold = toNumber(searchParams.get("minSold")?.trim());
+    const inactiveMode = (searchParams.get("inactiveMode") ?? "any")
+      .trim()
+      .toLowerCase();
+    const inactiveDaysRaw = toNumber(searchParams.get("inactiveDays")?.trim());
+    const inactiveDays =
+      inactiveDaysRaw !== null && inactiveDaysRaw > 0
+        ? Math.floor(inactiveDaysRaw)
+        : 0;
 
     const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
     const pageSize = Math.min(
@@ -341,12 +447,18 @@ export async function GET(request: NextRequest) {
       Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE))
     );
 
+    const needsActivityFilter =
+      inactiveDays > 0 &&
+      (inactiveMode === "no_sales" || inactiveMode === "offline");
+    const effectiveStatus =
+      needsActivityFilter && inactiveMode === "offline" ? "all" : status;
+
     let query = supabase
       .from("digideal_products_search")
       .select(PRODUCT_SELECT, { count: "exact" });
 
-    if (status !== "all") {
-      query = query.eq("status", status);
+    if (effectiveStatus !== "all") {
+      query = query.eq("status", effectiveStatus);
     }
 
     // Keep rows where seller_name is NULL (legacy imports can be missing seller info),
@@ -366,6 +478,47 @@ export async function GET(request: NextRequest) {
         // Use `< nextDay` so the selected end date is inclusive.
         query = query.lt("first_seen_at", `${nextDay}T00:00:00.000Z`);
       }
+    }
+
+    if (groupId) {
+      query = query.eq("digideal_group_id", groupId);
+    }
+
+    if (viewId) {
+      const { data: view, error: viewError } = await supabase
+        .from("digideal_views")
+        .select("id")
+        .eq("id", viewId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (viewError) {
+        return NextResponse.json({ error: viewError.message }, { status: 500 });
+      }
+
+      if (!view) {
+        return NextResponse.json({ items: [], page, pageSize, total: 0 });
+      }
+
+      const { data: viewItems, error: viewItemsError } = await supabase
+        .from("digideal_view_items")
+        .select("product_id")
+        .eq("view_id", viewId);
+
+      if (viewItemsError) {
+        return NextResponse.json({ error: viewItemsError.message }, { status: 500 });
+      }
+
+      const viewProductIds =
+        viewItems
+          ?.map((row: any) => String(row?.product_id ?? "").trim())
+          .filter(Boolean) ?? [];
+
+      if (viewProductIds.length === 0) {
+        return NextResponse.json({ items: [], page, pageSize, total: 0 });
+      }
+
+      query = query.in("product_id", viewProductIds);
     }
 
     const sellers = sellersParam
@@ -421,6 +574,21 @@ export async function GET(request: NextRequest) {
         query = query.in("product_id", ids);
       } else if (ids.length > 0) {
         query = query.not("product_id", "in", toPgInList(ids));
+      }
+    }
+
+    if (minSold !== null && minSold > 0) {
+      switch (minSoldMetric) {
+        case "sold_today":
+          query = query.gte("sold_today", minSold);
+          break;
+        case "sold_7d":
+          query = query.gte("sold_7d", minSold);
+          break;
+        case "sold_all_time":
+        default:
+          query = query.gte("last_purchased_count", minSold);
+          break;
       }
     }
 
@@ -499,11 +667,107 @@ export async function GET(request: NextRequest) {
       break;
   }
 
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-  query = query.range(from, to);
+  let products: any[] | null = null;
+  let count: number | null = null;
 
-    const { data: products, error, count } = await query;
+  if (needsActivityFilter) {
+    const all: any[] = [];
+    const chunkSize = 1000;
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await query.range(offset, offset + chunkSize - 1);
+      if (error) {
+        console.error("digideal api error", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        return NextResponse.json(
+          {
+            error: error.message,
+            ...(debug
+              ? { debug: { details: error.details, hint: error.hint, code: error.code } }
+              : {}),
+          },
+          { status: 500 }
+        );
+      }
+
+      const rows = data ?? [];
+      all.push(...rows);
+      if (rows.length < chunkSize) break;
+      offset += chunkSize;
+    }
+
+    const toKey = (row: any) => {
+      const sellerKey =
+        typeof row?.seller_name === "string" ? row.seller_name.trim() : "";
+      const prodnoKey = typeof row?.prodno === "string" ? row.prodno.trim() : "";
+      const titleKey =
+        (typeof row?.listing_title === "string" ? row.listing_title.trim() : "") ||
+        (typeof row?.title_h1 === "string" ? row.title_h1.trim() : "") ||
+        (typeof row?.product_slug === "string" ? row.product_slug.trim() : "") ||
+        (typeof row?.product_id === "string" ? row.product_id.trim() : "");
+      const idKey = prodnoKey || titleKey;
+      return `${sellerKey}::${idKey}`;
+    };
+
+    let filtered: any[] = all;
+
+    if (inactiveMode === "offline") {
+      const onlineKeys = new Set(
+        all
+          .filter((row) => String(row?.status ?? "").toLowerCase() === "online")
+          .map(toKey)
+      );
+
+      filtered = all.filter((row) => {
+        if (String(row?.status ?? "").toLowerCase() !== "offline") return false;
+        if (daysSinceTimestamp(row?.last_seen_at ?? null) < inactiveDays) return false;
+        const key = toKey(row);
+        return key.length > 2 && !onlineKeys.has(key);
+      });
+    } else {
+      const { map: lastSoldMap, error: lastSoldError } = await loadLastSoldAtMap(
+        supabase
+      );
+      if (lastSoldError) {
+        console.error("digideal last sold map error", {
+          message: lastSoldError.message,
+          details: lastSoldError.details,
+          hint: lastSoldError.hint,
+          code: lastSoldError.code,
+        });
+      }
+
+      filtered = all.filter((row) => {
+        const productId =
+          typeof row?.product_id === "string" ? row.product_id.trim() : "";
+        if (!productId) return false;
+        const lastSoldAt = lastSoldMap.get(productId) ?? null;
+        return daysSinceDate(lastSoldAt) >= inactiveDays;
+      });
+    }
+
+    const seenKeys = new Set<string>();
+    const deduped: any[] = [];
+    for (const row of filtered) {
+      const key = toKey(row);
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      deduped.push(row);
+    }
+
+    count = deduped.length;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize;
+    products = deduped.slice(from, to);
+  } else {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error, count: dbCount } = await query.range(from, to);
 
     if (error) {
       console.error("digideal api error", {
@@ -522,6 +786,10 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    products = data ?? [];
+    count = typeof dbCount === "number" ? dbCount : null;
+  }
 
     const productIds =
       products?.map((product) => product.product_id).filter(Boolean) ?? [];
@@ -787,6 +1055,11 @@ export async function GET(request: NextRequest) {
           typeof (product as any).identical_spu === "string"
             ? String((product as any).identical_spu).trim()
             : "";
+        const groupId =
+          typeof (product as any).digideal_group_id === "string"
+            ? String((product as any).digideal_group_id).trim()
+            : "";
+        const groupCount = toNumber((product as any).digideal_group_count);
         if (!estimatedPrice && linkedSpu && classConfig && marketConfig) {
           const linked = linkedStatsBySpu.get(linkedSpu);
           const linkedPurchase = toNumber(linked?.min_purchase_price_cny);
@@ -805,6 +1078,13 @@ export async function GET(request: NextRequest) {
           listing_title: product.listing_title ?? null,
           title_h1: product.title_h1 ?? null,
           identical_spu: linkedSpu || null,
+          digideal_group_id: groupId || null,
+          digideal_group_count: groupCount,
+          google_taxonomy_id: toNumber((product as any).google_taxonomy_id),
+          google_taxonomy_path:
+            typeof (product as any).google_taxonomy_path === "string"
+              ? String((product as any).google_taxonomy_path).trim() || null
+              : null,
           product_url: product.product_url ?? null,
           product_slug: product.product_slug ?? null,
           prodno: product.prodno ?? null,

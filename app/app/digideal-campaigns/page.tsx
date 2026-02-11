@@ -16,6 +16,7 @@ import {
   Image,
   Input,
   Menu,
+  MenuDivider,
   MenuItem,
   MenuList,
   MenuPopover,
@@ -46,6 +47,8 @@ import { useI18n } from "@/components/i18n-provider";
 type DigidealItem = {
   product_id: string;
   identical_spu: string | null;
+  digideal_group_id?: string | null;
+  digideal_group_count?: number | null;
   listing_title: string | null;
   title_h1: string | null;
   product_url: string | null;
@@ -90,6 +93,13 @@ type DigidealResponse = {
   pageSize: number;
   total: number;
   error?: string;
+};
+
+type DigidealView = {
+  id: string;
+  name: string;
+  created_at: string | null;
+  item_count: number;
 };
 
 type SellerOption = {
@@ -163,6 +173,29 @@ type DigidealAnalysisPayload = {
   } | null;
 };
 
+const TrashIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path stroke="none" d="M0 0h24v24H0z" />
+    <path d="M4 7l16 0" />
+    <path d="M10 11l0 6" />
+    <path d="M14 11l0 6" />
+    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+  </svg>
+);
+
 const useStyles = makeStyles({
   layout: {
     display: "flex",
@@ -191,6 +224,13 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     gap: "12px",
   },
+  topActions: {
+    marginLeft: "auto",
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
   bottomRow: {
     display: "flex",
     flexWrap: "wrap",
@@ -198,9 +238,22 @@ const useStyles = makeStyles({
     gap: "12px",
   },
   searchInput: {
-    width: "520px",
+    width: "260px",
     maxWidth: "100%",
     fontSize: tokens.fontSizeBase300,
+    "& input": {
+      fontSize: tokens.fontSizeBase300,
+    },
+  },
+  inlineFilterRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    width: "100%",
+  },
+  inlineNumberInput: {
+    width: "110px",
+    maxWidth: "100%",
     "& input": {
       fontSize: tokens.fontSizeBase300,
     },
@@ -256,6 +309,95 @@ const useStyles = makeStyles({
     padding: "12px",
     minWidth: "660px",
     maxWidth: "860px",
+  },
+  viewsTrigger: {
+    justifyContent: "space-between",
+    width: "100%",
+    textAlign: "left",
+    fontWeight: tokens.fontWeightRegular,
+    minWidth: "200px",
+  },
+  viewsPopover: {
+    padding: "10px",
+    minWidth: "320px",
+    maxWidth: "420px",
+  },
+  viewsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  viewsRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    width: "100%",
+  },
+  viewsOption: {
+    border: "none",
+    background: "transparent",
+    padding: "6px 8px",
+    borderRadius: "6px",
+    cursor: "pointer",
+    textAlign: "left",
+    flex: "1 1 auto",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: tokens.colorNeutralForeground1,
+    transition: "background-color 0.12s ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  viewsOptionActive: {
+    backgroundColor: tokens.colorNeutralBackground3,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  viewDeleteIconButton: {
+    border: "none",
+    background: "transparent",
+    width: "28px",
+    height: "28px",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "6px",
+    cursor: "pointer",
+    color: tokens.colorNeutralForeground3,
+    transition: "background-color 0.12s ease, color 0.12s ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground3,
+      color: tokens.colorStatusDangerBorder1,
+    },
+  },
+  deletePromptRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    width: "100%",
+  },
+  deletePromptActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexShrink: 0,
+  },
+  deleteDangerButton: {
+    border: `1px solid ${tokens.colorStatusDangerBorder1}`,
+    color: tokens.colorStatusDangerBorder1,
+    backgroundColor: tokens.colorNeutralBackground1,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  createViewDialogSurface: {
+    minWidth: "380px",
+    maxWidth: "520px",
   },
   categorySearch: {
     marginBottom: "10px",
@@ -336,11 +478,13 @@ const useStyles = makeStyles({
     background: "transparent",
     padding: 0,
     margin: 0,
-    color: tokens.colorNeutralForeground3,
+    color: tokens.colorBrandForeground1,
     cursor: "pointer",
     fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
       textDecorationLine: "underline",
+      color: tokens.colorBrandForeground2,
     },
   },
   breadcrumbDivider: {
@@ -438,8 +582,8 @@ const useStyles = makeStyles({
     boxSizing: "border-box",
   },
   productCol: {
-    minWidth: "360px",
-    width: "360px",
+    minWidth: "420px",
+    width: "420px",
     paddingLeft: "15px",
     paddingRight: "16px",
   },
@@ -467,6 +611,32 @@ const useStyles = makeStyles({
   },
   linkedProductCol: {
     minWidth: "180px",
+  },
+  optimizeCol: {
+    // Slightly narrower to free up space for the product/title column.
+    width: "84px",
+    minWidth: "84px",
+    maxWidth: "84px",
+  },
+  selectCol: {
+    width: "54px",
+    minWidth: "54px",
+    maxWidth: "54px",
+    paddingLeft: "8px",
+    paddingRight: "8px",
+    textAlign: "center",
+  },
+  selectCheckboxWrap: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  checkboxWhite: {
+    "& input:not(:checked) ~ .fui-Checkbox__indicator": {
+      // Fluent UI Checkbox uses a CSS variable for the indicator fill.
+      "--fui-Checkbox__indicator--backgroundColor": "#ffffff",
+    } as any,
   },
   linkedProductStack: {
     display: "flex",
@@ -561,6 +731,8 @@ const useStyles = makeStyles({
     color: "#2e7d32",
     backgroundColor: "#dfffd4",
     opacity: 1,
+    whiteSpace: "nowrap",
+    fontVariantNumeric: "tabular-nums",
     "&.fui-Badge": {
       backgroundColor: "#dfffd4",
       opacity: 1,
@@ -571,15 +743,21 @@ const useStyles = makeStyles({
     },
     fontWeight: tokens.fontWeightSemibold,
   },
+  estimatedPriceBadgeSlot: {
+    width: "10ch",
+    display: "flex",
+    justifyContent: "flex-start",
+  },
   estimatedPriceRow: {
+    // Keep edit buttons aligned while keeping the badge tight.
     display: "inline-flex",
     alignItems: "center",
-    gap: "19px",
-    flexWrap: "nowrap",
+    gap: "6px",
   },
   estimatedPriceEditButton: {
     minWidth: "unset",
     paddingInline: "8px",
+    marginLeft: "0px",
   },
   supplierDialog: {
     minWidth: "420px",
@@ -886,10 +1064,27 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
   },
+  productCellStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+  },
   metaStack: {
     display: "flex",
     flexDirection: "column",
     gap: "1px",
+  },
+  metaInlineRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  rerunLinkRow: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    gap: "6px",
+    flexWrap: "wrap",
   },
   metaLine: {
     lineHeight: tokens.lineHeightBase100,
@@ -900,6 +1095,38 @@ const useStyles = makeStyles({
   },
   metaText: {
     color: tokens.colorNeutralForeground3,
+  },
+  groupIdLink: {
+    backgroundColor: "transparent",
+    border: "none",
+    padding: "0px",
+    margin: "0px",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    color: tokens.colorBrandForeground1,
+    cursor: "pointer",
+    textDecorationLine: "none",
+    whiteSpace: "nowrap",
+    fontFamily: "inherit",
+    fontWeight: "inherit",
+    verticalAlign: "baseline",
+    "&:hover": {
+      textDecorationLine: "underline",
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "2px",
+      borderRadius: "4px",
+    },
+  },
+  rerunCountLink: {
+    color: "#257d1c",
+  },
+  groupIdLabel: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    color: tokens.colorNeutralForeground4,
+    whiteSpace: "nowrap",
   },
   productTitle: {
     fontWeight: tokens.fontWeightSemibold,
@@ -1406,10 +1633,26 @@ export default function DigidealCampaignsPage() {
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [views, setViews] = useState<DigidealView[]>([]);
+  const [viewsLoading, setViewsLoading] = useState(true);
+  const [viewsError, setViewsError] = useState<string | null>(null);
+  const [viewsPopoverOpen, setViewsPopoverOpen] = useState(false);
+  const [viewIdFilter, setViewIdFilter] = useState<string | null>(null);
+  const [viewsRefreshToken, setViewsRefreshToken] = useState(0);
+  const [createViewDialogOpen, setCreateViewDialogOpen] = useState(false);
+  const [createViewName, setCreateViewName] = useState("");
+  const [createViewSaving, setCreateViewSaving] = useState(false);
+  const [createViewError, setCreateViewError] = useState<string | null>(null);
+  const [pendingViewProductIds, setPendingViewProductIds] = useState<string[]>([]);
   const [firstSeenFrom, setFirstSeenFrom] = useState("");
   const [firstSeenTo, setFirstSeenTo] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("first_seen_desc");
+  const [minSoldMetric, setMinSoldMetric] = useState("sold_all_time");
+  const [minSold, setMinSold] = useState("");
+  const [inactiveMode, setInactiveMode] = useState("any");
+  const [inactiveDays, setInactiveDays] = useState("");
+  const [groupIdFilter, setGroupIdFilter] = useState<string | null>(null);
   // Empty = no seller filtering (all sellers).
   const [sellerFilters, setSellerFilters] = useState<string[]>([]);
   const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
@@ -1422,11 +1665,13 @@ export default function DigidealCampaignsPage() {
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [rerunComment, setRerunComment] = useState("");
   const [rerunTargetTitle, setRerunTargetTitle] = useState<string | null>(null);
-  const [rerunTargetId, setRerunTargetId] = useState<string | null>(null);
+  const [rerunTargetIds, setRerunTargetIds] = useState<string[]>([]);
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
   const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
   const [hoveredRemoveId, setHoveredRemoveId] = useState<string | null>(null);
   const [isRerunSaving, setIsRerunSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAdding, setBulkAdding] = useState(false);
   const [isOptimizeDialogOpen, setIsOptimizeDialogOpen] = useState(false);
   const [optimizeTargetTitle, setOptimizeTargetTitle] = useState<string | null>(
     null
@@ -1454,17 +1699,67 @@ export default function DigidealCampaignsPage() {
   const [linkedSaving, setLinkedSaving] = useState(false);
   const [linkedError, setLinkedError] = useState<string | null>(null);
 
-  const openRerunDialog = (title: string, productId: string) => {
+  const openRerunDialog = (title: string, productIds: string | string[]) => {
+    const ids = Array.isArray(productIds) ? productIds : [productIds];
     setRerunTargetTitle(title);
-    setRerunTargetId(productId);
+    setRerunTargetIds(ids.filter(Boolean));
     setRerunComment("");
     setIsRerunDialogOpen(true);
   };
 
   const closeRerunDialog = () => {
     setIsRerunDialogOpen(false);
-    setRerunTargetId(null);
+    setRerunTargetIds([]);
   };
+
+  const selectedCount = selectedIds.size;
+
+  const selectableIds = useMemo(
+    () =>
+      items
+        .filter(
+          (item) =>
+            !String(item.seller_name ?? "")
+              .trim()
+              .toLowerCase()
+              .includes("nordexo")
+        )
+        .map((item) => item.product_id)
+        .filter(Boolean),
+    [items]
+  );
+
+  const selectAllState = useMemo(() => {
+    if (selectableIds.length === 0) return false;
+    let selectedVisible = 0;
+    for (const id of selectableIds) {
+      if (selectedIds.has(id)) selectedVisible += 1;
+    }
+    if (selectedVisible === 0) return false;
+    if (selectedVisible === selectableIds.length) return true;
+    return "mixed" as const;
+  }, [selectedIds, selectableIds]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const allowed = new Set(selectableIds);
+      const next = new Set(Array.from(prev).filter((id) => allowed.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectableIds]);
+
+  const toggleRowSelected = useCallback((productId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(productId);
+      } else {
+        next.delete(productId);
+      }
+      return next;
+    });
+  }, []);
 
   const openSupplierDialog = (item: DigidealItem) => {
     const weightGrams =
@@ -1683,26 +1978,230 @@ export default function DigidealCampaignsPage() {
     }
   };
 
-  const handleRerunSave = async () => {
-    if (!rerunTargetId) {
-      closeRerunDialog();
-      return;
+  const isItemProductionActive = (item: DigidealItem) => {
+    const rawStatus =
+      typeof item.digideal_rerun_status === "string"
+        ? item.digideal_rerun_status.trim()
+        : "";
+    const normalized = (rawStatus || (item.digideal_add_rerun ? "Queued" : "")).toLowerCase();
+    return ["queued", "being produced", "done"].includes(normalized);
+  };
+
+  const bulkAddSelectedDirect = async () => {
+    if (bulkAdding) return;
+    const selected = items.filter(
+      (item) =>
+        selectedIds.has(item.product_id) &&
+        !isItemProductionActive(item) &&
+        !String(item.seller_name ?? "").trim().toLowerCase().includes("nordexo")
+    );
+    if (selected.length === 0) return;
+    setBulkAdding(true);
+    setError(null);
+    const failed: string[] = [];
+
+    for (const item of selected) {
+      const ok = await addToProduction(item, { addToPipeline: true, addDirectly: true });
+      if (!ok) {
+        failed.push(item.product_id);
+      }
     }
-    const target = items.find((entry) => entry.product_id === rerunTargetId);
-    if (!target) {
-      closeRerunDialog();
-      return;
+
+    setBulkAdding(false);
+    setSelectedIds(new Set(failed));
+    if (failed.length > 0) {
+      setError(`Failed to add ${failed.length} of ${selected.length} deal(s).`);
     }
-    setIsRerunSaving(true);
-    const ok = await addToProduction(target, {
-      comment: rerunComment,
-      addToPipeline: true,
-      addDirectly: true,
+  };
+
+  const openBulkRerunDialog = () => {
+    const selected = items.filter(
+      (item) =>
+        selectedIds.has(item.product_id) &&
+        !isItemProductionActive(item) &&
+        !String(item.seller_name ?? "").trim().toLowerCase().includes("nordexo")
+    );
+    const ids = selected.map((item) => item.product_id).filter(Boolean);
+    if (ids.length === 0) return;
+    openRerunDialog(`${ids.length} selected deal(s)`, ids);
+  };
+
+  const addProductsToView = async (viewId: string, productIds: string[]) => {
+    const unique = Array.from(
+      new Set(productIds.map((id) => String(id ?? "").trim()).filter(Boolean))
+    );
+    if (!viewId || unique.length === 0) return;
+
+    const response = await fetch("/api/digideal/views/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ viewId, productIds: unique }),
     });
-    setIsRerunSaving(false);
-    if (ok) {
-      closeRerunDialog();
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Failed to add items to view.");
     }
+
+    setViewsRefreshToken((prev) => prev + 1);
+  };
+
+  const openCreateViewDialog = (productIds: string[]) => {
+    setPendingViewProductIds(productIds.map((id) => String(id ?? "").trim()).filter(Boolean));
+    setCreateViewName("");
+    setCreateViewError(null);
+    setCreateViewDialogOpen(true);
+  };
+
+  const closeCreateViewDialog = () => {
+    setCreateViewDialogOpen(false);
+    setCreateViewName("");
+    setPendingViewProductIds([]);
+    setCreateViewError(null);
+  };
+
+  const handleCreateViewSave = async () => {
+    const name = createViewName.trim();
+    if (!name) {
+      setCreateViewError("Name is required.");
+      return;
+    }
+
+    setCreateViewSaving(true);
+    setCreateViewError(null);
+    try {
+      const response = await fetch("/api/digideal/views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to create view.");
+      }
+      const payload = (await response.json()) as { item?: DigidealView };
+      const created = payload?.item;
+      if (!created?.id) {
+        throw new Error("View creation failed.");
+      }
+
+      // Optimistic: add immediately, then refresh counts.
+      setViews((prev) => [created, ...prev]);
+
+      if (pendingViewProductIds.length > 0) {
+        try {
+          await addProductsToView(created.id, pendingViewProductIds);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to add items to view.");
+        }
+      } else {
+        setViewsRefreshToken((prev) => prev + 1);
+      }
+
+      closeCreateViewDialog();
+    } catch (err) {
+      setCreateViewError(err instanceof Error ? err.message : "Failed to create view.");
+    } finally {
+      setCreateViewSaving(false);
+    }
+  };
+
+  const handleDeleteViewConfirm = async (view: DigidealView) => {
+    if (!view?.id) return;
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        t("digideal.views.deletePrompt", {
+          name: view.name,
+        })
+      );
+      if (!ok) return;
+    }
+    try {
+      const response = await fetch("/api/digideal/views", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: view.id }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to delete view.");
+      }
+
+      if (viewIdFilter === view.id) {
+        setViewIdFilter(null);
+        setPage(1);
+      }
+
+      setViewsRefreshToken((prev) => prev + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete view.");
+    }
+  };
+
+  const resetAllFilters = () => {
+    setSearch("");
+    setCategorySelections([]);
+    setCategoryDraft([]);
+    setCategoryPopoverOpen(false);
+    setCategorySearch("");
+    setViewIdFilter(null);
+    setFirstSeenFrom("");
+    setFirstSeenTo("");
+    setStatus("all");
+    setPriceMatch("all");
+    setGroupIdFilter(null);
+    setSellerFilters([]);
+    setSellerPopoverOpen(false);
+    setSort("first_seen_desc");
+    setPage(1);
+    setPageSize(25);
+    setMinSoldMetric("sold_all_time");
+    setMinSold("");
+    setInactiveMode("any");
+    setInactiveDays("");
+    setSelectedIds(new Set());
+    setError(null);
+    setRefreshToken((prev) => prev + 1);
+  };
+
+  const handleRerunSave = async () => {
+    const ids = rerunTargetIds.filter(Boolean);
+    if (ids.length === 0) {
+      closeRerunDialog();
+      return;
+    }
+
+    setIsRerunSaving(true);
+    setError(null);
+    const failed: string[] = [];
+
+    for (const productId of ids) {
+      const target = items.find((entry) => entry.product_id === productId);
+      if (!target) {
+        failed.push(productId);
+        continue;
+      }
+      const ok = await addToProduction(target, {
+        comment: rerunComment,
+        addToPipeline: true,
+        addDirectly: true,
+      });
+      if (!ok) {
+        failed.push(productId);
+      }
+    }
+
+    setIsRerunSaving(false);
+    if (failed.length === 0) {
+      setSelectedIds(new Set());
+      closeRerunDialog();
+      return;
+    }
+
+    setRerunTargetIds(failed);
+    setSelectedIds(new Set(failed));
+    setError(`Failed to add ${failed.length} of ${ids.length} deal(s).`);
   };
 
   const handleSupplierSave = async () => {
@@ -1907,6 +2406,7 @@ export default function DigidealCampaignsPage() {
     sort,
     pageSize,
     sellerFilters,
+    viewIdFilter,
   ]);
 
   const allSellerNames = useMemo(
@@ -1919,6 +2419,13 @@ export default function DigidealCampaignsPage() {
     if (sellerFilters.length === 1) return sellerFilters[0];
     return `${sellerFilters.length} sellers`;
   }, [sellerFilters, t]);
+
+  const viewSummary = useMemo(() => {
+    if (!viewIdFilter) return t("digideal.views.all");
+    const match = views.find((view) => view.id === viewIdFilter);
+    if (!match) return t("digideal.views.all");
+    return `${match.name} (${match.item_count ?? 0})`;
+  }, [viewIdFilter, views, t]);
 
   const buildCategoryParam = (selections: CategorySelection[]) => {
     if (selections.length === 0) return null;
@@ -2115,6 +2622,35 @@ export default function DigidealCampaignsPage() {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const loadViews = async () => {
+      setViewsLoading(true);
+      setViewsError(null);
+      try {
+        const response = await fetch("/api/digideal/views", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "Failed to load views.");
+        }
+        const payload = (await response.json()) as { items?: DigidealView[] };
+        setViews(Array.isArray(payload.items) ? payload.items : []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setViewsError(err instanceof Error ? err.message : "Failed to load views.");
+        setViews([]);
+      } finally {
+        setViewsLoading(false);
+      }
+    };
+
+    loadViews();
+
+    return () => controller.abort();
+  }, [viewsRefreshToken]);
+
+  useEffect(() => {
     if (!isOptimizeDialogOpen || !optimizeTargetId) {
       setAnalysisData(null);
       setAnalysisError(null);
@@ -2285,6 +2821,22 @@ export default function DigidealCampaignsPage() {
         if (sellerFilters.length > 0) {
           params.set("sellers", sellerFilters.join("|"));
         }
+        const minSoldValue = Number(minSold);
+        if (Number.isFinite(minSoldValue) && minSoldValue > 0) {
+          params.set("minSold", String(minSoldValue));
+          params.set("minSoldMetric", minSoldMetric);
+        }
+        const inactiveDaysValue = Number(inactiveDays);
+        if (inactiveMode !== "any" && Number.isFinite(inactiveDaysValue) && inactiveDaysValue > 0) {
+          params.set("inactiveMode", inactiveMode);
+          params.set("inactiveDays", String(inactiveDaysValue));
+        }
+        if (groupIdFilter) {
+          params.set("groupId", groupIdFilter);
+        }
+        if (viewIdFilter) {
+          params.set("viewId", viewIdFilter);
+        }
         if (priceMatch && priceMatch !== "all") {
           params.set("priceMatch", priceMatch);
         }
@@ -2345,6 +2897,12 @@ export default function DigidealCampaignsPage() {
     firstSeenTo,
     status,
     sort,
+    minSoldMetric,
+    minSold,
+    inactiveMode,
+    inactiveDays,
+    groupIdFilter,
+    viewIdFilter,
     sellerFilters,
     priceMatch,
     page,
@@ -2969,7 +3527,7 @@ export default function DigidealCampaignsPage() {
               </div>
             </TableCell>
             <TableCell className={styles.productCol}>
-              <div className={styles.cellStack}>
+              <div className={styles.productCellStack}>
                 <Text className={styles.productTitle}>
                   {title}
                   <span className={styles.productIdInline}>
@@ -3000,19 +3558,53 @@ export default function DigidealCampaignsPage() {
                       ))}
                     </div>
                   ) : null}
-                  <Text
-                    size={100}
+                  <div
                     className={mergeClasses(
                       styles.metaText,
                       styles.metaLine,
                       styles.metaLineTight
                     )}
                   >
-                    {t("digideal.meta.firstLastSeen", {
-                      first: item.first_seen_at ? formatDate(item.first_seen_at) : "-",
-                      last: item.last_seen_at ? formatDate(item.last_seen_at) : "-",
-                    })}
-                  </Text>
+	                    <div className={styles.metaInlineRow}>
+	                      <span>
+	                        {item.first_seen_at ? formatDate(item.first_seen_at) : "-"} /{" "}
+	                        {item.last_seen_at ? formatDate(item.last_seen_at) : "-"}
+	                      </span>
+	                      {item.digideal_group_id &&
+	                      typeof item.digideal_group_count === "number" &&
+	                      item.digideal_group_count > 1 ? (
+	                        <span className={styles.rerunLinkRow}>
+	                          <button
+	                            type="button"
+	                            className={mergeClasses(
+	                              styles.groupIdLink,
+	                              styles.rerunCountLink
+	                            )}
+	                            onClick={() => {
+	                              setGroupIdFilter(item.digideal_group_id ?? null);
+	                              setPage(1);
+	                            }}
+	                            title="Show all reruns for this deal"
+	                          >
+	                            {`Reruns: ${item.digideal_group_count}`}
+	                          </button>
+	                          {groupIdFilter ? (
+	                            <button
+	                              type="button"
+	                              className={styles.groupIdLink}
+	                              onClick={() => {
+	                                setGroupIdFilter(null);
+	                                setPage(1);
+	                              }}
+	                              title="Exit rerun view"
+	                            >
+	                              (view all)
+	                            </button>
+	                          ) : null}
+	                        </span>
+	                      ) : null}
+	                    </div>
+	                  </div>
                 </div>
               </div>
             </TableCell>
@@ -3140,7 +3732,7 @@ export default function DigidealCampaignsPage() {
                 "-"
               )}
             </TableCell>
-            <TableCell>
+            <TableCell className={styles.optimizeCol}>
               {isNordexo ? (
                 "-"
               ) : (
@@ -3222,12 +3814,14 @@ export default function DigidealCampaignsPage() {
             <TableCell className={styles.estimatedPriceCol}>
               {hasEstimatedPrice ? (
                 <div className={styles.estimatedPriceRow}>
-                  <Badge
-                    appearance="outline"
-                    className={styles.estimatedPriceBadge}
-                  >
-                    {estimatedPriceLabel}
-                  </Badge>
+                  <div className={styles.estimatedPriceBadgeSlot}>
+                    <Badge
+                      appearance="outline"
+                      className={styles.estimatedPriceBadge}
+                    >
+                      {estimatedPriceLabel}
+                    </Badge>
+                  </div>
                   {showSupplierEdit ? (
                     <Button
                       appearance="outline"
@@ -3243,14 +3837,28 @@ export default function DigidealCampaignsPage() {
                   ) : null}
                 </div>
               ) : showSupplierAdd ? (
-                <Button
-                  appearance="outline"
-                  size="small"
-                  className={mergeClasses(styles.linkButton, styles.supplierAddButton)}
-                  onClick={() => openSupplierDialog(item)}
-                >
-                  {t("digideal.supplier.add")}
-                </Button>
+                <Menu>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      className={mergeClasses(
+                        styles.linkButton,
+                        styles.supplierAddButton
+                      )}
+                    >
+                      {t("digideal.supplier.add")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover>
+                    <MenuList>
+                      <MenuItem onClick={() => openSupplierDialog(item)}>
+                        {t("digideal.supplier.manualInput")}
+                      </MenuItem>
+                      <MenuItem disabled>{t("digideal.supplier.imageSearch")}</MenuItem>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
               ) : (
                 <Text className={styles.estimatedPriceText}>-</Text>
               )}
@@ -3291,32 +3899,79 @@ export default function DigidealCampaignsPage() {
                             className={styles.rerunMenuButton}
                             disabled={isAdding}
                           >
-                            {t("digideal.rerun.add")}
+                            {t("common.add")}
                           </Button>
                         </MenuTrigger>
-                        <MenuPopover>
-                          <MenuList>
-                            <MenuItem
-                              onClick={() =>
-                                addToProduction(item, {
-                                  addToPipeline: true,
-                                  addDirectly: true,
-                                })
-                              }
-                              disabled={isAdding}
-                            >
-                              {t("digideal.rerun.add")}
-                            </MenuItem>
-                            <MenuItem
-                              onClick={() => openRerunDialog(title, item.product_id)}
-                              disabled={isAdding}
-                            >
-                              {t("digideal.rerun.addWithComment")}
-                            </MenuItem>
-                          </MenuList>
-                        </MenuPopover>
-                      </Menu>
-                    )}
+	                        <MenuPopover>
+	                          <MenuList>
+	                            <MenuItem
+	                              onClick={() =>
+	                                addToProduction(item, {
+	                                  addToPipeline: true,
+	                                  addDirectly: true,
+	                                })
+	                              }
+	                              disabled={isAdding}
+	                            >
+	                              {t("digideal.rerun.addToProduction")}
+	                            </MenuItem>
+	                            <MenuItem
+	                              onClick={() => openRerunDialog(title, item.product_id)}
+	                              disabled={isAdding}
+	                            >
+	                              {t("digideal.rerun.addWithComment")}
+	                            </MenuItem>
+	                            <Menu positioning={{ position: "before", align: "start" }}>
+	                              <MenuTrigger disableButtonEnhancement>
+	                                <MenuItem disabled={isAdding}>
+	                                  {t("digideal.views.addToView")}
+	                                </MenuItem>
+	                              </MenuTrigger>
+	                              <MenuPopover>
+	                                <MenuList>
+	                                  <MenuItem
+	                                    onClick={() =>
+	                                      openCreateViewDialog([item.product_id])
+	                                    }
+	                                  >
+	                                    {t("digideal.views.addNew")}
+	                                  </MenuItem>
+                                      <MenuDivider />
+	                                  {viewsLoading ? (
+	                                    <MenuItem disabled>
+	                                      {t("digideal.views.loading")}
+	                                    </MenuItem>
+	                                  ) : views.length === 0 ? (
+	                                    <MenuItem disabled>
+	                                      {t("digideal.views.empty")}
+	                                    </MenuItem>
+	                                  ) : (
+	                                    views.map((view) => (
+	                                      <MenuItem
+	                                        key={view.id}
+	                                        onClick={() => {
+	                                          void addProductsToView(view.id, [
+	                                            item.product_id,
+	                                          ]).catch((err) => {
+	                                            setError(
+	                                              err instanceof Error
+	                                                ? err.message
+	                                                : "Failed to add items to list."
+	                                            );
+	                                          });
+	                                        }}
+	                                      >
+	                                        {`${view.name} (${view.item_count ?? 0})`}
+	                                      </MenuItem>
+	                                    ))
+	                                  )}
+	                                </MenuList>
+	                              </MenuPopover>
+	                            </Menu>
+	                          </MenuList>
+	                        </MenuPopover>
+	                      </Menu>
+	                    )}
                     {showAddedMeta ? (
                       <div className={styles.rerunMetaColumn}>
                         {addedAtLabel ? (
@@ -3353,6 +4008,19 @@ export default function DigidealCampaignsPage() {
                 </div>
               )}
             </TableCell>
+            <TableCell className={styles.selectCol}>
+              <div className={styles.selectCheckboxWrap}>
+                <Checkbox
+                  checked={selectedIds.has(item.product_id)}
+                  disabled={isNordexo}
+                  aria-label="Select row"
+                  className={styles.checkboxWhite}
+                  onChange={(_, data) =>
+                    toggleRowSelected(item.product_id, Boolean(data.checked))
+                  }
+                />
+              </div>
+            </TableCell>
           </TableRow>
         );
       }),
@@ -3368,21 +4036,70 @@ export default function DigidealCampaignsPage() {
       openRerunDialog,
       openSupplierDialog,
       openLinkedDialog,
+      openCreateViewDialog,
+      addProductsToView,
+      viewsLoading,
+      views,
+      groupIdFilter,
       isAdmin,
+      selectedIds,
+      toggleRowSelected,
     ]
   );
 
-  return (
-    <div className={styles.layout}>
-      <Card className={styles.controlsCard}>
-        <div className={styles.topRow}>
-          <Field label={<span className={styles.filterLabel}>{t("digideal.filters.search")}</span>}>
-            <Input
-              value={search}
-              onChange={(_, data) => setSearch(data.value)}
+	  return (
+	    <div className={styles.layout}>
+	      <Card className={styles.controlsCard}>
+	        <div className={styles.topRow}>
+	          <Field label={<span className={styles.filterLabel}>{t("digideal.filters.search")}</span>}>
+	            <Input
+	              value={search}
+	              onChange={(_, data) => setSearch(data.value)}
               placeholder={t("digideal.filters.searchPlaceholder")}
               className={styles.searchInput}
             />
+          </Field>
+          <Field label={<span className={styles.filterLabel}>{t("digideal.filters.status")}</span>}>
+            <Dropdown
+              value={
+                status === "all"
+                  ? t("digideal.status.all")
+                  : status === "offline"
+                    ? t("digideal.status.offline")
+                    : t("digideal.status.online")
+              }
+              selectedOptions={[status]}
+              onOptionSelect={(_, data) =>
+                setStatus(String(data.optionValue) || "all")
+              }
+              className={mergeClasses(styles.dropdownCompact, styles.filterField)}
+            >
+              <Option value="all">{t("digideal.status.all")}</Option>
+              <Option value="online">{t("digideal.status.online")}</Option>
+              <Option value="offline">{t("digideal.status.offline")}</Option>
+            </Dropdown>
+          </Field>
+          <Field
+            label={<span className={styles.filterLabel}>{t("digideal.filters.priceMatch")}</span>}
+          >
+            <Dropdown
+              value={
+                priceMatch === "have"
+                  ? t("digideal.priceMatch.have")
+                  : priceMatch === "none"
+                    ? t("digideal.priceMatch.none")
+                    : t("digideal.priceMatch.all")
+              }
+              selectedOptions={[priceMatch]}
+              onOptionSelect={(_, data) =>
+                setPriceMatch(String(data.optionValue) || "all")
+              }
+              className={mergeClasses(styles.dropdownCompact, styles.filterFieldNarrow)}
+            >
+              <Option value="all">{t("digideal.priceMatch.all")}</Option>
+              <Option value="have">{t("digideal.priceMatch.have")}</Option>
+              <Option value="none">{t("digideal.priceMatch.none")}</Option>
+            </Dropdown>
           </Field>
           <Field
             label={<span className={styles.filterLabel}>{t("digideal.filters.category")}</span>}
@@ -3570,10 +4287,159 @@ export default function DigidealCampaignsPage() {
                     {t("common.done")}
                   </Button>
                 </div>
-              </PopoverSurface>
-            </Popover>
-          </Field>
-        </div>
+	              </PopoverSurface>
+	            </Popover>
+	          </Field>
+	          <Field
+	            label={<span className={styles.filterLabel}>{t("digideal.views.show")}</span>}
+	            className={styles.filterField}
+	          >
+	            <Popover
+	              open={viewsPopoverOpen}
+	              onOpenChange={(_, data) => setViewsPopoverOpen(data.open)}
+	              positioning={{ position: "below", align: "start", offset: { mainAxis: 6 } }}
+	            >
+	              <PopoverTrigger disableButtonEnhancement>
+	                <Button appearance="outline" className={styles.viewsTrigger}>
+	                  {viewSummary}
+	                </Button>
+	              </PopoverTrigger>
+	              <PopoverSurface className={styles.viewsPopover}>
+	                {viewsLoading ? (
+	                  <Spinner label={t("digideal.views.loading")} />
+	                ) : viewsError ? (
+	                  <MessageBar intent="error">{viewsError}</MessageBar>
+	                ) : (
+	                  <div className={styles.viewsList}>
+	                    <button
+	                      type="button"
+	                      className={mergeClasses(
+	                        styles.viewsOption,
+	                        !viewIdFilter ? styles.viewsOptionActive : undefined
+	                      )}
+	                      onClick={() => {
+	                        setViewIdFilter(null);
+	                        setViewsPopoverOpen(false);
+	                        setPage(1);
+	                      }}
+	                    >
+	                      {t("digideal.views.all")}
+	                    </button>
+	                    {views.map((view) => (
+	                      <div key={view.id} className={styles.viewsRow}>
+	                        <button
+	                          type="button"
+	                          className={mergeClasses(
+	                            styles.viewsOption,
+	                            viewIdFilter === view.id
+	                              ? styles.viewsOptionActive
+	                              : undefined
+	                          )}
+	                          onClick={() => {
+	                            setViewIdFilter(view.id);
+	                            setViewsPopoverOpen(false);
+	                            setPage(1);
+	                          }}
+	                        >
+	                          {`${view.name} (${view.item_count ?? 0})`}
+	                        </button>
+	                        <button
+	                          type="button"
+	                          className={styles.viewDeleteIconButton}
+	                          aria-label={t("digideal.views.deleteAria", {
+	                            name: view.name,
+	                          })}
+	                          onClick={(event) => {
+	                            event.stopPropagation();
+	                            setViewsPopoverOpen(false);
+	                            void handleDeleteViewConfirm(view);
+	                          }}
+	                        >
+	                          <TrashIcon />
+	                        </button>
+	                      </div>
+	                    ))}
+	                  </div>
+	                )}
+	              </PopoverSurface>
+	            </Popover>
+	          </Field>
+	          <div className={styles.topActions}>
+	            <Button appearance="outline" size="medium" onClick={resetAllFilters}>
+	              {t("digideal.filters.resetAll")}
+	            </Button>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance="primary"
+                  size="medium"
+                  disabled={selectedCount === 0 || bulkAdding}
+                >
+                  {t("common.add")}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+	                <MenuList>
+	                  <MenuItem
+	                    onClick={bulkAddSelectedDirect}
+	                    disabled={selectedCount === 0 || bulkAdding}
+	                  >
+	                    {t("digideal.rerun.addToProduction")}
+	                  </MenuItem>
+	                  <MenuItem
+	                    onClick={openBulkRerunDialog}
+	                    disabled={selectedCount === 0 || bulkAdding}
+	                  >
+	                    {t("digideal.rerun.addWithComment")}
+	                  </MenuItem>
+	                  <Menu positioning={{ position: "before", align: "start" }}>
+	                    <MenuTrigger disableButtonEnhancement>
+	                      <MenuItem disabled={selectedCount === 0 || bulkAdding}>
+	                        {t("digideal.views.addToView")}
+	                      </MenuItem>
+	                    </MenuTrigger>
+	                    <MenuPopover>
+	                      <MenuList>
+	                        <MenuItem
+	                          onClick={() => openCreateViewDialog(Array.from(selectedIds))}
+	                          disabled={selectedCount === 0 || bulkAdding}
+	                        >
+	                          {t("digideal.views.addNew")}
+	                        </MenuItem>
+                            <MenuDivider />
+	                        {viewsLoading ? (
+	                          <MenuItem disabled>{t("digideal.views.loading")}</MenuItem>
+	                        ) : views.length === 0 ? (
+	                          <MenuItem disabled>{t("digideal.views.empty")}</MenuItem>
+	                        ) : (
+	                          views.map((view) => (
+	                            <MenuItem
+	                              key={view.id}
+	                              onClick={() => {
+	                                void addProductsToView(
+	                                  view.id,
+	                                  Array.from(selectedIds)
+	                                ).catch((err) => {
+	                                  setError(
+	                                    err instanceof Error
+	                                      ? err.message
+	                                      : "Failed to add items to list."
+	                                  );
+	                                });
+	                              }}
+	                            >
+	                              {`${view.name} (${view.item_count ?? 0})`}
+	                            </MenuItem>
+	                          ))
+	                        )}
+	                      </MenuList>
+	                    </MenuPopover>
+	                  </Menu>
+	                </MenuList>
+	              </MenuPopover>
+	            </Menu>
+	          </div>
+	        </div>
         <div className={styles.bottomRow}>
           <Field
             label={
@@ -3620,47 +4486,78 @@ export default function DigidealCampaignsPage() {
               </PopoverSurface>
             </Popover>
           </Field>
-          <Field label={<span className={styles.filterLabel}>{t("digideal.filters.status")}</span>}>
-            <Dropdown
-              value={
-                status === "all"
-                  ? t("digideal.status.all")
-                  : status === "offline"
-                    ? t("digideal.status.offline")
-                    : t("digideal.status.online")
-              }
-              selectedOptions={[status]}
-              onOptionSelect={(_, data) =>
-                setStatus(String(data.optionValue) || "all")
-              }
-              className={mergeClasses(styles.dropdownCompact, styles.filterField)}
-            >
-              <Option value="all">{t("digideal.status.all")}</Option>
-              <Option value="online">{t("digideal.status.online")}</Option>
-              <Option value="offline">{t("digideal.status.offline")}</Option>
-            </Dropdown>
+          <Field
+            label={<span className={styles.filterLabel}>{t("digideal.filters.minSold")}</span>}
+            className={styles.filterField}
+          >
+            <div className={styles.inlineFilterRow}>
+              <Dropdown
+                value={
+                  minSoldMetric === "sold_today"
+                    ? t("digideal.sort.soldToday")
+                    : minSoldMetric === "sold_7d"
+                      ? t("digideal.sort.sold7d")
+                      : t("digideal.sort.soldAll")
+                }
+                selectedOptions={[minSoldMetric]}
+                onOptionSelect={(_, data) => {
+                  setMinSoldMetric(String(data.optionValue) || "sold_all_time");
+                  setPage(1);
+                }}
+                className={styles.dropdownCompact}
+              >
+                <Option value="sold_all_time">{t("digideal.sort.soldAll")}</Option>
+                <Option value="sold_7d">{t("digideal.sort.sold7d")}</Option>
+                <Option value="sold_today">{t("digideal.sort.soldToday")}</Option>
+              </Dropdown>
+              <Input
+                type="number"
+                value={minSold}
+                placeholder={t("digideal.filters.minSoldPlaceholder")}
+                onChange={(_, data) => {
+                  setMinSold(data.value);
+                  setPage(1);
+                }}
+                className={styles.inlineNumberInput}
+              />
+            </div>
           </Field>
           <Field
-            label={<span className={styles.filterLabel}>{t("digideal.filters.priceMatch")}</span>}
+            label={<span className={styles.filterLabel}>{t("digideal.filters.inactivity")}</span>}
+            className={styles.filterField}
           >
-            <Dropdown
-              value={
-                priceMatch === "have"
-                  ? t("digideal.priceMatch.have")
-                  : priceMatch === "none"
-                    ? t("digideal.priceMatch.none")
-                    : t("digideal.priceMatch.all")
-              }
-              selectedOptions={[priceMatch]}
-              onOptionSelect={(_, data) =>
-                setPriceMatch(String(data.optionValue) || "all")
-              }
-              className={mergeClasses(styles.dropdownCompact, styles.filterFieldNarrow)}
-            >
-              <Option value="all">{t("digideal.priceMatch.all")}</Option>
-              <Option value="have">{t("digideal.priceMatch.have")}</Option>
-              <Option value="none">{t("digideal.priceMatch.none")}</Option>
-            </Dropdown>
+            <div className={styles.inlineFilterRow}>
+              <Dropdown
+                value={
+                  inactiveMode === "no_sales"
+                    ? t("digideal.filters.inactiveMode.noSales")
+                    : inactiveMode === "offline"
+                      ? t("digideal.filters.inactiveMode.offline")
+                      : t("digideal.filters.inactiveMode.any")
+                }
+                selectedOptions={[inactiveMode]}
+                onOptionSelect={(_, data) => {
+                  setInactiveMode(String(data.optionValue) || "any");
+                  setPage(1);
+                }}
+                className={styles.dropdownCompact}
+              >
+                <Option value="any">{t("digideal.filters.inactiveMode.any")}</Option>
+                <Option value="no_sales">{t("digideal.filters.inactiveMode.noSales")}</Option>
+                <Option value="offline">{t("digideal.filters.inactiveMode.offline")}</Option>
+              </Dropdown>
+              <Input
+                type="number"
+                value={inactiveDays}
+                placeholder={t("digideal.filters.inactiveDaysPlaceholder")}
+                onChange={(_, data) => {
+                  setInactiveDays(data.value);
+                  setPage(1);
+                }}
+                disabled={inactiveMode === "any"}
+                className={styles.inlineNumberInput}
+              />
+            </div>
           </Field>
           <Field label={<span className={styles.filterLabel}>{t("digideal.filters.seller")}</span>}>
             <Popover
@@ -3782,7 +4679,7 @@ export default function DigidealCampaignsPage() {
                 <TableHeaderCell className={styles.linkCol}>
                   {t("digideal.table.link")}
                 </TableHeaderCell>
-                <TableHeaderCell>
+                <TableHeaderCell className={styles.optimizeCol}>
                   {t("digideal.table.optimize")}
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.linkedProductCol}>
@@ -3793,6 +4690,30 @@ export default function DigidealCampaignsPage() {
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.rerunCol}>
                   {t("digideal.table.rerun")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.selectCol}>
+                  <div className={styles.selectCheckboxWrap}>
+                    <Checkbox
+                      checked={selectAllState}
+                      aria-label="Select all"
+                      disabled={selectableIds.length === 0}
+                      className={styles.checkboxWhite}
+                      onChange={(_, data) => {
+                        const checked = Boolean(data.checked);
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          selectableIds.forEach((id) => {
+                            if (checked) {
+                              next.add(id);
+                            } else {
+                              next.delete(id);
+                            }
+                          });
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
                 </TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -3856,6 +4777,46 @@ export default function DigidealCampaignsPage() {
           </DialogBody>
         </DialogSurface>
       </Dialog>
+
+      <Dialog
+        open={createViewDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeCreateViewDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.createViewDialogSurface}>
+          <DialogBody>
+            <DialogTitle>{t("digideal.views.createTitle")}</DialogTitle>
+            <DialogContent className={styles.dialogContent}>
+              <Field label={t("digideal.views.nameLabel")}>
+                <Input
+                  value={createViewName}
+                  onChange={(_, data) => setCreateViewName(data.value)}
+                  placeholder={t("digideal.views.namePlaceholder")}
+                />
+              </Field>
+              {createViewError ? (
+                <MessageBar intent="error">{createViewError}</MessageBar>
+              ) : null}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeCreateViewDialog}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleCreateViewSave}
+                disabled={createViewSaving}
+              >
+                {t("common.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
       <Dialog
         open={linkedDialogOpen}
         onOpenChange={(_, data) => {

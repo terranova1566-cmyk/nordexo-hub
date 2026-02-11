@@ -7,6 +7,29 @@ import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
 
 export const runtime = "nodejs";
 
+const requireAdmin = async () => {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const { data: settings } = await supabase
+    .from("partner_user_settings")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!settings?.is_admin) {
+    return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { ok: true as const };
+};
+
 const zipWithPython = (zipPath: string, relativePaths: string[]) => {
   const script = [
     "import os, zipfile",
@@ -28,51 +51,42 @@ const zipWithPython = (zipPath: string, relativePaths: string[]) => {
   return res.status === 0;
 };
 
-export async function POST(request: Request) {
-  const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+const toSafeZipStem = (value: string) =>
+  String(value || "")
+    .replace(/[^\x20-\x7E]+/g, "_")
+    .replace(/["\\/]/g, "_")
+    .trim() || "drafts";
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+const buildZipName = (inputPaths: string[]) => {
+  if (inputPaths.length !== 1) {
+    return `drafts-${Date.now()}.zip`;
   }
+  const normalized = String(inputPaths[0] || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+  const base = toSafeZipStem(path.basename(normalized));
+  return `${base}-${Date.now()}.zip`;
+};
 
-  const { data: settings } = await supabase
-    .from("partner_user_settings")
-    .select("is_admin")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!settings?.is_admin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  let payload: { paths?: string[] };
-  try {
-    payload = (await request.json()) as typeof payload;
-  } catch {
-    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
-  }
-
-  const inputPaths = Array.isArray(payload?.paths) ? payload.paths : [];
-  if (inputPaths.length === 0) {
-    return NextResponse.json({ error: "No files selected." }, { status: 400 });
-  }
-
+const resolveRelativePaths = (inputPaths: string[]) => {
   const absolutePaths = inputPaths
     .map((entry) => resolveDraftPath(String(entry)))
     .filter((entry): entry is string => Boolean(entry));
 
   if (absolutePaths.length === 0) {
-    return NextResponse.json({ error: "No valid paths." }, { status: 400 });
+    return [];
   }
 
-  const relativePaths = absolutePaths
-    .filter((absolute) => absolute.startsWith(`${DRAFT_ROOT}${path.sep}`))
-    .map((absolute) => toRelativePath(absolute));
+  return Array.from(
+    new Set(
+      absolutePaths
+        .filter((absolute) => absolute.startsWith(`${DRAFT_ROOT}${path.sep}`))
+        .map((absolute) => toRelativePath(absolute))
+    )
+  );
+};
 
-  const zipName = `drafts-${Date.now()}.zip`;
+const zipAndStream = (relativePaths: string[], zipName: string) => {
   const zipPath = path.join("/tmp", zipName);
 
   const zipResult = spawnSync(
@@ -101,5 +115,52 @@ export async function POST(request: Request) {
       "Content-Disposition": `attachment; filename="${zipName}"`,
     },
   });
+};
+
+export async function GET(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
+  const { searchParams } = new URL(request.url);
+  const inputPaths = searchParams
+    .getAll("path")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+
+  if (inputPaths.length === 0) {
+    return NextResponse.json({ error: "No files selected." }, { status: 400 });
+  }
+
+  const relativePaths = resolveRelativePaths(inputPaths);
+  if (relativePaths.length === 0) {
+    return NextResponse.json({ error: "No valid paths." }, { status: 400 });
+  }
+
+  const zipName = buildZipName(inputPaths);
+  return zipAndStream(relativePaths, zipName);
 }
 
+export async function POST(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
+  let payload: { paths?: string[] };
+  try {
+    payload = (await request.json()) as typeof payload;
+  } catch {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  const inputPaths = Array.isArray(payload?.paths) ? payload.paths : [];
+  if (inputPaths.length === 0) {
+    return NextResponse.json({ error: "No files selected." }, { status: 400 });
+  }
+
+  const relativePaths = resolveRelativePaths(inputPaths);
+  if (relativePaths.length === 0) {
+    return NextResponse.json({ error: "No valid paths." }, { status: 400 });
+  }
+
+  const zipName = buildZipName(inputPaths);
+  return zipAndStream(relativePaths, zipName);
+}

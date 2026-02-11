@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+// Keep this in sync with what the production UI needs.
 const PRODUCT_SELECT =
-  "provider, product_id, title, product_url, image_url, image_local_path, image_local_url, source_url, taxonomy_l1, taxonomy_l2, taxonomy_l3, first_seen_at, last_seen_at, sold_today, sold_7d, sold_all_time";
+  "provider, product_id, title, product_url, image_url, image_local_path, image_local_url, source_url, taxonomy_l1, taxonomy_l2, taxonomy_l3, taxonomy_path, first_seen_at, last_seen_at, sold_today, sold_7d, sold_all_time, price, previous_price, last_price, last_previous_price, reviews, last_reviews, delivery_time, last_delivery_time, identical_spu";
 
 type ProductionItemInput = {
   provider: string;
@@ -14,6 +15,18 @@ type ProductionRow = {
   provider: string;
   product_id: string;
   created_at: string;
+};
+
+type SupplierSearchRow = {
+  provider: string;
+  product_id: string;
+  offers: unknown;
+};
+
+type DigidealManualSupplierRow = {
+  product_id: string;
+  "1688_URL"?: string | null;
+  "1688_url"?: string | null;
 };
 
 const getAdminClient = () => {
@@ -130,6 +143,21 @@ export async function GET() {
         return NextResponse.json({ error: rowsError.message }, { status: 500 });
       }
 
+      const manualSupplierMap = new Map<string, string>();
+      // Manual supplier links live on digideal_products (not the search view).
+      const { data: manualRows, error: manualError } = await readClient
+        .from("digideal_products")
+        .select('product_id, "1688_URL", 1688_url')
+        .in("product_id", ids);
+      if (manualError) {
+        return NextResponse.json({ error: manualError.message }, { status: 500 });
+      }
+      (manualRows as DigidealManualSupplierRow[] | null)?.forEach((row) => {
+        const url =
+          firstString((row as any)["1688_URL"]) || firstString((row as any)["1688_url"]);
+        if (url) manualSupplierMap.set(String(row.product_id), url);
+      });
+
       const digidealItems = (rows ?? []).map((row) => {
         const listingTitle = firstString((row as any).listing_title);
         const titleH1 = firstString((row as any).title_h1);
@@ -138,6 +166,14 @@ export async function GET() {
         const primaryImage = firstString((row as any).primary_image_url);
         const imageUrls = (row as any).image_urls;
         const imageUrl = primaryImage || pickFirstImage(imageUrls);
+        const googleTaxonomyPath = firstString((row as any).google_taxonomy_path);
+        const googleParts = googleTaxonomyPath
+          ? googleTaxonomyPath.split(" > ").map((p: string) => p.trim()).filter(Boolean)
+          : [];
+        const taxonomyL1 = firstString((row as any).taxonomy_l1) ?? (googleParts[0] ?? null);
+        const taxonomyL2 = firstString((row as any).taxonomy_l2) ?? (googleParts[1] ?? null);
+        const taxonomyL3 = firstString((row as any).taxonomy_l3) ?? (googleParts[2] ?? null);
+        const supplier1688Url = manualSupplierMap.get(productId) ?? null;
         const soldToday = Math.max(
           0,
           (toNumber((row as any).sold_today) ?? 0) - 30
@@ -158,14 +194,26 @@ export async function GET() {
           image_local_path: (row as any).image_local_path ?? null,
           image_local_url: (row as any).image_local_url ?? null,
           source_url: firstString((row as any).source_url),
-          taxonomy_l1: (row as any).taxonomy_l1 ?? null,
-          taxonomy_l2: (row as any).taxonomy_l2 ?? null,
-          taxonomy_l3: (row as any).taxonomy_l3 ?? null,
+          taxonomy_l1: taxonomyL1,
+          taxonomy_l2: taxonomyL2,
+          taxonomy_l3: taxonomyL3,
+          taxonomy_path: googleTaxonomyPath ?? null,
           first_seen_at: (row as any).first_seen_at ?? null,
           last_seen_at: (row as any).last_seen_at ?? null,
           sold_today: soldToday,
           sold_7d: sold7d,
           sold_all_time: soldAllTime,
+          // DigiDeal deals table fields (for consistent formatting).
+          last_price: toNumber((row as any).last_price),
+          last_original_price: toNumber((row as any).last_original_price),
+          last_discount_percent: toNumber((row as any).last_discount_percent),
+          last_you_save_kr: toNumber((row as any).last_you_save_kr),
+          shipping_cost_kr: toNumber((row as any).shipping_cost_kr),
+          status: firstString((row as any).status),
+          seller_name: firstString((row as any).seller_name),
+          identical_spu: firstString((row as any).identical_spu),
+          supplier_1688_url: supplier1688Url,
+          supplier_locked: Boolean(supplier1688Url),
         };
       });
       items = items.concat(digidealItems);
@@ -216,7 +264,76 @@ export async function GET() {
     comment_count: commentCountMap.get(`${item.provider}:${item.product_id}`) ?? 0,
   }));
 
-  return NextResponse.json({ items: withComments });
+  // Supplier suggestions are admin-only (same as /app/production).
+  const supplierCountMap = new Map<string, number>();
+  const supplierSelectedSet = new Set<string>();
+  const supplierSelectedOfferMap = new Map<
+    string,
+    { image_url: string | null; title: string | null; detail_url: string | null }
+  >();
+  if (isAdmin && adminClient && withComments.length > 0) {
+    const providers = Array.from(new Set(withComments.map((item) => item.provider)));
+    const productIds = Array.from(new Set(withComments.map((item) => item.product_id)));
+
+    const [{ data: supplierRows }, { data: selectionRows }] = await Promise.all([
+      adminClient
+        .from("discovery_production_supplier_searches")
+        .select("provider, product_id, offers")
+        .in("provider", providers)
+        .in("product_id", productIds),
+      adminClient
+        .from("discovery_production_supplier_selection")
+        .select("provider, product_id, selected_offer")
+        .in("provider", providers)
+        .in("product_id", productIds),
+    ]);
+
+    (supplierRows as SupplierSearchRow[] | null)?.forEach((row) => {
+      const offers = Array.isArray(row.offers) ? row.offers : [];
+      supplierCountMap.set(`${row.provider}:${row.product_id}`, offers.length);
+    });
+
+    (selectionRows as Array<{ provider: string; product_id: string; selected_offer?: unknown }> | null)?.forEach(
+      (row) => {
+        const key = `${row.provider}:${row.product_id}`;
+        supplierSelectedSet.add(key);
+        const offer = (row as any)?.selected_offer;
+        if (offer && typeof offer === "object") {
+          const imageUrl =
+            firstString((offer as any).imageUrl) || firstString((offer as any).image_url);
+          const title =
+            firstString((offer as any).subject_en) ||
+            firstString((offer as any).subject) ||
+            firstString((offer as any).title);
+          const detailUrl =
+            firstString((offer as any).detailUrl) || firstString((offer as any).detail_url);
+          supplierSelectedOfferMap.set(key, {
+            image_url: imageUrl,
+            title,
+            detail_url: detailUrl,
+          });
+        }
+      }
+    );
+  }
+
+  const withSuppliers = withComments.map((item) => {
+    const key = `${item.provider}:${item.product_id}`;
+    const locked =
+      (item as any).supplier_locked === true ||
+      (typeof (item as any).supplier_1688_url === "string" &&
+        Boolean((item as any).supplier_1688_url.trim()));
+    return {
+      ...item,
+      supplier_count: supplierCountMap.has(key) ? supplierCountMap.get(key) : null,
+      supplier_selected: locked ? true : supplierSelectedSet.has(key),
+      supplier_selected_offer_image_url: supplierSelectedOfferMap.get(key)?.image_url ?? null,
+      supplier_selected_offer_title: supplierSelectedOfferMap.get(key)?.title ?? null,
+      supplier_selected_offer_detail_url: supplierSelectedOfferMap.get(key)?.detail_url ?? null,
+    };
+  });
+
+  return NextResponse.json({ items: withSuppliers });
 }
 
 export async function POST(request: Request) {
