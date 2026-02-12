@@ -1383,6 +1383,16 @@
       "context": "Bulk processing incoming chrome files title"
     },
     {
+      "key": "bulkProcessing.queueIncoming.title",
+      "text": "Production Queue Incoming Products",
+      "context": "Bulk processing incoming production queue files title"
+    },
+    {
+      "key": "bulkProcessing.queueIncoming.empty",
+      "text": "No files sent from Production Queue yet.",
+      "context": "Bulk processing incoming production queue files empty state"
+    },
+    {
       "key": "bulkProcessing.chrome.file",
       "text": "JSON file",
       "context": "Bulk processing incoming chrome file column"
@@ -2121,6 +2131,86 @@
       "key": "settings.zimage.apiKey.currentMissing",
       "text": "Current: not set",
       "context": "Settings helper text"
+    },
+    {
+      "key": "settings.aiImage.tab",
+      "text": "AI Image Edit",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.aiImage.title",
+      "text": "AI Image Edit",
+      "context": "Settings section title"
+    },
+    {
+      "key": "settings.aiImage.helper",
+      "text": "Manage ChatGPT and Gemini image-edit prompts and prompt mode.",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.aiImage.refresh",
+      "text": "Refresh",
+      "context": "Settings refresh button label"
+    },
+    {
+      "key": "settings.aiImage.loading",
+      "text": "Loading...",
+      "context": "Settings loading label"
+    },
+    {
+      "key": "settings.aiImage.forbidden",
+      "text": "You do not have permission to view these settings.",
+      "context": "Settings forbidden message"
+    },
+    {
+      "key": "settings.aiImage.error",
+      "text": "Unable to load AI image settings.",
+      "context": "Settings load error fallback"
+    },
+    {
+      "key": "settings.aiImage.saveSuccess",
+      "text": "Settings saved.",
+      "context": "Settings save success message"
+    },
+    {
+      "key": "settings.aiImage.saveError",
+      "text": "Unable to save settings.",
+      "context": "Settings save error fallback"
+    },
+    {
+      "key": "settings.aiImage.saving",
+      "text": "Saving...",
+      "context": "Settings save loading label"
+    },
+    {
+      "key": "settings.aiImage.mode.label",
+      "text": "Prompt mode",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.aiImage.mode.template",
+      "text": "Template mode",
+      "context": "Settings option label"
+    },
+    {
+      "key": "settings.aiImage.mode.direct",
+      "text": "Direct mode",
+      "context": "Settings option label"
+    },
+    {
+      "key": "settings.aiImage.mode.helper",
+      "text": "Template mode uses the saved template and optional nano prompt. Direct mode bypasses templates and sends the prompt text as-is.",
+      "context": "Settings helper text"
+    },
+    {
+      "key": "settings.aiImage.chatgptPrompt",
+      "text": "ChatGPT prompt template",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.aiImage.geminiPrompt",
+      "text": "Gemini prompt template",
+      "context": "Settings field label"
     },
     {
       "key": "settings.system.tab",
@@ -4729,6 +4819,11 @@
       "context": "Production table header"
     },
     {
+      "key": "production.table.sellerData",
+      "text": "Seller Data",
+      "context": "Production table header"
+    },
+    {
       "key": "production.table.provider",
       "text": "Provider",
       "context": "Production table header"
@@ -4774,6 +4869,11 @@
       "context": "Production table header"
     },
     {
+      "key": "production.table.productionStatus",
+      "text": "Production Status",
+      "context": "Production table header"
+    },
+    {
       "key": "production.table.comments",
       "text": "Comments",
       "context": "Production table header"
@@ -4805,8 +4905,43 @@
     },
     {
       "key": "production.action.produce",
-      "text": "Produce",
-      "context": "Production row produce placeholder"
+      "text": "Send to Production",
+      "context": "Production row send-to-production button"
+    },
+    {
+      "key": "production.action.sendSelected",
+      "text": "Send Selected to Production",
+      "context": "Production selected rows bulk send button"
+    },
+    {
+      "key": "production.action.sending",
+      "text": "Sending...",
+      "context": "Production send-to-production loading button"
+    },
+    {
+      "key": "production.action.sendError",
+      "text": "Unable to send selected products to production.",
+      "context": "Production send-to-production generic error"
+    },
+    {
+      "key": "production.selection.selectedCount",
+      "text": "{count} selected",
+      "context": "Production selected rows counter"
+    },
+    {
+      "key": "production.status.spuAssigned",
+      "text": "SPU Assigned",
+      "context": "Production status line label"
+    },
+    {
+      "key": "production.status.productionStarted",
+      "text": "Production Started",
+      "context": "Production status line label"
+    },
+    {
+      "key": "production.status.productionDone",
+      "text": "Production Done",
+      "context": "Production status line label"
     },
     {
       "key": "production.comments.view",
@@ -4982,6 +5117,76 @@
       "key": "production.suppliers.savedHint",
       "text": "This supplier is saved for this product.",
       "context": "Production suppliers dialog hint under pinned saved supplier"
+    },
+    {
+      "key": "production.suppliers.payloadFetching",
+      "text": "Fetching 1688 data",
+      "context": "Production suppliers payload status while background extraction is running"
+    },
+    {
+      "key": "production.suppliers.payloadReady",
+      "text": "1688 data saved",
+      "context": "Production suppliers payload status once extraction JSON is saved"
+    },
+    {
+      "key": "production.suppliers.payloadFailed",
+      "text": "Failed",
+      "context": "Production suppliers payload status when background extraction fails"
+    },
+    {
+      "key": "production.suppliers.manualAdd",
+      "text": "Manually add",
+      "context": "Production suppliers button shown after payload fetch failure"
+    },
+    {
+      "key": "production.suppliers.manualTitle",
+      "text": "Manually add supplier JSON",
+      "context": "Production suppliers dialog title for manual JSON upload"
+    },
+    {
+      "key": "production.suppliers.manualHelp",
+      "text": "Upload or paste a JSON package and save it to the selected supplier.",
+      "context": "Production suppliers manual JSON dialog helper text"
+    },
+    {
+      "key": "production.suppliers.manualFileLabel",
+      "text": "JSON file",
+      "context": "Production suppliers manual JSON file input label"
+    },
+    {
+      "key": "production.suppliers.manualJsonLabel",
+      "text": "JSON content",
+      "context": "Production suppliers manual JSON textarea label"
+    },
+    {
+      "key": "production.suppliers.manualJsonPlaceholder",
+      "text": "Paste JSON here if you do not upload a file.",
+      "context": "Production suppliers manual JSON textarea placeholder"
+    },
+    {
+      "key": "production.suppliers.manualSave",
+      "text": "Save package",
+      "context": "Production suppliers manual JSON save button"
+    },
+    {
+      "key": "production.suppliers.manualMissing",
+      "text": "Upload or paste a JSON payload first.",
+      "context": "Production suppliers manual JSON validation error for missing content"
+    },
+    {
+      "key": "production.suppliers.manualInvalidJson",
+      "text": "Invalid JSON. Please check the file content.",
+      "context": "Production suppliers manual JSON validation error for invalid JSON"
+    },
+    {
+      "key": "production.suppliers.manualSaveError",
+      "text": "Unable to save supplier JSON.",
+      "context": "Production suppliers manual JSON save error"
+    },
+    {
+      "key": "production.suppliers.manualReadError",
+      "text": "Unable to read the selected file.",
+      "context": "Production suppliers manual JSON file read error"
     },
     {
       "key": "production.suppliers.save",

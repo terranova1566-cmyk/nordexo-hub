@@ -3899,7 +3899,7 @@ export default function DigidealCampaignsPage() {
                             className={styles.rerunMenuButton}
                             disabled={isAdding}
                           >
-                            {t("common.add")}
+                            {t("digideal.rerun.add")}
                           </Button>
                         </MenuTrigger>
 	                        <MenuPopover>
@@ -4375,7 +4375,7 @@ export default function DigidealCampaignsPage() {
                   size="medium"
                   disabled={selectedCount === 0 || bulkAdding}
                 >
-                  {t("common.add")}
+                  {t("digideal.rerun.add")}
                 </Button>
               </MenuTrigger>
               <MenuPopover>

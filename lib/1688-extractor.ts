@@ -2,6 +2,9 @@ import fs from "fs";
 import path from "path";
 
 export const EXTRACTOR_UPLOAD_DIR = "/srv/node-files/1688-extractor";
+export const PRODUCTION_SUPPLIER_PAYLOAD_DIR =
+  process.env.NODEXO_PRODUCTION_PAYLOAD_DIR ||
+  path.join(EXTRACTOR_UPLOAD_DIR, "_production_queue_payloads");
 
 export type ExtractorFileSummary = {
   name: string;
@@ -206,7 +209,15 @@ export const listExtractorFiles = (): ExtractorFileSummary[] => {
   if (!fs.existsSync(EXTRACTOR_UPLOAD_DIR)) return [];
   const files = fs
     .readdirSync(EXTRACTOR_UPLOAD_DIR)
-    .filter((name) => name.toLowerCase().endsWith(".json"));
+    .filter((name) => name.toLowerCase().endsWith(".json"))
+    .filter((name) => {
+      const lower = name.toLowerCase();
+      // Keep Chrome-extension incoming list clean: production queue payload files
+      // are managed via supplier selection metadata, not this incoming bucket.
+      if (lower.startsWith("production_supplier_")) return false;
+      if (lower.startsWith("production_supplier_manual_")) return false;
+      return true;
+    });
 
   return files
     .map((name) => {

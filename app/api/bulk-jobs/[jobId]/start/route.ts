@@ -6,6 +6,10 @@ import {
   getJob,
   updateJob,
 } from "@/lib/bulk-jobs";
+import {
+  collectProductionRefsFromPayload,
+  upsertProductionStatuses,
+} from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -57,6 +61,28 @@ export async function POST(
     summary: null,
     error: null,
   }));
+
+  try {
+    const raw = fs.readFileSync(job.inputPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const refs = collectProductionRefsFromPayload(parsed);
+    if (refs.length > 0) {
+      await upsertProductionStatuses(
+        supabase,
+        refs.map((entry) => ({
+          provider: entry.provider,
+          product_id: entry.product_id,
+        })),
+        {
+          status: "production_started",
+          fileName: job.inputName ?? null,
+          jobId: job.jobId,
+        }
+      );
+    }
+  } catch (error) {
+    console.error("Unable to sync production queue running status:", error);
+  }
 
   return NextResponse.json({ job: updatedJob ?? job });
 }

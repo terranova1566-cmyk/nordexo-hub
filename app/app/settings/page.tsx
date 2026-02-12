@@ -110,6 +110,12 @@ type ZImageSettings = {
   };
 };
 
+type AIImageEditSettings = {
+  prompt_mode: "template" | "direct";
+  chatgpt_prompt_template: string;
+  gemini_prompt_template: string;
+};
+
 const createImage = (url: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -424,6 +430,18 @@ const useStyles = makeStyles({
     gap: "12px",
     alignItems: "flex-end",
   },
+  textArea: {
+    width: "100%",
+    minHeight: "220px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "8px",
+    padding: "10px",
+    fontFamily: "monospace",
+    fontSize: tokens.fontSizeBase200,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    resize: "vertical",
+  },
 });
 
 const normalizeKeyword = (value: string) =>
@@ -494,6 +512,15 @@ export default function SettingsPage() {
   const [zimageSaving, setZimageSaving] = useState(false);
   const [zimageSaveError, setZimageSaveError] = useState<string | null>(null);
   const [zimageSaveSuccess, setZimageSaveSuccess] = useState(false);
+  const [aiImagePromptMode, setAiImagePromptMode] = useState<"template" | "direct">("template");
+  const [aiImageChatgptPrompt, setAiImageChatgptPrompt] = useState("");
+  const [aiImageGeminiPrompt, setAiImageGeminiPrompt] = useState("");
+  const [aiImageLoading, setAiImageLoading] = useState(false);
+  const [aiImageError, setAiImageError] = useState<string | null>(null);
+  const [aiImageForbidden, setAiImageForbidden] = useState(false);
+  const [aiImageSaving, setAiImageSaving] = useState(false);
+  const [aiImageSaveError, setAiImageSaveError] = useState<string | null>(null);
+  const [aiImageSaveSuccess, setAiImageSaveSuccess] = useState(false);
   const [serviceRestarting, setServiceRestarting] = useState<
     Record<string, boolean>
   >({});
@@ -601,6 +628,35 @@ export default function SettingsPage() {
     loadZImageSettings();
   }, [activeTab, loadZImageSettings]);
 
+  const loadAiImageSettings = useCallback(async () => {
+    setAiImageLoading(true);
+    setAiImageError(null);
+    setAiImageForbidden(false);
+    try {
+      const response = await fetch("/api/settings/ai-image-edit");
+      if (response.status === 403 || response.status === 401) {
+        setAiImageForbidden(true);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(t("settings.aiImage.error"));
+      }
+      const payload = (await response.json()) as AIImageEditSettings;
+      setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
+      setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
+      setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
+    } catch (err) {
+      setAiImageError((err as Error).message);
+    } finally {
+      setAiImageLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab !== "ai-image-edit") return;
+    loadAiImageSettings();
+  }, [activeTab, loadAiImageSettings]);
+
   const handleZImageSave = async () => {
     setZimageSaving(true);
     setZimageSaveError(null);
@@ -647,6 +703,37 @@ export default function SettingsPage() {
       setZimageSaveError((err as Error).message);
     } finally {
       setZimageSaving(false);
+    }
+  };
+
+  const handleAiImageSave = async () => {
+    setAiImageSaving(true);
+    setAiImageSaveError(null);
+    setAiImageSaveSuccess(false);
+    try {
+      const response = await fetch("/api/settings/ai-image-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt_mode: aiImagePromptMode,
+          chatgpt_prompt_template: aiImageChatgptPrompt,
+          gemini_prompt_template: aiImageGeminiPrompt,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || t("settings.aiImage.saveError"));
+      }
+      const payload = (await response.json()) as AIImageEditSettings;
+      setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
+      setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
+      setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
+      setAiImageSaveSuccess(true);
+      setTimeout(() => setAiImageSaveSuccess(false), 2500);
+    } catch (err) {
+      setAiImageSaveError((err as Error).message);
+    } finally {
+      setAiImageSaving(false);
     }
   };
 
@@ -1080,6 +1167,7 @@ export default function SettingsPage() {
           <Tab value="user">{t("settings.user.tab")}</Tab>
           <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
+          <Tab value="ai-image-edit">{t("settings.aiImage.tab")}</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
         </TabList>
       </Card>
@@ -1745,6 +1833,90 @@ export default function SettingsPage() {
                     disabled={zimageSaving || zimageForbidden}
                   >
                     {zimageSaving ? t("settings.zimage.saving") : t("common.save")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === "ai-image-edit" ? (
+        <div className={styles.sectionGrid}>
+          <Card className={styles.card}>
+            <div className={styles.systemHeader}>
+              <Text weight="semibold">{t("settings.aiImage.title")}</Text>
+              <Button
+                appearance="subtle"
+                onClick={loadAiImageSettings}
+                disabled={aiImageLoading}
+              >
+                {t("settings.aiImage.refresh")}
+              </Button>
+            </div>
+            <Text size={200} className={styles.helperText}>
+              {t("settings.aiImage.helper")}
+            </Text>
+
+            {aiImageForbidden ? (
+              <MessageBar>{t("settings.aiImage.forbidden")}</MessageBar>
+            ) : aiImageError ? (
+              <MessageBar>{aiImageError}</MessageBar>
+            ) : null}
+
+            {aiImageSaveError ? <MessageBar>{aiImageSaveError}</MessageBar> : null}
+            {aiImageSaveSuccess ? (
+              <MessageBar>{t("settings.aiImage.saveSuccess")}</MessageBar>
+            ) : null}
+
+            {aiImageLoading ? (
+              <Spinner label={t("settings.aiImage.loading")} />
+            ) : (
+              <>
+                <Field label={t("settings.aiImage.mode.label")}>
+                  <Dropdown
+                    value={aiImagePromptMode}
+                    selectedOptions={[aiImagePromptMode]}
+                    onOptionSelect={(_, data) =>
+                      setAiImagePromptMode(
+                        String(data.optionValue) === "direct" ? "direct" : "template"
+                      )
+                    }
+                    disabled={aiImageForbidden}
+                  >
+                    <Option value="template">{t("settings.aiImage.mode.template")}</Option>
+                    <Option value="direct">{t("settings.aiImage.mode.direct")}</Option>
+                  </Dropdown>
+                </Field>
+                <Text size={200} className={styles.helperText}>
+                  {t("settings.aiImage.mode.helper")}
+                </Text>
+
+                <Field label={t("settings.aiImage.chatgptPrompt")}>
+                  <textarea
+                    value={aiImageChatgptPrompt}
+                    onChange={(event) => setAiImageChatgptPrompt(event.target.value)}
+                    className={styles.textArea}
+                    disabled={aiImageForbidden}
+                  />
+                </Field>
+
+                <Field label={t("settings.aiImage.geminiPrompt")}>
+                  <textarea
+                    value={aiImageGeminiPrompt}
+                    onChange={(event) => setAiImageGeminiPrompt(event.target.value)}
+                    className={styles.textArea}
+                    disabled={aiImageForbidden}
+                  />
+                </Field>
+
+                <div className={styles.saveRow}>
+                  <Button
+                    appearance="primary"
+                    onClick={handleAiImageSave}
+                    disabled={aiImageSaving || aiImageForbidden}
+                  >
+                    {aiImageSaving ? t("settings.aiImage.saving") : t("common.save")}
                   </Button>
                 </div>
               </>

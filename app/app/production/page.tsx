@@ -1,10 +1,12 @@
 "use client";
 
- import {
+import {
   Badge,
   Button,
   Card,
   Checkbox,
+  Dropdown,
+  Input,
   Dialog,
   DialogActions,
   DialogBody,
@@ -14,6 +16,9 @@
   Field,
   Image,
   MessageBar,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Spinner,
   Table,
   TableBody,
@@ -24,11 +29,12 @@
   Textarea,
   Text,
   Tooltip,
+  Option,
   makeStyles,
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 
@@ -74,6 +80,43 @@ type ProductionItem = {
   supplier_selected_offer_image_url?: string | null;
   supplier_selected_offer_title?: string | null;
   supplier_selected_offer_detail_url?: string | null;
+  supplier_payload_status?: string | null;
+  supplier_payload_source?: string | null;
+  supplier_payload_error?: string | null;
+  supplier_payload_saved_at?: string | null;
+  supplier_payload_file_name?: string | null;
+  supplier_payload_file_path?: string | null;
+  supplier_payload_competitor_url?: string | null;
+  supplier_payload_competitor_title?: string | null;
+  supplier_payload_competitor_images?: number | null;
+  supplier_payload_competitor_error?: string | null;
+  supplier_variant_available_count?: number | null;
+  supplier_variant_selected_count?: number | null;
+  supplier_variant_packs_text?: string | null;
+  production_status?: string | null;
+  production_status_updated_at?: string | null;
+  production_status_spu_assigned_at?: string | null;
+  production_status_started_at?: string | null;
+  production_status_done_at?: string | null;
+  production_status_last_file_name?: string | null;
+  production_status_last_job_id?: string | null;
+  production_assigned_spu?: string | null;
+};
+
+type VariantCombo = {
+  index: number;
+  t1: string;
+  t2: string;
+  t3: string;
+  t1_zh?: string;
+  t1_en?: string;
+  t2_zh?: string;
+  t2_en?: string;
+  t3_zh?: string;
+  t3_en?: string;
+  image_url?: string;
+  price_raw: string;
+  price: number | null;
 };
 
 type ProductionComment = {
@@ -116,6 +159,33 @@ type CatalogProduct = {
   small_image_url: string | null;
 };
 
+const QUEUE_PRODUCTION_STATUS_OPTIONS = [
+  { value: "none", label: "No status" },
+  { value: "spu_assigned", label: "SPU Assigned" },
+  { value: "production_started", label: "Production Started" },
+  { value: "production_done", label: "Production Done" },
+] as const;
+
+const QUEUE_STATUS_SET_OPTIONS = [
+  { value: "variants_picked", label: "Variants picked" },
+  { value: "variants_not_picked", label: "Variants not picked" },
+  { value: "supplier_selected", label: "Supplier selected" },
+  { value: "supplier_not_selected", label: "Supplier not selected" },
+  { value: "linked_product", label: "Linked product" },
+  { value: "linked_not_product", label: "No linked product" },
+] as const;
+
+const QUEUE_PROVIDER_OPTIONS = [
+  { value: "fyndiq", label: "Fyndiq" },
+  { value: "digideal", label: "DigiDeal" },
+  { value: "cdon", label: "CDON" },
+] as const;
+
+const QUEUE_COMMENT_OPTIONS = [
+  { value: "with", label: "With comments" },
+  { value: "without", label: "No comments" },
+] as const;
+
 const useStyles = makeStyles({
   card: {
     padding: "16px",
@@ -123,44 +193,56 @@ const useStyles = makeStyles({
   },
   table: {
     width: "100%",
+    tableLayout: "auto",
     "& .fui-TableCell": {
-      paddingTop: "10px",
-      paddingBottom: "10px",
+      paddingTop: "8px",
+      paddingBottom: "8px",
+      paddingLeft: "8px",
+      paddingRight: "8px",
       verticalAlign: "middle",
+    },
+    "& .fui-TableHeaderCell": {
+      paddingLeft: "8px",
+      paddingRight: "8px",
+      whiteSpace: "nowrap",
     },
   },
   imageCol: {
-    width: "83px",
+    width: "78px",
     paddingLeft: "8px",
     paddingRight: 0,
     boxSizing: "border-box",
   },
   productCol: {
-    width: "420px",
+    width: "360px",
     maxWidth: "420px",
-    minWidth: "420px",
+    minWidth: "300px",
     paddingLeft: "15px",
-    paddingRight: "20px",
+    paddingRight: "16px",
   },
   providerCol: {
-    width: "150px",
+    width: "120px",
   },
-  salesCol: {
-    width: "150px",
-  },
-  priceCol: {
-    width: "190px",
+  sellerDataCol: {
+    width: "230px",
+    paddingLeft: "20px",
   },
   linkCol: {
-    width: "100px",
+    width: "92px",
   },
   linkedCol: {
-    width: "180px",
+    width: "150px",
+  },
+  statusCol: {
+    width: "210px",
   },
   commentsCol: {
-    width: "160px",
+    width: "72px",
   },
   suppliersCol: {
+    width: "250px",
+  },
+  variantsCol: {
     width: "170px",
   },
   selectCol: {
@@ -168,12 +250,39 @@ const useStyles = makeStyles({
     paddingRight: "10px",
     paddingLeft: "10px",
   },
+  tableSelectCheckbox: {
+    "& input ~ .fui-Checkbox__indicator": {
+      "--fui-Checkbox__indicator--backgroundColor": "#ffffff",
+      backgroundColor: "#ffffff",
+    } as any,
+    "& input:not(:checked) ~ .fui-Checkbox__indicator": {
+      borderColor: tokens.colorNeutralStroke1,
+      color: "transparent",
+    } as any,
+    "& input:checked ~ .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+      borderColor: tokens.colorBrandStroke1,
+      color: tokens.colorBrandForeground1,
+    } as any,
+    "& input:disabled ~ .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+      borderColor: tokens.colorNeutralStrokeDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+    } as any,
+  },
   thumb: {
     width: "75px",
     height: "75px",
     borderRadius: "12px",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground3,
+  },
+  thumbZoomImage: {
+    width: "220px",
+    height: "220px",
+    objectFit: "contain",
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "block",
   },
   productTitle: {
     fontWeight: 600,
@@ -238,6 +347,26 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
   },
+  sellerSalesInline: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  sellerRowTop: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+    minHeight: "20px",
+  },
+  sellerRowBottom: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: "8px",
+    minWidth: 0,
+  },
   salesGroup: {
     display: "inline-flex",
     alignItems: "center",
@@ -251,7 +380,7 @@ const useStyles = makeStyles({
     height: "20px",
     paddingInline: "4px",
     paddingBlock: "0px",
-    backgroundColor: "transparent",
+    backgroundColor: tokens.colorNeutralBackground1,
     fontSize: "11px",
     fontWeight: tokens.fontWeightBold,
     lineHeight: "14px",
@@ -270,6 +399,18 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
     minWidth: 0,
+  },
+  variantCellStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  variantMetaTight: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.2",
+    marginTop: "1px",
   },
   priceRow: {
     display: "flex",
@@ -302,6 +443,10 @@ const useStyles = makeStyles({
   },
   linkButton: {
     backgroundColor: tokens.colorNeutralBackground1,
+    width: "fit-content",
+    minWidth: "unset",
+    paddingLeft: "10px",
+    paddingRight: "10px",
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
     },
@@ -314,6 +459,7 @@ const useStyles = makeStyles({
   linkIcon: {
     width: "16px",
     height: "16px",
+    color: tokens.colorNeutralForeground3,
   },
   linkedProductStack: {
     display: "flex",
@@ -433,7 +579,7 @@ const useStyles = makeStyles({
     whiteSpace: "nowrap",
   },
   actionCell: {
-    width: "auto",
+    width: "118px",
   },
   actionRow: {
     display: "flex",
@@ -441,15 +587,120 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
   },
+  queueActionsBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "10px",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  queueFiltersBar: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  queueActionRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    marginLeft: "auto",
+  },
+  queueSearchInput: {
+    width: "260px",
+  },
+  queueFilterDropdown: {
+    minWidth: "180px",
+    "& button": {
+      fontSize: tokens.fontSizeBase200,
+      fontFamily: tokens.fontFamilyBase,
+    },
+  },
+  queueActionCount: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+  },
+  queueSendButtonActive: {
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+  },
+  statusStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    minWidth: 0,
+  },
+  statusLine: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+    lineHeight: "1.3",
+  },
+  statusLineActive: {
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  statusCurrent: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: "1.2",
+  },
+  statusCurrentNew: {
+    color: tokens.colorNeutralForeground3,
+  },
+  statusCurrentDone: {
+    color: "#1b851a",
+  },
+  statusTimestamp: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.2",
+    marginTop: "2px",
+  },
+  statusSpuLink: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground1,
+    lineHeight: "1.2",
+    textDecorationLine: "none",
+    width: "fit-content",
+    "&:hover": {
+      color: tokens.colorBrandForeground1,
+      textDecorationLine: "underline",
+    },
+  },
   commentDialog: {
     minWidth: "520px",
     maxWidth: "720px",
+  },
+  commentDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    height: "min(52vh, 520px)",
+    minHeight: "320px",
+  },
+  commentDialogContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    flex: 1,
+    minHeight: 0,
+  },
+  commentHistory: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingRight: "2px",
   },
   commentList: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxHeight: "320px",
+    maxHeight: "none",
+    flex: 1,
     overflowY: "auto",
     padding: "2px",
   },
@@ -481,6 +732,11 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "8px",
+  },
+  commentComposer: {
+    marginTop: "auto",
+    paddingTop: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
   },
   supplierDialog: {
     minWidth: "680px",
@@ -654,11 +910,529 @@ const useStyles = makeStyles({
   supplierSelectedButton: {
     backgroundColor: "#d6f5da",
     color: "#165a23",
-    selectors: {
-      "&:hover": {
-        backgroundColor: "#c3eccc",
-      },
+    border: "1px solid #165a23",
+    width: "fit-content",
+    minWidth: "unset",
+    paddingLeft: "10px",
+    paddingRight: "10px",
+    "&:hover": {
+      backgroundColor: "#c3eccc",
     },
+  },
+  supplierControlRow: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "3px",
+  },
+  supplierMainRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  supplierMetaTightRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.1",
+    whiteSpace: "nowrap",
+    flexWrap: "wrap",
+  },
+  supplierMetaTightItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  supplierMetaTightStatic: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  supplierMetaTightItemFailed: {
+    color: "#7a1616",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  supplierMetaTightButton: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    color: "inherit",
+    cursor: "pointer",
+    fontSize: "inherit",
+    lineHeight: "inherit",
+    textDecorationLine: "none",
+    "&:hover": {
+      textDecorationLine: "underline",
+    },
+  },
+  supplierMetaTightOk: {
+    color: "#165a23",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  supplierMetaTightFail: {
+    color: "#a4262c",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  supplierInlineLoaderIcon: {
+    width: "12px",
+    height: "12px",
+    display: "inline-block",
+    animationName: {
+      from: { transform: "rotate(0deg)" },
+      to: { transform: "rotate(360deg)" },
+    },
+    animationDuration: "900ms",
+    animationIterationCount: "infinite",
+    animationTimingFunction: "linear",
+  },
+  supplierJsonButton: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground3,
+    width: "24px",
+    minWidth: "24px",
+    height: "24px",
+    borderRadius: tokens.borderRadiusMedium,
+    paddingLeft: 0,
+    paddingRight: 0,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      color: tokens.colorBrandForeground1,
+    },
+    "&:disabled": {
+      opacity: 0.5,
+      cursor: "not-allowed",
+    },
+  },
+  supplierJsonIcon: {
+    width: "16px",
+    height: "16px",
+    display: "block",
+  },
+  supplierManualRow: {
+    display: "inline-flex",
+    alignItems: "flex-start",
+    gap: "6px",
+  },
+  competitorOverrideDialog: {
+    minWidth: "520px",
+    maxWidth: "680px",
+  },
+  jsonDialog: {
+    minWidth: "min(92vw, 980px)",
+    maxWidth: "min(95vw, 1280px)",
+  },
+  jsonDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    height: "min(92vh, 980px)",
+    minHeight: "min(92vh, 980px)",
+  },
+  jsonDialogActions: {
+    justifyContent: "flex-end",
+    display: "flex",
+    width: "100%",
+  },
+  jsonDialogContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  jsonTabsRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  jsonEditorWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  jsonRawWrap: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  jsonEditor: {
+    display: "flex",
+    width: "100%",
+    flex: 1,
+    minHeight: 0,
+    height: "100%",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: "12px",
+    lineHeight: "1.45",
+    overflow: "hidden",
+    "&.fui-Textarea": {
+      height: "100%",
+    },
+    "& .fui-Textarea__textarea": {
+      height: "100%",
+      minHeight: 0,
+      overflow: "auto",
+      whiteSpace: "pre",
+    },
+  },
+  jsonNativeTextarea: {
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
+    flex: 1,
+    boxSizing: "border-box",
+    resize: "none",
+    overflow: "auto",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: "12px",
+    lineHeight: "1.45",
+    color: tokens.colorNeutralForeground1,
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    padding: "10px 12px",
+  },
+  jsonFieldCompact: {
+    "& .fui-Label": {
+      fontSize: tokens.fontSizeBase100,
+      color: tokens.colorNeutralForeground3,
+      fontWeight: tokens.fontWeightRegular,
+      lineHeight: tokens.lineHeightBase100,
+    },
+  },
+  jsonReadableWrap: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+  },
+  jsonReadableGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(220px, 1fr) minmax(220px, 1fr)",
+    gap: "8px",
+    "@media (max-width: 900px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  jsonReadableSection: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  jsonReadableSectionHeader: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightSemibold,
+    textTransform: "uppercase",
+    letterSpacing: "0.02em",
+  },
+  jsonReadableSectionText: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+  },
+  jsonReadableMono: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: "12px",
+    lineHeight: "1.4",
+  },
+  jsonLinkGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "8px",
+    "@media (max-width: 1000px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  jsonLinksPanel: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "6px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "120px",
+    overflowY: "auto",
+  },
+  jsonLinksPanelTall: {
+    maxHeight: "220px",
+  },
+  jsonLinksTitle: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  jsonLink: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorBrandForeground1,
+    textDecorationLine: "none",
+    overflowWrap: "anywhere",
+    lineHeight: "1.3",
+    "&:hover": {
+      textDecorationLine: "underline",
+      color: tokens.colorBrandForeground2,
+    },
+  },
+  manualPayloadDialog: {
+    minWidth: "540px",
+    maxWidth: "760px",
+  },
+  variantsDialog: {
+    minWidth: "760px",
+    maxWidth: "980px",
+  },
+  variantsDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    maxHeight: "min(86vh, 860px)",
+    minHeight: 0,
+  },
+  variantsListWrap: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    overflow: "auto",
+    maxHeight: "420px",
+  },
+  variantsListTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+  variantsListHeadCell: {
+    position: "sticky",
+    top: 0,
+    backgroundColor: tokens.colorNeutralBackground1,
+    zIndex: 1,
+    padding: "8px 10px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    fontWeight: tokens.fontWeightSemibold,
+    fontSize: tokens.fontSizeBase200,
+    textAlign: "left",
+  },
+  variantsListCell: {
+    padding: "5px 10px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    fontSize: tokens.fontSizeBase200,
+    verticalAlign: "middle",
+  },
+  variantImageThumb: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "6px",
+    objectFit: "cover",
+    backgroundColor: tokens.colorNeutralBackground3,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    display: "block",
+  },
+  variantImageCellWrap: {
+    width: "48px",
+    height: "48px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto",
+  },
+  variantImagePopoverSurface: {
+    width: "270px",
+    height: "270px",
+    maxWidth: "none",
+    maxHeight: "none",
+    padding: "8px",
+    boxSizing: "border-box",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "hidden",
+  },
+  variantImageZoomWrap: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.colorNeutralBackground3,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "8px",
+    overflow: "hidden",
+    boxSizing: "border-box",
+  },
+  variantImageZoom: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    objectPosition: "center center",
+    backgroundColor: tokens.colorNeutralBackground3,
+    display: "block",
+  },
+  variantLabelCell: {
+    minWidth: "180px",
+  },
+  variantsRowClickable: {
+    cursor: "pointer",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  variantsPacksField: {
+    maxWidth: "420px",
+  },
+  variantValueWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "1px",
+    minWidth: 0,
+  },
+  variantValueZh: {
+    fontSize: tokens.fontSizeBase300,
+    color: tokens.colorNeutralForeground1,
+    lineHeight: "1.2",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    wordBreak: "break-word",
+  },
+  variantValueEn: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.2",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    wordBreak: "break-word",
+  },
+  commentIconButton: {
+    width: "22px",
+    minWidth: "22px",
+    height: "22px",
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  commentIconButtonEmpty: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground4,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      color: tokens.colorNeutralForeground3,
+    },
+  },
+  commentIconButtonHasComments: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorBrandForeground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      color: tokens.colorBrandForeground2,
+    },
+  },
+  iconOnly: {
+    width: "15px",
+    height: "15px",
+    display: "block",
+  },
+  removeIconButton: {
+    width: "24px",
+    minWidth: "24px",
+    height: "24px",
+    paddingLeft: 0,
+    paddingRight: 0,
+    color: tokens.colorNeutralForeground3,
+    "&:hover": {
+      color: tokens.colorPaletteRedForeground2,
+    },
+  },
+  removeIcon: {
+    width: "16px",
+    height: "16px",
+    display: "block",
+  },
+  variantsDialogActions: {
+    justifyContent: "flex-end",
+    width: "100%",
+  },
+  variantsHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    marginBottom: "2px",
+  },
+  variantsTitleStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  variantsTitleText: {
+    fontSize: tokens.fontSizeBase300,
+    lineHeight: "1.2",
+    fontWeight: tokens.fontWeightSemibold,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  variantsTitleLink: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: "1.2",
+    color: tokens.colorNeutralForeground3,
+    textDecorationLine: "none",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "460px",
+    "&:hover": {
+      color: tokens.colorBrandForeground1,
+      textDecorationLine: "underline",
+    },
+  },
+  variantsTopActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    marginLeft: "auto",
+  },
+  rowStatusInProgress: {
+    "& .fui-TableCell": {
+      backgroundColor: "#fff8df",
+    },
+  },
+  rowStatusDone: {
+    "& .fui-TableCell": {
+      backgroundColor: "#edf9ee",
+    },
+  },
+  manualPayloadStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  manualPayloadFileInput: {
+    maxWidth: "100%",
   },
   cropOverlay: {
     position: "absolute",
@@ -790,6 +1564,11 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground3,
     display: "block",
   },
+  supplierSearchingFooter: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
 });
 
 export default function ProductionPage() {
@@ -827,6 +1606,27 @@ export default function ProductionPage() {
   >(null);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [queueSearch, setQueueSearch] = useState("");
+  const [queueProductionStatusFilters, setQueueProductionStatusFilters] = useState<Set<string>>(
+    () => new Set(QUEUE_PRODUCTION_STATUS_OPTIONS.map((option) => option.value))
+  );
+  const [queueStatusSetFilters, setQueueStatusSetFilters] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [queueProviders, setQueueProviders] = useState<Set<string>>(
+    () => new Set(QUEUE_PROVIDER_OPTIONS.map((option) => option.value))
+  );
+  const [queueCommentsFilters, setQueueCommentsFilters] = useState<Set<string>>(
+    () => new Set(QUEUE_COMMENT_OPTIONS.map((option) => option.value))
+  );
+  const warmedVariantKeysRef = useRef<Set<string>>(new Set());
+  const [competitorOverrideDialogOpen, setCompetitorOverrideDialogOpen] = useState(false);
+  const [competitorOverrideTarget, setCompetitorOverrideTarget] = useState<ProductionItem | null>(
+    null
+  );
+  const [competitorOverrideUrl, setCompetitorOverrideUrl] = useState("");
+  const [competitorOverrideSaving, setCompetitorOverrideSaving] = useState(false);
+  const [competitorOverrideError, setCompetitorOverrideError] = useState<string | null>(null);
 
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
@@ -850,6 +1650,45 @@ export default function ProductionPage() {
   const [linkedLoading, setLinkedLoading] = useState(false);
   const [linkedSaving, setLinkedSaving] = useState(false);
   const [linkedError, setLinkedError] = useState<string | null>(null);
+
+  const [manualPayloadDialogOpen, setManualPayloadDialogOpen] = useState(false);
+  const [manualPayloadTarget, setManualPayloadTarget] = useState<ProductionItem | null>(null);
+  const [manualPayloadJsonText, setManualPayloadJsonText] = useState("");
+  const [manualPayloadFileName, setManualPayloadFileName] = useState("");
+  const [manualPayloadError, setManualPayloadError] = useState<string | null>(null);
+  const [manualPayloadSaving, setManualPayloadSaving] = useState(false);
+  const [sendingQueue, setSendingQueue] = useState(false);
+  const [sendingQueueRowKeys, setSendingQueueRowKeys] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [jsonInspectorOpen, setJsonInspectorOpen] = useState(false);
+  const [jsonInspectorTarget, setJsonInspectorTarget] = useState<{
+    provider: string;
+    product_id: string;
+    badge: string;
+  } | null>(null);
+  const [jsonInspectorText, setJsonInspectorText] = useState("");
+  const [jsonInspectorReadableText, setJsonInspectorReadableText] = useState("");
+  const [jsonInspectorTab, setJsonInspectorTab] = useState<"readable" | "raw">("readable");
+  const [jsonInspectorLoading, setJsonInspectorLoading] = useState(false);
+  const [jsonInspectorSaving, setJsonInspectorSaving] = useState(false);
+  const [jsonInspectorError, setJsonInspectorError] = useState<string | null>(null);
+  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
+  const [variantsTarget, setVariantsTarget] = useState<ProductionItem | null>(null);
+  const [variantsCombos, setVariantsCombos] = useState<VariantCombo[]>([]);
+  const [variantsTypeLabels, setVariantsTypeLabels] = useState<{
+    t1: string;
+    t2: string;
+    t3: string;
+  }>({ t1: "", t2: "", t3: "" });
+  const [variantsSelectedIndexes, setVariantsSelectedIndexes] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [variantsPacksText, setVariantsPacksText] = useState("");
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantsSaving, setVariantsSaving] = useState(false);
+  const [variantsError, setVariantsError] = useState<string | null>(null);
+  const [variantImagePreviewIndex, setVariantImagePreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -965,6 +1804,381 @@ export default function ProductionPage() {
     setRecropSearching(false);
   }, []);
 
+  const openManualPayloadDialog = useCallback((item: ProductionItem) => {
+    setManualPayloadTarget(item);
+    setManualPayloadDialogOpen(true);
+    setManualPayloadJsonText("");
+    setManualPayloadFileName("");
+    setManualPayloadError(null);
+    setManualPayloadSaving(false);
+  }, []);
+
+  const closeManualPayloadDialog = useCallback(() => {
+    setManualPayloadDialogOpen(false);
+    setManualPayloadTarget(null);
+    setManualPayloadJsonText("");
+    setManualPayloadFileName("");
+    setManualPayloadError(null);
+    setManualPayloadSaving(false);
+  }, []);
+
+  const closeJsonInspector = useCallback(() => {
+    setJsonInspectorOpen(false);
+    setJsonInspectorTarget(null);
+    setJsonInspectorText("");
+    setJsonInspectorReadableText("");
+    setJsonInspectorTab("readable");
+    setJsonInspectorLoading(false);
+    setJsonInspectorSaving(false);
+    setJsonInspectorError(null);
+  }, []);
+
+  const closeVariantsDialog = useCallback(() => {
+    setVariantsDialogOpen(false);
+    setVariantsTarget(null);
+    setVariantsCombos([]);
+    setVariantsTypeLabels({ t1: "", t2: "", t3: "" });
+    setVariantsSelectedIndexes(new Set());
+    setVariantsPacksText("");
+    setVariantsLoading(false);
+    setVariantsSaving(false);
+    setVariantsError(null);
+    setVariantImagePreviewIndex(null);
+  }, []);
+
+  const openCompetitorOverrideDialog = useCallback((item: ProductionItem) => {
+    setCompetitorOverrideTarget(item);
+    setCompetitorOverrideDialogOpen(true);
+    setCompetitorOverrideUrl(
+      typeof item.source_url === "string" && item.source_url.trim()
+        ? item.source_url.trim()
+        : typeof item.product_url === "string" && item.product_url.trim()
+          ? item.product_url.trim()
+          : ""
+    );
+    setCompetitorOverrideSaving(false);
+    setCompetitorOverrideError(null);
+  }, []);
+
+  const closeCompetitorOverrideDialog = useCallback(() => {
+    setCompetitorOverrideDialogOpen(false);
+    setCompetitorOverrideTarget(null);
+    setCompetitorOverrideUrl("");
+    setCompetitorOverrideSaving(false);
+    setCompetitorOverrideError(null);
+  }, []);
+
+  const handleSaveCompetitorOverride = useCallback(async () => {
+    if (!competitorOverrideTarget) return;
+    const url = competitorOverrideUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setCompetitorOverrideError("Please enter a valid http(s) URL.");
+      return;
+    }
+    setCompetitorOverrideSaving(true);
+    setCompetitorOverrideError(null);
+    try {
+      const response = await fetch("/api/production/suppliers/payload/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: competitorOverrideTarget.provider,
+          product_id: competitorOverrideTarget.product_id,
+          competitor_url: url,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to restart competitor scraping.");
+      }
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.provider === competitorOverrideTarget.provider &&
+          entry.product_id === competitorOverrideTarget.product_id
+            ? {
+                ...entry,
+                supplier_payload_status: "fetching",
+                supplier_payload_error: null,
+                supplier_payload_competitor_error: null,
+              }
+            : entry
+        )
+      );
+      closeCompetitorOverrideDialog();
+    } catch (err) {
+      setCompetitorOverrideError(
+        err instanceof Error ? err.message : "Unable to restart competitor scraping."
+      );
+    } finally {
+      setCompetitorOverrideSaving(false);
+    }
+  }, [closeCompetitorOverrideDialog, competitorOverrideTarget, competitorOverrideUrl]);
+
+  const openVariantsDialog = useCallback(async (item: ProductionItem) => {
+    setVariantsDialogOpen(true);
+    setVariantsTarget(item);
+    setVariantsCombos([]);
+    setVariantsTypeLabels({ t1: "", t2: "", t3: "" });
+    setVariantsSelectedIndexes(new Set());
+    setVariantsPacksText("");
+    setVariantsLoading(true);
+    setVariantsSaving(false);
+    setVariantsError(null);
+    try {
+      const params = new URLSearchParams({
+        provider: item.provider,
+        product_id: item.product_id,
+      });
+      const response = await fetch(
+        `/api/production/suppliers/variants?${params.toString()}`
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || "Unable to load variants."));
+      }
+      const combos = Array.isArray((payload as any)?.combos)
+        ? ((payload as any).combos as VariantCombo[])
+        : [];
+      const selectedIndexes = Array.isArray((payload as any)?.selected_combo_indexes)
+        ? ((payload as any).selected_combo_indexes as unknown[])
+            .map((entry) => Number(entry))
+            .filter((entry) => Number.isInteger(entry) && entry >= 0)
+        : [];
+      const safeSelected = new Set(
+        selectedIndexes.filter((idx) => idx < combos.length)
+      );
+      const packsText =
+        typeof (payload as any)?.packs_text === "string"
+          ? (payload as any).packs_text
+          : "";
+      setVariantsCombos(combos);
+      setVariantsTypeLabels({
+        t1: typeof (payload as any)?.type1_label === "string" ? (payload as any).type1_label : "",
+        t2: typeof (payload as any)?.type2_label === "string" ? (payload as any).type2_label : "",
+        t3: typeof (payload as any)?.type3_label === "string" ? (payload as any).type3_label : "",
+      });
+      setVariantsSelectedIndexes(safeSelected);
+      setVariantsPacksText(packsText);
+    } catch (err) {
+      setVariantsError(err instanceof Error ? err.message : "Unable to load variants.");
+    } finally {
+      setVariantsLoading(false);
+    }
+  }, []);
+
+  const handleSaveVariants = useCallback(async () => {
+    if (!variantsTarget) return;
+    setVariantsSaving(true);
+    setVariantsError(null);
+    try {
+      const selected = Array.from(variantsSelectedIndexes).sort((a, b) => a - b);
+      const response = await fetch("/api/production/suppliers/variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: variantsTarget.provider,
+          product_id: variantsTarget.product_id,
+          selected_combo_indexes: selected,
+          packs_text: variantsPacksText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || "Unable to save variants."));
+      }
+      const selectedCount = Number((payload as any)?.selected_count);
+      const availableCount = Number((payload as any)?.available_count);
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.provider === variantsTarget.provider &&
+          entry.product_id === variantsTarget.product_id
+            ? {
+                ...entry,
+                supplier_variant_selected_count: Number.isFinite(selectedCount)
+                  ? selectedCount
+                  : entry.supplier_variant_selected_count ?? null,
+                supplier_variant_available_count: Number.isFinite(availableCount)
+                  ? availableCount
+                  : entry.supplier_variant_available_count ?? null,
+                supplier_variant_packs_text: variantsPacksText.trim() || null,
+              }
+            : entry
+        )
+      );
+      closeVariantsDialog();
+    } catch (err) {
+      setVariantsError(err instanceof Error ? err.message : "Unable to save variants.");
+    } finally {
+      setVariantsSaving(false);
+    }
+  }, [closeVariantsDialog, variantsPacksText, variantsSelectedIndexes, variantsTarget]);
+
+  const openJsonInspector = useCallback(
+    async (item: ProductionItem, badge: string) => {
+      setJsonInspectorOpen(true);
+      setJsonInspectorTarget({
+        provider: item.provider,
+        product_id: item.product_id,
+        badge,
+      });
+      setJsonInspectorText("");
+      setJsonInspectorReadableText("");
+      setJsonInspectorTab("readable");
+      setJsonInspectorLoading(true);
+      setJsonInspectorSaving(false);
+      setJsonInspectorError(null);
+      try {
+        const params = new URLSearchParams({
+          provider: item.provider,
+          product_id: item.product_id,
+        });
+        const response = await fetch(
+          `/api/production/suppliers/payload/file?${params.toString()}`
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(String((payload as any)?.error || "Unable to load JSON file."));
+        }
+        const text =
+          typeof (payload as any)?.text === "string" ? (payload as any).text : "";
+        const readable = (() => {
+          try {
+            return JSON.stringify(JSON.parse(text), null, 2);
+          } catch {
+            return text;
+          }
+        })();
+        setJsonInspectorText(text);
+        setJsonInspectorReadableText(readable);
+      } catch (err) {
+        setJsonInspectorError(err instanceof Error ? err.message : "Unable to load JSON file.");
+      } finally {
+        setJsonInspectorLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleSaveJsonInspector = useCallback(async () => {
+    if (!jsonInspectorTarget) return;
+    const sourceText = jsonInspectorText || jsonInspectorReadableText;
+    const text = sourceText.trim();
+    if (!text) {
+      setJsonInspectorError("JSON content is empty.");
+      return;
+    }
+    setJsonInspectorSaving(true);
+    setJsonInspectorError(null);
+    try {
+      const response = await fetch("/api/production/suppliers/payload/file", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: jsonInspectorTarget.provider,
+          product_id: jsonInspectorTarget.product_id,
+          text,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || "Unable to save JSON file."));
+      }
+      closeJsonInspector();
+    } catch (err) {
+      setJsonInspectorError(err instanceof Error ? err.message : "Unable to save JSON file.");
+    } finally {
+      setJsonInspectorSaving(false);
+    }
+  }, [
+    closeJsonInspector,
+    jsonInspectorTarget,
+    jsonInspectorText,
+    jsonInspectorReadableText,
+  ]);
+
+  const handleManualPayloadFileChange = useCallback(
+    async (ev: ChangeEvent<HTMLInputElement>) => {
+      const file = ev.currentTarget.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        setManualPayloadJsonText(text);
+        setManualPayloadFileName(file.name);
+        setManualPayloadError(null);
+      } catch {
+        setManualPayloadError(t("production.suppliers.manualReadError"));
+      } finally {
+        ev.currentTarget.value = "";
+      }
+    },
+    [t]
+  );
+
+  const handleSaveManualPayload = useCallback(async () => {
+    if (!manualPayloadTarget) return;
+    const text = manualPayloadJsonText.trim();
+    if (!text) {
+      setManualPayloadError(t("production.suppliers.manualMissing"));
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setManualPayloadError(t("production.suppliers.manualInvalidJson"));
+      return;
+    }
+
+    setManualPayloadSaving(true);
+    setManualPayloadError(null);
+    try {
+      const response = await fetch("/api/production/suppliers/payload/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: manualPayloadTarget.provider,
+          product_id: manualPayloadTarget.product_id,
+          payload: parsed,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || t("production.suppliers.manualSaveError"));
+      }
+
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.provider === manualPayloadTarget.provider &&
+          entry.product_id === manualPayloadTarget.product_id
+            ? {
+                ...entry,
+                supplier_payload_status: "ready",
+                supplier_payload_source: "manual",
+                supplier_payload_error: null,
+                supplier_payload_saved_at: new Date().toISOString(),
+                supplier_payload_file_name:
+                  typeof payload?.saved?.file_name === "string"
+                    ? payload.saved.file_name
+                    : entry.supplier_payload_file_name,
+                supplier_payload_file_path:
+                  typeof payload?.saved?.file_path === "string"
+                    ? payload.saved.file_path
+                    : entry.supplier_payload_file_path,
+              }
+            : entry
+        )
+      );
+
+      closeManualPayloadDialog();
+    } catch (err) {
+      setManualPayloadError(
+        err instanceof Error ? err.message : t("production.suppliers.manualSaveError")
+      );
+    } finally {
+      setManualPayloadSaving(false);
+    }
+  }, [closeManualPayloadDialog, manualPayloadJsonText, manualPayloadTarget, t]);
+
   const getSupplierKey = useCallback((item: { provider: string; product_id: string }) => {
     return `${item.provider}:${item.product_id}`;
   }, []);
@@ -983,6 +2197,30 @@ export default function ProductionPage() {
     return `¥${fixed}`;
   }, []);
 
+  const normalizeOfferPrice = useCallback((candidate: unknown): number | null => {
+    if (candidate === null || candidate === undefined) return null;
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      if (Number.isInteger(candidate) && candidate >= 100 && candidate <= 100000) {
+        return candidate / 100;
+      }
+      return candidate;
+    }
+    const textRaw = String(candidate).trim();
+    if (!textRaw) return null;
+    const text = textRaw.replace(/[^0-9.,-]/g, "");
+    if (!text) return null;
+    const hasDecimalSeparator = text.includes(".") || text.includes(",");
+    const normalizedText = text.includes(",") && !text.includes(".")
+      ? text.replace(",", ".")
+      : text.replace(/,/g, "");
+    const raw = Number(normalizedText);
+    if (!Number.isFinite(raw)) return null;
+    if (!hasDecimalSeparator && Number.isInteger(raw) && raw >= 100 && raw <= 100000) {
+      return raw / 100;
+    }
+    return raw;
+  }, []);
+
   const pickOfferPriceRmb = useCallback(
     (offer: SupplierOffer): string | null => {
       const candidates = [
@@ -992,16 +2230,13 @@ export default function ProductionPage() {
         (offer as any)?.oldPrice,
       ];
       for (const candidate of candidates) {
-        const raw =
-          typeof candidate === "string" ? Number(candidate) : (candidate as number);
-        if (!Number.isFinite(raw)) continue;
-        // Heuristic: many 1688 prices come back as "fen" integers.
-        const normalized = raw >= 1000 ? raw / 100 : raw;
-        return formatRmb(normalized);
+        const normalized = normalizeOfferPrice(candidate);
+        if (!Number.isFinite(normalized as number)) continue;
+        return formatRmb(normalized as number);
       }
       return null;
     },
-    [formatRmb]
+    [formatRmb, normalizeOfferPrice]
   );
 
   const pickOfferPriceRmbNumber = useCallback((offer: SupplierOffer): number | null => {
@@ -1012,13 +2247,12 @@ export default function ProductionPage() {
       (offer as any)?.oldPrice,
     ];
     for (const candidate of candidates) {
-      const raw = typeof candidate === "string" ? Number(candidate) : (candidate as number);
-      if (!Number.isFinite(raw)) continue;
-      if (Number.isInteger(raw) && raw >= 1000 && raw <= 100000) return raw / 100;
-      return raw;
+      const normalized = normalizeOfferPrice(candidate);
+      if (!Number.isFinite(normalized as number)) continue;
+      return normalized as number;
     }
     return null;
-  }, []);
+  }, [normalizeOfferPrice]);
 
   const buildOfferMeta = useCallback(
     (offer: SupplierOffer) => {
@@ -1161,12 +2395,14 @@ export default function ProductionPage() {
         const offers = Array.isArray(payload?.offers) ? payload.offers : [];
         setSupplierOffers(offers);
         const input = payload?.input ?? null;
+        const recropSourceUrl =
+          typeof input?.recrop?.imageUrl === "string" ? input.recrop.imageUrl : null;
         const usedPicUrl =
-          typeof input?.usedPicUrl === "string"
-            ? input.usedPicUrl
-            : typeof input?.picUrl === "string"
-              ? input.picUrl
-              : imageUrl || null;
+          recropSourceUrl ||
+          (typeof input?.usedPicUrl === "string" ? input.usedPicUrl : null) ||
+          (typeof input?.picUrl === "string" ? input.picUrl : null) ||
+          imageUrl ||
+          null;
         setSupplierSearchImageUrl(usedPicUrl);
         const lockedUrl =
           typeof payload?.locked_supplier_url === "string" && payload.locked_supplier_url.trim()
@@ -1255,7 +2491,9 @@ export default function ProductionPage() {
           )}`
         : null);
     const cachedUrl =
-      supplierSearchImageUrl && !supplierSearchImageUrl.includes("/api/discovery/local-image")
+      supplierSearchImageUrl &&
+      !supplierSearchImageUrl.includes("/api/discovery/local-image") &&
+      !supplierSearchImageUrl.includes("/api/public/temp-images/")
         ? supplierSearchImageUrl
         : null;
     const fallback =
@@ -1407,12 +2645,13 @@ export default function ProductionPage() {
         )
       );
       const input = payload?.input ?? null;
+      const recropSourceUrl =
+        typeof input?.recrop?.imageUrl === "string" ? input.recrop.imageUrl : null;
       const usedPicUrl =
-        typeof input?.usedPicUrl === "string"
-          ? input.usedPicUrl
-          : typeof input?.picUrl === "string"
-            ? input.picUrl
-            : cropImageUrl;
+        recropSourceUrl ||
+        (typeof input?.usedPicUrl === "string" ? input.usedPicUrl : null) ||
+        (typeof input?.picUrl === "string" ? input.picUrl : null) ||
+        cropImageUrl;
       setSupplierSearchImageUrl(usedPicUrl);
 
       // Best-effort: translate the refreshed offer titles as well.
@@ -1511,6 +2750,21 @@ export default function ProductionPage() {
           selectedOffer && typeof (selectedOffer as any)?.detailUrl === "string"
             ? String((selectedOffer as any).detailUrl)
             : null;
+        const payloadStatus =
+          selectedOffer &&
+          typeof (selectedOffer as any)?._production_payload_status === "string"
+            ? String((selectedOffer as any)._production_payload_status)
+            : "fetching";
+        const payloadSource =
+          selectedOffer &&
+          typeof (selectedOffer as any)?._production_payload_source === "string"
+            ? String((selectedOffer as any)._production_payload_source)
+            : "auto";
+        const payloadError =
+          selectedOffer &&
+          typeof (selectedOffer as any)?._production_payload_error === "string"
+            ? String((selectedOffer as any)._production_payload_error)
+            : null;
 
         setItems((prev) =>
           prev.map((entry) =>
@@ -1522,6 +2776,13 @@ export default function ProductionPage() {
                   supplier_selected_offer_image_url: selectedImageUrl,
                   supplier_selected_offer_title: selectedTitle,
                   supplier_selected_offer_detail_url: selectedDetailUrl,
+                  supplier_payload_status: payloadStatus,
+                  supplier_payload_source: payloadSource,
+                  supplier_payload_error: payloadError,
+                  supplier_payload_saved_at: null,
+                  supplier_variant_available_count: null,
+                  supplier_variant_selected_count: null,
+                  supplier_variant_packs_text: null,
                 }
               : entry
           )
@@ -1531,7 +2792,17 @@ export default function ProductionPage() {
           prev.map((entry) =>
             entry.provider === supplierTarget.provider &&
             entry.product_id === supplierTarget.product_id
-              ? { ...entry, supplier_selected: true }
+              ? {
+                  ...entry,
+                  supplier_selected: true,
+                  supplier_payload_status: "fetching",
+                  supplier_payload_source: "auto",
+                  supplier_payload_error: null,
+                  supplier_payload_saved_at: null,
+                  supplier_variant_available_count: null,
+                  supplier_variant_selected_count: null,
+                  supplier_variant_packs_text: null,
+                }
               : entry
           )
         );
@@ -1554,7 +2825,24 @@ export default function ProductionPage() {
   ]);
 
   useEffect(() => {
-    const allowed = new Set(items.map((it) => `${it.provider}:${it.product_id}`));
+    const allowed = new Set(
+      items
+        .filter((it) => {
+          const queueStatus =
+            typeof it.production_status === "string"
+              ? it.production_status.trim().toLowerCase()
+              : "";
+          const isDone =
+            (typeof it.production_status_done_at === "string" &&
+              it.production_status_done_at.trim().length > 0) ||
+            queueStatus === "production_done";
+          const hasSpu =
+            typeof it.production_assigned_spu === "string" &&
+            it.production_assigned_spu.trim().length > 0;
+          return !(isDone && hasSpu);
+        })
+        .map((it) => `${it.provider}:${it.product_id}`)
+    );
     setSelectedKeys((prev) => {
       const next = new Set<string>();
       for (const key of prev) {
@@ -1563,6 +2851,65 @@ export default function ProductionPage() {
       return next;
     });
   }, [items]);
+
+  useEffect(() => {
+    if (!adminLoaded || !isAdmin) return;
+    const candidates = items
+      .filter((item) => {
+        const key = `${item.provider}:${item.product_id}`;
+        if (warmedVariantKeysRef.current.has(key)) return false;
+        const payloadStatus = String(item.supplier_payload_status || "").toLowerCase();
+        return payloadStatus === "ready" && Boolean(item.supplier_selected);
+      })
+      .slice(0, 2);
+    if (candidates.length === 0) return;
+    candidates.forEach((item) => {
+      const key = `${item.provider}:${item.product_id}`;
+      warmedVariantKeysRef.current.add(key);
+      const params = new URLSearchParams({
+        provider: item.provider,
+        product_id: item.product_id,
+      });
+      // Warm variant parsing + translation in the background.
+      fetch(`/api/production/suppliers/variants?${params.toString()}`).catch(() => {
+        // allow retry on later render
+        warmedVariantKeysRef.current.delete(key);
+      });
+    });
+  }, [adminLoaded, isAdmin, items]);
+
+  useEffect(() => {
+    if (!adminLoaded || !isAdmin) return;
+    const hasPendingPayload = items.some((item) => {
+      const status =
+        typeof item.supplier_payload_status === "string"
+          ? item.supplier_payload_status.toLowerCase()
+          : "";
+      return status === "fetching" || status === "queued";
+    });
+    if (!hasPendingPayload) return;
+
+    let cancelled = false;
+    const reload = async () => {
+      try {
+        const response = await fetch("/api/discovery/production");
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled) return;
+        if (Array.isArray(payload?.items)) {
+          setItems(payload.items);
+        }
+      } catch {
+        // best-effort polling
+      }
+    };
+
+    const timer = window.setInterval(reload, 12000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [adminLoaded, isAdmin, items]);
 
   // Background supplier searching: silently hydrate supplier counts so the user can open production
   // and see cached suppliers without waiting for a click.
@@ -1594,7 +2941,8 @@ export default function ProductionPage() {
         (item.image_local_path
           ? `/api/discovery/local-image?path=${encodeURIComponent(item.image_local_path)}`
           : null);
-      const imageUrl = localImageUrl || item.image_url;
+      // Prefer durable remote image URLs; local file paths may disappear over time.
+      const imageUrl = item.image_url || localImageUrl;
       if (imageUrl) params.set("image_url", imageUrl);
 
       fetch(`/api/production/suppliers?${params.toString()}`)
@@ -1880,6 +3228,230 @@ export default function ProductionPage() {
     }
   }, [commentDraft, commentTarget, t]);
 
+  const sendQueueItems = useCallback(
+    async (targetItems: ProductionItem[], options?: { bulk?: boolean }) => {
+      if (!targetItems.length) return;
+      const targetKeys = targetItems.map((item) => `${item.provider}:${item.product_id}`);
+      const isBulk = Boolean(options?.bulk);
+      setSendingQueueRowKeys((prev) => {
+        const next = new Set(prev);
+        targetKeys.forEach((key) => next.add(key));
+        return next;
+      });
+      if (isBulk) setSendingQueue(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/production/queue/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: targetItems.map((item) => ({
+              provider: item.provider,
+              product_id: item.product_id,
+            })),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || t("production.action.sendError"));
+        }
+        if (isBulk) setSelectedKeys(new Set());
+
+        const refresh = await fetch("/api/discovery/production");
+        if (refresh.ok) {
+          const refreshPayload = await refresh.json();
+          if (Array.isArray(refreshPayload?.items)) {
+            setItems(refreshPayload.items);
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("production.action.sendError"));
+      } finally {
+        if (isBulk) setSendingQueue(false);
+        setSendingQueueRowKeys((prev) => {
+          const next = new Set(prev);
+          targetKeys.forEach((key) => next.delete(key));
+          return next;
+        });
+      }
+    },
+    [t]
+  );
+
+  const hasCjk = useCallback((value: string) => /[\u3400-\u9fff]/.test(value), []);
+
+  const parsePacks = useCallback((raw: string | null | undefined) => {
+    if (!raw) return [] as number[];
+    const values = raw
+      .split(",")
+      .map((entry) => Number(entry.trim()))
+      .filter((entry) => Number.isFinite(entry) && entry > 0);
+    return Array.from(new Set(values));
+  }, []);
+
+  const formatPackList = useCallback((packs: number[]) => {
+    if (packs.length === 0) return "";
+    return packs.join(", ");
+  }, []);
+
+  const formatReadableJson = useCallback((text: string) => {
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      return text;
+    }
+  }, []);
+
+  const extractUrls = useCallback((text: string) => {
+    const matches = text.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
+    const cleaned = matches.map((value) => value.replace(/[),.;]+$/g, ""));
+    return Array.from(new Set(cleaned));
+  }, []);
+
+  const resolveVariantTexts = useCallback(
+    (raw: string, zhRaw?: string, enRaw?: string) => {
+      const rawText = String(raw || "").trim();
+      const zh = String(zhRaw || "").trim();
+      const en = String(enRaw || "").trim();
+
+      let zhText = zh;
+      let enText = en;
+      if (!zhText && !enText) {
+        if (rawText && hasCjk(rawText)) zhText = rawText;
+        else if (rawText) enText = rawText;
+      } else if (!zhText && rawText && rawText !== enText && hasCjk(rawText)) {
+        zhText = rawText;
+      } else if (!enText && rawText && rawText !== zhText && !hasCjk(rawText)) {
+        enText = rawText;
+      }
+
+      if (!zhText && enText) zhText = enText;
+      return { zhText, enText };
+    },
+    [hasCjk]
+  );
+
+  const getLatestProductionStatusKey = useCallback((item: ProductionItem) => {
+    const queueStatus =
+      typeof item.production_status === "string"
+        ? item.production_status.trim().toLowerCase()
+        : "";
+    const hasDone = Boolean(
+      (typeof item.production_status_done_at === "string" &&
+        item.production_status_done_at.trim()) ||
+        queueStatus === "production_done"
+    );
+    if (hasDone) return "production_done" as const;
+    const hasStarted = Boolean(
+      (typeof item.production_status_started_at === "string" &&
+        item.production_status_started_at.trim()) ||
+        queueStatus === "production_started"
+    );
+    if (hasStarted) return "production_started" as const;
+    const hasSpuAssigned = Boolean(
+      (typeof item.production_status_spu_assigned_at === "string" &&
+        item.production_status_spu_assigned_at.trim()) ||
+        queueStatus === "spu_assigned"
+    );
+    if (hasSpuAssigned) return "spu_assigned" as const;
+    return "none" as const;
+  }, []);
+
+  const isItemLockedForProduction = useCallback(
+    (item: ProductionItem) => {
+      const statusKey = getLatestProductionStatusKey(item);
+      const producedSpu =
+        typeof item.production_assigned_spu === "string"
+          ? item.production_assigned_spu.trim()
+          : "";
+      return statusKey === "production_done" && producedSpu.length > 0;
+    },
+    [getLatestProductionStatusKey]
+  );
+
+  const filteredItems = useMemo(() => {
+    const q = queueSearch.trim().toLowerCase();
+    return items.filter((item) => {
+      if (q) {
+        const text = [
+          item.title ?? "",
+          item.product_id,
+          item.provider,
+          item.taxonomy_l1 ?? "",
+          item.taxonomy_l2 ?? "",
+          item.taxonomy_l3 ?? "",
+          item.identical_spu ?? "",
+          item.supplier_selected_offer_title ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!text.includes(q)) return false;
+      }
+
+      const latestStatusKey = getLatestProductionStatusKey(item);
+      if (!queueProductionStatusFilters.has(latestStatusKey)) {
+        return false;
+      }
+
+      const variantsPicked =
+        (typeof item.supplier_variant_selected_count === "number" &&
+          item.supplier_variant_selected_count > 0) ||
+        parsePacks(item.supplier_variant_packs_text).length > 0;
+      const supplierSelected = Boolean(item.supplier_selected);
+      const linkedProduct = Boolean(String(item.identical_spu ?? "").trim());
+
+      if (queueStatusSetFilters.size > 0) {
+        const variantsPass =
+          !queueStatusSetFilters.has("variants_picked") &&
+          !queueStatusSetFilters.has("variants_not_picked")
+            ? true
+            : (queueStatusSetFilters.has("variants_picked") && variantsPicked) ||
+              (queueStatusSetFilters.has("variants_not_picked") && !variantsPicked);
+        if (!variantsPass) return false;
+
+        const supplierPass =
+          !queueStatusSetFilters.has("supplier_selected") &&
+          !queueStatusSetFilters.has("supplier_not_selected")
+            ? true
+            : (queueStatusSetFilters.has("supplier_selected") && supplierSelected) ||
+              (queueStatusSetFilters.has("supplier_not_selected") && !supplierSelected);
+        if (!supplierPass) return false;
+
+        const linkedPass =
+          !queueStatusSetFilters.has("linked_product") &&
+          !queueStatusSetFilters.has("linked_not_product")
+            ? true
+            : (queueStatusSetFilters.has("linked_product") && linkedProduct) ||
+              (queueStatusSetFilters.has("linked_not_product") && !linkedProduct);
+        if (!linkedPass) return false;
+      }
+
+      if (
+        queueProviders.size !== QUEUE_PROVIDER_OPTIONS.length &&
+        !queueProviders.has(String(item.provider || "").toLowerCase())
+      ) {
+        return false;
+      }
+
+      const hasComments =
+        typeof item.comment_count === "number" && item.comment_count > 0;
+      if (!queueCommentsFilters.has(hasComments ? "with" : "without")) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    getLatestProductionStatusKey,
+    items,
+    parsePacks,
+    queueCommentsFilters,
+    queueProductionStatusFilters,
+    queueProviders,
+    queueSearch,
+    queueStatusSetFilters,
+  ]);
+
 	  const content = useMemo(() => {
 	    if (loading) {
 	      return <Spinner label={t("production.loading")} />;
@@ -1887,11 +3459,143 @@ export default function ProductionPage() {
 	    if (items.length === 0) {
 	      return <Text>{t("production.empty")}</Text>;
 	    }
-	    const allRowKeys = items.map((it) => `${it.provider}:${it.product_id}`);
-	    const selectedCount = allRowKeys.filter((k) => selectedKeys.has(k)).length;
-	    const allSelected = allRowKeys.length > 0 && selectedCount === allRowKeys.length;
-	    const someSelected = selectedCount > 0 && !allSelected;
+      const selectedRows = items.filter((it) => {
+        if (!selectedKeys.has(`${it.provider}:${it.product_id}`)) return false;
+        return !isItemLockedForProduction(it);
+      });
+	    const selectedCount = selectedRows.length;
+	    const selectableVisibleRowKeys = filteredItems
+        .filter((it) => !isItemLockedForProduction(it))
+        .map((it) => `${it.provider}:${it.product_id}`);
+	    const visibleSelectedCount = selectableVisibleRowKeys.filter((k) => selectedKeys.has(k)).length;
+	    const allSelected =
+        selectableVisibleRowKeys.length > 0 &&
+        visibleSelectedCount === selectableVisibleRowKeys.length;
+	    const someSelected = visibleSelectedCount > 0 && !allSelected;
 	    return (
+        <>
+          <div className={styles.queueActionsBar}>
+            <div className={styles.queueFiltersBar}>
+              <Input
+                className={styles.queueSearchInput}
+                placeholder="Search in queue..."
+                value={queueSearch}
+                onChange={(_, data) => setQueueSearch(data.value)}
+              />
+              <Dropdown
+                multiselect
+                className={styles.queueFilterDropdown}
+                value={
+                  queueProductionStatusFilters.size === QUEUE_PRODUCTION_STATUS_OPTIONS.length
+                    ? "Production all"
+                    : `Production (${queueProductionStatusFilters.size})`
+                }
+                selectedOptions={[...queueProductionStatusFilters]}
+                onOptionSelect={(_, data) => {
+                  const next = new Set((data.selectedOptions ?? []) as string[]);
+                  if (next.size === 0) {
+                    setQueueProductionStatusFilters(
+                      new Set(QUEUE_PRODUCTION_STATUS_OPTIONS.map((option) => option.value))
+                    );
+                    return;
+                  }
+                  setQueueProductionStatusFilters(next);
+                }}
+              >
+                {QUEUE_PRODUCTION_STATUS_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
+              </Dropdown>
+              <Dropdown
+                multiselect
+                className={styles.queueFilterDropdown}
+                value={
+                  queueStatusSetFilters.size === 0
+                    ? "Status sets all"
+                    : `Status sets (${queueStatusSetFilters.size})`
+                }
+                selectedOptions={[...queueStatusSetFilters]}
+                onOptionSelect={(_, data) => {
+                  setQueueStatusSetFilters(new Set((data.selectedOptions ?? []) as string[]));
+                }}
+              >
+                {QUEUE_STATUS_SET_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
+              </Dropdown>
+              <Dropdown
+                multiselect
+                className={styles.queueFilterDropdown}
+                value={
+                  queueProviders.size === QUEUE_PROVIDER_OPTIONS.length
+                    ? "Seller data all"
+                    : `Seller data (${queueProviders.size})`
+                }
+                selectedOptions={[...queueProviders]}
+                onOptionSelect={(_, data) => {
+                  const next = new Set((data.selectedOptions ?? []) as string[]);
+                  if (next.size === 0) {
+                    setQueueProviders(
+                      new Set(QUEUE_PROVIDER_OPTIONS.map((option) => option.value))
+                    );
+                    return;
+                  }
+                  setQueueProviders(next);
+                }}
+              >
+                {QUEUE_PROVIDER_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
+              </Dropdown>
+              <Dropdown
+                multiselect
+                className={styles.queueFilterDropdown}
+                value={
+                  queueCommentsFilters.size === QUEUE_COMMENT_OPTIONS.length
+                    ? "Comments all"
+                    : `Comments (${queueCommentsFilters.size})`
+                }
+                selectedOptions={[...queueCommentsFilters]}
+                onOptionSelect={(_, data) => {
+                  const next = new Set((data.selectedOptions ?? []) as string[]);
+                  if (next.size === 0) {
+                    setQueueCommentsFilters(
+                      new Set(QUEUE_COMMENT_OPTIONS.map((option) => option.value))
+                    );
+                    return;
+                  }
+                  setQueueCommentsFilters(next);
+                }}
+              >
+                {QUEUE_COMMENT_OPTIONS.map((option) => (
+                  <Option key={option.value} value={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
+              </Dropdown>
+            </div>
+            <div className={styles.queueActionRight}>
+              <Text className={styles.queueActionCount}>
+                {t("production.selection.selectedCount", { count: selectedCount })}
+              </Text>
+              <Button
+                appearance={selectedCount > 0 ? "primary" : "outline"}
+                className={selectedCount > 0 ? styles.queueSendButtonActive : undefined}
+                disabled={selectedCount === 0 || sendingQueue}
+                onClick={() => void sendQueueItems(selectedRows, { bulk: true })}
+              >
+                {sendingQueue ? t("production.action.sending") : "Send to Production"}
+              </Button>
+            </div>
+          </div>
+          {filteredItems.length === 0 ? <Text>No products match the current filters.</Text> : null}
+          {filteredItems.length > 0 ? (
 	      <Table className={styles.table}>
 	        <TableHeader>
 	          <TableRow>
@@ -1899,14 +3603,8 @@ export default function ProductionPage() {
             <TableHeaderCell className={styles.productCol}>
               {t("production.table.product")}
             </TableHeaderCell>
-            <TableHeaderCell className={styles.providerCol}>
-              {t("production.table.provider")}
-            </TableHeaderCell>
-            <TableHeaderCell className={styles.salesCol}>
-              {t("production.table.sales")}
-            </TableHeaderCell>
-            <TableHeaderCell className={styles.priceCol}>
-              {t("production.table.price")}
+            <TableHeaderCell className={styles.sellerDataCol}>
+              {t("production.table.sellerData")}
             </TableHeaderCell>
             <TableHeaderCell className={styles.linkCol}>
               {t("production.table.link")}
@@ -1914,23 +3612,31 @@ export default function ProductionPage() {
             <TableHeaderCell className={styles.suppliersCol}>
               {t("production.table.suppliers")}
             </TableHeaderCell>
-            <TableHeaderCell className={styles.linkedCol}>
-              {t("production.table.linkedProduct")}
+            <TableHeaderCell className={styles.variantsCol}>
+              Variants
             </TableHeaderCell>
-            <TableHeaderCell className={styles.commentsCol}>
-              {t("production.table.comments")}
-            </TableHeaderCell>
+	            <TableHeaderCell className={styles.linkedCol}>
+	              {t("production.table.linkedProduct")}
+	            </TableHeaderCell>
+              <TableHeaderCell className={styles.statusCol}>
+                Status
+              </TableHeaderCell>
+	            <TableHeaderCell className={styles.commentsCol}>
+	              {t("production.table.comments")}
+	            </TableHeaderCell>
 	            <TableHeaderCell className={styles.actionCell}>
 	              {t("production.table.actions")}
 	            </TableHeaderCell>
 	            <TableHeaderCell className={styles.selectCol}>
 	              <Checkbox
+                  className={styles.tableSelectCheckbox}
+                  disabled={selectableVisibleRowKeys.length === 0}
 	                checked={allSelected ? true : someSelected ? "mixed" : false}
 	                onChange={(_, data) => {
 	                  const checked = data.checked === true;
 	                  setSelectedKeys(() => {
 	                    if (!checked) return new Set();
-	                    return new Set(allRowKeys);
+	                    return new Set(selectableVisibleRowKeys);
 	                  });
 	                }}
 	                aria-label={t("production.table.selectAll")}
@@ -1939,7 +3645,7 @@ export default function ProductionPage() {
 	          </TableRow>
 	        </TableHeader>
         <TableBody>
-	          {items.map((item) => {
+	          {filteredItems.map((item) => {
 	            const rowKey = `${item.provider}:${item.product_id}`;
 	            const title = item.title ?? item.product_id;
 	            const providerLabel =
@@ -1954,26 +3660,14 @@ export default function ProductionPage() {
                   )}`
                 : null);
             const imageSrc = localImageUrl || item.image_url;
-            const category = [
-              item.taxonomy_l1,
-              item.taxonomy_l2,
-              item.taxonomy_l3,
-            ]
-              .filter(Boolean)
-              .join(" / ");
-            const categoryParam = item.taxonomy_l3
-              ? `l3:${encodeURIComponent(item.taxonomy_l3)}`
-              : item.taxonomy_l2
-                ? `l2:${encodeURIComponent(item.taxonomy_l2)}`
-                : item.taxonomy_l1
-                  ? `l1:${encodeURIComponent(item.taxonomy_l1)}`
-                  : "";
+            const categoryParts = [
+              item.taxonomy_l1 ? { label: item.taxonomy_l1, level: "l1" as const } : null,
+              item.taxonomy_l2 ? { label: item.taxonomy_l2, level: "l2" as const } : null,
+              item.taxonomy_l3 ? { label: item.taxonomy_l3, level: "l3" as const } : null,
+            ].filter(Boolean) as Array<{ label: string; level: "l1" | "l2" | "l3" }>;
             const link = item.product_url || item.source_url;
             const commentCount = item.comment_count ?? 0;
             const hasComments = commentCount > 0;
-            const commentLabel = hasComments
-              ? t("production.comments.view")
-              : t("production.comments.none");
             const supplierCount =
               typeof item.supplier_count === "number" ? item.supplier_count : null;
             const supplierLabel =
@@ -2010,11 +3704,93 @@ export default function ProductionPage() {
                     decoding="async"
                   />
                 </div>
-              ) : (
-                supplierLabel
-              );
+              ) : null;
+            const payloadStatusRaw =
+              typeof item.supplier_payload_status === "string"
+                ? item.supplier_payload_status.trim().toLowerCase()
+                : "";
+            const payloadStatus =
+              payloadStatusRaw === "fetching" ||
+              payloadStatusRaw === "queued" ||
+              payloadStatusRaw === "ready" ||
+              payloadStatusRaw === "failed"
+                ? payloadStatusRaw
+                : "";
+            const payloadReady = payloadStatus === "ready";
+            const competitorDataReady =
+              payloadReady &&
+              ((typeof item.supplier_payload_competitor_url === "string" &&
+                item.supplier_payload_competitor_url.trim().length > 0) ||
+                (typeof item.supplier_payload_competitor_title === "string" &&
+                  item.supplier_payload_competitor_title.trim().length > 0) ||
+                (typeof item.supplier_payload_competitor_images === "number" &&
+                  item.supplier_payload_competitor_images > 0));
+            const showCompetitorBadge =
+              item.provider === "cdon" || item.provider === "fyndiq" || item.provider === "digideal";
+            const competitorBadgeLabel =
+              item.provider === "fyndiq"
+                ? "Fyndiq"
+                : item.provider === "digideal"
+                  ? "DigiDeal"
+                  : "CDON";
             const hasLinkedProduct = Boolean(String(item.identical_spu ?? "").trim());
             const linkedSpu = String(item.identical_spu ?? "").trim();
+            const queueStatus =
+              typeof item.production_status === "string"
+                ? item.production_status.trim().toLowerCase()
+                : "";
+            const spuAssignedAt =
+              typeof item.production_status_spu_assigned_at === "string"
+                ? item.production_status_spu_assigned_at
+                : null;
+            const productionStartedAt =
+              typeof item.production_status_started_at === "string"
+                ? item.production_status_started_at
+                : null;
+            const productionDoneAt =
+              typeof item.production_status_done_at === "string"
+                ? item.production_status_done_at
+                : null;
+            const statusUpdatedAt =
+              typeof item.production_status_updated_at === "string"
+                ? item.production_status_updated_at
+                : null;
+            const latestStatusLabel = productionDoneAt
+              ? t("production.status.productionDone")
+              : productionStartedAt
+                ? t("production.status.productionStarted")
+                : spuAssignedAt
+                  ? t("production.status.spuAssigned")
+                  : queueStatus === "production_done"
+                    ? t("production.status.productionDone")
+                    : queueStatus === "production_started"
+                      ? t("production.status.productionStarted")
+                      : queueStatus === "spu_assigned"
+                        ? t("production.status.spuAssigned")
+                        : null;
+            const latestStatusAt =
+              productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt;
+            const displayStatusLabel = latestStatusLabel ?? "New Product";
+            const displayStatusAt = latestStatusAt || item.created_at || null;
+            const displayStatusTimestamp = displayStatusAt
+              ? formatDateTime(displayStatusAt)
+              : null;
+            const statusIsNew = !latestStatusLabel;
+            const statusIsDone = Boolean(productionDoneAt || queueStatus === "production_done");
+            const statusCurrentClass = mergeClasses(
+              styles.statusCurrent,
+              statusIsNew ? styles.statusCurrentNew : statusIsDone ? styles.statusCurrentDone : undefined
+            );
+            const producedSpu =
+              typeof item.production_assigned_spu === "string"
+                ? item.production_assigned_spu.trim()
+                : "";
+            const isProductionLocked = isItemLockedForProduction(item);
+            const rowStatusClass = productionDoneAt
+              ? styles.rowStatusDone
+              : productionStartedAt || spuAssignedAt || queueStatus === "spu_assigned" || queueStatus === "production_started"
+                ? styles.rowStatusInProgress
+                : undefined;
 
             const isDigideal = item.provider === "digideal";
             const priceValue = isDigideal
@@ -2039,29 +3815,77 @@ export default function ProductionPage() {
                   ? "0 kr"
                   : formatCurrency(shippingCost, "SEK")
                 : "—";
-            const discount = typeof item.last_discount_percent === "number" ? item.last_discount_percent : null;
-            const saveKr = typeof item.last_you_save_kr === "number" ? item.last_you_save_kr : null;
+            const sellerPriceLabel = priceValue !== null ? formatCurrency(priceValue, "SEK") : "-";
+            const canOpenPayloadJson = payloadReady && Boolean(item.supplier_payload_file_path);
+            const variantsSelectedCount =
+              typeof item.supplier_variant_selected_count === "number"
+                ? item.supplier_variant_selected_count
+                : null;
+            const variantsPacks = parsePacks(item.supplier_variant_packs_text);
+            const hasPickedVariants = (variantsSelectedCount ?? 0) > 0 || variantsPacks.length > 0;
+            const variantsButtonLabel =
+              hasPickedVariants
+                ? "Variants Picked"
+                : "Pick Variants";
+            const variantsPackLine = variantsPacks.length > 0 ? `Packs: ${formatPackList(variantsPacks)}` : null;
+            const supplierProcess1688State =
+              payloadStatus === "ready" ? "ready" : payloadStatus === "failed" ? "failed" : "loading";
+            const competitorPayloadError =
+              typeof item.supplier_payload_competitor_error === "string"
+                ? item.supplier_payload_competitor_error.trim()
+                : "";
+            const supplierProcessCompetitorState =
+              competitorPayloadError
+                ? "failed"
+                : competitorDataReady
+                  ? "ready"
+                : payloadStatus === "failed" || payloadStatus === "ready"
+                  ? "failed"
+                  : "loading";
 	            return (
-	              <TableRow key={rowKey}>
+	              <TableRow key={rowKey} className={rowStatusClass}>
                 <TableCell className={styles.imageCol}>
                   {imageSrc ? (
-                    <Image src={imageSrc} alt={title} className={styles.thumb} />
+                    <Tooltip
+                      relationship="label"
+                      withArrow
+                      positioning={{ position: "after", align: "center", offset: 8 }}
+                      content={
+                        <img
+                          src={imageSrc}
+                          alt={title}
+                          className={styles.thumbZoomImage}
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      }
+                    >
+                      <Image src={imageSrc} alt={title} className={styles.thumb} />
+                    </Tooltip>
                   ) : null}
                 </TableCell>
                 <TableCell className={mergeClasses(styles.productCol)}>
                   <div className={styles.productCellStack}>
                     <Text className={styles.productTitle}>{title}</Text>
-                    {category ? (
+                    {categoryParts.length > 0 ? (
                       <div className={styles.breadcrumbRow}>
-                        <button
-                          type="button"
-                          className={styles.breadcrumbLink}
-                          onClick={() => {
-                            window.location.href = `/app/discovery?categories=${categoryParam}`;
-                          }}
-                        >
-                          {category}
-                        </button>
+                        {categoryParts.map((part, idx) => {
+                          const categoryParam = `${part.level}:${encodeURIComponent(part.label)}`;
+                          return (
+                            <span key={`${part.level}:${part.label}`}>
+                              {idx > 0 ? (
+                                <span className={styles.breadcrumbDivider}> / </span>
+                              ) : null}
+                              <a
+                                href={`/app/discovery?categories=${categoryParam}`}
+                                className={styles.breadcrumbLink}
+                              >
+                                {part.label}
+                              </a>
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                       <Text size={100} className={styles.cardMeta}>
@@ -2070,82 +3894,56 @@ export default function ProductionPage() {
                     )}
                   </div>
                 </TableCell>
-                <TableCell className={styles.providerCol}>
-                  <Badge
-                    appearance="outline"
-                    className={mergeClasses(
-                      styles.providerBadge,
-                      item.provider === "cdon"
-                        ? styles.cdonBadge
-                        : item.provider === "fyndiq"
-                          ? styles.fyndiqBadge
-                          : item.provider === "digideal"
-                            ? styles.digidealBadge
-                            : undefined
-                    )}
-                  >
-                    {providerLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell className={styles.salesCol}>
-                  <div className={styles.salesWrap}>
-                    <span className={styles.salesGroup}>
-                      <Text size={200} className={styles.cardMeta}>
-                        1d
-                      </Text>
-                      <span className={styles.salesButton}>
-                        {item.sold_today ?? 0}
-                      </span>
-                    </span>
-                    <span className={styles.salesGroup}>
-                      <Text size={200} className={styles.cardMeta}>
-                        7d
-                      </Text>
-                      <span className={styles.salesButton}>
-                        {item.sold_7d ?? 0}
-                      </span>
-                    </span>
-                    <span className={styles.salesGroup}>
-                      <Text size={200} className={styles.cardMeta}>
-                        {t("discovery.sales.all")}
-                      </Text>
-                      <span className={styles.salesButton}>
-                        {item.sold_all_time ?? 0}
-                      </span>
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className={styles.priceCol}>
+                <TableCell className={styles.sellerDataCol}>
                   <div className={styles.cellStack}>
-                    <div className={styles.priceRow}>
-                      <Text className={styles.priceCurrent}>
-                        {priceValue !== null ? formatCurrency(priceValue, "SEK") : "-"}
-                      </Text>
-                      {isDigideal ? (
-                        <Text className={styles.priceShipping}>
-                          ({shippingCostLabel})
+                    <div className={styles.sellerRowTop}>
+                      <span className={styles.salesGroup}>
+                        <Text size={200} className={styles.cardMeta}>
+                          1d
                         </Text>
-                      ) : null}
-                      {prevPriceValue !== null && prevPriceValue > (priceValue ?? 0) ? (
-                        <Text className={styles.pricePrevious}>
-                          {formatCurrency(prevPriceValue, "SEK")}
+                        <span className={styles.salesButton}>{item.sold_today ?? 0}</span>
+                      </span>
+                      <span className={styles.salesGroup}>
+                        <Text size={200} className={styles.cardMeta}>
+                          7d
                         </Text>
-                      ) : null}
+                        <span className={styles.salesButton}>{item.sold_7d ?? 0}</span>
+                      </span>
+                      <span className={styles.salesGroup}>
+                        <Text size={200} className={styles.cardMeta}>
+                          {t("discovery.sales.all")}
+                        </Text>
+                        <span className={styles.salesButton}>{item.sold_all_time ?? 0}</span>
+                      </span>
                     </div>
-                    {isDigideal && (discount !== null || saveKr !== null) ? (
-                      <Text size={200} className={styles.discountText}>
-                        {discount !== null
-                          ? t("digideal.discount", { value: discount })
-                          : null}
-                        {discount !== null && saveKr !== null ? " · " : null}
-                        {saveKr !== null ? t("digideal.save", { value: saveKr }) : null}
-                      </Text>
-                    ) : null}
-                    {!isDigideal && prevPriceValue !== null && prevPriceValue > (priceValue ?? 0) ? (
-                      <Text size={200} className={styles.discountText}>
-                        {t("discovery.price.prev", { value: formatCurrency(prevPriceValue, "SEK") })}
-                      </Text>
-                    ) : null}
+                    <div className={styles.sellerRowBottom}>
+                      <Badge
+                        appearance="outline"
+                        className={mergeClasses(
+                          styles.providerBadge,
+                          item.provider === "cdon"
+                            ? styles.cdonBadge
+                            : item.provider === "fyndiq"
+                              ? styles.fyndiqBadge
+                              : item.provider === "digideal"
+                                ? styles.digidealBadge
+                                : undefined
+                        )}
+                      >
+                        {providerLabel}
+                      </Badge>
+                      <div className={styles.priceRow}>
+                        <Text className={styles.priceCurrent}>{sellerPriceLabel}</Text>
+                        {isDigideal ? (
+                          <Text className={styles.priceShipping}>({shippingCostLabel})</Text>
+                        ) : null}
+                        {prevPriceValue !== null && prevPriceValue > (priceValue ?? 0) ? (
+                          <Text className={styles.pricePrevious}>
+                            {formatCurrency(prevPriceValue, "SEK")}
+                          </Text>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell className={styles.linkCol}>
@@ -2173,10 +3971,9 @@ export default function ProductionPage() {
                           aria-hidden="true"
                         >
                           <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                          <path d="M10 14l11 -11" />
-                          <path d="M21 3v8" />
-                          <path d="M21 3h-8" />
-                          <path d="M14 10v8a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2h8" />
+                          <path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" />
+                          <path d="M11 13l9 -9" />
+                          <path d="M15 4h5v5" />
                         </svg>
                       </span>
                     </Button>
@@ -2185,29 +3982,197 @@ export default function ProductionPage() {
                   )}
                 </TableCell>
                 <TableCell className={styles.suppliersCol}>
-                  <Tooltip
-                    content={supplierTooltipContent}
-                    relationship="label"
-                    positioning={
-                      supplierSelected && selectedSupplierThumbUrl
-                        ? { position: "above", align: "center", offset: 10 }
-                        : undefined
-                    }
-                  >
+                  <div className={styles.supplierControlRow}>
+                    <div className={styles.supplierMainRow}>
+                      {supplierTooltipContent ? (
+                        <Tooltip
+                          content={supplierTooltipContent}
+                          relationship="label"
+                          positioning={{ position: "above", align: "center", offset: 10 }}
+                        >
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={mergeClasses(
+                              supplierSelected ? styles.supplierSelectedButton : styles.linkButton
+                            )}
+                            onClick={() => openSupplierDialog(item)}
+                          >
+                            {supplierButtonLabel}
+                          </Button>
+                        </Tooltip>
+                      ) : (
+                        <Button
+                          appearance="outline"
+                          size="small"
+                          className={mergeClasses(
+                            supplierSelected ? styles.supplierSelectedButton : styles.linkButton
+                          )}
+                          onClick={() => openSupplierDialog(item)}
+                        >
+                          {supplierButtonLabel}
+                        </Button>
+                      )}
+                      {supplierSelected ? (
+                        <Tooltip content="View JSON file" relationship="label">
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.supplierJsonButton}
+                            onClick={() => void openJsonInspector(item, "1688")}
+                            disabled={!canOpenPayloadJson}
+                            aria-label="View JSON file"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.supplierJsonIcon}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+                              <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
+                              <path d="M9 17h6" />
+                              <path d="M9 13h6" />
+                            </svg>
+                          </Button>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                    {supplierSelected ? (
+                      <div className={styles.supplierMetaTightRow}>
+                        <span className={styles.supplierMetaTightItem}>
+                          {supplierProcess1688State === "loading" ? (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.supplierInlineLoaderIcon}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M12 3a9 9 0 1 0 9 9" />
+                            </svg>
+                          ) : null}
+                          <span>1688</span>
+                          {supplierProcess1688State === "ready" ? (
+                            <span className={styles.supplierMetaTightOk}>✓</span>
+                          ) : supplierProcess1688State === "failed" ? (
+                            <span className={styles.supplierMetaTightFail}>✕</span>
+                          ) : null}
+                        </span>
+                        {showCompetitorBadge ? (
+                          <span
+                            className={mergeClasses(
+                              styles.supplierMetaTightItem,
+                              supplierProcessCompetitorState === "failed"
+                                ? styles.supplierMetaTightItemFailed
+                                : undefined
+                            )}
+                          >
+                            {supplierProcessCompetitorState === "failed" ? (
+                              <button
+                                type="button"
+                                className={styles.supplierMetaTightButton}
+                                onClick={() => openCompetitorOverrideDialog(item)}
+                                title="Update competitor URL"
+                              >
+                                <span>{competitorBadgeLabel}</span>
+                                <span className={styles.supplierMetaTightFail}>✕</span>
+                              </button>
+                            ) : (
+                              <span className={styles.supplierMetaTightStatic}>
+                                {supplierProcessCompetitorState === "loading" ? (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className={styles.supplierInlineLoaderIcon}
+                                    aria-hidden="true"
+                                  >
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                    <path d="M12 3a9 9 0 1 0 9 9" />
+                                  </svg>
+                                ) : null}
+                                <span>{competitorBadgeLabel}</span>
+                                {supplierProcessCompetitorState === "ready" ? (
+                                  <span className={styles.supplierMetaTightOk}>✓</span>
+                                ) : null}
+                              </span>
+                            )}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {supplierSelected && payloadStatus === "failed" ? (
+                      <div className={styles.supplierManualRow}>
+                        <Button
+                          size="small"
+                          appearance="outline"
+                          className={styles.linkButton}
+                          onClick={() => openManualPayloadDialog(item)}
+                        >
+                          {t("production.suppliers.manualAdd")}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell className={styles.variantsCol}>
+                  <div className={styles.variantCellStack}>
                     <Button
-                      appearance={supplierSelected ? "primary" : "outline"}
+                      appearance="outline"
                       size="small"
                       className={mergeClasses(
-                        supplierSelected ? styles.supplierSelectedButton : styles.linkButton
+                        styles.linkButton,
+                        hasPickedVariants
+                          ? styles.supplierSelectedButton
+                          : undefined
                       )}
-                      onClick={() => openSupplierDialog(item)}
+                      disabled={!payloadReady || !item.supplier_payload_file_path}
+                      onClick={() => void openVariantsDialog(item)}
                     >
-                      {supplierButtonLabel}
+                      {variantsButtonLabel}
                     </Button>
-                  </Tooltip>
+                    {!payloadReady ? (
+                      <Text size={100} className={styles.variantMetaTight}>
+                        Waiting for 1688 data
+                      </Text>
+                    ) : hasPickedVariants ? (
+                      <>
+                        {(variantsSelectedCount ?? 0) > 0 ? (
+                          <Text size={100} className={styles.variantMetaTight}>
+                            Picked: {variantsSelectedCount}
+                          </Text>
+                        ) : null}
+                        {variantsPackLine ? (
+                          <Text size={100} className={styles.variantMetaTight}>
+                            {variantsPackLine}
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Text size={100} className={styles.variantMetaTight}>
+                        No variants chosen
+                      </Text>
+                    )}
+                  </div>
                 </TableCell>
-                <TableCell className={styles.linkedCol}>
-                  <div className={styles.linkedProductStack}>
+	                <TableCell className={styles.linkedCol}>
+	                  <div className={styles.linkedProductStack}>
                     {hasLinkedProduct ? (
                       <div className={styles.linkedSpuRow}>
                         <a
@@ -2250,45 +4215,136 @@ export default function ProductionPage() {
 	                        className={styles.linkButton}
 	                        onClick={() => openLinkedDialog(item)}
 	                      >
-	                        {t("production.linked.link")}
+                          <span className={styles.linkButtonContent}>
+	                          {t("production.linked.link")}
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.linkIcon}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M4 6c0 1.657 3.582 3 8 3s8 -1.343 8 -3s-3.582 -3 -8 -3s-8 1.343 -8 3" />
+                              <path d="M4 6v6c0 1.657 3.582 3 8 3c1.075 0 2.1 -.08 3.037 -.224" />
+                              <path d="M20 12v-6" />
+                              <path d="M4 12v6c0 1.657 3.582 3 8 3c.166 0 .331 -.002 .495 -.006" />
+                              <path d="M16 19h6" />
+                              <path d="M19 16v6" />
+                            </svg>
+                          </span>
 	                      </Button>
 	                    )}
-	                  </div>
-	                </TableCell>
+		                  </div>
+                    </TableCell>
+                    <TableCell className={styles.statusCol}>
+                      <div className={styles.statusStack}>
+                        <Text className={statusCurrentClass}>{displayStatusLabel}</Text>
+                        {displayStatusTimestamp ? (
+                          <Text className={styles.statusTimestamp}>{displayStatusTimestamp}</Text>
+                        ) : null}
+                        {latestStatusLabel === t("production.status.productionDone") && producedSpu ? (
+                          <a
+                            href={`/app/products/spu/${encodeURIComponent(producedSpu)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.statusSpuLink}
+                          >
+                            {producedSpu}
+                          </a>
+                        ) : null}
+                      </div>
+                    </TableCell>
 	                <TableCell className={styles.commentsCol}>
 	                  <Button
 	                    appearance="outline"
 	                    size="small"
-	                    className={styles.linkButton}
+	                    className={mergeClasses(
+                        styles.commentIconButton,
+                        hasComments
+                          ? styles.commentIconButtonHasComments
+                          : styles.commentIconButtonEmpty
+                      )}
 	                    onClick={() => openCommentDialog(item)}
+                      aria-label={
+                        hasComments
+                          ? `${commentCount} ${t("production.table.comments")}`
+                          : t("production.comments.none")
+                      }
 	                  >
-	                    {commentLabel}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.iconOnly}
+                        aria-hidden="true"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M8 9h8" />
+                        <path d="M8 13h6" />
+                        <path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12" />
+                      </svg>
 	                  </Button>
 	                </TableCell>
 	                <TableCell className={styles.actionCell}>
 	                  <div className={styles.actionRow}>
+		                    <Button
+		                      appearance="outline"
+		                      size="small"
+		                      className={styles.linkButton}
+                          onClick={() => void sendQueueItems([item])}
+                          disabled={
+                            isProductionLocked ||
+                            sendingQueueRowKeys.has(rowKey) ||
+                            !item.supplier_payload_file_path
+                          }
+		                    >
+		                      {sendingQueueRowKeys.has(rowKey)
+                            ? t("production.action.sending")
+                            : t("production.action.produce")}
+		                    </Button>
 	                    <Button
 	                      appearance="outline"
 	                      size="small"
-	                      className={styles.linkButton}
+	                      className={mergeClasses(styles.linkButton, styles.removeIconButton)}
 	                      onClick={() => handleRemove(item)}
 	                      disabled={removingKey === rowKey}
+                        aria-label={t("production.action.remove")}
 	                    >
-	                      {t("production.action.remove")}
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={styles.removeIcon}
+                          aria-hidden="true"
+                        >
+                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                          <path d="M4 7l16 0" />
+                          <path d="M10 11l0 6" />
+                          <path d="M14 11l0 6" />
+                          <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+	                          <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+	                        </svg>
 	                    </Button>
-	                    <Button
-	                      appearance="outline"
-	                      size="small"
-	                      className={styles.linkButton}
-	                      disabled
-	                    >
-	                      {t("production.action.produce")}
-	                    </Button>
-	                  </div>
-	                </TableCell>
+		                  </div>
+		                </TableCell>
 	                <TableCell className={styles.selectCol}>
 	                  <Checkbox
+                        className={styles.tableSelectCheckbox}
 	                    checked={selectedKeys.has(rowKey)}
+                      disabled={isProductionLocked}
 	                    onChange={(_, data) => {
 	                      const checked = data.checked === true;
 	                      setSelectedKeys((prev) => {
@@ -2305,31 +4361,177 @@ export default function ProductionPage() {
 	            );
 	          })}
         </TableBody>
-      </Table>
-    );
-  }, [
+	      </Table>
+          ) : null}
+        </>
+	    );
+	  }, [
     handleRemove,
+    filteredItems,
     items,
     loading,
     normalizeSupplierImageUrl,
     openCommentDialog,
+    openJsonInspector,
     openLinkedDialog,
-    openSupplierDialog,
-    removingKey,
-    selectedKeys,
+    openManualPayloadDialog,
+    openCompetitorOverrideDialog,
+    openVariantsDialog,
+	    openSupplierDialog,
+    parsePacks,
+    queueCommentsFilters,
+    queueProductionStatusFilters,
+    queueProviders,
+    queueSearch,
+    queueStatusSetFilters,
+    formatPackList,
+    resolveVariantTexts,
+	    removingKey,
+      sendQueueItems,
+      sendingQueue,
+      sendingQueueRowKeys,
+      isItemLockedForProduction,
+	    selectedKeys,
     supplierBgStatus,
     styles,
     t,
   ]);
+
+  const parsedJsonInspector = useMemo(() => {
+    const raw = String(jsonInspectorText || "").trim();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }, [jsonInspectorText]);
+
+  const jsonReadableItem = useMemo(() => {
+    const root = parsedJsonInspector;
+    if (!root) return null;
+    if (Array.isArray(root) && root.length > 0 && root[0] && typeof root[0] === "object") {
+      return root[0] as Record<string, unknown>;
+    }
+    if (root && typeof root === "object") {
+      const rec = root as Record<string, unknown>;
+      if (Array.isArray(rec.items) && rec.items[0] && typeof rec.items[0] === "object") {
+        return rec.items[0] as Record<string, unknown>;
+      }
+      return rec;
+    }
+    return null;
+  }, [parsedJsonInspector]);
+
+  const jsonReadableDetails = useMemo(() => {
+    const item = jsonReadableItem as Record<string, unknown> | null;
+    const empty = {
+      url1688: "",
+      mainImage1688: "",
+      competitorUrl: "",
+      imageUrls1688: [] as string[],
+      supplementaryImageUrls: [] as string[],
+      variantImageUrls: [] as string[],
+      competitorImageUrls: [] as string[],
+      detectedLinks: [] as string[],
+      variantCombos: [] as Array<Record<string, unknown>>,
+      variantImageRows: [] as Array<{ name: string; url: string }>,
+    };
+    if (!item) return empty;
+
+    const text = (value: unknown) =>
+      typeof value === "string" ? value.trim() : "";
+    const toUrlArray = (value: unknown): string[] => {
+      if (!value) return [];
+      const raw = Array.isArray(value) ? value : [value];
+      const urls: string[] = [];
+      raw.forEach((entry) => {
+        if (typeof entry === "string") {
+          const v = entry.trim();
+          if (v.startsWith("http://") || v.startsWith("https://")) urls.push(v);
+          return;
+        }
+        if (entry && typeof entry === "object") {
+          const obj = entry as Record<string, unknown>;
+          const candidates = [obj.url_full, obj.url, obj.image, obj.image_url];
+          candidates.forEach((candidate) => {
+            if (typeof candidate === "string") {
+              const v = candidate.trim();
+              if (v.startsWith("http://") || v.startsWith("https://")) urls.push(v);
+            }
+          });
+        }
+      });
+      return Array.from(new Set(urls));
+    };
+
+    const competitorData =
+      item.competitor_data && typeof item.competitor_data === "object"
+        ? (item.competitor_data as Record<string, unknown>)
+        : null;
+    const variations =
+      item.variations && typeof item.variations === "object"
+        ? (item.variations as Record<string, unknown>)
+        : null;
+    const variantCombos = Array.isArray(variations?.combos)
+      ? (variations?.combos as Array<Record<string, unknown>>)
+      : [];
+    const variantImages = Array.isArray(item.variant_images_1688)
+      ? (item.variant_images_1688 as Array<Record<string, unknown>>)
+      : [];
+    const variantImageRows = variantImages
+      .map((entry) => {
+        const name = text(entry.name);
+        const url = text(entry.url_full) || text(entry.url);
+        return { name, url };
+      })
+      .filter((entry) => Boolean(entry.url));
+
+    return {
+      url1688: text(item.url_1688),
+      mainImage1688: text(item.main_image_1688),
+      competitorUrl: text(competitorData?.source_url),
+      imageUrls1688: toUrlArray(item.image_urls_1688),
+      supplementaryImageUrls: toUrlArray(item.supplementary_image_urls),
+      variantImageUrls: Array.from(
+        new Set([
+          ...toUrlArray(item.variant_image_urls),
+          ...toUrlArray(item.variant_images_1688),
+        ])
+      ),
+      competitorImageUrls: toUrlArray(competitorData?.image_urls),
+      detectedLinks: extractUrls(jsonInspectorText),
+      variantCombos,
+      variantImageRows,
+    };
+  }, [extractUrls, jsonInspectorText, jsonReadableItem]);
+
+  const updateJsonReadableItemField = useCallback(
+    (field: string, value: unknown) => {
+      if (!parsedJsonInspector) return;
+      const nextRoot = structuredClone(parsedJsonInspector as any);
+      if (Array.isArray(nextRoot) && nextRoot[0] && typeof nextRoot[0] === "object") {
+        (nextRoot[0] as any)[field] = value;
+      } else if (nextRoot && typeof nextRoot === "object") {
+        const rec = nextRoot as any;
+        if (Array.isArray(rec.items) && rec.items[0] && typeof rec.items[0] === "object") {
+          rec.items[0][field] = value;
+        } else {
+          rec[field] = value;
+        }
+      }
+      const nextText = JSON.stringify(nextRoot, null, 2);
+      setJsonInspectorText(nextText);
+      setJsonInspectorReadableText(nextText);
+    },
+    [parsedJsonInspector]
+  );
 
   return (
     <>
       <Card className={styles.card}>
         <Text size={600} weight="semibold">
           {t("production.title")}
-        </Text>
-        <Text size={200} className={styles.cardMeta}>
-          {t("production.subtitle")}
         </Text>
         {!adminLoaded ? <Spinner /> : null}
         {adminLoaded && !isAdmin ? (
@@ -2347,37 +4549,39 @@ export default function ProductionPage() {
         }}
       >
         <DialogSurface className={styles.commentDialog}>
-          <DialogBody>
+          <DialogBody className={styles.commentDialogBody}>
             <DialogTitle>{t("production.comments.title")}</DialogTitle>
-            <DialogContent className={styles.commentSection}>
-              {commentTarget ? (
-                <Text size={200}>
-                  {commentTarget.title ?? commentTarget.product_id}
-                </Text>
-              ) : null}
-              {commentError ? (
-                <MessageBar intent="error">{commentError}</MessageBar>
-              ) : null}
-              {commentLoading ? (
-                <Spinner label={t("production.comments.loading")} />
-              ) : commentItems.length === 0 ? (
-                <Text>{t("production.comments.empty")}</Text>
-              ) : (
-                <div className={styles.commentList}>
-                  {commentItems.map((comment) => (
-                    <div key={comment.id} className={styles.commentItem}>
-                      <div className={styles.commentHeader}>
-                        <Text weight="semibold">{comment.user_label}</Text>
-                        <Text className={styles.commentMeta}>
-                          {formatDateTime(comment.created_at)}
-                        </Text>
+            <DialogContent className={styles.commentDialogContent}>
+              <div className={styles.commentHistory}>
+                {commentTarget ? (
+                  <Text size={200}>
+                    {commentTarget.title ?? commentTarget.product_id}
+                  </Text>
+                ) : null}
+                {commentError ? (
+                  <MessageBar intent="error">{commentError}</MessageBar>
+                ) : null}
+                {commentLoading ? (
+                  <Spinner label={t("production.comments.loading")} />
+                ) : commentItems.length === 0 ? (
+                  <Text>{t("production.comments.empty")}</Text>
+                ) : (
+                  <div className={styles.commentList}>
+                    {commentItems.map((comment) => (
+                      <div key={comment.id} className={styles.commentItem}>
+                        <div className={styles.commentHeader}>
+                          <Text weight="semibold">{comment.user_label}</Text>
+                          <Text className={styles.commentMeta}>
+                            {formatDateTime(comment.created_at)}
+                          </Text>
+                        </div>
+                        <Text className={styles.commentBody}>{comment.comment}</Text>
                       </div>
-                      <Text className={styles.commentBody}>{comment.comment}</Text>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className={styles.commentSection}>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className={styles.commentComposer}>
                 <Field label={t("production.comments.addLabel")}>
                   <Textarea
                     value={commentDraft}
@@ -2398,6 +4602,225 @@ export default function ProductionPage() {
                 disabled={commentSaving || commentDraft.trim().length === 0}
               >
                 {t("production.comments.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={variantsDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeVariantsDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.variantsDialog}>
+          <DialogBody className={styles.variantsDialogBody}>
+            <DialogTitle>Pick Variants</DialogTitle>
+            <DialogContent className={styles.commentSection}>
+              <div className={styles.variantsHeaderRow}>
+                {variantsTarget ? (
+                  <div className={styles.variantsTitleStack}>
+                    <Text className={styles.variantsTitleText}>
+                      {variantsTarget.title ?? variantsTarget.product_id}
+                    </Text>
+                    {(() => {
+                      const variantsProductUrl =
+                        (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
+                        variantsTarget.supplier_selected_offer_detail_url.trim()
+                          ? variantsTarget.supplier_selected_offer_detail_url.trim()
+                          : null) ||
+                        (typeof variantsTarget.supplier_1688_url === "string" &&
+                        variantsTarget.supplier_1688_url.trim()
+                          ? variantsTarget.supplier_1688_url.trim()
+                          : null) ||
+                        (typeof variantsTarget.product_url === "string" &&
+                        variantsTarget.product_url.trim()
+                          ? variantsTarget.product_url.trim()
+                          : null) ||
+                        (typeof variantsTarget.source_url === "string" &&
+                        variantsTarget.source_url.trim()
+                          ? variantsTarget.source_url.trim()
+                          : null);
+                      if (!variantsProductUrl) return null;
+                      return (
+                        <a
+                          href={variantsProductUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={styles.variantsTitleLink}
+                          title={variantsProductUrl}
+                        >
+                          {variantsProductUrl}
+                        </a>
+                      );
+                    })()}
+                  </div>
+                ) : <span />}
+                <div className={styles.variantsTopActions}>
+                  <Button
+                    appearance="outline"
+                    size="small"
+                    onClick={() =>
+                      setVariantsSelectedIndexes(new Set(variantsCombos.map((combo) => combo.index)))
+                    }
+                    disabled={variantsLoading || variantsCombos.length === 0}
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    size="small"
+                    onClick={() => setVariantsSelectedIndexes(new Set())}
+                    disabled={variantsLoading || variantsCombos.length === 0}
+                  >
+                    Clear
+                  </Button>
+                  <Text size={200} className={styles.cardMeta}>
+                    {variantsSelectedIndexes.size} selected
+                  </Text>
+                </div>
+              </div>
+              {variantsError ? <MessageBar intent="error">{variantsError}</MessageBar> : null}
+              {variantsLoading ? (
+                <Spinner label="Loading variants..." />
+              ) : variantsCombos.length === 0 ? (
+                <Text>No variant combinations found in the 1688 JSON. You can still set packs below.</Text>
+              ) : (
+                <>
+                  <div className={styles.variantsListWrap}>
+                    <table className={styles.variantsListTable}>
+                      <thead>
+                        <tr>
+                          <th className={styles.variantsListHeadCell} style={{ width: 42 }}>
+                            Pick
+                          </th>
+                          <th className={styles.variantsListHeadCell} style={{ width: 56 }}>
+                            Image
+                          </th>
+                          <th className={styles.variantsListHeadCell}>
+                            Variant
+                          </th>
+                          <th className={styles.variantsListHeadCell} style={{ width: 140 }}>
+                            Price (RMB)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {variantsCombos.map((combo) => {
+                          const checked = variantsSelectedIndexes.has(combo.index);
+                          const t1Value = resolveVariantTexts(combo.t1, combo.t1_zh, combo.t1_en);
+                          const t2Value = resolveVariantTexts(combo.t2, combo.t2_zh, combo.t2_en);
+                          const t3Value = resolveVariantTexts(combo.t3, combo.t3_zh, combo.t3_en);
+                          const zhParts = [t1Value.zhText, t2Value.zhText, t3Value.zhText].filter(Boolean);
+                          const enParts = [t1Value.enText, t2Value.enText, t3Value.enText]
+                            .filter(Boolean)
+                            .filter((v, i, arr) => arr.indexOf(v) === i);
+                          return (
+                            <tr
+                              key={combo.index}
+                              className={styles.variantsRowClickable}
+                              onClick={() => {
+                                setVariantsSelectedIndexes((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(combo.index)) next.delete(combo.index);
+                                  else next.add(combo.index);
+                                  return next;
+                                });
+                              }}
+                            >
+                              <td className={styles.variantsListCell}>
+                                <Checkbox
+                                  checked={checked}
+                                  onClick={(ev) => ev.stopPropagation()}
+                                  onChange={(_, data) => {
+                                    setVariantsSelectedIndexes((prev) => {
+                                      const next = new Set(prev);
+                                      if (data.checked) next.add(combo.index);
+                                      else next.delete(combo.index);
+                                      return next;
+                                    });
+                                  }}
+                                  aria-label={`Pick variant ${combo.index + 1}`}
+                                />
+                              </td>
+                              <td className={styles.variantsListCell}>
+                                {combo.image_url ? (
+                                  <div
+                                    className={styles.variantImageCellWrap}
+                                    onMouseEnter={() => setVariantImagePreviewIndex(combo.index)}
+                                    onMouseLeave={() => setVariantImagePreviewIndex((prev) => (prev === combo.index ? null : prev))}
+                                  >
+                                    <Popover
+                                      open={variantImagePreviewIndex === combo.index}
+                                      positioning={{ position: "after", align: "center", offset: 6 }}
+                                    >
+                                      <PopoverTrigger disableButtonEnhancement>
+                                        <img
+                                          src={combo.image_url}
+                                          alt={zhParts[0] || enParts[0] || "Variant"}
+                                          className={styles.variantImageThumb}
+                                          referrerPolicy="no-referrer"
+                                          loading="lazy"
+                                          decoding="async"
+                                        />
+                                      </PopoverTrigger>
+                                      <PopoverSurface className={styles.variantImagePopoverSurface}>
+                                        <div className={styles.variantImageZoomWrap}>
+                                          <img
+                                            src={combo.image_url}
+                                            alt={zhParts[0] || enParts[0] || "Variant"}
+                                            className={styles.variantImageZoom}
+                                            referrerPolicy="no-referrer"
+                                            loading="lazy"
+                                            decoding="async"
+                                          />
+                                        </div>
+                                      </PopoverSurface>
+                                    </Popover>
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td className={mergeClasses(styles.variantsListCell, styles.variantLabelCell)}>
+                                <div className={styles.variantValueWrap}>
+                                  <span className={styles.variantValueZh}>
+                                    {zhParts.length > 0 ? zhParts.join(" / ") : enParts.join(" / ") || "-"}
+                                  </span>
+                                  {enParts.length > 0 && enParts.join(" / ") !== zhParts.join(" / ") ? (
+                                    <span className={styles.variantValueEn}>{enParts.join(" / ")}</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className={styles.variantsListCell}>
+                                {typeof combo.price === "number"
+                                  ? `¥${combo.price.toFixed(2)}`
+                                  : combo.price_raw || "-"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+              <Field label="Packs (comma-separated)" className={styles.variantsPacksField}>
+                <Textarea
+                  value={variantsPacksText}
+                  onChange={(_, data) => setVariantsPacksText(data.value)}
+                  resize="vertical"
+                  rows={1}
+                  placeholder="1, 2, 4"
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions className={styles.variantsDialogActions}>
+              <Button appearance="secondary" onClick={closeVariantsDialog}>
+                Close
+              </Button>
+              <Button appearance="primary" onClick={handleSaveVariants} disabled={variantsSaving}>
+                {variantsSaving ? "Saving..." : "Save"}
               </Button>
             </DialogActions>
           </DialogBody>
@@ -2854,9 +5277,10 @@ export default function ProductionPage() {
                   const state = supplierBgStatus[key];
                   if (state !== "searching") return null;
                   return (
-                    <Text size={200} className={styles.cardMeta}>
-                      {t("production.suppliers.searchingFooter")}
-                    </Text>
+                    <div className={mergeClasses(styles.cardMeta, styles.supplierSearchingFooter)}>
+                      <Spinner size="tiny" />
+                      <Text size={200}>{t("production.suppliers.searchingFooter")}</Text>
+                    </div>
                   );
                 })()
               ) : null}
@@ -2986,6 +5410,413 @@ export default function ProductionPage() {
                   supplierSelectedOfferId.trim().length === 0 ||
                   Boolean(supplierLockedUrl)
                 }
+              >
+                {t("production.suppliers.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={manualPayloadDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closeManualPayloadDialog();
+        }}
+      >
+        <DialogSurface className={styles.manualPayloadDialog}>
+          <DialogBody>
+            <DialogTitle>{t("production.suppliers.manualTitle")}</DialogTitle>
+            <DialogContent className={styles.manualPayloadStack}>
+              {manualPayloadTarget ? (
+                <Text size={200}>
+                  {manualPayloadTarget.title ?? manualPayloadTarget.product_id}
+                </Text>
+              ) : null}
+              <Text size={200} className={styles.cardMeta}>
+                {t("production.suppliers.manualHelp")}
+              </Text>
+              {manualPayloadError ? (
+                <MessageBar intent="error">{manualPayloadError}</MessageBar>
+              ) : null}
+              <Field
+                label={t("production.suppliers.manualFileLabel")}
+                hint={manualPayloadFileName || undefined}
+              >
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleManualPayloadFileChange}
+                  className={styles.manualPayloadFileInput}
+                />
+              </Field>
+              <Field label={t("production.suppliers.manualJsonLabel")}>
+                <Textarea
+                  value={manualPayloadJsonText}
+                  onChange={(_, data) => setManualPayloadJsonText(data.value)}
+                  placeholder={t("production.suppliers.manualJsonPlaceholder")}
+                  resize="vertical"
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeManualPayloadDialog}>
+                {t("production.suppliers.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSaveManualPayload}
+                disabled={manualPayloadSaving || manualPayloadJsonText.trim().length === 0}
+              >
+                {t("production.suppliers.manualSave")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={competitorOverrideDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closeCompetitorOverrideDialog();
+        }}
+      >
+        <DialogSurface className={styles.competitorOverrideDialog}>
+          <DialogBody>
+            <DialogTitle>Update Competitor URL</DialogTitle>
+            <DialogContent className={styles.commentSection}>
+              {competitorOverrideTarget ? (
+                <Text size={200}>
+                  {competitorOverrideTarget.title ?? competitorOverrideTarget.product_id}
+                </Text>
+              ) : null}
+              {competitorOverrideError ? (
+                <MessageBar intent="error">{competitorOverrideError}</MessageBar>
+              ) : null}
+              <Field label="Competitor product URL">
+                <Input
+                  value={competitorOverrideUrl}
+                  onChange={(_, data) => setCompetitorOverrideUrl(data.value)}
+                  placeholder="https://..."
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeCompetitorOverrideDialog}>
+                Close
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSaveCompetitorOverride}
+                disabled={competitorOverrideSaving}
+              >
+                {competitorOverrideSaving ? "Saving..." : "Save"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={jsonInspectorOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closeJsonInspector();
+        }}
+      >
+        <DialogSurface className={styles.jsonDialog}>
+          <DialogBody className={styles.jsonDialogBody}>
+            <DialogTitle>
+              {jsonInspectorTarget
+                ? `${jsonInspectorTarget.badge} JSON`
+                : "JSON Inspector"}
+            </DialogTitle>
+            <DialogContent className={styles.jsonDialogContent}>
+              <div className={styles.jsonTabsRow}>
+                <Button
+                  size="small"
+                  appearance={jsonInspectorTab === "readable" ? "primary" : "outline"}
+                  onClick={() => setJsonInspectorTab("readable")}
+                >
+                  Readable Version
+                </Button>
+                <Button
+                  size="small"
+                  appearance={jsonInspectorTab === "raw" ? "primary" : "outline"}
+                  onClick={() => setJsonInspectorTab("raw")}
+                >
+                  Raw JSON
+                </Button>
+              </div>
+              {jsonInspectorError ? (
+                <MessageBar intent="error">{jsonInspectorError}</MessageBar>
+              ) : null}
+              {jsonInspectorLoading ? (
+                <Spinner />
+              ) : (
+                <div className={styles.jsonEditorWrap}>
+                  {jsonInspectorTab === "readable" ? (
+                    <div className={styles.jsonReadableWrap}>
+                      {!jsonReadableItem ? (
+                        <>
+                          <Text className={styles.cardMeta}>
+                            Unable to parse JSON into a readable form. Use Raw JSON.
+                          </Text>
+                          <div className={styles.jsonRawWrap}>
+                            <textarea
+                              value={jsonInspectorText}
+                              onChange={(event) => {
+                                setJsonInspectorText(event.target.value);
+                                setJsonInspectorReadableText(event.target.value);
+                              }}
+                              className={styles.jsonNativeTextarea}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className={styles.jsonReadableGrid}>
+                            <Field label="SKU" className={styles.jsonFieldCompact}>
+                              <Input
+                                value={String((jsonReadableItem as any)?.sku ?? "")}
+                                onChange={(_, data) =>
+                                  updateJsonReadableItemField("sku", data.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="1688 URL" className={styles.jsonFieldCompact}>
+                              <Input
+                                value={String((jsonReadableItem as any)?.url_1688 ?? "")}
+                                onChange={(_, data) =>
+                                  updateJsonReadableItemField("url_1688", data.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="Main 1688 Image URL" className={styles.jsonFieldCompact}>
+                              <Input
+                                value={String((jsonReadableItem as any)?.main_image_1688 ?? "")}
+                                onChange={(_, data) =>
+                                  updateJsonReadableItemField("main_image_1688", data.value)
+                                }
+                              />
+                            </Field>
+                            <Field label="Competitor URL" className={styles.jsonFieldCompact}>
+                              <Input
+                                value={String(
+                                  (jsonReadableItem as any)?.competitor_data?.source_url ?? ""
+                                )}
+                                onChange={(_, data) => {
+                                  const next = {
+                                    ...((jsonReadableItem as any)?.competitor_data || {}),
+                                    source_url: data.value,
+                                  };
+                                  updateJsonReadableItemField("competitor_data", next);
+                                }}
+                              />
+                            </Field>
+                            <Field label="Competitor Title" className={styles.jsonFieldCompact}>
+                              <Input
+                                value={String(
+                                  (jsonReadableItem as any)?.competitor_data?.title ??
+                                    (jsonReadableItem as any)?.title_competitor ??
+                                    ""
+                                )}
+                                onChange={(_, data) => {
+                                  const next = {
+                                    ...((jsonReadableItem as any)?.competitor_data || {}),
+                                    title: data.value,
+                                  };
+                                  updateJsonReadableItemField("competitor_data", next);
+                                }}
+                              />
+                            </Field>
+                            <Field label="1688 Readable Text" className={styles.jsonFieldCompact}>
+                              <Textarea
+                                value={String((jsonReadableItem as any)?.readable_1688 ?? "")}
+                                onChange={(_, data) =>
+                                  updateJsonReadableItemField("readable_1688", data.value)
+                                }
+                                resize="vertical"
+                                rows={8}
+                                className={styles.jsonReadableMono}
+                              />
+                            </Field>
+                            <Field label="Competitor Description" className={styles.jsonFieldCompact}>
+                              <Textarea
+                                value={String(
+                                  (jsonReadableItem as any)?.competitor_data?.description ??
+                                    ""
+                                )}
+                                onChange={(_, data) => {
+                                  const next = {
+                                    ...((jsonReadableItem as any)?.competitor_data || {}),
+                                    description: data.value,
+                                  };
+                                  updateJsonReadableItemField("competitor_data", next);
+                                }}
+                                resize="vertical"
+                                rows={8}
+                                className={styles.jsonReadableMono}
+                              />
+                            </Field>
+                          </div>
+                          <div className={styles.jsonLinkGrid}>
+                            <div className={mergeClasses(styles.jsonLinksPanel, styles.jsonLinksPanelTall)}>
+                              <Text className={styles.jsonLinksTitle}>
+                                1688 Images ({jsonReadableDetails.imageUrls1688.length})
+                              </Text>
+                              {jsonReadableDetails.imageUrls1688.length > 0 ? (
+                                jsonReadableDetails.imageUrls1688.map((url) => (
+                                  <a
+                                    key={url}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={styles.jsonLink}
+                                  >
+                                    {url}
+                                  </a>
+                                ))
+                              ) : (
+                                <Text className={styles.jsonReadableSectionText}>No links found.</Text>
+                              )}
+                            </div>
+                            <div className={mergeClasses(styles.jsonLinksPanel, styles.jsonLinksPanelTall)}>
+                              <Text className={styles.jsonLinksTitle}>
+                                Variant Images ({jsonReadableDetails.variantImageUrls.length})
+                              </Text>
+                              {jsonReadableDetails.variantImageUrls.length > 0 ? (
+                                jsonReadableDetails.variantImageUrls.map((url) => (
+                                  <a
+                                    key={url}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={styles.jsonLink}
+                                  >
+                                    {url}
+                                  </a>
+                                ))
+                              ) : (
+                                <Text className={styles.jsonReadableSectionText}>No links found.</Text>
+                              )}
+                            </div>
+                            <div className={mergeClasses(styles.jsonLinksPanel, styles.jsonLinksPanelTall)}>
+                              <Text className={styles.jsonLinksTitle}>
+                                Supplementary Images ({jsonReadableDetails.supplementaryImageUrls.length})
+                              </Text>
+                              {jsonReadableDetails.supplementaryImageUrls.length > 0 ? (
+                                jsonReadableDetails.supplementaryImageUrls.map((url) => (
+                                  <a
+                                    key={url}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={styles.jsonLink}
+                                  >
+                                    {url}
+                                  </a>
+                                ))
+                              ) : (
+                                <Text className={styles.jsonReadableSectionText}>No links found.</Text>
+                              )}
+                            </div>
+                            <div className={mergeClasses(styles.jsonLinksPanel, styles.jsonLinksPanelTall)}>
+                              <Text className={styles.jsonLinksTitle}>
+                                Competitor Images ({jsonReadableDetails.competitorImageUrls.length})
+                              </Text>
+                              {jsonReadableDetails.competitorImageUrls.length > 0 ? (
+                                jsonReadableDetails.competitorImageUrls.map((url) => (
+                                  <a
+                                    key={url}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={styles.jsonLink}
+                                  >
+                                    {url}
+                                  </a>
+                                ))
+                              ) : (
+                                <Text className={styles.jsonReadableSectionText}>No links found.</Text>
+                              )}
+                            </div>
+                          </div>
+                          <div className={styles.jsonReadableSection}>
+                            <Text className={styles.jsonReadableSectionHeader}>
+                              Variant Combinations ({jsonReadableDetails.variantCombos.length})
+                            </Text>
+                            {jsonReadableDetails.variantCombos.length > 0 ? (
+                              jsonReadableDetails.variantCombos.map((combo, index) => {
+                                const labelZh = [combo.t1_zh, combo.t2_zh, combo.t3_zh]
+                                  .filter((entry) => typeof entry === "string" && entry.trim())
+                                  .join(" / ");
+                                const labelEn = [combo.t1_en, combo.t2_en, combo.t3_en]
+                                  .filter((entry) => typeof entry === "string" && entry.trim())
+                                  .join(" / ");
+                                const fallback = [combo.t1, combo.t2, combo.t3]
+                                  .filter((entry) => typeof entry === "string" && entry.trim())
+                                  .join(" / ");
+                                const price =
+                                  typeof combo.priceRaw === "string" && combo.priceRaw.trim()
+                                    ? combo.priceRaw
+                                    : typeof combo.price === "number"
+                                      ? `¥${combo.price}`
+                                      : "-";
+                                return (
+                                  <Text key={`${index}:${fallback}`} className={styles.jsonReadableSectionText}>
+                                    {labelZh || fallback || "-"}
+                                    {labelEn ? ` · ${labelEn}` : ""}
+                                    {` · ${price}`}
+                                  </Text>
+                                );
+                              })
+                            ) : (
+                              <Text className={styles.jsonReadableSectionText}>No variants found.</Text>
+                            )}
+                          </div>
+                          <div className={styles.jsonLinksPanel}>
+                            <Text className={styles.jsonLinksTitle}>
+                              All Detected URLs ({jsonReadableDetails.detectedLinks.length})
+                            </Text>
+                            {jsonReadableDetails.detectedLinks.length > 0 ? (
+                              jsonReadableDetails.detectedLinks.map((url) => (
+                                <a
+                                  key={url}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={styles.jsonLink}
+                                >
+                                  {url}
+                                </a>
+                              ))
+                            ) : (
+                              <Text className={styles.jsonReadableSectionText}>No links found.</Text>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={styles.jsonRawWrap}>
+                      <textarea
+                        value={jsonInspectorText}
+                        onChange={(event) => {
+                          setJsonInspectorText(event.target.value);
+                          setJsonInspectorReadableText(event.target.value);
+                        }}
+                        className={styles.jsonNativeTextarea}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions className={styles.jsonDialogActions}>
+              <Button appearance="secondary" onClick={closeJsonInspector}>
+                {t("production.suppliers.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSaveJsonInspector}
+                disabled={jsonInspectorLoading || jsonInspectorSaving}
               >
                 {t("production.suppliers.save")}
               </Button>

@@ -43,15 +43,36 @@ const getPublicBaseUrl = (request: Request) => {
 };
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
+const isImageFetchError = (value: string) => {
+  const msg = String(value || "").toLowerCase();
+  return (
+    msg.includes("handle image error") ||
+    msg.includes("image_fetch_error") ||
+    msg.includes("image fetch error")
+  );
+};
+
+const normalizePublicTempImagePath = (urlText: string) => {
+  const raw = String(urlText || "").trim();
+  if (!raw) return raw;
+  const match = raw.match(/^(https?:\/\/[^/]+)?(\/api\/public\/temp-images\/([a-f0-9]{32}))(?:\.(jpg|jpeg|png|webp))?(\?.*)?$/i);
+  if (!match) return raw;
+  const origin = match[1] || "";
+  const pathNoExt = match[2];
+  const id = match[3];
+  const query = match[5] || "";
+  if (!id) return raw;
+  return `${origin}${pathNoExt}.jpg${query}`;
+};
 
 const normalizeImageUrl = (request: Request, value: string) => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return null;
-  if (isHttpUrl(trimmed)) return trimmed;
+  if (isHttpUrl(trimmed)) return normalizePublicTempImagePath(trimmed);
   if (trimmed.startsWith("//")) return `https:${trimmed}`;
   if (trimmed.startsWith("/")) {
     const base = getPublicBaseUrl(request);
-    return base ? `${base}${trimmed}` : null;
+    return base ? normalizePublicTempImagePath(`${base}${trimmed}`) : null;
   }
   return null;
 };
@@ -346,9 +367,27 @@ export async function POST(request: NextRequest) {
     const croppedPublicUrlPath = `/api/public/temp-images/${publicId}.jpg`;
     const croppedPublicUrlAbs = normalizeImageUrl(request, croppedPublicUrlPath);
 
-    const run = croppedPublicUrlAbs
-      ? run1688WithUrl(request, croppedPublicUrlAbs, limit)
-      : run1688WithFile(request, tempPath, limit);
+    // Prefer local file search for recrops to avoid transient fetch failures on temp URLs.
+    let run = run1688WithFile(request, tempPath, limit);
+    // Retry strategy for intermittent 1688 "handle image error" failures.
+    if (!run.ok && isImageFetchError(run.error)) {
+      if (croppedPublicUrlAbs) {
+        const viaUrl = run1688WithUrl(request, croppedPublicUrlAbs, limit);
+        if (viaUrl.ok) {
+          run = viaUrl;
+        } else if (isImageFetchError(viaUrl.error)) {
+          // Last fallback: keep UX moving by searching with the original image URL.
+          const viaOriginal = run1688WithUrl(request, imageUrl, limit);
+          if (viaOriginal.ok) {
+            run = viaOriginal;
+          } else {
+            run = viaOriginal;
+          }
+        } else {
+          run = viaUrl;
+        }
+      }
+    }
     if (!run.ok) {
       return NextResponse.json({ error: run.error }, { status: run.status ?? 500 });
     }

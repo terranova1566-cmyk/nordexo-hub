@@ -4,6 +4,11 @@ import path from "path";
 import fs from "fs";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { EXTRACTOR_UPLOAD_DIR, parseExtractorPayload } from "@/lib/1688-extractor";
+import {
+  collectProductionRefsFromPayload,
+  upsertProductionSpuLinks,
+  upsertProductionStatuses,
+} from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -87,6 +92,31 @@ const extractUrl = (record: Record<string, unknown>) => {
 
 const looksLikeSpu = (value: string) => /^[A-Z]{2,4}-\d{2,}$/i.test(value);
 
+const syncProductionQueueStatusBestEffort = async (
+  adminClient: AdminClient,
+  payload: unknown,
+  fileName: string
+) => {
+  const refs = collectProductionRefsFromPayload(payload);
+  if (refs.length === 0) return;
+  try {
+    await upsertProductionSpuLinks(adminClient, refs, { sourceFileName: fileName });
+    await upsertProductionStatuses(
+      adminClient,
+      refs.map((entry) => ({
+        provider: entry.provider,
+        product_id: entry.product_id,
+      })),
+      {
+        status: "spu_assigned",
+        fileName,
+      }
+    );
+  } catch (error) {
+    console.error("Unable to sync production queue SPU assignment status:", error);
+  }
+};
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ name: string }> }
@@ -139,15 +169,16 @@ export async function POST(
     missingIndexes.push(idx);
   });
 
+  const adminClient = adminCheck.adminClient as AdminClient;
+
   if (!missingIndexes.length) {
+    await syncProductionQueueStatusBestEffort(adminClient, payload, safeName);
     return NextResponse.json({
       status: "already",
       assignedCount: 0,
       preview: parseExtractorPayload(payload),
     });
   }
-
-  const adminClient = adminCheck.adminClient as AdminClient;
   const { data: available, error } = await adminClient
     .from("production_spu_pool")
     .select("spu")
@@ -195,6 +226,8 @@ export async function POST(
   }
 
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+
+  await syncProductionQueueStatusBestEffort(adminClient, payload, safeName);
 
   return NextResponse.json({
     status: "assigned",

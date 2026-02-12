@@ -35,15 +35,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -67,6 +59,7 @@ type DraftFolderTreeNode = {
   name: string;
   path: string;
   modifiedAt: string;
+  fileCount: number;
   children: DraftFolderTreeNode[];
 };
 
@@ -75,6 +68,35 @@ type ExplorerContextMenuState = {
   image: boolean;
   x: number;
   y: number;
+};
+
+type AiEditProvider = "chatgpt" | "gemini" | "zimage";
+type AiPromptMode =
+  | "template"
+  | "direct"
+  | "white_background"
+  | "eraser"
+  | "upscale";
+type AiResolveDecision = "keep_original" | "replace_with_ai" | "keep_both";
+type AiEditJobStatus = "queued" | "running";
+
+type PendingAiEditRecord = {
+  id: string;
+  originalPath: string;
+  pendingPath: string;
+  provider: AiEditProvider;
+  mode: AiPromptMode;
+  prompt: string;
+  status: "pending";
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AiEditRuntimeJob = {
+  provider: AiEditProvider;
+  mode: AiPromptMode;
+  status: AiEditJobStatus;
+  startedAt: number;
 };
 
 type DraftSpuRow = {
@@ -154,23 +176,8 @@ type DraftVariantEditorRow = {
   draft_raw_row: Record<string, unknown>;
 };
 
-type DraftVariantEditorEditableField =
-  | "draft_sku"
-  | "variation_color_se"
-  | "variation_size_se"
-  | "variation_other_se"
-  | "variation_amount_se"
-  | "draft_option_combined_zh"
-  | "draft_option1"
-  | "draft_option2"
-  | "draft_option3"
-  | "draft_option4"
-  | "draft_price"
-  | "draft_weight";
-
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
-type ImageFolderTabValue = "main" | "variants" | "ocr" | "others";
 
 const useStyles = makeStyles({
   page: {
@@ -288,9 +295,33 @@ const useStyles = makeStyles({
     justifyContent: "flex-end",
     marginLeft: "auto",
   },
+  iconButton: {
+    minWidth: "34px",
+    width: "34px",
+    height: "34px",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWithZipLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  iconSvg: {
+    width: "18px",
+    height: "18px",
+    flexShrink: 0,
+  },
+  imageResizeIconSvg: {
+    width: "19px",
+    height: "19px",
+    flexShrink: 0,
+  },
   folderDropdown: {
-    minWidth: "300px",
-    maxWidth: "420px",
+    minWidth: "360px",
+    maxWidth: "504px",
   },
   viewToggle: {
     display: "flex",
@@ -314,7 +345,7 @@ const useStyles = makeStyles({
     padding: "10px",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
     maxHeight: "780px",
     overflow: "auto",
   },
@@ -323,44 +354,29 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  folderPaneActions: {
+    display: "flex",
+    gap: "8px",
+    marginTop: "6px",
+    flexWrap: "wrap",
+  },
   folderTreeRoot: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
-  },
-  folderFileList: {
-    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
-    paddingTop: "8px",
-    marginTop: "4px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-  },
-  folderFileRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    borderRadius: "8px",
-    padding: "4px 6px",
-    minHeight: "28px",
-    minWidth: 0,
-    cursor: "pointer",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
+    gap: 0,
   },
   folderTreeChildren: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: 0,
   },
   folderTreeRow: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "2px",
     borderRadius: "8px",
-    padding: "4px 6px",
-    minHeight: "30px",
+    padding: "1px 2px",
+    minHeight: "22px",
     cursor: "pointer",
     minWidth: 0,
     ":hover": {
@@ -372,24 +388,73 @@ const useStyles = makeStyles({
   },
   folderTreeRowDrop: {
     outline: `1px solid ${tokens.colorBrandStroke1}`,
-    backgroundColor: tokens.colorBrandBackground,
+    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    backgroundColor: tokens.colorBrandBackground2,
   },
-  folderTreeIndent: {
+  folderTreeConnector: {
     display: "inline-flex",
+    alignItems: "center",
     flexShrink: 0,
+    marginRight: "1px",
+  },
+  folderTreeConnectorSegment: {
+    position: "relative",
+    width: "10px",
+    height: "16px",
+    flexShrink: 0,
+  },
+  folderTreeConnectorLine: {
+    position: "absolute",
+    left: "5px",
+    top: 0,
+    bottom: 0,
+    borderLeft: `1px solid ${tokens.colorNeutralStroke3}`,
+  },
+  folderTreeConnectorJoin: {
+    position: "relative",
+    width: "12px",
+    height: "16px",
+    flexShrink: 0,
+  },
+  folderTreeConnectorJoinVertical: {
+    position: "absolute",
+    left: "5px",
+    borderLeft: `1px solid ${tokens.colorNeutralStroke3}`,
+  },
+  folderTreeConnectorJoinHorizontal: {
+    position: "absolute",
+    left: "5px",
+    top: "8px",
+    width: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke3}`,
   },
   folderTreeCaretButton: {
     border: "none",
     background: "transparent",
     cursor: "pointer",
-    color: tokens.colorNeutralForeground3,
-    width: "18px",
-    height: "18px",
+    color: tokens.colorNeutralForeground2,
+    width: "16px",
+    height: "16px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
     flexShrink: 0,
+    fontSize: "14px",
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: "1",
+  },
+  folderTreeCaretSpacer: {
+    width: "16px",
+    height: "16px",
+    flexShrink: 0,
+  },
+  folderTreeFolderIcon: {
+    width: "14px",
+    height: "14px",
+    color: "#E7B325",
+    flexShrink: 0,
+    marginRight: "2px",
   },
   folderTreeName: {
     border: "none",
@@ -399,11 +464,29 @@ const useStyles = makeStyles({
     padding: 0,
     cursor: "pointer",
     fontWeight: tokens.fontWeightSemibold,
+    minWidth: 0,
+    flex: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "2px",
+  },
+  folderTreeNameText: {
+    minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  folderTreeCount: {
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightRegular,
+    marginLeft: "4px",
+    flexShrink: 0,
+  },
+  contentColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
     minWidth: 0,
-    flex: 1,
   },
   filePane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -434,6 +517,11 @@ const useStyles = makeStyles({
     gap: "8px",
     minWidth: 0,
   },
+  mediaCardSelected: {
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    backgroundColor: tokens.colorBrandBackground2,
+  },
   mediaSquare: {
     width: "100%",
     aspectRatio: "1 / 1",
@@ -456,11 +544,68 @@ const useStyles = makeStyles({
       pointerEvents: "auto",
     },
   },
+  mediaImageBusy: {
+    filter: "blur(2.4px)",
+    transform: "scale(1.015)",
+  },
+  mediaBusyOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    pointerEvents: "none",
+  },
+  mediaBusyContent: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "6px",
+    color: tokens.colorBrandForeground1,
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  aiPendingBadge: {
+    position: "absolute",
+    top: "8px",
+    left: "8px",
+    borderRadius: "8px",
+    backgroundColor: "#854aff",
+    color: "#ffffff",
+    width: "28px",
+    height: "28px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    border: "1px solid #6f35e6",
+    boxShadow: tokens.shadow4,
+    padding: 0,
+    cursor: "pointer",
+    transition: "background-color 120ms ease, border-color 120ms ease",
+    ":hover": {
+      backgroundColor: "#9660ff",
+      border: "1px solid #7a3ff0",
+    },
+    ":focus-visible": {
+      outline: `2px solid ${tokens.colorStrokeFocus2}`,
+      outlineOffset: "1px",
+    },
+  },
   mediaFooter: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     minWidth: 0,
+  },
+  mediaFooterColumn: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    flex: 1,
+    gap: "2px",
   },
   mediaLabel: {
     border: "none",
@@ -477,6 +622,110 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  mediaMeta: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  mediaMetaDimLow: {
+    color: "#8B1D1D",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  imageToolbar: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  imageToolbarActions: {
+    marginRight: "2px",
+  },
+  imageToolbarIconGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  imageToggleIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: tokens.colorNeutralForeground3,
+  },
+  fileActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap",
+  },
+  textViewerSurface: {
+    width: "min(1350px, 96vw)",
+    maxHeight: "86vh",
+    padding: "14px",
+  },
+  textViewerBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minHeight: "72vh",
+  },
+  textViewerArea: {
+    flex: 1,
+    minHeight: "60vh",
+    fontFamily:
+      '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase300,
+    "& textarea": {
+      minHeight: "60vh",
+      height: "60vh",
+      fontFamily:
+        '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase300,
+    },
+  },
+  textViewerActions: {
+    justifyContent: "flex-end",
+  },
+  filesSection: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minWidth: 0,
+  },
+  filesHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  filesTable: {
+    tableLayout: "fixed",
+    width: "100%",
+  },
+  filesColName: {
+    width: "46%",
+  },
+  filesColInfo: {
+    width: "34%",
+  },
+  filesColAction: {
+    width: "20%",
+  },
+  filesInfo: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
   contextMenu: {
     position: "fixed",
     zIndex: 2000,
@@ -484,23 +733,43 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow16,
-    padding: "6px",
-    minWidth: "220px",
+    padding: "4px",
+    minWidth: "236px",
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "1px",
   },
   contextMenuButton: {
     border: "none",
     background: "transparent",
     color: tokens.colorNeutralForeground1,
     textAlign: "left",
-    padding: "8px 10px",
-    borderRadius: "8px",
+    padding: "6px 9px",
+    borderRadius: "6px",
     cursor: "pointer",
     fontSize: tokens.fontSizeBase200,
+    lineHeight: 1.2,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  contextMenuIcon: {
+    width: "16px",
+    height: "16px",
+    flexShrink: 0,
+    color: tokens.colorNeutralForeground3,
+  },
+  compactMenuList: {
+    paddingTop: "2px",
+    paddingBottom: "2px",
+    "& [role='menuitem']": {
+      minHeight: "26px",
+      paddingTop: "5px",
+      paddingBottom: "5px",
+      lineHeight: "1.2",
     },
   },
   explorerTable: {
@@ -679,43 +948,6 @@ const useStyles = makeStyles({
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground1,
   },
-  previewNavButton: {
-    position: "absolute",
-    top: "50%",
-    transform: "translateY(-50%)",
-    width: "44px",
-    height: "44px",
-    borderRadius: "999px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: "#ffffff",
-    color: tokens.colorBrandForeground1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    zIndex: 4,
-    opacity: 0.7,
-    boxShadow: tokens.shadow8,
-    transition: "opacity 120ms ease, transform 120ms ease",
-    ":hover": {
-      opacity: 1,
-    },
-    ":disabled": {
-      opacity: 0.35,
-      cursor: "default",
-    },
-  },
-  previewNavButtonLeft: {
-    left: "12px",
-  },
-  previewNavButtonRight: {
-    right: "12px",
-  },
-  previewNavIcon: {
-    width: "22px",
-    height: "22px",
-    flexShrink: 0,
-  },
   previewMetaRow: {
     display: "flex",
     alignItems: "center",
@@ -804,6 +1036,93 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground2,
     },
   },
+  thumbAiButton: {
+    right: "42px",
+  },
+  aiPromptSurface: {
+    width: "min(620px, 92vw)",
+    padding: "14px",
+  },
+  aiPromptBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  aiPromptImageWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "4px 0 8px",
+  },
+  aiPromptImagePreview: {
+    width: "100%",
+    maxWidth: "500px",
+    maxHeight: "500px",
+    objectFit: "contain",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  aiCompareSurface: {
+    width: "70vw",
+    maxWidth: "70vw",
+    height: "85vh",
+    maxHeight: "85vh",
+    padding: "14px",
+  },
+  aiCompareBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    height: "100%",
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  aiCompareGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "16px",
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+    alignItems: "start",
+    "@media (max-width: 960px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  aiComparePanel: {
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    alignItems: "center",
+  },
+  aiCompareImageFrame: {
+    width: "min(100%, calc(85vh - 260px))",
+    aspectRatio: "1 / 1",
+    borderRadius: "8px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    "@media (max-width: 1200px)": {
+      minHeight: "320px",
+    },
+  },
+  aiCompareLabel: {
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  aiCompareImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
   thumbName: {
     fontSize: tokens.fontSizeBase200,
     fontWeight: tokens.fontWeightSemibold,
@@ -875,6 +1194,12 @@ const useStyles = makeStyles({
   },
   tableCell: {
     verticalAlign: "middle",
+  },
+  tableActionButton: {
+    backgroundColor: "transparent",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
   },
   selectionCol: {
     width: "44px",
@@ -1135,17 +1460,9 @@ const useStyles = makeStyles({
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     padding: "6px",
     verticalAlign: "middle",
-    overflow: "visible",
-  },
-  variantsEditorInputWrap: {
-    position: "relative",
-    width: "100%",
-    overflow: "visible",
-    minHeight: "28px",
   },
   variantsEditorInput: {
-    minWidth: "100%",
-    maxWidth: "none",
+    width: "100%",
   },
   variantsEditorCheckCol: {
     width: "44px",
@@ -1222,53 +1539,6 @@ const useStyles = makeStyles({
     display: "-webkit-box",
     WebkitLineClamp: "2",
     WebkitBoxOrient: "vertical",
-  },
-  variantsEditorThumbButton: {
-    width: "100%",
-    border: "none",
-    background: "transparent",
-    padding: 0,
-    textAlign: "left",
-    cursor: "pointer",
-  },
-  variantsEditorThumbImageClickable: {
-    cursor: "pointer",
-  },
-  variantsImagePreviewSurface: {
-    width: "min(820px, 92vw)",
-    height: "min(820px, 92vw)",
-    maxWidth: "92vw",
-    maxHeight: "92vw",
-    padding: "10px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  variantsImagePreviewBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    height: "100%",
-  },
-  variantsImagePreviewTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  variantsImagePreviewImgWrap: {
-    flex: 1,
-    borderRadius: "12px",
-    backgroundColor: tokens.colorNeutralBackground1,
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  variantsImagePreviewImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "contain",
-    display: "block",
   },
   variantsEditorActions: {
     justifyContent: "flex-end",
@@ -1353,190 +1623,6 @@ const parseDraftRawRow = (value: unknown): Record<string, unknown> => {
 };
 
 const toText = (value: unknown) => (value == null ? "" : String(value));
-
-const sanitizeFileNameSegment = (value: string) =>
-  String(value || "")
-    .trim()
-    .replace(/[^\w.-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-._]+|[-._]+$/g, "") || "item";
-
-const formatClipboardDateTime = (date = new Date()) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(
-    date.getHours()
-  )}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-};
-
-const imageExtensionFromMime = (mimeType: string) => {
-  const normalized = String(mimeType || "").toLowerCase();
-  if (normalized.includes("png")) return "png";
-  if (normalized.includes("webp")) return "webp";
-  if (normalized.includes("gif")) return "gif";
-  if (normalized.includes("bmp")) return "bmp";
-  if (normalized.includes("avif")) return "avif";
-  if (normalized.includes("tiff")) return "tiff";
-  return "jpg";
-};
-
-const parseImageUrlsInput = (value: string) => {
-  const tokens = value
-    .split(/[\n,]+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  tokens.forEach((token) => {
-    try {
-      const parsed = new URL(token);
-      if (!["http:", "https:"].includes(parsed.protocol)) return;
-      const normalized = parsed.toString();
-      if (seen.has(normalized)) return;
-      seen.add(normalized);
-      out.push(normalized);
-    } catch {
-      return;
-    }
-  });
-  return out;
-};
-
-const splitFileNameAndExtension = (fileName: string) => {
-  const name = String(fileName || "");
-  const dotIndex = name.lastIndexOf(".");
-  if (dotIndex <= 0) {
-    return { baseName: name, extension: "" };
-  }
-  return {
-    baseName: name.slice(0, dotIndex),
-    extension: name.slice(dotIndex),
-  };
-};
-
-const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
-type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
-const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "TAG IMAGE"] as const;
-
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const stripTrailingImageTagSuffixes = (baseName: string) => {
-  let nextBase = baseName.trim();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    TAG_IMAGE_SUFFIXES_TO_STRIP.forEach((tagValue) => {
-      const pattern = new RegExp(
-        `\\s*\\(${escapeRegExp(tagValue)}\\)\\s*$`,
-        "i"
-      );
-      const replaced = nextBase.replace(pattern, "").trim();
-      if (replaced !== nextBase) {
-        nextBase = replaced;
-        changed = true;
-      }
-    });
-  }
-  return nextBase;
-};
-
-const normalizeImageTags = (tags: ImageTagOption[]) =>
-  TAG_IMAGE_OPTIONS.filter((option) => tags.includes(option));
-
-const buildTaggedImageFileNameFromTags = (
-  fileName: string,
-  tags: ImageTagOption[]
-) => {
-  const { baseName, extension } = splitFileNameAndExtension(fileName);
-  const cleanedBase = stripTrailingImageTagSuffixes(baseName);
-  const orderedTags = normalizeImageTags(tags);
-  const suffix = orderedTags.map((tag) => ` (${tag})`).join("");
-  return `${cleanedBase}${suffix}${extension}`;
-};
-
-const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
-  return buildTaggedImageFileNameFromTags(fileName, [tag]);
-};
-
-const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
-  const matches = String(fileName || "").match(/\((MAIN|ENV|VAR|INF|DIGI)\)/gi) ?? [];
-  const ordered: ImageTagOption[] = [];
-  matches.forEach((value) => {
-    const normalized = value.replace(/[()]/g, "").trim().toUpperCase();
-    if (
-      (normalized === "MAIN" ||
-        normalized === "ENV" ||
-        normalized === "VAR" ||
-        normalized === "INF" ||
-        normalized === "DIGI") &&
-      !ordered.includes(normalized as ImageTagOption)
-    ) {
-      ordered.push(normalized as ImageTagOption);
-    }
-  });
-  return normalizeImageTags(ordered);
-};
-
-const getImageTagSortRank = (fileName: string) => {
-  const tags = extractImageTagsFromFileName(fileName);
-  if (tags.includes("MAIN")) return 0;
-  if (tags.length === 0) return 1;
-  if (tags.includes("DIGI")) return 5;
-  if (tags.includes("ENV")) return 2;
-  if (tags.includes("INF")) return 3;
-  if (tags.includes("VAR")) return 4;
-  return 4;
-};
-
-const buildTaggedImageOrderPaths = (imageEntries: DraftEntry[]) => {
-  const originalOrder = new Map<string, number>();
-  imageEntries.forEach((entry, index) => {
-    originalOrder.set(entry.path, index);
-  });
-
-  return [...imageEntries]
-    .sort((left, right) => {
-      const rankDiff = getImageTagSortRank(left.name) - getImageTagSortRank(right.name);
-      if (rankDiff !== 0) return rankDiff;
-
-      const leftIndex = originalOrder.get(left.path) ?? 0;
-      const rightIndex = originalOrder.get(right.path) ?? 0;
-      if (leftIndex !== rightIndex) return leftIndex - rightIndex;
-
-      return left.name.localeCompare(right.name);
-    })
-    .map((entry) => entry.path);
-};
-
-const isDigiTaggedImageName = (fileName: string) =>
-  extractImageTagsFromFileName(fileName).includes("DIGI");
-
-const toggleImageTagInFileName = (fileName: string, tag: ImageTagOption) => {
-  const currentTags = extractImageTagsFromFileName(fileName);
-  const nextTags = currentTags.includes(tag)
-    ? currentTags.filter((value) => value !== tag)
-    : [...currentTags, tag];
-  return buildTaggedImageFileNameFromTags(fileName, nextTags);
-};
-
-const extractFileNameFromPath = (pathValue: string) => {
-  const tail = String(pathValue || "").split("/").filter(Boolean).pop() || "";
-  try {
-    return decodeURIComponent(tail);
-  } catch {
-    return tail;
-  }
-};
-
-const buildStableImageCardKey = (entry: DraftEntry) => {
-  const fullPath = String(entry.path || "").trim();
-  const parts = fullPath.split("/").filter(Boolean);
-  const fileNameFromPath = parts.pop() || String(entry.name || "").trim();
-  const directory = parts.join("/");
-  const { baseName, extension } = splitFileNameAndExtension(fileNameFromPath);
-  const stripped = stripTrailingImageTagSuffixes(baseName);
-  return `${directory}/${stripped}${extension}`;
-};
 
 const stripSkuPackSuffix = (value: string) =>
   String(value || "")
@@ -1639,6 +1725,13 @@ export default function DraftExplorerPage() {
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [imageViewMode, setImageViewMode] = useState<"small" | "big">("small");
+  const [imageResizeActionIcon, setImageResizeActionIcon] = useState<
+    "grow" | "shrink"
+  >("grow");
+  const [imageDimensions, setImageDimensions] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
   const [selectedTreeFolders, setSelectedTreeFolders] = useState<Set<string>>(
     new Set()
   );
@@ -1648,13 +1741,32 @@ export default function DraftExplorerPage() {
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
   const [movingEntry, setMovingEntry] = useState(false);
-  const [draggingEntryPath, setDraggingEntryPath] = useState<string | null>(null);
+  const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
     null
   );
   const [contextMenu, setContextMenu] = useState<ExplorerContextMenuState | null>(
     null
   );
+  const [pendingAiEditsByOriginal, setPendingAiEditsByOriginal] = useState<
+    Record<string, PendingAiEditRecord>
+  >({});
+  const [aiEditTargets, setAiEditTargets] = useState<DraftEntry[]>([]);
+  const [aiEditProvider, setAiEditProvider] = useState<AiEditProvider>("chatgpt");
+  const [aiEditMode, setAiEditMode] = useState<AiPromptMode>("template");
+  const [aiEditPrompt, setAiEditPrompt] = useState("");
+  const [aiEditSubmitting, setAiEditSubmitting] = useState(false);
+  const [aiEditError, setAiEditError] = useState<string | null>(null);
+  const [aiEditJobsByPath, setAiEditJobsByPath] = useState<Record<string, AiEditRuntimeJob>>(
+    {}
+  );
+  const [aiReviewOriginalPath, setAiReviewOriginalPath] = useState<string | null>(null);
+  const [aiReviewSubmitting, setAiReviewSubmitting] = useState(false);
+  const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
+  const [fileViewerContent, setFileViewerContent] = useState("");
+  const [fileViewerLoading, setFileViewerLoading] = useState(false);
+  const [fileViewerSaving, setFileViewerSaving] = useState(false);
+  const [fileViewerError, setFileViewerError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [reloadingImagePaths, setReloadingImagePaths] = useState<Set<string>>(
     new Set()
@@ -1687,10 +1799,6 @@ export default function DraftExplorerPage() {
   const [renameExtension, setRenameExtension] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [bulkImageActionPending, setBulkImageActionPending] = useState(false);
-  const [tagImagesRunningPaths, setTagImagesRunningPaths] = useState<Set<string>>(
-    new Set()
-  );
-  const [tagAllImagesRunning, setTagAllImagesRunning] = useState(false);
   const [deleteFolderPending, setDeleteFolderPending] = useState(false);
   const [deleteProductPending, setDeleteProductPending] = useState(false);
   const [deleteRunsPending, setDeleteRunsPending] = useState(false);
@@ -1762,44 +1870,7 @@ export default function DraftExplorerPage() {
     key: null,
     direction: "asc",
   });
-  const [initialOpenSpu, setInitialOpenSpu] = useState("");
   const pendingFolderOpenPathRef = useRef<string | null>(null);
-  const initialOpenSpuHandledRef = useRef(false);
-  const selectionAnchorImagePathRef = useRef<string | null>(null);
-  const currentPathRef = useRef("");
-  const previousSelectedSpuPathForDraftTableRef = useRef("");
-
-  const tagImagesRunning = tagImagesRunningPaths.size > 0;
-  const tagImagesRunningInCurrentPath = useMemo(() => {
-    const pathValue = String(currentPath || "").trim();
-    return Boolean(pathValue && tagImagesRunningPaths.has(pathValue));
-  }, [currentPath, tagImagesRunningPaths]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(COMPLETED_SPU_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) return;
-      const paths = parsed
-        .map((value) => String(value || "").trim())
-        .filter((value) => Boolean(value));
-      setCompletedSpuFolders(new Set(paths));
-    } catch {
-      // ignore bad local storage payloads
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        COMPLETED_SPU_STORAGE_KEY,
-        JSON.stringify(Array.from(completedSpuFolders))
-      );
-    } catch {
-      // ignore storage failures
-    }
-  }, [completedSpuFolders]);
 
   const imageExtensions = useMemo(
     () => [".png", ".jpg", ".jpeg", ".webp", ".gif"],
@@ -1818,15 +1889,6 @@ export default function DraftExplorerPage() {
     });
     return map;
   }, [entries]);
-  const displayImageEntriesRef = useRef<DraftEntry[]>([]);
-  const isImageEntryUpscaled = useCallback(
-    (entry: DraftEntry | null | undefined) => {
-      if (!entry || entry.type !== "file") return false;
-      const latest = entryByPath.get(entry.path) ?? entry;
-      return Boolean(latest.zimageUpscaled);
-    },
-    [entryByPath]
-  );
 
   const buildDraftDownloadUrl = useCallback(
     (pathValue: string, cacheVersion?: string | number | null) => {
@@ -1840,25 +1902,10 @@ export default function DraftExplorerPage() {
     []
   );
 
-  const buildPhotopeaUrl = useCallback(() => {
-    const config = {
-      environment: {
-        // Make Photopea "File -> Save" return a JPG ArrayBuffer to the parent window.
-        customIO: {
-          save: "app.activeDocument.saveToOE('jpg:0.92');",
-        },
-      },
-    };
-    return `https://www.photopea.com/#${encodeURIComponent(JSON.stringify(config))}`;
-  }, []);
-
   const buildDraggedPathsForEntry = useCallback(
     (entry: DraftEntry) => {
       if (entry.type !== "file") return [entry.path];
-      const selectedSource = isImage(entry.name)
-        ? displayImageEntriesRef.current
-        : entries;
-      const selected = selectedSource
+      const selected = entries
         .filter((candidate) => candidate.type === "file" && selectedFiles.has(candidate.path))
         .map((candidate) => candidate.path);
       if (selected.length > 1 && selected.includes(entry.path)) {
@@ -1866,7 +1913,7 @@ export default function DraftExplorerPage() {
       }
       return [entry.path];
     },
-    [entries, isImage, selectedFiles]
+    [entries, selectedFiles]
   );
 
   const readDraggedPaths = useCallback(
@@ -2780,7 +2827,7 @@ export default function DraftExplorerPage() {
 
   const handleDuplicateSkuRoles = useCallback(async () => {
     if (duplicateRolesPending) return;
-    const ids = visibleSkuRows
+    const ids = skuRows
       .filter((row) => selectedSkus.has(row.id))
       .map((row) => row.id);
     if (ids.length === 0) return;
@@ -2813,7 +2860,7 @@ export default function DraftExplorerPage() {
     fetchSkuRows,
     fetchSpuRows,
     selectedSkus,
-    visibleSkuRows,
+    skuRows,
   ]);
 
   const handleDetailSave = async () => {
@@ -3155,6 +3202,47 @@ export default function DraftExplorerPage() {
     }
   }, []);
 
+  const isArchiveFolder = useCallback((value: string) => {
+    const normalized = value.toLowerCase().replace(/[_-]+/g, " ");
+    return normalized.includes("archive");
+  }, []);
+
+  const isChunksDirectory = useCallback((value: string) => {
+    const normalized = value.toLowerCase().replace(/[\s_-]+/g, "");
+    return normalized === "chunks";
+  }, []);
+
+  const pickPreferredRunFolder = useCallback(
+    (items: DraftFolder[]) => {
+      if (items.length === 0) return null;
+      const nonArchive = items.filter(
+        (item) => !isArchiveFolder(`${item.name} ${item.path}`)
+      );
+      const pool = nonArchive.length > 0 ? nonArchive : items;
+      const draftedProducts = pool.filter((item) =>
+        /drafted[-_\s]*products/i.test(`${item.name} ${item.path}`)
+      );
+      return draftedProducts[0] ?? pool[0] ?? null;
+    },
+    [isArchiveFolder]
+  );
+
+  const resolveInitialExplorerPath = useCallback(
+    async (runPath: string) => {
+      if (!runPath) return "";
+      try {
+        const rootEntries = await listPathEntries(runPath);
+        const preferredDir = rootEntries.find(
+          (entry) => entry.type === "dir" && !isChunksDirectory(entry.name)
+        );
+        return preferredDir?.path ?? runPath;
+      } catch {
+        return runPath;
+      }
+    },
+    [isChunksDirectory, listPathEntries]
+  );
+
   const fetchFolders = useCallback(async () => {
     try {
       const response = await fetch("/api/drafts/folders");
@@ -3168,15 +3256,22 @@ export default function DraftExplorerPage() {
         setFolderTree(null);
         return;
       }
-      if (selectedFolder && !items.some((item) => item.path === selectedFolder)) {
-        setSelectedFolder(items[0].path);
-        setCurrentPath(items[0].path);
+      const selectedStillExists = items.some((item) => item.path === selectedFolder);
+      if (selectedFolder && selectedStillExists) {
         return;
       }
-      if (items.length > 0 && !selectedFolder) {
-        setSelectedFolder(items[0].path);
-        setCurrentPath(items[0].path);
-      }
+
+      const preferredRun = pickPreferredRunFolder(items);
+      const nextRunPath = preferredRun?.path ?? items[0]?.path ?? "";
+      if (!nextRunPath) return;
+      const nextPath = await resolveInitialExplorerPath(nextRunPath);
+      pendingFolderOpenPathRef.current = nextPath;
+      setSelectedFolder(nextRunPath);
+      setCurrentPath(nextPath);
+    } catch {
+      return;
+    }
+  }, [pickPreferredRunFolder, resolveInitialExplorerPath, selectedFolder]);
 
   const fetchEntries = useCallback(
     async (pathValue: string) => {
@@ -3199,6 +3294,33 @@ export default function DraftExplorerPage() {
     [listPathEntries]
   );
 
+  const fetchPendingAiEdits = useCallback(async (pathValue: string) => {
+    if (!pathValue) {
+      setPendingAiEditsByOriginal({});
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/drafts/ai-edits?folder=${encodeURIComponent(pathValue)}`
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load AI edit state.");
+      }
+      const items = Array.isArray(payload?.items)
+        ? (payload.items as PendingAiEditRecord[])
+        : [];
+      const next: Record<string, PendingAiEditRecord> = {};
+      for (const item of items) {
+        if (!item?.originalPath) continue;
+        next[item.originalPath] = item;
+      }
+      setPendingAiEditsByOriginal(next);
+    } catch {
+      setPendingAiEditsByOriginal({});
+    }
+  }, []);
+
   const handleSelectFolder = useCallback(
     async (nextFolderValue: string) => {
       const nextFolder = String(nextFolderValue || "");
@@ -3212,122 +3334,28 @@ export default function DraftExplorerPage() {
       const nextPath = await resolveInitialExplorerPath(nextFolder);
       pendingFolderOpenPathRef.current = nextPath;
       setSelectedFolder(nextFolder);
-      setSpuPickerOpen(false);
       setCurrentPath(nextPath);
     },
     [resolveInitialExplorerPath]
   );
 
-  useEffect(() => {
-    const run = String(selectedFolder || "").trim();
-    if (!run) {
-      setRunSpuOptions([]);
-      return;
-    }
-
-    let cancelled = false;
-    const loadRunSpuOptions = async () => {
-      try {
-        const items = await listPathEntries(run);
-        if (cancelled) return;
-        const options = items
-          .filter(
-            (entry) => entry.type === "dir" && !isChunksDirectory(entry.name)
-          )
-          .map((entry) => ({
-            name: entry.name,
-            path: entry.path,
-          }))
-          .sort((left, right) =>
-            left.name.localeCompare(right.name, undefined, {
-              numeric: true,
-              sensitivity: "base",
-            })
-          );
-        setRunSpuOptions(options);
-      } catch {
-        if (!cancelled) {
-          setRunSpuOptions([]);
-        }
-      }
-    };
-
-    void loadRunSpuOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, [folderTree, isChunksDirectory, listPathEntries, selectedFolder]);
-
-  const selectedSpuPathInRun = useMemo(() => {
-    const run = String(selectedFolder || "").trim();
-    const pathValue = String(currentPath || "").trim();
-    if (!run || !pathValue) return "";
-    const parts = pathValue.split("/").filter(Boolean);
-    if (parts.length < 2) return "";
-    if (parts[0] !== run) return "";
-    return `${parts[0]}/${parts[1]}`;
-  }, [currentPath, selectedFolder]);
-
-  useEffect(() => {
-    const previousSpuPath = previousSelectedSpuPathForDraftTableRef.current;
-    const nextSpuPath = String(selectedSpuPathInRun || "").trim();
-    if (
-      draftTableShowAll &&
-      nextSpuPath &&
-      nextSpuPath !== previousSpuPath
-    ) {
-      setDraftTableShowAll(false);
-    }
-    previousSelectedSpuPathForDraftTableRef.current = nextSpuPath;
-  }, [draftTableShowAll, selectedSpuPathInRun]);
-
-  const selectedRunSpuIndex = useMemo(
-    () => runSpuOptions.findIndex((option) => option.path === selectedSpuPathInRun),
-    [runSpuOptions, selectedSpuPathInRun]
-  );
-
-  const selectedRunSpuLabel = useMemo(() => {
-    if (selectedRunSpuIndex >= 0) {
-      return runSpuOptions[selectedRunSpuIndex]?.name ?? "Select SPU";
-    }
-    return "Select SPU";
-  }, [runSpuOptions, selectedRunSpuIndex]);
-
-  const handleSelectRunSpu = useCallback((spuPath: string) => {
-    const normalizedPath = String(spuPath || "").trim();
-    if (!normalizedPath) return;
-    setSpuPickerOpen(false);
-    setCurrentPath(normalizedPath);
-  }, []);
-
-  const canNavigatePrevSpu =
-    selectedRunSpuIndex > 0 && runSpuOptions.length > 0;
-  const canNavigateNextSpu =
-    selectedRunSpuIndex >= 0 &&
-    selectedRunSpuIndex < runSpuOptions.length - 1;
-
-  const handleNavigateRunSpu = useCallback(
-    (direction: -1 | 1) => {
-      if (runSpuOptions.length === 0 || selectedRunSpuIndex < 0) return;
-      const nextIndex = selectedRunSpuIndex + direction;
-      if (nextIndex < 0 || nextIndex >= runSpuOptions.length) return;
-      const target = runSpuOptions[nextIndex];
-      if (!target?.path) return;
-      setCurrentPath(target.path);
-    },
-    [runSpuOptions, selectedRunSpuIndex]
-  );
-
   const handleExplorerRefresh = useCallback(() => {
     fetchFolders();
     if (currentPath) {
-      refreshEntries(currentPath);
+      fetchEntries(currentPath);
       fetchPendingAiEdits(currentPath);
     }
     if (selectedFolder) {
       fetchFolderTree(selectedFolder);
     }
-  }, [fetchFolders, currentPath, fetchEntries, fetchFolderTree, selectedFolder]);
+  }, [
+    fetchFolders,
+    currentPath,
+    fetchEntries,
+    fetchPendingAiEdits,
+    fetchFolderTree,
+    selectedFolder,
+  ]);
 
   const handleDeleteFolder = useCallback(async () => {
     if (!selectedFolder) return;
@@ -3629,7 +3657,15 @@ export default function DraftExplorerPage() {
 
   useEffect(() => {
     if (!selectedFolder) return;
-    setCurrentPath(selectedFolder);
+    const pendingPath = pendingFolderOpenPathRef.current;
+    const nextPath =
+      pendingPath &&
+      (pendingPath === selectedFolder ||
+        pendingPath.startsWith(`${selectedFolder}/`))
+        ? pendingPath
+        : selectedFolder;
+    pendingFolderOpenPathRef.current = null;
+    setCurrentPath(nextPath);
     setSelectedTreeFolders(new Set());
     setCollapsedTreeFolders(new Set());
     setContextMenu(null);
@@ -3637,22 +3673,15 @@ export default function DraftExplorerPage() {
   }, [selectedFolder, fetchFolderTree]);
 
   useEffect(() => {
-    if (!currentPath) return;
-    const segments = currentPath.split("/").filter(Boolean);
-    const ancestors: string[] = [];
-    let accumulated = "";
-    segments.forEach((segment) => {
-      accumulated = accumulated ? `${accumulated}/${segment}` : segment;
-      ancestors.push(accumulated);
-    });
-    setCollapsedTreeFolders((prev) => {
-      const next = new Set(prev);
-      ancestors.forEach((folderPath) => {
-        next.delete(folderPath);
-      });
-      return next;
-    });
-  }, [currentPath]);
+    if (!currentPath) {
+      setPendingAiEditsByOriginal({});
+      return;
+    }
+    fetchEntries(currentPath);
+    fetchPendingAiEdits(currentPath);
+    setImageDimensions({});
+    setAiReviewOriginalPath(null);
+  }, [currentPath, fetchEntries, fetchPendingAiEdits]);
 
   useEffect(() => {
     if (!currentPath) return;
@@ -4765,6 +4794,674 @@ export default function DraftExplorerPage() {
     });
   };
 
+  const isTextFileEditable = useCallback((entry: DraftEntry) => {
+    if (entry.type !== "file") return false;
+    const name = entry.name.toLowerCase();
+    return name.endsWith(".txt") || name.endsWith(".json");
+  }, []);
+
+  const formatSizeKb = useCallback((bytes: number) => {
+    const kb = bytes / 1024;
+    if (kb >= 100) {
+      return `${Math.round(kb)} KB`;
+    }
+    return `${Math.round(kb * 10) / 10} KB`;
+  }, []);
+
+  const resolveSpuImageExplorerPath = useCallback((row: DraftSpuRow) => {
+    const candidates: string[] = [];
+    if (row.draft_image_folder) candidates.push(row.draft_image_folder);
+    if (row.draft_main_image_url) candidates.push(row.draft_main_image_url);
+    if (Array.isArray(row.draft_image_urls)) {
+      row.draft_image_urls.forEach((value) => {
+        if (value) candidates.push(String(value));
+      });
+    }
+    for (const candidate of candidates) {
+      const relative = tryExtractDraftRelativePath(candidate);
+      if (!relative) continue;
+      const parts = relative.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        return parts.join("/");
+      }
+    }
+    if (row.draft_spu) {
+      const currentRun =
+        selectedFolder ||
+        folders.find((folder) => folder.path)?.path ||
+        "";
+      if (currentRun) {
+        return `${currentRun}/${row.draft_spu}`;
+      }
+    }
+    return null;
+  }, [folders, selectedFolder]);
+
+  const openSpuImagesInExplorer = useCallback(
+    (row: DraftSpuRow) => {
+      const targetPath = resolveSpuImageExplorerPath(row);
+      if (!targetPath) {
+        setError(`Unable to resolve image folder for ${row.draft_spu}.`);
+        return;
+      }
+      const parts = targetPath.split("/").filter(Boolean);
+      if (parts.length === 0) {
+        setError(`Unable to resolve image folder for ${row.draft_spu}.`);
+        return;
+      }
+      const run = parts[0];
+      pendingFolderOpenPathRef.current = targetPath;
+      setSelectedFolder(run);
+      setCurrentPath(targetPath);
+    },
+    [resolveSpuImageExplorerPath]
+  );
+
+  const fetchVariantEditorThumbs = useCallback(
+    async (spu: string) => {
+      const targetSpu = String(spu || "").trim();
+      if (!targetSpu) {
+        setVariantsEditorThumbs([]);
+        return;
+      }
+      const spuRow = spuRows.find((row) => row.draft_spu === targetSpu) ?? null;
+      let rootPath = spuRow ? resolveSpuImageExplorerPath(spuRow) : null;
+      if (!rootPath && selectedFolder) {
+        rootPath = `${selectedFolder}/${targetSpu}`;
+      }
+      if (!rootPath) {
+        setVariantsEditorThumbs([]);
+        return;
+      }
+      setVariantsEditorThumbsLoading(true);
+      try {
+        const rootEntries = await listPathEntries(rootPath);
+        const variantDirs = rootEntries.filter((entry) => {
+          if (entry.type !== "dir") return false;
+          const normalized = entry.name.toLowerCase().replace(/[_-]+/g, " ").trim();
+          return /\bvariant\b/.test(normalized);
+        });
+        if (variantDirs.length === 0) {
+          setVariantsEditorThumbs([]);
+          return;
+        }
+        const variantImages: DraftEntry[] = [];
+        for (const dirEntry of variantDirs) {
+          try {
+            const entries = await listPathEntries(dirEntry.path);
+            entries.forEach((entry) => {
+              if (entry.type === "file" && isImage(entry.name)) {
+                variantImages.push(entry);
+              }
+            });
+            const childDirs = entries.filter((entry) => entry.type === "dir");
+            for (const childDir of childDirs) {
+              const childEntries = await listPathEntries(childDir.path);
+              childEntries.forEach((entry) => {
+                if (entry.type === "file" && isImage(entry.name)) {
+                  variantImages.push(entry);
+                }
+              });
+            }
+          } catch {
+            // Ignore single-folder read errors and continue.
+          }
+        }
+        const deduped = Array.from(
+          new Map(variantImages.map((entry) => [entry.path, entry])).values()
+        );
+        deduped.sort((a, b) => a.name.localeCompare(b.name));
+        setVariantsEditorThumbs(deduped);
+      } catch {
+        setVariantsEditorThumbs([]);
+      } finally {
+        setVariantsEditorThumbsLoading(false);
+      }
+    },
+    [
+      isImage,
+      listPathEntries,
+      resolveSpuImageExplorerPath,
+      selectedFolder,
+      spuRows,
+    ]
+  );
+
+  const mapDraftSkuToVariantEditorRow = useCallback(
+    (row: DraftSkuRow): DraftVariantEditorRow => {
+      const raw = parseDraftRawRow(row.draft_raw_row);
+      const variationColor = toText(raw.variation_color_se).trim();
+      const variationSize = toText(raw.variation_size_se).trim();
+      const variationOther = toText(raw.variation_other_se).trim();
+      const variationAmount = toText(raw.variation_amount_se).trim();
+      const optionColorZh = toText(row.draft_option1).trim();
+      const optionSizeZh = toText(row.draft_option2).trim();
+      const optionOtherZh = toText(row.draft_option3).trim();
+      const optionAmountZh = toText(row.draft_option4).trim();
+      const combined =
+        buildVariantCombinedZhValue({
+          draft_option1: optionColorZh,
+          draft_option2: optionSizeZh,
+          draft_option3: optionOtherZh,
+          draft_option4: optionAmountZh,
+          fallback: toText(row.draft_option_combined_zh).trim(),
+        });
+      return {
+        key: createVariantEditorKey(),
+        id: String(row.id || "").trim() || null,
+        draft_spu: row.draft_spu ?? "",
+        draft_sku: row.draft_sku ?? "",
+        draft_option1: optionColorZh,
+        draft_option2: optionSizeZh,
+        draft_option3: optionOtherZh,
+        draft_option4: optionAmountZh,
+        draft_option_combined_zh: combined,
+        draft_price: row.draft_price == null ? "" : String(row.draft_price),
+        draft_weight: row.draft_weight == null ? "" : String(row.draft_weight),
+        draft_weight_unit: row.draft_weight_unit ?? "",
+        draft_variant_image_url: row.draft_variant_image_url ?? "",
+        variation_color_se: variationColor,
+        variation_size_se: variationSize,
+        variation_other_se: variationOther,
+        variation_amount_se: variationAmount,
+        draft_raw_row: raw,
+      };
+    },
+    []
+  );
+
+  const buildVariantRowsPayload = useCallback((rows: DraftVariantEditorRow[]) => {
+    const parseOptionalNumber = (value: string) => {
+      const text = String(value || "").trim();
+      if (!text) return null;
+      const normalized = text.replace(/\s+/g, "").replace(",", ".");
+      const numeric = Number(normalized);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    return rows.map((row) => {
+      const raw = {
+        ...(row.draft_raw_row ?? {}),
+        draft_option1: row.draft_option1.trim(),
+        draft_option2: row.draft_option2.trim(),
+        draft_option3: row.draft_option3.trim(),
+        draft_option4: row.draft_option4.trim(),
+        variation_color_se: row.variation_color_se.trim(),
+        variation_size_se: row.variation_size_se.trim(),
+        variation_other_se: row.variation_other_se.trim(),
+        variation_amount_se: row.variation_amount_se.trim(),
+      };
+      const combined =
+        buildVariantCombinedZhValue({
+          draft_option1: row.draft_option1,
+          draft_option2: row.draft_option2,
+          draft_option3: row.draft_option3,
+          draft_option4: row.draft_option4,
+          fallback: row.draft_option_combined_zh,
+        });
+      return {
+        id: row.id,
+        draft_sku: row.draft_sku.trim() || null,
+        draft_option1: row.draft_option1.trim() || null,
+        draft_option2: row.draft_option2.trim() || null,
+        draft_option3: row.draft_option3.trim() || null,
+        draft_option4: row.draft_option4.trim() || null,
+        draft_option_combined_zh: combined || null,
+        draft_price: parseOptionalNumber(row.draft_price),
+        draft_weight: parseOptionalNumber(row.draft_weight),
+        draft_weight_unit: row.draft_weight_unit.trim() || null,
+        draft_variant_image_url: row.draft_variant_image_url.trim() || null,
+        variation_color_se: row.variation_color_se.trim(),
+        variation_size_se: row.variation_size_se.trim(),
+        variation_other_se: row.variation_other_se.trim(),
+        variation_amount_se: row.variation_amount_se.trim(),
+        draft_raw_row: raw,
+      };
+    });
+  }, []);
+
+  const closeVariantsEditor = useCallback((force = false) => {
+    if (!force && (variantsEditorSaving || variantsEditorAiRunning)) return;
+    setVariantsEditorOpen(false);
+    setVariantsEditorSpu("");
+    setVariantsEditorRows([]);
+    setVariantsEditorThumbs([]);
+    setVariantsEditorError(null);
+    setVariantsEditorSelectedRows(new Set());
+    setVariantsEditorPacksText("");
+    setVariantsEditorAiPrompt("");
+    setVariantsEditorSort({ key: null, direction: "asc" });
+  }, [variantsEditorAiRunning, variantsEditorSaving]);
+
+  const openVariantsEditor = useCallback(
+    async (spu: string | null | undefined) => {
+      const targetSpu = String(spu || "").trim();
+      if (!targetSpu) return;
+      setVariantsEditorOpen(true);
+      setVariantsEditorSpu(targetSpu);
+      setVariantsEditorRows([]);
+      setVariantsEditorThumbs([]);
+      setVariantsEditorSelectedRows(new Set());
+      setVariantsEditorSort({ key: null, direction: "asc" });
+      setVariantsEditorError(null);
+      setVariantsEditorLoading(true);
+      void fetchVariantEditorThumbs(targetSpu);
+      try {
+        const url = new URL("/api/drafts/variants", window.location.origin);
+        url.searchParams.set("spu", targetSpu);
+        const response = await fetch(url.toString());
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load variants.");
+        }
+        const rows = Array.isArray(payload?.items)
+          ? (payload.items as DraftSkuRow[]).map(mapDraftSkuToVariantEditorRow)
+          : [];
+        setVariantsEditorRows(rows);
+      } catch (err) {
+        setVariantsEditorError((err as Error).message);
+      } finally {
+        setVariantsEditorLoading(false);
+      }
+    },
+    [fetchVariantEditorThumbs, mapDraftSkuToVariantEditorRow]
+  );
+
+  const handleVariantEditorCellChange = useCallback(
+    (rowKey: string, field: keyof DraftVariantEditorRow, value: string) => {
+      setVariantsEditorRows((prev) =>
+        prev.map((row) => {
+          if (row.key !== rowKey) return row;
+          const nextRow = { ...row, [field]: value } as DraftVariantEditorRow;
+          return nextRow;
+        })
+      );
+    },
+    []
+  );
+
+  const handleVariantEditorToggleRow = useCallback((rowKey: string) => {
+    setVariantsEditorSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleVariantEditorToggleAll = useCallback(() => {
+    setVariantsEditorSelectedRows((prev) => {
+      if (variantsEditorRows.length > 0 && prev.size === variantsEditorRows.length) {
+        return new Set();
+      }
+      return new Set(variantsEditorRows.map((row) => row.key));
+    });
+  }, [variantsEditorRows]);
+
+  const handleVariantEditorSort = useCallback((key: VariantEditorSortKey) => {
+    setVariantsEditorSort((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key,
+        direction: "asc",
+      };
+    });
+  }, []);
+
+  const variantsEditorSortedRows = useMemo(() => {
+    const sortKey = variantsEditorSort.key;
+    if (!sortKey) {
+      return variantsEditorRows;
+    }
+    const getValue = (row: DraftVariantEditorRow, key: VariantEditorSortKey) => {
+      if (key === "sku") return row.draft_sku;
+      if (key === "color") return row.variation_color_se || row.draft_option1;
+      if (key === "size") return row.variation_size_se || row.draft_option2;
+      if (key === "order") return row.variation_other_se || row.draft_option3;
+      return row.variation_amount_se || row.draft_option4;
+    };
+    const parseNumericAmount = (value: string) => {
+      const normalized = String(value || "")
+        .trim()
+        .replace(",", ".")
+        .match(/-?\d+(?:\.\d+)?/);
+      if (!normalized) return null;
+      const numeric = Number(normalized[0]);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    const directionFactor = variantsEditorSort.direction === "asc" ? 1 : -1;
+    return [...variantsEditorRows].sort((left, right) => {
+      const leftValue = String(getValue(left, sortKey) || "").trim();
+      const rightValue = String(getValue(right, sortKey) || "").trim();
+      if (sortKey === "amount") {
+        const leftNumeric = parseNumericAmount(leftValue);
+        const rightNumeric = parseNumericAmount(rightValue);
+        if (leftNumeric != null && rightNumeric != null && leftNumeric !== rightNumeric) {
+          return (leftNumeric - rightNumeric) * directionFactor;
+        }
+      }
+      return (
+        leftValue.localeCompare(rightValue, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }) * directionFactor
+      );
+    });
+  }, [variantsEditorRows, variantsEditorSort]);
+
+  const handleVariantEditorAddRow = useCallback(() => {
+    const fallbackSkuBase = variantsEditorSpu || "SKU";
+    setVariantsEditorRows((prev) => {
+      const template = prev[prev.length - 1];
+      return [
+        ...prev,
+        {
+          key: createVariantEditorKey(),
+          id: null,
+          draft_spu: variantsEditorSpu,
+          draft_sku: template?.draft_sku
+            ? `${template.draft_sku}-copy`
+            : `${fallbackSkuBase}-copy`,
+          draft_option1: template?.draft_option1 ?? "",
+          draft_option2: template?.draft_option2 ?? "",
+          draft_option3: template?.draft_option3 ?? "",
+          draft_option4: template?.draft_option4 ?? "",
+          draft_option_combined_zh: "",
+          draft_price: template?.draft_price ?? "",
+          draft_weight: template?.draft_weight ?? "",
+          draft_weight_unit: template?.draft_weight_unit ?? "",
+          draft_variant_image_url: "",
+          variation_color_se: template?.variation_color_se ?? "",
+          variation_size_se: template?.variation_size_se ?? "",
+          variation_other_se: template?.variation_other_se ?? "",
+          variation_amount_se: template?.variation_amount_se ?? "",
+          draft_raw_row: { ...(template?.draft_raw_row ?? {}) },
+        },
+      ];
+    });
+  }, [variantsEditorSpu]);
+
+  const handleVariantEditorDeleteSelected = useCallback(() => {
+    if (variantsEditorSelectedRows.size === 0) return;
+    setVariantsEditorRows((prev) =>
+      prev.filter((row) => !variantsEditorSelectedRows.has(row.key))
+    );
+    setVariantsEditorSelectedRows(new Set());
+  }, [variantsEditorSelectedRows]);
+
+  const handleVariantEditorAddPacks = useCallback(() => {
+    const tokens = variantsEditorPacksText.match(/\d+/g) ?? [];
+    const seenPacks = new Set<number>();
+    const packValues: number[] = [];
+    tokens.forEach((token) => {
+      const numeric = Number(token);
+      if (!Number.isFinite(numeric) || numeric <= 0 || seenPacks.has(numeric)) return;
+      seenPacks.add(numeric);
+      packValues.push(numeric);
+    });
+    if (packValues.length === 0) {
+      setVariantsEditorError("Enter pack numbers, for example: 1, 2, 4, 10.");
+      return;
+    }
+    setVariantsEditorError(null);
+    setVariantsEditorRows((prev) => {
+      const originalRows: DraftVariantEditorRow[] = prev.map((row): DraftVariantEditorRow => {
+        const skuBaseRaw = stripSkuPackSuffix(row.draft_sku);
+        const skuBase = skuBaseRaw || String(variantsEditorSpu || "SKU").trim();
+        const onePackLabel = "1";
+        return {
+          ...row,
+          draft_sku: `${skuBase}-1P`,
+          draft_option4: onePackLabel,
+          variation_amount_se: onePackLabel,
+          draft_option_combined_zh: buildVariantCombinedZhValue({
+            draft_option1: row.draft_option1,
+            draft_option2: row.draft_option2,
+            draft_option3: row.draft_option3,
+            draft_option4: onePackLabel,
+            fallback: row.draft_option_combined_zh,
+          }),
+          draft_raw_row: {
+            ...(row.draft_raw_row ?? {}),
+            draft_option4: onePackLabel,
+            variation_amount_se: onePackLabel,
+          } as Record<string, unknown>,
+        };
+      });
+      const packsToClone = packValues.slice(1).filter((packValue) => packValue > 1);
+      if (packsToClone.length === 0) {
+        return originalRows;
+      }
+      const next: DraftVariantEditorRow[] = [...originalRows];
+      const usedSkus = new Set(
+        originalRows.map((row) => row.draft_sku.trim().toLowerCase()).filter(Boolean)
+      );
+      const createUniqueSku = (baseSku: string) => {
+        const base = baseSku.trim() || `${variantsEditorSpu || "sku"}-copy`;
+        let candidate = base;
+        let index = 2;
+        while (usedSkus.has(candidate.toLowerCase())) {
+          candidate = `${base}-${index}`;
+          index += 1;
+        }
+        usedSkus.add(candidate.toLowerCase());
+        return candidate;
+      };
+      originalRows.forEach((row) => {
+        const skuBaseRaw = stripSkuPackSuffix(row.draft_sku);
+        const skuBase = skuBaseRaw || String(variantsEditorSpu || "SKU").trim();
+        packsToClone.forEach((packValue) => {
+          const label = String(packValue);
+          const nextSku = createUniqueSku(`${skuBase}-${packValue}P`);
+          const cloned: DraftVariantEditorRow = {
+            ...row,
+            key: createVariantEditorKey(),
+            id: null,
+            draft_sku: nextSku,
+            draft_option4: label,
+            variation_amount_se: label,
+            draft_option_combined_zh: buildVariantCombinedZhValue({
+              draft_option1: row.draft_option1,
+              draft_option2: row.draft_option2,
+              draft_option3: row.draft_option3,
+              draft_option4: label,
+              fallback: row.draft_option_combined_zh,
+            }),
+            draft_raw_row: {
+              ...(row.draft_raw_row ?? {}),
+              draft_option4: label,
+              variation_amount_se: label,
+            } as Record<string, unknown>,
+          };
+          next.push(cloned);
+        });
+      });
+      return next;
+    });
+  }, [variantsEditorPacksText, variantsEditorSpu]);
+
+  const handleVariantEditorRunAi = useCallback(async () => {
+    if (variantsEditorAiRunning || variantsEditorSaving) return;
+    const prompt = variantsEditorAiPrompt.trim();
+    if (!variantsEditorSpu) return;
+    if (!prompt) {
+      setVariantsEditorError("Add instructions before running AI.");
+      return;
+    }
+    setVariantsEditorAiRunning(true);
+    setVariantsEditorError(null);
+    try {
+      const response = await fetch("/api/drafts/variants/ai-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spu: variantsEditorSpu,
+          instruction: prompt,
+          variants: buildVariantRowsPayload(variantsEditorRows),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "AI update failed.");
+      }
+      const nextRows = Array.isArray(payload?.variants)
+        ? (payload.variants as Array<Record<string, unknown>>).map((row) =>
+            mapDraftSkuToVariantEditorRow({
+              id: String(row.id ?? ""),
+              draft_sku: String(row.draft_sku ?? ""),
+              draft_spu: String(row.draft_spu ?? variantsEditorSpu),
+              draft_option1:
+                row.draft_option1 == null ? null : String(row.draft_option1),
+              draft_option2:
+                row.draft_option2 == null ? null : String(row.draft_option2),
+              draft_option3:
+                row.draft_option3 == null ? null : String(row.draft_option3),
+              draft_option4:
+                row.draft_option4 == null ? null : String(row.draft_option4),
+              draft_option_combined_zh: String(row.draft_option_combined_zh ?? ""),
+              draft_price:
+                row.draft_price == null ? null : (row.draft_price as number | string),
+              draft_weight:
+                row.draft_weight == null ? null : (row.draft_weight as number | string),
+              draft_weight_unit: row.draft_weight_unit == null ? null : String(row.draft_weight_unit),
+              draft_variant_image_url:
+                row.draft_variant_image_url == null
+                  ? null
+                  : String(row.draft_variant_image_url),
+              draft_status: "draft",
+              draft_updated_at: null,
+              draft_raw_row:
+                row.draft_raw_row && typeof row.draft_raw_row === "object"
+                  ? (row.draft_raw_row as Record<string, unknown>)
+                  : ({
+                      variation_color_se: row.variation_color_se,
+                      variation_size_se: row.variation_size_se,
+                      variation_other_se: row.variation_other_se,
+                      variation_amount_se: row.variation_amount_se,
+                    } as Record<string, unknown>),
+            })
+          )
+        : [];
+      setVariantsEditorRows(nextRows);
+      setVariantsEditorSelectedRows(new Set());
+    } catch (err) {
+      setVariantsEditorError((err as Error).message);
+    } finally {
+      setVariantsEditorAiRunning(false);
+    }
+  }, [
+    buildVariantRowsPayload,
+    mapDraftSkuToVariantEditorRow,
+    variantsEditorAiPrompt,
+    variantsEditorAiRunning,
+    variantsEditorRows,
+    variantsEditorSaving,
+    variantsEditorSpu,
+  ]);
+
+  const handleVariantEditorSave = useCallback(async () => {
+    if (!variantsEditorSpu || variantsEditorSaving || variantsEditorAiRunning) return;
+    setVariantsEditorSaving(true);
+    setVariantsEditorError(null);
+    try {
+      const response = await fetch("/api/drafts/variants/replace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spu: variantsEditorSpu,
+          variants: buildVariantRowsPayload(variantsEditorRows),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save variants.");
+      }
+      await fetchSpuRows();
+      await fetchSkuRows();
+      closeVariantsEditor(true);
+    } catch (err) {
+      setVariantsEditorError((err as Error).message);
+    } finally {
+      setVariantsEditorSaving(false);
+    }
+  }, [
+    buildVariantRowsPayload,
+    closeVariantsEditor,
+    fetchSkuRows,
+    fetchSpuRows,
+    variantsEditorAiRunning,
+    variantsEditorRows,
+    variantsEditorSaving,
+    variantsEditorSpu,
+  ]);
+
+  const handleOpenFileViewer = useCallback(async (entry: DraftEntry) => {
+    if (!isTextFileEditable(entry)) return;
+    setFileViewerPath(entry.path);
+    setFileViewerContent("");
+    setFileViewerError(null);
+    setFileViewerLoading(true);
+    try {
+      const response = await fetch(
+        `/api/drafts/files/content?path=${encodeURIComponent(entry.path)}`
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to open file.");
+      }
+      setFileViewerContent(String(payload?.content ?? ""));
+    } catch (err) {
+      setFileViewerError((err as Error).message);
+    } finally {
+      setFileViewerLoading(false);
+    }
+  }, [isTextFileEditable]);
+
+  const handleSaveFileViewer = useCallback(async () => {
+    if (!fileViewerPath || fileViewerSaving) return;
+    setFileViewerSaving(true);
+    setFileViewerError(null);
+    try {
+      const response = await fetch("/api/drafts/files/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: fileViewerPath,
+          content: fileViewerContent,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save file.");
+      }
+      if (currentPath) {
+        fetchEntries(currentPath);
+      }
+      if (selectedFolder) {
+        fetchFolderTree(selectedFolder);
+      }
+    } catch (err) {
+      setFileViewerError((err as Error).message);
+    } finally {
+      setFileViewerSaving(false);
+    }
+  }, [
+    currentPath,
+    fetchEntries,
+    fetchFolderTree,
+    fileViewerContent,
+    fileViewerPath,
+    fileViewerSaving,
+    selectedFolder,
+  ]);
+
   const handleToggleTreeFolder = (pathValue: string) => {
     setSelectedTreeFolders((prev) => {
       const next = new Set(prev);
@@ -4789,40 +5486,424 @@ export default function DraftExplorerPage() {
     });
   };
 
-  const handleMoveEntryToFolder = async (sourcePath: string, targetPath: string) => {
-    if (!sourcePath || !targetPath || sourcePath === targetPath || movingEntry) {
+  const handleMoveEntriesToFolder = async (sourcePaths: string[], targetPath: string) => {
+    if (!targetPath || movingEntry) {
       return;
     }
+    const uniqueSources = Array.from(
+      new Set(
+        sourcePaths
+          .map((value) => String(value || "").trim())
+          .filter((value) => Boolean(value))
+      )
+    );
+    if (uniqueSources.length === 0) {
+      return;
+    }
+
+    const validSources = uniqueSources.filter(
+      (sourcePath) =>
+        sourcePath !== targetPath && !targetPath.startsWith(`${sourcePath}/`)
+    );
+    const existingSources = validSources.filter((sourcePath) =>
+      entryByPath.has(sourcePath)
+    );
+    if (existingSources.length === 0) {
+      setFolderDropTargetPath(null);
+      setDraggingEntryPaths([]);
+      return;
+    }
+
+    const locked = existingSources.filter(
+      (sourcePath) =>
+        Boolean(pendingAiEditsByOriginal[sourcePath]) ||
+        Boolean(aiEditJobsByPath[sourcePath])
+    );
+    if (locked.length > 0) {
+      setError("Resolve pending/running AI edits before moving those files.");
+      return;
+    }
+
     setMovingEntry(true);
     setError(null);
+    const failures: string[] = [];
+    const moved = new Set<string>();
     try {
-      const response = await fetch("/api/drafts/move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourcePath, targetPath }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Move failed.");
+      for (const sourcePath of existingSources) {
+        try {
+          const response = await fetch("/api/drafts/move", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourcePath, targetPath }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Move failed.");
+          }
+          moved.add(sourcePath);
+        } catch (err) {
+          failures.push(`${sourcePath}: ${(err as Error).message}`);
+        }
       }
 
-      if (currentPath) {
-        await fetchEntries(currentPath);
+      if (moved.size > 0) {
+        setEntries((prev) => prev.filter((entry) => !moved.has(entry.path)));
+        setSelectedFiles((prev) => {
+          const next = new Set(prev);
+          moved.forEach((sourcePath) => next.delete(sourcePath));
+          return next;
+        });
+        setPendingAiEditsByOriginal((prev) => {
+          const next: Record<string, PendingAiEditRecord> = {};
+          Object.entries(prev).forEach(([pathValue, row]) => {
+            if (moved.has(pathValue) || moved.has(row.pendingPath)) return;
+            next[pathValue] = row;
+          });
+          return next;
+        });
+        setAiEditJobsByPath((prev) => {
+          const next: Record<string, AiEditRuntimeJob> = {};
+          Object.entries(prev).forEach(([pathValue, job]) => {
+            if (moved.has(pathValue)) return;
+            next[pathValue] = job;
+          });
+          return next;
+        });
+        setImageDimensions((prev) => {
+          const next: Record<string, { width: number; height: number }> = {};
+          Object.entries(prev).forEach(([pathValue, dims]) => {
+            if (moved.has(pathValue)) return;
+            next[pathValue] = dims;
+          });
+          return next;
+        });
+        setPreviewPath((prev) => (prev && moved.has(prev) ? null : prev));
       }
+
       if (selectedFolder) {
         await fetchFolderTree(selectedFolder);
       }
-      if (previewPath === sourcePath) {
-        setPreviewPath(null);
+      if (failures.length > 0) {
+        setError(
+          `Moved ${moved.size}/${existingSources.length}. Errors: ${failures
+            .slice(0, 2)
+            .join("; ")}${failures.length > 2 ? "..." : ""}`
+        );
       }
-    } catch (err) {
-      setError((err as Error).message);
     } finally {
       setMovingEntry(false);
-      setDraggingEntryPath(null);
+      setDraggingEntryPaths([]);
       setFolderDropTargetPath(null);
     }
   };
+
+  const handleCreateCopy = useCallback(
+    async (entry: DraftEntry) => {
+      if (entry.type !== "file") return;
+      setError(null);
+      try {
+        const response = await fetch("/api/drafts/files/copy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: entry.path }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to create copy.");
+        }
+        if (currentPath) {
+          await fetchEntries(currentPath);
+          await fetchPendingAiEdits(currentPath);
+        }
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [currentPath, fetchEntries, fetchPendingAiEdits]
+  );
+
+  const handleCreateCopiesForEntries = useCallback(
+    async (sourceEntries: DraftEntry[]) => {
+      if (bulkImageActionPending) return;
+      const targets = sourceEntries.filter((entry) => entry.type === "file");
+      if (targets.length === 0) return;
+      setBulkImageActionPending(true);
+      setError(null);
+      const failures: string[] = [];
+      try {
+        for (const entry of targets) {
+          try {
+            const response = await fetch("/api/drafts/files/copy", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: entry.path }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Unable to create copy.");
+            }
+          } catch (err) {
+            failures.push(`${entry.name}: ${(err as Error).message}`);
+          }
+        }
+        if (currentPath) {
+          await fetchEntries(currentPath);
+          await fetchPendingAiEdits(currentPath);
+        }
+      } finally {
+        setBulkImageActionPending(false);
+      }
+      if (failures.length > 0) {
+        setError(
+          `Failed to copy ${failures.length} image(s): ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+    },
+    [bulkImageActionPending, currentPath, fetchEntries, fetchPendingAiEdits]
+  );
+
+  const runAiEditsForEntries = useCallback(
+    async (
+      sourceEntries: DraftEntry[],
+      provider: AiEditProvider,
+      mode: AiPromptMode,
+      promptText: string
+    ) => {
+      const deduped = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (deduped.length === 0) return;
+
+      const skipped: string[] = [];
+      const runnable = deduped.filter((entry) => {
+        if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
+          skipped.push(entry.name);
+          return false;
+        }
+        return true;
+      });
+
+      if (runnable.length === 0) {
+        setError("All selected images already have pending or running AI edits.");
+        return;
+      }
+
+      setAiEditJobsByPath((prev) => {
+        const next = { ...prev };
+        for (const entry of runnable) {
+          next[entry.path] = {
+            provider,
+            mode,
+            status: "queued",
+            startedAt: Date.now(),
+          };
+        }
+        return next;
+      });
+
+      const failures: string[] = [];
+      let nextIndex = 0;
+      const maxWorkers = Math.min(3, runnable.length);
+      const worker = async () => {
+        while (true) {
+          const index = nextIndex;
+          if (index >= runnable.length) return;
+          nextIndex += 1;
+          const entry = runnable[index];
+          setAiEditJobsByPath((prev) => ({
+            ...prev,
+            [entry.path]: {
+              provider,
+              mode,
+              status: "running",
+              startedAt: Date.now(),
+            },
+          }));
+          try {
+            const response = await fetch("/api/drafts/ai-edits", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                path: entry.path,
+                provider,
+                mode,
+                prompt: promptText,
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "AI image edit failed.");
+            }
+            const item = payload?.item as PendingAiEditRecord | undefined;
+            if (item?.originalPath) {
+              setPendingAiEditsByOriginal((prev) => ({
+                ...prev,
+                [item.originalPath]: item,
+              }));
+            }
+          } catch (err) {
+            failures.push(`${entry.name}: ${(err as Error).message}`);
+          } finally {
+            setAiEditJobsByPath((prev) => {
+              const next = { ...prev };
+              delete next[entry.path];
+              return next;
+            });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
+
+      if (currentPath) {
+        await fetchEntries(currentPath);
+        await fetchPendingAiEdits(currentPath);
+      }
+
+      const messages: string[] = [];
+      if (skipped.length > 0) {
+        messages.push(`Skipped ${skipped.length} image(s) with existing pending/running edits.`);
+      }
+      if (failures.length > 0) {
+        messages.push(
+          `Failed ${failures.length} image(s): ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+      if (messages.length > 0) {
+        setError(messages.join(" "));
+      }
+    },
+    [
+      aiEditJobsByPath,
+      currentPath,
+      fetchEntries,
+      fetchPendingAiEdits,
+      isImage,
+      pendingAiEditsByOriginal,
+    ]
+  );
+
+  const startAiEditForEntries = useCallback(
+    (sourceEntries: DraftEntry[], provider: AiEditProvider, mode: AiPromptMode) => {
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length === 0) return;
+      if (
+        provider === "zimage" &&
+        (mode === "upscale" || mode === "white_background")
+      ) {
+        setAiEditTargets([]);
+        setAiEditProvider(provider);
+        setAiEditMode(mode);
+        setAiEditPrompt("");
+        setAiEditError(null);
+        setError(null);
+        void runAiEditsForEntries(targets, provider, mode, "");
+        return;
+      }
+      setAiEditTargets(targets);
+      setAiEditProvider(provider);
+      setAiEditMode(mode);
+      setAiEditPrompt("");
+      setAiEditError(null);
+    },
+    [isImage, runAiEditsForEntries]
+  );
+
+  const startAiEdit = useCallback(
+    (entry: DraftEntry, provider: AiEditProvider, mode: AiPromptMode) => {
+      startAiEditForEntries([entry], provider, mode);
+    },
+    [startAiEditForEntries]
+  );
+
+  const cancelAiEdit = useCallback(() => {
+    if (aiEditSubmitting) return;
+    setAiEditTargets([]);
+    setAiEditPrompt("");
+    setAiEditError(null);
+  }, [aiEditSubmitting]);
+
+  const submitAiEdit = useCallback(async () => {
+    if (aiEditTargets.length === 0 || aiEditSubmitting) return;
+    const promptText = aiEditPrompt.trim();
+    if ((aiEditMode === "direct" || aiEditMode === "eraser") && !promptText) {
+      setAiEditError(
+        aiEditMode === "eraser"
+          ? "Prompt is required for Z-image eraser."
+          : "Prompt is required in direct mode."
+      );
+      return;
+    }
+    const targets = [...aiEditTargets];
+    const provider = aiEditProvider;
+    const mode = aiEditMode;
+    setAiEditSubmitting(true);
+    setAiEditTargets([]);
+    setAiEditPrompt("");
+    setAiEditError(null);
+    setError(null);
+    setAiEditSubmitting(false);
+    void runAiEditsForEntries(targets, provider, mode, promptText);
+  }, [
+    aiEditTargets,
+    aiEditMode,
+    aiEditPrompt,
+    aiEditProvider,
+    aiEditSubmitting,
+    runAiEditsForEntries,
+  ]);
+
+  const resolveAiEdit = useCallback(
+    async (originalPath: string, decision: AiResolveDecision) => {
+      if (aiReviewSubmitting) return;
+      setAiReviewSubmitting(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/drafts/ai-edits/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ originalPath, decision }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to resolve AI edit.");
+        }
+        setPendingAiEditsByOriginal((prev) => {
+          const next = { ...prev };
+          delete next[originalPath];
+          return next;
+        });
+        if (decision === "replace_with_ai") {
+          const now = new Date().toISOString();
+          setEntries((prev) =>
+            prev.map((item) =>
+              item.path === originalPath ? { ...item, modifiedAt: now } : item
+            )
+          );
+        } else if (decision === "keep_both" && currentPath) {
+          await fetchEntries(currentPath);
+          await fetchPendingAiEdits(currentPath);
+        }
+        setAiReviewOriginalPath(null);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setAiReviewSubmitting(false);
+      }
+    },
+    [aiReviewSubmitting, currentPath, fetchEntries, fetchPendingAiEdits]
+  );
 
   const startRename = (entry: DraftEntry) => {
     if (entry.type !== "file") return;
@@ -4899,6 +5980,9 @@ export default function DraftExplorerPage() {
         return next;
       });
       setPreviewPath((prev) => (prev === entry.path ? newPath : prev));
+      if (currentPath) {
+        fetchPendingAiEdits(currentPath);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -4931,30 +6015,31 @@ export default function DraftExplorerPage() {
     link.remove();
   };
 
-  const handleDownloadAllFromCurrentFolder = async () => {
-    if (!currentPath) return;
+  const handleDownloadEntries = async (sourceEntries: DraftEntry[]) => {
+    for (const entry of sourceEntries) {
+      if (entry.type === "dir") {
+        triggerBrowserDownload(`/api/drafts/zip?path=${encodeURIComponent(entry.path)}`);
+      } else {
+        triggerBrowserDownload(`/api/drafts/download?path=${encodeURIComponent(entry.path)}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  };
+
+  const handleDownloadAllFolders = async () => {
+    if (!selectedFolder) return;
     triggerBrowserDownload(
-      `/api/drafts/zip?path=${encodeURIComponent(currentPath)}`
+      `/api/drafts/zip?path=${encodeURIComponent(selectedFolder)}`
     );
   };
 
   const handleDownloadSelectedIndividually = async () => {
     if (selectedFiles.size === 0) return;
     const selected = Array.from(selectedFiles);
-    for (const relativePath of selected) {
-      const entry = entries.find((candidate) => candidate.path === relativePath);
-      if (entry?.type === "dir") {
-        triggerBrowserDownload(
-          `/api/drafts/zip?path=${encodeURIComponent(relativePath)}`
-        );
-      } else {
-        triggerBrowserDownload(
-          `/api/drafts/download?path=${encodeURIComponent(relativePath)}`
-        );
-      }
-      // Give the browser a moment between downloads to reduce blocking.
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    const selectedEntries = selected
+      .map((relativePath) => entries.find((candidate) => candidate.path === relativePath))
+      .filter((entry): entry is DraftEntry => Boolean(entry));
+    await handleDownloadEntries(selectedEntries);
   };
 
   const handleDownloadSelectedZip = async () => {
@@ -4966,9 +6051,20 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleDeleteSelected = async () => {
-    const paths = Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
+  const handleDeleteSelectedFolders = async () => {
+    const paths = Array.from(selectedTreeFolders);
     if (paths.length === 0) return;
+    const locked = Object.values(pendingAiEditsByOriginal).some((row) =>
+      paths.some(
+        (folderPath) =>
+          row.originalPath.startsWith(`${folderPath}/`) ||
+          row.pendingPath.startsWith(`${folderPath}/`)
+      )
+    );
+    if (locked) {
+      setError("Resolve pending/running AI edits before deleting those folders.");
+      return;
+    }
     const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
     if (!confirmed) return;
     try {
@@ -4981,10 +6077,45 @@ export default function DraftExplorerPage() {
         const message = await response.text();
         throw new Error(message || "Delete failed.");
       }
-      setSelectedFiles(new Set());
+      const isDeletedPath = (candidatePath: string) =>
+        paths.some(
+          (deletedPath) =>
+            candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
+        );
+      setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
       setSelectedTreeFolders(new Set());
-      if (currentPath) {
-        fetchEntries(currentPath);
+      setPendingAiEditsByOriginal((prev) => {
+        const next: Record<string, PendingAiEditRecord> = {};
+        Object.entries(prev).forEach(([pathValue, row]) => {
+          if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
+          next[pathValue] = row;
+        });
+        return next;
+      });
+      setAiEditJobsByPath((prev) => {
+        const next: Record<string, AiEditRuntimeJob> = {};
+        Object.entries(prev).forEach(([pathValue, row]) => {
+          if (isDeletedPath(pathValue)) return;
+          next[pathValue] = row;
+        });
+        return next;
+      });
+      setImageDimensions((prev) => {
+        const next: Record<string, { width: number; height: number }> = {};
+        Object.entries(prev).forEach(([pathValue, dims]) => {
+          if (isDeletedPath(pathValue)) return;
+          next[pathValue] = dims;
+        });
+        return next;
+      });
+      if (
+        currentPath &&
+        paths.some(
+          (deletedPath) =>
+            currentPath === deletedPath || currentPath.startsWith(`${deletedPath}/`)
+        )
+      ) {
+        setCurrentPath(selectedFolder || "");
       }
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
@@ -5052,7 +6183,71 @@ export default function DraftExplorerPage() {
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
       }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    const paths = Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
+    if (paths.length === 0) return;
+    const locked = paths.filter(
+      (item) => Boolean(pendingAiEditsByOriginal[item]) || Boolean(aiEditJobsByPath[item])
+    );
+    if (locked.length > 0) {
+      setError("Resolve pending/running AI edits before deleting those files.");
+      return;
+    }
+    const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
+    if (!confirmed) return;
+    try {
+      const response = await fetch("/api/drafts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Delete failed.");
+      }
+      const isDeletedPath = (candidatePath: string) =>
+        paths.some(
+          (deletedPath) =>
+            candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
+        );
+      setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
+      setSelectedFiles(new Set());
+      setSelectedTreeFolders(new Set());
+      setPendingAiEditsByOriginal((prev) => {
+        const next: Record<string, PendingAiEditRecord> = {};
+        Object.entries(prev).forEach(([pathValue, row]) => {
+          if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
+          next[pathValue] = row;
+        });
+        return next;
+      });
+      setAiEditJobsByPath((prev) => {
+        const next: Record<string, AiEditRuntimeJob> = {};
+        Object.entries(prev).forEach(([pathValue, row]) => {
+          if (isDeletedPath(pathValue)) return;
+          next[pathValue] = row;
+        });
+        return next;
+      });
+      setImageDimensions((prev) => {
+        const next: Record<string, { width: number; height: number }> = {};
+        Object.entries(prev).forEach(([pathValue, dims]) => {
+          if (isDeletedPath(pathValue)) return;
+          next[pathValue] = dims;
+        });
+        return next;
+      });
+      setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
+      if (selectedFolder) {
+        fetchFolderTree(selectedFolder);
+      }
       fetchEntries(currentPath);
+      fetchPendingAiEdits(currentPath);
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
       }
@@ -5462,10 +6657,58 @@ export default function DraftExplorerPage() {
       downloadEntry(entry);
       return;
     }
-    setError(`Action "${action}" is not implemented yet.`);
+    if (action === "view") {
+      handleOpenFileViewer(entry);
+      return;
+    }
+    if (action === "create-copy") {
+      handleCreateCopy(entry);
+      return;
+    }
+    if (action === "ai-chatgpt-template") {
+      startAiEdit(entry, "chatgpt", "template");
+      return;
+    }
+    if (action === "ai-chatgpt-direct") {
+      startAiEdit(entry, "chatgpt", "direct");
+      return;
+    }
+    if (action === "ai-gemini-template") {
+      startAiEdit(entry, "gemini", "template");
+      return;
+    }
+    if (action === "ai-gemini-direct") {
+      startAiEdit(entry, "gemini", "direct");
+      return;
+    }
+    if (action === "ai-zimage-white") {
+      startAiEdit(entry, "zimage", "white_background");
+      return;
+    }
+    if (action === "ai-zimage-eraser") {
+      startAiEdit(entry, "zimage", "eraser");
+      return;
+    }
+    if (action === "ai-zimage-direct") {
+      startAiEdit(entry, "zimage", "direct");
+      return;
+    }
+    if (action === "ai-zimage-upscale") {
+      startAiEdit(entry, "zimage", "upscale");
+      return;
+    }
+    if (action === "ai-review" && pendingAiEditsByOriginal[entry.path]) {
+      setAiReviewOriginalPath(entry.path);
+      return;
+    }
+    setError(`Unknown action "${action}".`);
   };
 
-  const renderFolderTreeNode = (node: DraftFolderTreeNode, depth: number) => {
+  const renderFolderTreeNode = (
+    node: DraftFolderTreeNode,
+    ancestorHasNext: boolean[],
+    isLast: boolean
+  ) => {
     const isCurrent = currentPath === node.path;
     const isCollapsed = collapsedTreeFolders.has(node.path);
     const isSelected = selectedTreeFolders.has(node.path);
@@ -5482,29 +6725,52 @@ export default function DraftExplorerPage() {
           )}
           onClick={() => setCurrentPath(node.path)}
           onDragOver={(event) => {
-            if (!draggingEntryPath) return;
+            if (draggingEntryPaths.length === 0) return;
+            event.stopPropagation();
             event.preventDefault();
             setFolderDropTargetPath(node.path);
           }}
-          onDragLeave={() => {
+          onDragLeave={(event) => {
+            event.stopPropagation();
             if (folderDropTargetPath === node.path) {
               setFolderDropTargetPath(null);
             }
           }}
           onDrop={(event) => {
+            event.stopPropagation();
             event.preventDefault();
-            const draggedPath =
-              event.dataTransfer.getData("text/plain") || draggingEntryPath;
-            if (!draggedPath) return;
-            if (draggedPath === node.path || node.path.startsWith(`${draggedPath}/`)) {
+            const draggedPaths = readDraggedPaths(event.dataTransfer);
+            if (draggedPaths.length === 0) return;
+            if (
+              draggedPaths.every(
+                (draggedPath) =>
+                  draggedPath === node.path || node.path.startsWith(`${draggedPath}/`)
+              )
+            ) {
               setFolderDropTargetPath(null);
-              setDraggingEntryPath(null);
+              setDraggingEntryPaths([]);
               return;
             }
-            handleMoveEntryToFolder(draggedPath, node.path);
+            handleMoveEntriesToFolder(draggedPaths, node.path);
           }}
         >
-          <span className={styles.folderTreeIndent} style={{ width: `${depth * 14}px` }} />
+          <span className={styles.folderTreeConnector} aria-hidden="true">
+            {ancestorHasNext.map((hasNext, index) => (
+              <span
+                key={`${node.path}-segment-${index}`}
+                className={styles.folderTreeConnectorSegment}
+              >
+                {hasNext ? <span className={styles.folderTreeConnectorLine} /> : null}
+              </span>
+            ))}
+            <span className={styles.folderTreeConnectorJoin}>
+              <span
+                className={styles.folderTreeConnectorJoinVertical}
+                style={isLast ? { top: 0, bottom: "8px" } : { top: 0, bottom: 0 }}
+              />
+              <span className={styles.folderTreeConnectorJoinHorizontal} />
+            </span>
+          </span>
           {hasChildren ? (
             <button
               type="button"
@@ -5515,14 +6781,10 @@ export default function DraftExplorerPage() {
               }}
               aria-label={isCollapsed ? "Expand folder" : "Collapse folder"}
             >
-              {isCollapsed ? ">" : "v"}
+              {isCollapsed ? "▸" : "▾"}
             </button>
           ) : (
-            <span
-              className={styles.folderTreeCaretButton}
-              aria-hidden="true"
-              style={{ cursor: "default" }}
-            />
+            <span className={styles.folderTreeCaretSpacer} aria-hidden="true" />
           )}
           <input
             type="checkbox"
@@ -5541,15 +6803,240 @@ export default function DraftExplorerPage() {
               setCurrentPath(node.path);
             }}
           >
-            {node.name}
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className={styles.folderTreeFolderIcon}
+            >
+              <path
+                fill="currentColor"
+                d="M9.5 4h-5A2.5 2.5 0 0 0 2 6.5v11A2.5 2.5 0 0 0 4.5 20h15A2.5 2.5 0 0 0 22 17.5v-9A2.5 2.5 0 0 0 19.5 6H12l-2-2.5A2.5 2.5 0 0 0 9.5 4Z"
+              />
+            </svg>
+            <span className={styles.folderTreeNameText}>{node.name}</span>
+            <span className={styles.folderTreeCount}>({node.fileCount ?? 0})</span>
           </button>
         </div>
         {!isCollapsed && hasChildren ? (
           <div className={styles.folderTreeChildren}>
-            {node.children.map((child) => renderFolderTreeNode(child, depth + 1))}
+            {node.children.map((child, index) =>
+              renderFolderTreeNode(
+                child,
+                [...ancestorHasNext, !isLast],
+                index === node.children.length - 1
+              )
+            )}
           </div>
         ) : null}
       </div>
+    );
+  };
+
+  const imageEntries = entries.filter(
+    (entry) => entry.type === "file" && isImage(entry.name)
+  );
+  const selectedImageEntries = imageEntries.filter((entry) =>
+    selectedFiles.has(entry.path)
+  );
+  const nonImageFileEntries = entries.filter(
+    (entry) => entry.type === "file" && !isImage(entry.name)
+  );
+  const aiReviewRecord = aiReviewOriginalPath
+    ? pendingAiEditsByOriginal[aiReviewOriginalPath] ?? null
+    : null;
+  const previewEntry = previewPath ? entryByPath.get(previewPath) ?? null : null;
+  const previewDimensions = previewPath ? imageDimensions[previewPath] ?? null : null;
+  const previewFileName =
+    previewEntry?.name ??
+    (previewPath ? previewPath.split("/").filter(Boolean).pop() ?? previewPath : "");
+  const previewFileSizeText =
+    previewEntry && previewEntry.type === "file" ? formatSizeKb(previewEntry.size) : "-";
+  const aiEditHasPromptInput =
+    aiEditMode === "template" || aiEditMode === "direct" || aiEditMode === "eraser";
+  const aiEditProviderLabel =
+    aiEditProvider === "chatgpt"
+      ? "ChatGPT"
+      : aiEditProvider === "gemini"
+        ? "Gemini"
+        : "ZImage";
+  const aiEditModeLabel =
+    aiEditMode === "template"
+      ? "Template"
+      : aiEditMode === "direct"
+        ? "Direct"
+        : aiEditMode === "white_background"
+          ? "White Background"
+          : aiEditMode === "eraser"
+            ? "Eraser"
+            : "Upscale";
+  const variantsEditorAllSelected =
+    variantsEditorRows.length > 0 &&
+    variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
+  const variantsEditorSomeSelected =
+    variantsEditorRows.some((row) => variantsEditorSelectedRows.has(row.key));
+  const getVariantSortIndicator = (key: VariantEditorSortKey) => {
+    if (variantsEditorSort.key !== key) return "";
+    return variantsEditorSort.direction === "asc" ? "▲" : "▼";
+  };
+  const renderContextMenuIcon = (
+    type:
+      | "open"
+      | "download"
+      | "duplicate"
+      | "ai"
+      | "background"
+      | "eraser"
+      | "upscale"
+  ) => {
+    if (type === "open") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
+          <path d="M4 16v2a2 2 0 0 0 2 2h2" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v2" />
+          <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
+          <path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
+          <path d="M16 16l-2.5 -2.5" />
+        </svg>
+      );
+    }
+    if (type === "download") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+          <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
+          <path d="M12 17v-6" />
+          <path d="M9.5 14.5l2.5 2.5l2.5 -2.5" />
+        </svg>
+      );
+    }
+    if (type === "duplicate") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
+          <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+        </svg>
+      );
+    }
+    if (type === "background") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M4 8l4 -4" />
+          <path d="M14 4l-10 10" />
+          <path d="M4 20l16 -16" />
+          <path d="M20 10l-10 10" />
+          <path d="M20 16l-4 4" />
+        </svg>
+      );
+    }
+    if (type === "upscale") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M16 4l4 0l0 4" />
+          <path d="M14 10l6 -6" />
+          <path d="M8 20l-4 0l0 -4" />
+          <path d="M4 20l6 -6" />
+          <path d="M16 20l4 0l0 -4" />
+          <path d="M14 14l6 6" />
+          <path d="M8 4l-4 0l0 4" />
+          <path d="M4 4l6 6" />
+        </svg>
+      );
+    }
+    if (type === "eraser") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3" />
+          <path d="M18 13.3l-6.3 -6.3" />
+        </svg>
+      );
+    }
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={styles.contextMenuIcon}
+        aria-hidden="true"
+      >
+        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+        <path d="M15 8h.01" />
+        <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
+        <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
+        <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
+        <path d="M14 19h4" />
+        <path d="M21 15v6" />
+      </svg>
     );
   };
 
@@ -6480,6 +7967,425 @@ export default function DraftExplorerPage() {
                 <Spinner size="small" />
               ) : (
                 <div className={styles.variantsEditorTableWrap}>
+                  <table className={styles.variantsEditorTable}>
+                    <thead>
+                      <tr>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.variantsEditorCheckCol
+                          )}
+                        >
+                          <Checkbox
+                            checked={
+                              variantsEditorAllSelected
+                                ? true
+                                : variantsEditorSomeSelected
+                                  ? "mixed"
+                                  : false
+                            }
+                            onChange={handleVariantEditorToggleAll}
+                            aria-label="Select all variants"
+                          />
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 140 }}>
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("sku")}
+                          >
+                            <span>SKU</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("sku")}
+                            </span>
+                          </button>
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("color")}
+                          >
+                            <span>Color (SE)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("color")}
+                            </span>
+                          </button>
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("size")}
+                          >
+                            <span>Size (SE)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("size")}
+                            </span>
+                          </button>
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 80 }}>
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("order")}
+                          >
+                            <span>Other (SE)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("order")}
+                            </span>
+                          </button>
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 80 }}>
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("amount")}
+                          >
+                            <span>Amount (SE)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("amount")}
+                            </span>
+                          </button>
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 156 }}>
+                          Option Combined (ZH)
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          Color (ZH)
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          Size (ZH)
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          Other (ZH)
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                          Amount (ZH)
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 68 }}>
+                          Price
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 68 }}>
+                          Weight
+                        </th>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 58 }}>
+                          Unit
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {variantsEditorRows.length === 0 ? (
+                        <tr>
+                          <td className={styles.variantsEditorCell} colSpan={14}>
+                            No variants yet. Add one or run AI update.
+                          </td>
+                        </tr>
+                      ) : (
+                        variantsEditorSortedRows.map((row) => (
+                          <tr key={row.key}>
+                            <td
+                              className={mergeClasses(
+                                styles.variantsEditorCell,
+                                styles.variantsEditorCheckCol
+                              )}
+                            >
+                              <Checkbox
+                                checked={variantsEditorSelectedRows.has(row.key)}
+                                onChange={() => handleVariantEditorToggleRow(row.key)}
+                                aria-label={`Select ${row.draft_sku || row.key}`}
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_sku}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_sku",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.variation_color_se}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "variation_color_se",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.variation_size_se}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "variation_size_se",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.variation_other_se}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "variation_other_se",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.variation_amount_se}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "variation_amount_se",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_option_combined_zh}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_option_combined_zh",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_option1}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_option1",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_option2}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_option2",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_option3}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_option3",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_option4}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_option4",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_price}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_price",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_weight}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_weight",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className={styles.variantsEditorCell}>
+                              <Input
+                                size="small"
+                                className={styles.variantsEditorInput}
+                                value={row.draft_weight_unit}
+                                onChange={(_, data) =>
+                                  handleVariantEditorCellChange(
+                                    row.key,
+                                    "draft_weight_unit",
+                                    data.value
+                                  )
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className={styles.variantsEditorBottomSplit}>
+                <div className={styles.variantsEditorInstruction}>
+                  <Field label="AI instructions (GPT-5.2)">
+                    <Textarea
+                      value={variantsEditorAiPrompt}
+                      onChange={(_, data) => setVariantsEditorAiPrompt(data.value)}
+                      resize="vertical"
+                      rows={4}
+                      placeholder="Describe how to restructure, add, or remove variants."
+                    />
+                  </Field>
+                  <div className={styles.variantsEditorInstructionActions}>
+                    <Button
+                      appearance="primary"
+                      onClick={handleVariantEditorRunAi}
+                      disabled={
+                        variantsEditorLoading ||
+                        variantsEditorSaving ||
+                        variantsEditorAiRunning ||
+                        variantsEditorRows.length === 0
+                      }
+                    >
+                      {variantsEditorAiRunning ? "Updating..." : "Update Variants with AI"}
+                    </Button>
+                  </div>
+                </div>
+                <div className={styles.variantsEditorThumbPanel}>
+                  <Text size={200} weight="semibold">
+                    Variant images
+                  </Text>
+                  {variantsEditorThumbsLoading ? (
+                    <Spinner size="tiny" />
+                  ) : variantsEditorThumbs.length === 0 ? (
+                    <Text size={100}>No images found in the variant images folder.</Text>
+                  ) : (
+                    <div className={styles.variantsEditorThumbGrid}>
+                      {variantsEditorThumbs.map((entry) => {
+                        const label =
+                          extractVariantLabelFromFilename(entry.name, variantsEditorSpu) ||
+                          entry.name;
+                        return (
+                          <div key={entry.path} className={styles.variantsEditorThumbCard}>
+                            <img
+                              src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                              alt={label}
+                              className={styles.variantsEditorThumbImage}
+                              loading="lazy"
+                            />
+                            <Text className={styles.variantsEditorThumbLabel} size={100}>
+                              {label}
+                            </Text>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {variantsEditorAiRunning ? (
+              <div className={styles.variantsEditorOverlay}>
+                <span style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                  <Spinner size="small" />
+                  Updating variants with AI...
+                </span>
+              </div>
+            ) : null}
+            <DialogActions className={styles.variantsEditorActions}>
+              <Button
+                appearance="outline"
+                onClick={() => closeVariantsEditor()}
+                disabled={variantsEditorSaving || variantsEditorAiRunning}
+              >
+                {t("common.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleVariantEditorSave}
+                disabled={variantsEditorLoading || variantsEditorSaving || variantsEditorAiRunning}
+              >
+                {variantsEditorSaving ? "Saving..." : t("common.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Card className={styles.logCard}>
+        <div className={styles.explorerHeader}>
+          <div>
+            <Text size={500} weight="semibold">
+              {t("bulkProcessing.explorer.title")}
+            </Text>
+          </div>
+        </div>
+
+              {variantsEditorLoading ? (
+                <Spinner size="small" />
+              ) : (
+                <div className={styles.variantsEditorTableWrap}>
                   <table
                     className={mergeClasses(
                       styles.variantsEditorTable,
@@ -7059,9 +8965,9 @@ export default function DraftExplorerPage() {
               selectedOptions={selectedFolder ? [selectedFolder] : []}
               placeholder={t("bulkProcessing.explorer.selectFolder")}
               className={styles.folderDropdown}
-              onOptionSelect={(_, data) =>
-                setSelectedFolder(String(data.optionValue ?? ""))
-              }
+              onOptionSelect={(_, data) => {
+                void handleSelectFolder(String(data.optionValue ?? ""));
+              }}
             >
               {folders.map((folder) => (
                 <Option key={folder.path} value={folder.path}>
@@ -7079,46 +8985,30 @@ export default function DraftExplorerPage() {
                 setCurrentPath(parts.join("/"));
               }}
               disabled={!currentPath || currentPath === selectedFolder}
+              className={styles.iconButton}
+              aria-label={t("bulkProcessing.explorer.up")}
+              title={t("bulkProcessing.explorer.up")}
             >
-              {t("bulkProcessing.explorer.up")}
-            </Button>
-          </div>
-          <div className={styles.explorerControlsCenter}>
-            <Button
-              appearance="outline"
-              onClick={handleDownloadSelectedZip}
-              disabled={selectedTreeFolders.size === 0}
-            >
-              Download selected ZIP
-            </Button>
-            <Button
-              appearance="outline"
-              onClick={handleDownloadAllFromCurrentFolder}
-              disabled={!currentPath || entriesLoading}
-            >
-              Download all ZIP
-            </Button>
-            <Button
-              appearance="outline"
-              onClick={handleDownloadSelectedIndividually}
-              disabled={selectedFiles.size === 0}
-            >
-              {t("bulkProcessing.explorer.downloadSelected")}
-            </Button>
-          </div>
-          <div className={styles.explorerControlsRight}>
-            <Button
-              appearance="outline"
-              onClick={handleExplorerRefresh}
-              disabled={entriesLoading || movingEntry}
-            >
-              {t("bulkProcessing.explorer.refresh")}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={styles.iconSvg}
+                aria-hidden="true"
+              >
+                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                <path d="M18 18h-6a3 3 0 0 1 -3 -3v-10l-4 4m8 0l-4 -4" />
+              </svg>
             </Button>
             <Button
               appearance="outline"
               onClick={handleDeleteFolder}
               disabled={!selectedFolder || deleteFolderPending}
-              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+              className={styles.iconButton}
               aria-label={t("bulkProcessing.explorer.deleteFolder")}
               title={t("bulkProcessing.explorer.deleteFolder")}
             >
@@ -7141,14 +9031,9 @@ export default function DraftExplorerPage() {
                 <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
               </svg>
             </Button>
-            <Button
-              appearance="outline"
-              onClick={handleDeleteSelected}
-              disabled={selectedFiles.size + selectedTreeFolders.size === 0}
-            >
-              {t("bulkProcessing.explorer.deleteSelected")}
-            </Button>
-            {!USE_NEW_FILE_EXPLORER ? (
+          </div>
+          {!USE_NEW_FILE_EXPLORER ? (
+            <div className={styles.explorerControlsRight}>
               <div className={styles.viewToggle}>
                 <Text size={100}>{t("bulkProcessing.explorer.viewSmall")}</Text>
                 <Switch
@@ -7159,13 +9044,39 @@ export default function DraftExplorerPage() {
                 />
                 <Text size={100}>{t("bulkProcessing.explorer.viewLarge")}</Text>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {USE_NEW_FILE_EXPLORER ? (
           <div className={styles.explorerLayout}>
-            <div className={styles.folderPane}>
+            <div
+              className={styles.folderPane}
+              onDragOver={(event) => {
+                if (draggingEntryPaths.length === 0 || !selectedFolder) return;
+                event.preventDefault();
+                setFolderDropTargetPath(selectedFolder);
+              }}
+              onDragLeave={() => {
+                if (folderDropTargetPath === selectedFolder) {
+                  setFolderDropTargetPath(null);
+                }
+              }}
+              onDrop={(event) => {
+                if (!selectedFolder) return;
+                event.preventDefault();
+                const draggedPaths = readDraggedPaths(event.dataTransfer);
+                if (
+                  draggedPaths.length === 0 ||
+                  draggedPaths.every((draggedPath) => draggedPath === selectedFolder)
+                ) {
+                  setFolderDropTargetPath(null);
+                  setDraggingEntryPaths([]);
+                  return;
+                }
+                handleMoveEntriesToFolder(draggedPaths, selectedFolder);
+              }}
+            >
               <div className={styles.folderPaneHeader}>
                 <Text size={200} weight="semibold">
                   Folders
@@ -7178,217 +9089,710 @@ export default function DraftExplorerPage() {
                 <Spinner size="tiny" />
               ) : folderTree ? (
                 <div className={styles.folderTreeRoot}>
-                  {renderFolderTreeNode(folderTree, 0)}
+                  {folderTree.children.length > 0 ? (
+                    folderTree.children.map((child, index) =>
+                      renderFolderTreeNode(
+                        child,
+                        [],
+                        index === folderTree.children.length - 1
+                      )
+                    )
+                  ) : (
+                    <Text size={100}>No subfolders in this folder.</Text>
+                  )}
                 </div>
               ) : (
                 <Text size={100}>Unable to load folder tree.</Text>
               )}
-              {entries.filter((entry) => entry.type === "file" && !isImage(entry.name)).length >
-              0 ? (
-                <div className={styles.folderFileList}>
-                  <Text size={100} weight="semibold">
-                    Files
-                  </Text>
-                  {entries
-                    .filter((entry) => entry.type === "file" && !isImage(entry.name))
-                    .map((entry) => (
-                      <div
-                        key={`side-${entry.path}`}
-                        className={styles.folderFileRow}
-                        draggable
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", entry.path);
-                          setDraggingEntryPath(entry.path);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingEntryPath(null);
-                          setFolderDropTargetPath(null);
-                        }}
-                        onClick={() => openEntry(entry)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.has(entry.path)}
-                          onChange={(event) => {
-                            event.stopPropagation();
-                            handleToggleFile(entry.path);
-                          }}
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                        <Text size={100} style={{ minWidth: 0 }}>
-                          {entry.name}
-                        </Text>
-                      </div>
-                    ))}
-                </div>
-              ) : null}
+              <div className={styles.folderPaneActions}>
+                <Button
+                  appearance="outline"
+                  onClick={handleDownloadAllFolders}
+                  disabled={!selectedFolder}
+                >
+                  Download all
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={handleDownloadSelectedZip}
+                  disabled={selectedTreeFolders.size === 0}
+                >
+                  <span className={styles.iconWithZipLabel}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.iconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                      <path d="M7 11l5 5l5 -5" />
+                      <path d="M12 4l0 12" />
+                    </svg>
+                    <span>(ZIP)</span>
+                  </span>
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={handleDeleteSelectedFolders}
+                  disabled={selectedTreeFolders.size === 0}
+                  className={styles.iconButton}
+                  aria-label={t("bulkProcessing.explorer.deleteSelected")}
+                  title={t("bulkProcessing.explorer.deleteSelected")}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.iconSvg}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M4 7l16 0" />
+                    <path d="M10 11l0 6" />
+                    <path d="M14 11l0 6" />
+                    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                  </svg>
+                </Button>
+              </div>
             </div>
 
+            <div className={styles.contentColumn}>
             <div className={styles.filePane}>
-              <Text size={100} className={styles.explorerPathLabel}>
-                {currentPath || "-"}
-              </Text>
+              <div className={styles.imageToolbar}>
+                <Menu>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
+                      disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                      className={styles.imageToolbarActions}
+                    >
+                      {bulkImageActionPending ? "Working..." : "Actions"}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover>
+                    <MenuList className={styles.compactMenuList}>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() => handleDownloadEntries(selectedImageEntries)}
+                      >
+                        Download Selected Images
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() => handleCreateCopiesForEntries(selectedImageEntries)}
+                      >
+                        Create Copy
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(
+                            selectedImageEntries,
+                            "chatgpt",
+                            "template"
+                          )
+                        }
+                      >
+                        Edit ChatGPT: Template
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(
+                            selectedImageEntries,
+                            "chatgpt",
+                            "direct"
+                          )
+                        }
+                      >
+                        Edit ChatGPT: Direct
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(
+                            selectedImageEntries,
+                            "gemini",
+                            "template"
+                          )
+                        }
+                      >
+                        Edit Gemini: Template
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(
+                            selectedImageEntries,
+                            "gemini",
+                            "direct"
+                          )
+                        }
+                      >
+                        Edit Gemini: Direct
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(selectedImageEntries, "zimage", "direct")
+                        }
+                      >
+                        Edit Z-Image: Direct
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(
+                            selectedImageEntries,
+                            "zimage",
+                            "white_background"
+                          )
+                        }
+                      >
+                        Edit Z-Image: White BG
+                      </MenuItem>
+                      <MenuItem
+                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        onClick={() =>
+                          startAiEditForEntries(selectedImageEntries, "zimage", "upscale")
+                        }
+                      >
+                        Edit Z-Image: Upscale
+                      </MenuItem>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
+                <div className={styles.imageToolbarIconGroup}>
+                  <Button
+                    appearance="outline"
+                    onClick={handleExplorerRefresh}
+                    disabled={entriesLoading || movingEntry}
+                    className={styles.iconButton}
+                    aria-label={t("bulkProcessing.explorer.refresh")}
+                    title={t("bulkProcessing.explorer.refresh")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.iconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                      <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                    </svg>
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    onClick={handleDownloadSelectedIndividually}
+                    disabled={selectedFiles.size === 0}
+                    className={styles.iconButton}
+                    aria-label={t("bulkProcessing.explorer.downloadSelected")}
+                    title={t("bulkProcessing.explorer.downloadSelected")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.iconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                      <path d="M7 11l5 5l5 -5" />
+                      <path d="M12 4l0 12" />
+                    </svg>
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedFiles.size + selectedTreeFolders.size === 0}
+                    className={styles.iconButton}
+                    aria-label={t("bulkProcessing.explorer.deleteSelected")}
+                    title={t("bulkProcessing.explorer.deleteSelected")}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.iconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M4 7l16 0" />
+                      <path d="M10 11l0 6" />
+                      <path d="M14 11l0 6" />
+                      <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                      <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                    </svg>
+                  </Button>
+                </div>
+                <Button
+                  appearance="outline"
+                  className={styles.iconButton}
+                  disabled={imageEntries.length === 0}
+                  aria-label={
+                    imageResizeActionIcon === "grow"
+                      ? "Make images bigger"
+                      : "Make images smaller"
+                  }
+                  title={
+                    imageResizeActionIcon === "grow"
+                      ? "Make images bigger"
+                      : "Make images smaller"
+                  }
+                  onClick={() => {
+                    if (imageResizeActionIcon === "grow") {
+                      setImageViewMode("big");
+                    } else {
+                      setImageViewMode("small");
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setImageResizeActionIcon(
+                      imageViewMode === "big" ? "shrink" : "grow"
+                    );
+                  }}
+                >
+                  {imageResizeActionIcon === "grow" ? (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.imageResizeIconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M3 17a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1l0 -3" />
+                      <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-6" />
+                      <path d="M12 8h4v4" />
+                      <path d="M16 8l-5 5" />
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.imageResizeIconSvg}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M3 17a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1l0 -3" />
+                      <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-6" />
+                      <path d="M15 13h-4v-4" />
+                      <path d="M11 13l5 -5" />
+                    </svg>
+                  )}
+                </Button>
+              </div>
               {entriesLoading ? (
                 <div style={{ padding: "12px" }}>
                   <Spinner size="tiny" />
                 </div>
-              ) : entries.length === 0 ? (
-                <Text size={200}>{t("bulkProcessing.explorer.empty")}</Text>
               ) : (
-                <div className={styles.dualGrid}>
-                  {entries.map((entry) => {
-                    const imageEntry = entry.type === "file" && isImage(entry.name);
-                    return (
-                      <div
-                        key={entry.path}
-                        className={styles.mediaCard}
-                        draggable={entry.type === "file"}
-                        onDragStart={(event) => {
-                          if (entry.type !== "file") return;
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", entry.path);
-                          setDraggingEntryPath(entry.path);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingEntryPath(null);
-                          setFolderDropTargetPath(null);
-                        }}
-                        onContextMenu={(event) => {
-                          if (entry.type !== "file") return;
-                          event.preventDefault();
-                          setContextMenu({
-                            entry,
-                            image: imageEntry,
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
-                      >
-                        <div
-                          className={styles.mediaSquare}
-                          onClick={() => openEntry(entry)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            event.preventDefault();
-                            openEntry(entry);
-                          }}
-                        >
-                          <button
-                            type="button"
+                <>
+                  {imageEntries.length === 0 ? (
+                    <Text size={200}>No images in this folder.</Text>
+                  ) : (
+                    <div
+                      className={styles.dualGrid}
+                      style={{
+                        gridTemplateColumns:
+                          imageViewMode === "big"
+                            ? "repeat(auto-fill, minmax(320px, 1fr))"
+                            : "repeat(auto-fill, minmax(160px, 1fr))",
+                      }}
+                    >
+                      {imageEntries.map((entry) => {
+                        const pendingAi = pendingAiEditsByOriginal[entry.path] ?? null;
+                        const runtimeJob = aiEditJobsByPath[entry.path] ?? null;
+                        return (
+                          <div
+                            key={entry.path}
                             className={mergeClasses(
-                              styles.thumbDownloadButton,
-                              "thumbDownloadButton"
+                              styles.mediaCard,
+                              selectedFiles.has(entry.path)
+                                ? styles.mediaCardSelected
+                                : undefined
                             )}
-                            aria-label={
-                              entry.type === "dir"
-                                ? `Download ${entry.name} as ZIP`
-                                : `Download ${entry.name}`
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              downloadEntry(entry);
+                            draggable
+                            onDragStart={(event) => {
+                              const draggedPaths = buildDraggedPathsForEntry(entry);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData(
+                                "text/plain",
+                                draggedPaths[0] ?? entry.path
+                              );
+                              event.dataTransfer.setData(
+                                "application/x-nordexo-paths",
+                                JSON.stringify(draggedPaths)
+                              );
+                              setDraggingEntryPaths(draggedPaths);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingEntryPaths([]);
+                              setFolderDropTargetPath(null);
+                            }}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setContextMenu({
+                                entry,
+                                image: true,
+                                x: event.clientX,
+                                y: event.clientY,
+                              });
                             }}
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="16"
-                              height="16"
-                              aria-hidden="true"
-                            >
-                              <path
-                                d="M12 3v10m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </button>
-                          {entry.type === "dir" ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              className={styles.thumbIcon}
-                            >
-                              <path
-                                fill="currentColor"
-                                d="M9.5 4h-5A2.5 2.5 0 0 0 2 6.5v11A2.5 2.5 0 0 0 4.5 20h15A2.5 2.5 0 0 0 22 17.5v-9A2.5 2.5 0 0 0 19.5 6H12l-2-2.5A2.5 2.5 0 0 0 9.5 4Z"
-                              />
-                            </svg>
-                          ) : imageEntry ? (
-                            <img
-                              src={`/api/drafts/download?path=${encodeURIComponent(
-                                entry.path
-                              )}`}
-                              alt={entry.name}
-                              className={styles.thumbImage}
-                            />
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                              className={styles.thumbIcon}
-                            >
-                              <path
-                                fill="currentColor"
-                                d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                        <div className={styles.mediaFooter}>
-                          <input
-                            type="checkbox"
-                            checked={selectedFiles.has(entry.path)}
-                            onChange={() => handleToggleFile(entry.path)}
-                          />
-                          {renamingPath === entry.path ? (
-                            <Input
-                              size="small"
-                              value={renameValue}
-                              onChange={(_, data) => setRenameValue(data.value)}
-                              onBlur={() => commitRename(entry)}
+                            <div
+                              className={styles.mediaSquare}
+                              onClick={() => handleToggleFile(entry.path)}
+                              role="button"
+                              tabIndex={0}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  commitRename(entry);
-                                }
-                                if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  cancelRename();
-                                }
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                handleToggleFile(entry.path);
                               }}
-                              autoFocus
-                              className={styles.renameInput}
-                            />
-                          ) : entry.type === "dir" ? (
-                            <button
-                              type="button"
-                              className={styles.mediaLabel}
-                              onClick={() => setCurrentPath(entry.path)}
-                              style={{ cursor: "pointer" }}
                             >
-                              {entry.name}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className={styles.mediaLabel}
-                              onClick={() => startRename(entry)}
-                            >
-                              {entry.name}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                              {pendingAi ? (
+                                <button
+                                  type="button"
+                                  className={styles.aiPendingBadge}
+                                  title={`Review AI edit for ${entry.name}`}
+                                  aria-label={`Review AI edit for ${entry.name}`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setAiReviewOriginalPath(entry.path);
+                                  }}
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    width="16"
+                                    height="16"
+                                    aria-hidden="true"
+                                  >
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                    <path d="M15 8h.01" />
+                                    <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
+                                    <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
+                                    <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
+                                    <path d="M14 19h4" />
+                                    <path d="M21 15v6" />
+                                  </svg>
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={mergeClasses(
+                                  styles.thumbDownloadButton,
+                                  "thumbDownloadButton"
+                                )}
+                                aria-label={`Preview ${entry.name}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setPreviewPath(entry.path);
+                                }}
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="16"
+                                  height="16"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    d="M11 4a7 7 0 1 0 4.7 12.2l4 4 1.4-1.4-4-4A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                              <img
+                                src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                                alt={entry.name}
+                                className={mergeClasses(
+                                  styles.thumbImage,
+                                  runtimeJob ? styles.mediaImageBusy : undefined
+                                )}
+                                onLoad={(event) => {
+                                  const img = event.currentTarget;
+                                  setImageDimensions((prev) => ({
+                                    ...prev,
+                                    [entry.path]: {
+                                      width: img.naturalWidth,
+                                      height: img.naturalHeight,
+                                    },
+                                  }));
+                                }}
+                              />
+                              {runtimeJob ? (
+                                <div className={styles.mediaBusyOverlay}>
+                                  <div className={styles.mediaBusyContent}>
+                                    <Spinner size="small" />
+                                    <span>Updating</span>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          <div className={styles.mediaFooter}>
+                            <div className={styles.mediaFooterColumn}>
+                              {renamingPath === entry.path ? (
+                                <Input
+                                  size="small"
+                                  value={renameValue}
+                                  onChange={(_, data) => setRenameValue(data.value)}
+                                  onBlur={() => commitRename(entry)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      commitRename(entry);
+                                    }
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelRename();
+                                    }
+                                  }}
+                                  autoFocus
+                                  className={styles.renameInput}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.mediaLabel}
+                                  onClick={() => startRename(entry)}
+                                >
+                                  {entry.name}
+                                </button>
+                              )}
+                              <Text size={100} className={styles.mediaMeta}>
+                                {imageDimensions[entry.path] ? (
+                                  <>
+                                    <span
+                                      className={mergeClasses(
+                                        imageDimensions[entry.path].width < 800 ||
+                                          imageDimensions[entry.path].height < 800
+                                          ? styles.mediaMetaDimLow
+                                          : undefined
+                                      )}
+                                    >
+                                      {`${imageDimensions[entry.path].width} x ${
+                                        imageDimensions[entry.path].height
+                                      }`}
+                                    </span>
+                                    {` | ${formatSizeKb(entry.size)}`}
+                                  </>
+                                ) : (
+                                  `- | ${formatSizeKb(entry.size)}`
+                                )}
+                              </Text>
+                            </div>
+                          </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                </>
               )}
+            </div>
+              <div className={styles.filesSection}>
+                <div className={styles.filesHeader}>
+                  <Text size={200} weight="semibold">
+                    Files
+                  </Text>
+                  <Text size={100} className={styles.filesInfo}>
+                    {nonImageFileEntries.length} file(s)
+                  </Text>
+                </div>
+                {entriesLoading ? (
+                  <Spinner size="tiny" />
+                ) : nonImageFileEntries.length === 0 ? (
+                  <Text size={100}>No files in this folder.</Text>
+                ) : (
+                  <Table size="small" className={styles.filesTable}>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHeaderCell className={styles.filesColName}>
+                          File name
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.filesColInfo}>
+                          File information
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.filesColAction}>
+                          Action
+                        </TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {nonImageFileEntries.map((entry) => (
+                        <TableRow
+                          key={`file-${entry.path}`}
+                          draggable
+                          onDragStart={(event) => {
+                            const draggedPaths = buildDraggedPathsForEntry(entry);
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              draggedPaths[0] ?? entry.path
+                            );
+                            event.dataTransfer.setData(
+                              "application/x-nordexo-paths",
+                              JSON.stringify(draggedPaths)
+                            );
+                            setDraggingEntryPaths(draggedPaths);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingEntryPaths([]);
+                            setFolderDropTargetPath(null);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setContextMenu({
+                              entry,
+                              image: false,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          <TableCell>
+                            <div className={styles.explorerRow}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFiles.has(entry.path)}
+                                onChange={() => handleToggleFile(entry.path)}
+                              />
+                              {renamingPath === entry.path ? (
+                                <Input
+                                  size="small"
+                                  value={renameValue}
+                                  onChange={(_, data) => setRenameValue(data.value)}
+                                  onBlur={() => commitRename(entry)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      commitRename(entry);
+                                    }
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelRename();
+                                    }
+                                  }}
+                                  autoFocus
+                                  className={styles.renameInput}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.explorerName}
+                                  onClick={() => startRename(entry)}
+                                >
+                                  {entry.name}
+                                </button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Text size={100} className={styles.filesInfo}>
+                              {`${formatFileSize(entry.size)} | ${formatDateTime(
+                                entry.modifiedAt
+                              )}`}
+                            </Text>
+                          </TableCell>
+                          <TableCell>
+                            <div className={styles.fileActions}>
+                              <Button
+                                appearance="outline"
+                                size="small"
+                                onClick={() => downloadEntry(entry)}
+                              >
+                                {t("bulkProcessing.explorer.download")}
+                              </Button>
+                              <Button
+                                appearance="subtle"
+                                size="small"
+                                onClick={() => handleOpenFileViewer(entry)}
+                                disabled={!isTextFileEditable(entry)}
+                              >
+                                View
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+              <div
+                className={mergeClasses(
+                  styles.dropZone,
+                  isDragging ? styles.dropZoneActive : undefined
+                )}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  const files = Array.from(event.dataTransfer.files ?? []);
+                  handleUploadFiles(files);
+                }}
+              >
+                <Text size={200}>{t("bulkProcessing.explorer.drop")}</Text>
+                <div>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(event) =>
+                      handleUploadFiles(Array.from(event.target.files ?? []))
+                    }
+                  />
+                </div>
+              </div>
             </div>
           </div>
         ) : explorerView === "list" ? (
@@ -7733,59 +10137,112 @@ export default function DraftExplorerPage() {
               className={styles.contextMenuButton}
               onClick={() => handleContextMenuAction("open")}
             >
-              Open
+              {renderContextMenuIcon("open")}
+              <span>Open</span>
             </button>
             <button
               type="button"
               className={styles.contextMenuButton}
               onClick={() => handleContextMenuAction("download")}
             >
-              Download
+              {renderContextMenuIcon("download")}
+              <span>Download</span>
+            </button>
+            {isTextFileEditable(contextMenu.entry) ? (
+              <button
+                type="button"
+                className={styles.contextMenuButton}
+                onClick={() => handleContextMenuAction("view")}
+              >
+                {renderContextMenuIcon("open")}
+                <span>View</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.contextMenuButton}
+              onClick={() => handleContextMenuAction("create-copy")}
+            >
+              {renderContextMenuIcon("duplicate")}
+              <span>Duplicate</span>
             </button>
             {contextMenu.image ? (
               <>
                 <button
                   type="button"
                   className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("run-ai-tool")}
+                  onClick={() => handleContextMenuAction("ai-chatgpt-template")}
                 >
-                  Run AI tool (placeholder)
+                  {renderContextMenuIcon("ai")}
+                  <span>Edit ChatGPT: Template</span>
                 </button>
                 <button
                   type="button"
                   className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("auto-enhance")}
+                  onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
                 >
-                  Auto enhance (placeholder)
+                  {renderContextMenuIcon("ai")}
+                  <span>Edit ChatGPT: Direct</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-gemini-template")}
+                >
+                  {renderContextMenuIcon("ai")}
+                  <span>Edit Gemini: Template</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-gemini-direct")}
+                >
+                  {renderContextMenuIcon("ai")}
+                  <span>Edit Gemini: Direct</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-zimage-direct")}
+                >
+                  {renderContextMenuIcon("ai")}
+                  <span>Edit Z-Image: Direct</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-zimage-white")}
+                >
+                  {renderContextMenuIcon("background")}
+                  <span>Edit Z-Image: White BG</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-zimage-eraser")}
+                >
+                  {renderContextMenuIcon("eraser")}
+                  <span>Edit Z-image: Eraser</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
+                >
+                  {renderContextMenuIcon("upscale")}
+                  <span>Edit Z-Image: Upscale</span>
                 </button>
               </>
-            ) : (
-              <button
-                type="button"
-                className={styles.contextMenuButton}
-                onClick={() => handleContextMenuAction("quick-action")}
-              >
-                Quick action (placeholder)
-              </button>
-            )}
+            ) : null}
           </div>
         ) : null}
 
-        <div
-          className={mergeClasses(
-            styles.dropZone,
-            isDragging ? styles.dropZoneActive : undefined
-          )}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDragging(false);
-            const files = Array.from(event.dataTransfer.files ?? []);
-            handleUploadFiles(files);
+        <Dialog
+          open={aiEditTargets.length > 0}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              cancelAiEdit();
+            }
           }}
         >
           <DialogSurface className={styles.aiPromptSurface}>
@@ -7815,15 +10272,13 @@ export default function DraftExplorerPage() {
                 </div>
               ) : null}
               {aiEditHasPromptInput ? (
-	                <Field
-	                  label={
-	                    aiEditMode === "template"
-	                      ? aiEditTemplatePreset === "digideal_main"
-                          ? "Micro prompt (optional, added to DigiDL Main template)"
-                          : "Prompt (inserted into standard template)"
-	                      : "Prompt (sent directly)"
-	                  }
-	                >
+                <Field
+                  label={
+                    aiEditMode === "template"
+                      ? "Prompt (inserted into template)"
+                      : "Prompt (sent directly)"
+                  }
+                >
                   <Textarea
                     value={aiEditPrompt}
                     onChange={(_, data) => setAiEditPrompt(data.value)}
@@ -7877,34 +10332,7 @@ export default function DraftExplorerPage() {
                 <div className={styles.aiCompareGrid}>
                   <div className={styles.aiComparePanel}>
                     <Text size={300} className={styles.aiCompareLabel}>
-                      AI Generated (Primary)
-                    </Text>
-                    <Text size={200} className={styles.filesInfo}>
-                      {`Q ${aiReviewPendingScore ?? "-"}${
-                        aiReviewScoreDelta === null
-                          ? ""
-                          : aiReviewScoreDelta > 0
-                            ? ` (+${aiReviewScoreDelta})`
-                            : ` (${aiReviewScoreDelta})`
-                      }`}
-                    </Text>
-                    <div className={styles.aiCompareImageFrame}>
-                      <img
-                        src={buildDraftDownloadUrl(
-                          aiReviewRecord.pendingPath,
-                          aiReviewRecord.updatedAt
-                        )}
-                        alt="AI generated"
-                        className={styles.aiCompareImage}
-                      />
-                    </div>
-                  </div>
-                  <div className={styles.aiComparePanel}>
-                    <Text size={300} className={styles.aiCompareLabel}>
-                      Original (Secondary)
-                    </Text>
-                    <Text size={200} className={styles.filesInfo}>
-                      {`Q ${aiReviewOriginalScore ?? "-"}`}
+                      Original
                     </Text>
                     <div className={styles.aiCompareImageFrame}>
                       <img
@@ -7914,6 +10342,21 @@ export default function DraftExplorerPage() {
                             aiReviewRecord.updatedAt
                         )}
                         alt="Original"
+                        className={styles.aiCompareImage}
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.aiComparePanel}>
+                    <Text size={300} className={styles.aiCompareLabel}>
+                      AI Generated
+                    </Text>
+                    <div className={styles.aiCompareImageFrame}>
+                      <img
+                        src={buildDraftDownloadUrl(
+                          aiReviewRecord.pendingPath,
+                          aiReviewRecord.updatedAt
+                        )}
+                        alt="AI generated"
                         className={styles.aiCompareImage}
                       />
                     </div>
@@ -7979,152 +10422,26 @@ export default function DraftExplorerPage() {
           <DialogSurface className={styles.previewDialog}>
             <DialogBody className={styles.previewDialogBody}>
               <DialogTitle>{`Image - ${previewFileName || ""}`}</DialogTitle>
-              <div
-                className={styles.previewImageFrame}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  if (!previewEntry) return;
-                  setContextMenuSubmenu(null);
-                  setContextMenuNestedSubmenu(null);
-                  setContextMenu({
-                    entry: previewEntry,
-                    image: true,
-                    x: event.clientX,
-                    y: event.clientY,
-                  });
-                }}
-              >
-                {previewPendingAi && previewPath ? (
-                  <button
-                    type="button"
-                    className={styles.aiPendingBadge}
-                    title={`Review AI edit for ${previewFileName || "image"}`}
-                    aria-label={`Review AI edit for ${previewFileName || "image"}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const pathValue = previewPath;
-                      setPreviewPath(null);
-                      setAiReviewOriginalPath(pathValue);
-                    }}
-                    disabled={previewBusy}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      width="16"
-                      height="16"
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M15 8h.01" />
-                      <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
-                      <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
-                      <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-                      <path d="M14 19h4" />
-                      <path d="M21 15v6" />
-                    </svg>
-                  </button>
-                ) : null}
-
-                {previewNav.prevPath ? (
-                  <button
-                    type="button"
-                    className={mergeClasses(
-                      styles.previewNavButton,
-                      styles.previewNavButtonLeft
-                    )}
-                    onClick={() => handlePreviewNavigate("prev")}
-                    aria-label="Previous image"
-                    title="Previous image"
-                    disabled={previewBusy || previewDeletePending}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className={styles.previewNavIcon}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M13.883 5.007l.058 -.005h.118l.058 .005l.06 .009l.052 .01l.108 .032l.067 .027l.132 .07l.09 .065l.081 .073l.083 .094l.054 .077l.054 .096l.017 .036l.027 .067l.032 .108l.01 .053l.01 .06l.004 .057l.002 .059v12c0 .852 -.986 1.297 -1.623 .783l-.084 -.076l-6 -6a1 1 0 0 1 -.083 -1.32l.083 -.094l6 -6l.094 -.083l.077 -.054l.096 -.054l.036 -.017l.067 -.027l.108 -.032l.053 -.01l.06 -.01z" />
-                    </svg>
-                  </button>
-                ) : null}
-
-                {previewNav.nextPath ? (
-                  <button
-                    type="button"
-                    className={mergeClasses(
-                      styles.previewNavButton,
-                      styles.previewNavButtonRight
-                    )}
-                    onClick={() => handlePreviewNavigate("next")}
-                    aria-label="Next image"
-                    title="Next image"
-                    disabled={previewBusy || previewDeletePending}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className={styles.previewNavIcon}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M9 6c0 -.852 .986 -1.297 1.623 -.783l.084 .076l6 6a1 1 0 0 1 .083 1.32l-.083 .094l-6 6l-.094 .083l-.077 .054l-.096 .054l-.036 .017l-.067 .027l-.108 .032l-.053 .01l-.06 .01l-.057 .004l-.059 .002l-.059 -.002l-.058 -.005l-.06 -.009l-.052 -.01l-.108 -.032l-.067 -.027l-.132 -.07l-.09 -.065l-.081 -.073l-.083 -.094l-.054 -.077l-.054 -.096l-.017 -.036l-.027 -.067l-.032 -.108l-.01 -.053l-.01 -.06l-.004 -.057l-.002 -12.059z" />
-                    </svg>
-                  </button>
-                ) : null}
-
-                {previewDisplayPath ? (
-                  <img
-                    src={buildDraftDownloadUrl(
-                      previewDisplayPath,
-                      previewDisplayModifiedAt
-                    )}
-                    alt={previewDisplayPath}
-                    data-preview-path={previewPath}
-                    className={mergeClasses(
-                      styles.previewImageLarge,
-                      previewBusy ? styles.mediaImageBusy : undefined
-                    )}
-                    onLoad={(event) => {
-                      const img = event.currentTarget;
-                      const pathValue =
-                        event.currentTarget.dataset.previewPath || previewPath;
-                      if (!pathValue) return;
-                      setImageDimensions((prev) => ({
-                        ...prev,
-                        [pathValue]: {
-                          width: img.naturalWidth,
-                          height: img.naturalHeight,
-                        },
-                      }));
-                      setReloadingImagePaths((prev) => {
-                        if (!prev.has(pathValue)) return prev;
-                        const next = new Set(prev);
-                        next.delete(pathValue);
-                        return next;
-                      });
-                    }}
-                  />
-                ) : null}
-
-                {previewBusy ? (
-                  <div className={styles.mediaBusyOverlay}>
-                    <div className={styles.mediaBusyContent}>
-                      <Spinner size="small" />
-                      <span>Updating</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              {previewPath ? (
+                <img
+                  src={buildDraftDownloadUrl(
+                    previewPath,
+                    entryByPath.get(previewPath)?.modifiedAt
+                  )}
+                  alt={previewPath}
+                  className={styles.previewImageLarge}
+                  onLoad={(event) => {
+                    const img = event.currentTarget;
+                    setImageDimensions((prev) => ({
+                      ...prev,
+                      [previewPath]: {
+                        width: img.naturalWidth,
+                        height: img.naturalHeight,
+                      },
+                    }));
+                  }}
+                />
+              ) : null}
               <div className={styles.previewMetaRow}>
                 <Text size={100} className={styles.previewMetaText}>
                   {previewDimensions ? (
@@ -8145,13 +10462,6 @@ export default function DraftExplorerPage() {
                   )}
                 </Text>
                 <DialogActions className={styles.previewActions}>
-                  <Button
-                    appearance="outline"
-                    onClick={() => void handlePreviewDelete()}
-                    disabled={!previewPath || previewBusy || previewDeletePending}
-                  >
-                    {previewDeletePending ? "Deleting..." : "Delete"}
-                  </Button>
                   <Button appearance="primary" onClick={() => setPreviewPath(null)}>
                     {t("common.close")}
                   </Button>

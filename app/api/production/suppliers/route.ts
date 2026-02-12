@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
@@ -9,6 +9,8 @@ import path from "node:path";
 export const runtime = "nodejs";
 
 const TOOL_PATH = "/srv/node-tools/1688-image-search/index.js";
+const SUPPLIER_PAYLOAD_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/production-supplier-fetch-worker.mjs";
 const PUBLIC_TEMP_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
 const PUBLIC_TEMP_PERSIST_DAYS = 180;
 const TEMP_IMAGE_ID_RE = /\/api\/public\/temp-images\/([a-f0-9]{32})/i;
@@ -84,6 +86,19 @@ const getPublicBaseUrl = (request: Request) => {
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 
+const normalizePublicTempImagePath = (urlText: string) => {
+  const raw = String(urlText || "").trim();
+  if (!raw) return raw;
+  const match = raw.match(/^(https?:\/\/[^/]+)?(\/api\/public\/temp-images\/([a-f0-9]{32}))(?:\.(jpg|jpeg|png|webp))?(\?.*)?$/i);
+  if (!match) return raw;
+  const origin = match[1] || "";
+  const pathNoExt = match[2];
+  const id = match[3];
+  const query = match[5] || "";
+  if (!id) return raw;
+  return `${origin}${pathNoExt}.jpg${query}`;
+};
+
 const normalizeSupplierImageUrl = (
   request: Request,
   value: string | null
@@ -91,10 +106,10 @@ const normalizeSupplierImageUrl = (
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (isHttpUrl(trimmed)) return trimmed;
+  if (isHttpUrl(trimmed)) return normalizePublicTempImagePath(trimmed);
   if (trimmed.startsWith("/")) {
     const base = getPublicBaseUrl(request);
-    return base ? `${base}${trimmed}` : null;
+    return base ? normalizePublicTempImagePath(`${base}${trimmed}`) : null;
   }
   return null;
 };
@@ -122,6 +137,47 @@ const toUniqueImageCandidates = (
     out.push(normalized);
   }
   return out;
+};
+
+const withPayloadFetchingState = (offer: Offer, nowIso: string): Offer => {
+  const base = offer && typeof offer === "object" ? offer : ({} as Offer);
+  return {
+    ...(base as any),
+    _production_payload_status: "fetching",
+    _production_payload_source: "auto",
+    _production_payload_error: null,
+    _production_payload_file_name: null,
+    _production_payload_file_path: null,
+    _production_payload_updated_at: nowIso,
+    _production_payload_saved_at: null,
+  } as Offer;
+};
+
+const spawnSupplierPayloadWorkerBestEffort = (
+  provider: string,
+  productId: string
+) => {
+  try {
+    const child = spawn(
+      process.execPath,
+      [
+        SUPPLIER_PAYLOAD_WORKER_PATH,
+        "--provider",
+        provider,
+        "--product-id",
+        productId,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env },
+      }
+    );
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 async function requireAdmin() {
@@ -212,10 +268,15 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
 
   if (subjectsToTranslate.length === 0) return offers;
 
-  const model =
-    process.env.SUPPLIER_TRANSLATE_MODEL ||
-    process.env.OPENAI_EDIT_MODEL ||
-    "gpt-5-mini";
+  const configured = [
+    process.env.SUPPLIER_TRANSLATE_MODEL,
+    process.env.OPENAI_EDIT_MODEL,
+    "gpt-5-mini",
+    "gpt-4o-mini",
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  const modelCandidates = Array.from(new Set(configured));
   const limitedSubjects = subjectsToTranslate.slice(0, 15);
 
   const prompt = [
@@ -227,33 +288,36 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
     ...limitedSubjects.map((s, i) => `${i + 1}. ${s}`),
   ].join("\n");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-      }),
-      signal: controller.signal,
-    });
-  } catch {
-    return offers;
-  } finally {
-    clearTimeout(timeout);
+  let parsed: any = null;
+  for (const model of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json().catch(() => null);
+      const content = result?.choices?.[0]?.message?.content || "";
+      parsed = extractJsonFromText(String(content));
+      if (parsed) break;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
   }
-
-  if (!response.ok) return offers;
-  const result = await response.json().catch(() => null);
-  const content = result?.choices?.[0]?.message?.content || "";
-  const parsed = extractJsonFromText(String(content));
+  if (!parsed) return offers;
   const items = Array.isArray((parsed as any)?.items) ? (parsed as any).items : [];
   const map = new Map<string, string>();
 
@@ -740,9 +804,12 @@ export async function POST(request: NextRequest) {
     toDetailUrl(match) ??
     (detailUrl ? canonical1688OfferUrl({ detailUrl } as Offer) : null);
 
-  const selectedOffer = selectedDetailUrl ? { ...match, detailUrl: selectedDetailUrl } : match;
+  const selectedOffer = selectedDetailUrl
+    ? ({ ...match, detailUrl: selectedDetailUrl } as Offer)
+    : (match as Offer);
 
   const now = new Date().toISOString();
+  const selectedOfferWithPayload = withPayloadFetchingState(selectedOffer, now);
   const { data: selectionRow, error: upsertError } = await adminClient
     .from("discovery_production_supplier_selection")
     .upsert(
@@ -751,7 +818,7 @@ export async function POST(request: NextRequest) {
         product_id: productId,
         selected_offer_id: selectedOfferId,
         selected_detail_url: selectedDetailUrl,
-        selected_offer: selectedOffer,
+        selected_offer: selectedOfferWithPayload,
         selected_at: now,
         selected_by: auth.user.id,
         updated_at: now,
@@ -767,5 +834,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ selected: selectionRow ?? null });
+  const queued = spawnSupplierPayloadWorkerBestEffort(provider, productId);
+  if (!queued) {
+    const failedAt = new Date().toISOString();
+    const failedSelectedOffer: Offer = {
+      ...(selectedOfferWithPayload as any),
+      _production_payload_status: "failed",
+      _production_payload_error: "Unable to start background 1688 fetch job.",
+      _production_payload_updated_at: failedAt,
+    } as Offer;
+
+    const { data: failedRow } = await adminClient
+      .from("discovery_production_supplier_selection")
+      .update({
+        selected_offer: failedSelectedOffer,
+        updated_at: failedAt,
+      })
+      .eq("provider", provider)
+      .eq("product_id", productId)
+      .select(
+        "provider, product_id, selected_offer_id, selected_detail_url, selected_offer, selected_at, selected_by, updated_at"
+      )
+      .maybeSingle();
+
+    return NextResponse.json({
+      selected: failedRow ?? selectionRow ?? null,
+      payload_fetch_status: "failed",
+    });
+  }
+
+  return NextResponse.json({
+    selected: selectionRow ?? null,
+    payload_fetch_status: "fetching",
+  });
 }

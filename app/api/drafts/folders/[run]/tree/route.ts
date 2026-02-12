@@ -10,23 +10,28 @@ type FolderTreeNode = {
   name: string;
   path: string;
   modifiedAt: string;
+  fileCount: number;
   children: FolderTreeNode[];
 };
 
 const buildTree = (absolutePath: string): FolderTreeNode => {
   const stat = fs.statSync(absolutePath);
-  const children = fs
+  const entries = fs
     .readdirSync(absolutePath, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .filter((entry) => !entry.name.startsWith("."));
+  const children = entries
+    .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(absolutePath, entry.name))
     .filter((child) => child.startsWith(`${DRAFT_ROOT}${path.sep}`))
     .map((child) => buildTree(child))
     .sort((a, b) => a.name.localeCompare(b.name));
+  const directFileCount = entries.filter((entry) => entry.isFile()).length;
 
   return {
     name: path.basename(absolutePath),
     path: toRelativePath(absolutePath),
     modifiedAt: stat.mtime.toISOString(),
+    fileCount: directFileCount,
     children,
   };
 };

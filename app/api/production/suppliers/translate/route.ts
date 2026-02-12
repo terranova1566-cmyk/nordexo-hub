@@ -139,10 +139,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ offers });
   }
 
-  const model =
-    process.env.SUPPLIER_TRANSLATE_MODEL ||
-    process.env.OPENAI_EDIT_MODEL ||
-    "gpt-5-mini";
+  const modelCandidates = Array.from(
+    new Set(
+      [
+        process.env.SUPPLIER_TRANSLATE_MODEL,
+        process.env.OPENAI_EDIT_MODEL,
+        "gpt-5-mini",
+        "gpt-4o-mini",
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
 
   const limitedSubjects = subjectsToTranslate.slice(0, 15);
 
@@ -155,40 +163,37 @@ export async function POST(request: NextRequest) {
     ...limitedSubjects.map((s, i) => `${i + 1}. ${s}`),
   ].join("\n");
 
-  const bodyPayload: Record<string, unknown> = {
-    model,
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(bodyPayload),
-      signal: controller.signal,
-    });
-  } catch {
-    // Best-effort: do not block supplier UI if OpenAI hangs / is unreachable.
-    return NextResponse.json({ offers });
-  } finally {
-    clearTimeout(timeout);
+  let parsed: any = null;
+  for (const model of modelCandidates) {
+    const bodyPayload: Record<string, unknown> = {
+      model,
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(bodyPayload),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json().catch(() => null);
+      const content = result?.choices?.[0]?.message?.content || "";
+      parsed = extractJsonFromText(String(content));
+      if (parsed) break;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
   }
-
-  if (!response.ok) {
-    // Best-effort: do not hard-fail supplier UI.
-    return NextResponse.json({ offers });
-  }
-
-  const result = await response.json().catch(() => null);
-  const content = result?.choices?.[0]?.message?.content || "";
-  const parsed = extractJsonFromText(String(content));
+  if (!parsed) return NextResponse.json({ offers });
 
   const map = new Map<string, string>();
   const items = Array.isArray((parsed as any)?.items) ? (parsed as any).items : [];

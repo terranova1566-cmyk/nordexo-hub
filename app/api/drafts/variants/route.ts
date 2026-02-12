@@ -29,16 +29,21 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
+  const spu = searchParams.get("spu")?.trim();
 
   let supabaseQuery = adminClient
     .from("draft_variants")
     .select(
-      "id,draft_sku,draft_spu,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_variant_image_url,draft_status,draft_updated_at,draft_raw_row",
+      "id,draft_sku,draft_spu,draft_option1,draft_option2,draft_option3,draft_option4,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_variant_image_url,draft_status,draft_updated_at,draft_raw_row",
       { count: "exact" }
     )
     .eq("draft_status", "draft")
     .order("draft_spu", { ascending: true })
     .order("draft_sku", { ascending: true });
+
+  if (spu) {
+    supabaseQuery = supabaseQuery.eq("draft_spu", spu);
+  }
 
   if (query) {
     const like = `%${query}%`;

@@ -9,6 +9,10 @@ import {
   validateImageFolder,
 } from "@/lib/image-names";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
+import {
+  getProductionRefsBySpus,
+  upsertProductionStatuses,
+} from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -842,6 +846,17 @@ export async function POST(request: Request) {
   const meiliIndex = await runMeiliIndexSpus(spuList);
   if (!meiliIndex.ok) {
     console.error("Meili index update failed after publish:", meiliIndex.error);
+  }
+
+  try {
+    const refs = await getProductionRefsBySpus(adminClient, spuList);
+    if (refs.length > 0) {
+      await upsertProductionStatuses(adminClient, refs, {
+        status: "production_done",
+      });
+    }
+  } catch (error) {
+    console.error("Unable to sync production queue done status:", error);
   }
 
   return NextResponse.json({

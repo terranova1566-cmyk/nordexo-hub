@@ -267,15 +267,52 @@ export async function GET() {
   // Supplier suggestions are admin-only (same as /app/production).
   const supplierCountMap = new Map<string, number>();
   const supplierSelectedSet = new Set<string>();
+  const productionStatusMap = new Map<
+    string,
+    {
+      status: string | null;
+      updated_at: string | null;
+      spu_assigned_at: string | null;
+      production_started_at: string | null;
+      production_done_at: string | null;
+      last_file_name: string | null;
+      last_job_id: string | null;
+    }
+  >();
+  const productionSpuMap = new Map<
+    string,
+    {
+      spu: string | null;
+      assigned_at: string | null;
+    }
+  >();
   const supplierSelectedOfferMap = new Map<
     string,
-    { image_url: string | null; title: string | null; detail_url: string | null }
+    {
+      image_url: string | null;
+      title: string | null;
+      detail_url: string | null;
+      payload_status: string | null;
+      payload_source: string | null;
+      payload_error: string | null;
+      payload_saved_at: string | null;
+      payload_file_name: string | null;
+      payload_file_path: string | null;
+      payload_competitor_url: string | null;
+      payload_competitor_title: string | null;
+      payload_competitor_images: number | null;
+      payload_competitor_error: string | null;
+      variant_available_count: number | null;
+      variant_selected_count: number | null;
+      variant_packs_text: string | null;
+    }
   >();
   if (isAdmin && adminClient && withComments.length > 0) {
     const providers = Array.from(new Set(withComments.map((item) => item.provider)));
     const productIds = Array.from(new Set(withComments.map((item) => item.product_id)));
 
-    const [{ data: supplierRows }, { data: selectionRows }] = await Promise.all([
+    const [{ data: supplierRows }, { data: selectionRows }, { data: statusRows }, { data: spuRows }] =
+      await Promise.all([
       adminClient
         .from("discovery_production_supplier_searches")
         .select("provider, product_id, offers")
@@ -286,7 +323,19 @@ export async function GET() {
         .select("provider, product_id, selected_offer")
         .in("provider", providers)
         .in("product_id", productIds),
-    ]);
+      adminClient
+        .from("discovery_production_status")
+        .select(
+          "provider, product_id, status, updated_at, spu_assigned_at, production_started_at, production_done_at, last_file_name, last_job_id"
+        )
+        .in("provider", providers)
+        .in("product_id", productIds),
+      adminClient
+        .from("discovery_production_item_spus")
+        .select("provider, product_id, spu, assigned_at")
+        .in("provider", providers)
+        .in("product_id", productIds),
+      ]);
 
     (supplierRows as SupplierSearchRow[] | null)?.forEach((row) => {
       const offers = Array.isArray(row.offers) ? row.offers : [];
@@ -307,14 +356,101 @@ export async function GET() {
             firstString((offer as any).title);
           const detailUrl =
             firstString((offer as any).detailUrl) || firstString((offer as any).detail_url);
+          const payloadStatus = firstString((offer as any)._production_payload_status);
+          const payloadSource = firstString((offer as any)._production_payload_source);
+          const payloadError = firstString((offer as any)._production_payload_error);
+          const payloadSavedAt = firstString((offer as any)._production_payload_saved_at);
+          const payloadFileName = firstString((offer as any)._production_payload_file_name);
+          const payloadFilePath = firstString((offer as any)._production_payload_file_path);
+          const payloadCompetitorUrl = firstString((offer as any)._production_payload_competitor_url);
+          const payloadCompetitorTitle = firstString((offer as any)._production_payload_competitor_title);
+          const payloadCompetitorImagesRaw = Number((offer as any)._production_payload_competitor_images);
+          const payloadCompetitorImages = Number.isFinite(payloadCompetitorImagesRaw)
+            ? payloadCompetitorImagesRaw
+            : null;
+          const payloadCompetitorError = firstString((offer as any)._production_payload_competitor_error);
+          const variantAvailableCountRaw = Number((offer as any)._production_variant_available_count);
+          const variantAvailableCount = Number.isFinite(variantAvailableCountRaw)
+            ? variantAvailableCountRaw
+            : null;
+          const variantSelectedCountRaw = Number((offer as any)._production_variant_selected_count);
+          const variantSelectedCount = Number.isFinite(variantSelectedCountRaw)
+            ? variantSelectedCountRaw
+            : null;
+          const variantPacksText = firstString((offer as any)._production_variant_packs_text);
           supplierSelectedOfferMap.set(key, {
             image_url: imageUrl,
             title,
             detail_url: detailUrl,
+            payload_status: payloadStatus,
+            payload_source: payloadSource,
+            payload_error: payloadError,
+            payload_saved_at: payloadSavedAt,
+            payload_file_name: payloadFileName,
+            payload_file_path: payloadFilePath,
+            payload_competitor_url: payloadCompetitorUrl,
+            payload_competitor_title: payloadCompetitorTitle,
+            payload_competitor_images: payloadCompetitorImages,
+            payload_competitor_error: payloadCompetitorError,
+            variant_available_count: variantAvailableCount,
+            variant_selected_count: variantSelectedCount,
+            variant_packs_text: variantPacksText,
           });
         }
       }
     );
+
+    (
+      statusRows as
+        | Array<{
+            provider: string;
+            product_id: string;
+            status?: string | null;
+            updated_at?: string | null;
+            spu_assigned_at?: string | null;
+            production_started_at?: string | null;
+            production_done_at?: string | null;
+            last_file_name?: string | null;
+            last_job_id?: string | null;
+          }>
+        | null
+    )?.forEach((row) => {
+      productionStatusMap.set(`${row.provider}:${row.product_id}`, {
+        status: firstString(row.status) ?? null,
+        updated_at: firstString(row.updated_at) ?? null,
+        spu_assigned_at: firstString(row.spu_assigned_at) ?? null,
+        production_started_at: firstString(row.production_started_at) ?? null,
+        production_done_at: firstString(row.production_done_at) ?? null,
+        last_file_name: firstString(row.last_file_name) ?? null,
+        last_job_id: firstString(row.last_job_id) ?? null,
+      });
+    });
+
+    (
+      spuRows as
+        | Array<{
+            provider: string;
+            product_id: string;
+            spu?: string | null;
+            assigned_at?: string | null;
+          }>
+        | null
+    )?.forEach((row) => {
+      const key = `${row.provider}:${row.product_id}`;
+      const existing = productionSpuMap.get(key);
+      const nextAssignedAt = firstString(row.assigned_at) ?? null;
+      const nextSpu = firstString(row.spu) ?? null;
+      if (!nextSpu) return;
+      if (!existing) {
+        productionSpuMap.set(key, { spu: nextSpu, assigned_at: nextAssignedAt });
+        return;
+      }
+      const existingTs = existing.assigned_at ? Date.parse(existing.assigned_at) : 0;
+      const nextTs = nextAssignedAt ? Date.parse(nextAssignedAt) : 0;
+      if (nextTs >= existingTs) {
+        productionSpuMap.set(key, { spu: nextSpu, assigned_at: nextAssignedAt });
+      }
+    });
   }
 
   const withSuppliers = withComments.map((item) => {
@@ -330,6 +466,38 @@ export async function GET() {
       supplier_selected_offer_image_url: supplierSelectedOfferMap.get(key)?.image_url ?? null,
       supplier_selected_offer_title: supplierSelectedOfferMap.get(key)?.title ?? null,
       supplier_selected_offer_detail_url: supplierSelectedOfferMap.get(key)?.detail_url ?? null,
+      supplier_payload_status: supplierSelectedOfferMap.get(key)?.payload_status ?? null,
+      supplier_payload_source: supplierSelectedOfferMap.get(key)?.payload_source ?? null,
+      supplier_payload_error: supplierSelectedOfferMap.get(key)?.payload_error ?? null,
+      supplier_payload_saved_at: supplierSelectedOfferMap.get(key)?.payload_saved_at ?? null,
+      supplier_payload_file_name: supplierSelectedOfferMap.get(key)?.payload_file_name ?? null,
+      supplier_payload_file_path: supplierSelectedOfferMap.get(key)?.payload_file_path ?? null,
+      supplier_payload_competitor_url:
+        supplierSelectedOfferMap.get(key)?.payload_competitor_url ?? null,
+      supplier_payload_competitor_title:
+        supplierSelectedOfferMap.get(key)?.payload_competitor_title ?? null,
+      supplier_payload_competitor_images:
+        supplierSelectedOfferMap.get(key)?.payload_competitor_images ?? null,
+      supplier_payload_competitor_error:
+        supplierSelectedOfferMap.get(key)?.payload_competitor_error ?? null,
+      supplier_variant_available_count:
+        supplierSelectedOfferMap.get(key)?.variant_available_count ?? null,
+      supplier_variant_selected_count:
+        supplierSelectedOfferMap.get(key)?.variant_selected_count ?? null,
+      supplier_variant_packs_text:
+        supplierSelectedOfferMap.get(key)?.variant_packs_text ?? null,
+      production_status: productionStatusMap.get(key)?.status ?? null,
+      production_status_updated_at: productionStatusMap.get(key)?.updated_at ?? null,
+      production_status_spu_assigned_at:
+        productionStatusMap.get(key)?.spu_assigned_at ?? null,
+      production_status_started_at:
+        productionStatusMap.get(key)?.production_started_at ?? null,
+      production_status_done_at: productionStatusMap.get(key)?.production_done_at ?? null,
+      production_status_last_file_name:
+        productionStatusMap.get(key)?.last_file_name ?? null,
+      production_status_last_job_id:
+        productionStatusMap.get(key)?.last_job_id ?? null,
+      production_assigned_spu: productionSpuMap.get(key)?.spu ?? null,
     };
   });
 

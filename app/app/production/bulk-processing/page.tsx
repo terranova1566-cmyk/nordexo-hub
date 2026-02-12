@@ -422,6 +422,22 @@ export default function BulkProcessingPage() {
     [extractorFiles, selectedExtractorFiles]
   );
 
+  const productionQueueFiles = useMemo(
+    () =>
+      extractorFiles.filter((entry) =>
+        entry.name.toLowerCase().startsWith("production_queue_incoming_")
+      ),
+    [extractorFiles]
+  );
+
+  const chromeExtractorFiles = useMemo(
+    () =>
+      extractorFiles.filter(
+        (entry) => !entry.name.toLowerCase().startsWith("production_queue_incoming_")
+      ),
+    [extractorFiles]
+  );
+
   const selectedProductTotal = useMemo(
     () =>
       selectedExtractorList.reduce((sum, entry) => {
@@ -436,14 +452,14 @@ export default function BulkProcessingPage() {
 
   const allExtractorSelected = useMemo(
     () =>
-      extractorFiles.length > 0 &&
-      extractorFiles.every((entry) => selectedExtractorFiles.has(entry.name)),
-    [extractorFiles, selectedExtractorFiles]
+      chromeExtractorFiles.length > 0 &&
+      chromeExtractorFiles.every((entry) => selectedExtractorFiles.has(entry.name)),
+    [chromeExtractorFiles, selectedExtractorFiles]
   );
 
   const someExtractorSelected = useMemo(
-    () => extractorFiles.some((entry) => selectedExtractorFiles.has(entry.name)),
-    [extractorFiles, selectedExtractorFiles]
+    () => chromeExtractorFiles.some((entry) => selectedExtractorFiles.has(entry.name)),
+    [chromeExtractorFiles, selectedExtractorFiles]
   );
 
   const toggleSelectAllExtractor = useCallback(() => {
@@ -451,8 +467,8 @@ export default function BulkProcessingPage() {
       setSelectedExtractorFiles(new Set());
       return;
     }
-    setSelectedExtractorFiles(new Set(extractorFiles.map((entry) => entry.name)));
-  }, [allExtractorSelected, extractorFiles]);
+    setSelectedExtractorFiles(new Set(chromeExtractorFiles.map((entry) => entry.name)));
+  }, [allExtractorSelected, chromeExtractorFiles]);
 
   const toggleSelectExtractor = useCallback((name: string) => {
     setSelectedExtractorFiles((prev) => {
@@ -776,6 +792,107 @@ export default function BulkProcessingPage() {
       <Card className={styles.chromeCard}>
         <div className={styles.chromeHeaderRow}>
           <Text size={500} weight="semibold">
+            {t("bulkProcessing.queueIncoming.title")}
+          </Text>
+        </div>
+        {extractorLoading ? <Spinner size="tiny" /> : null}
+        {!extractorLoading && productionQueueFiles.length === 0 ? (
+          <Text size={200} className={styles.chromeEmpty}>
+            {t("bulkProcessing.queueIncoming.empty")}
+          </Text>
+        ) : null}
+        {productionQueueFiles.length ? (
+          <Table size="small" className={styles.chromeTable}>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>{t("bulkProcessing.chrome.file")}</TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColProducts}>
+                  {t("bulkProcessing.chrome.products")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColCreated}>
+                  {t("bulkProcessing.chrome.received")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColActions}>
+                  {t("bulkProcessing.chrome.actions")}
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {productionQueueFiles.map((entry) => (
+                <TableRow key={entry.name}>
+                  <TableCell>
+                    <Button
+                      appearance="transparent"
+                      className={styles.chromeLink}
+                      onClick={() => handlePreview(entry)}
+                    >
+                      {entry.name}
+                    </Button>
+                  </TableCell>
+                  <TableCell className={styles.chromeColProducts}>
+                    {entry.productCount || entry.urlCount}
+                  </TableCell>
+                  <TableCell className={styles.chromeColCreated}>
+                    {formatDateTime(entry.receivedAt)}
+                  </TableCell>
+                  <TableCell className={styles.chromeActionsCell}>
+                    <div className={styles.chromeActions}>
+                      {(() => {
+                        const spusAdded =
+                          assignedNames.includes(entry.name) ||
+                          entry.missingSpuCount === 0;
+                        return (
+                          <Button
+                            appearance={spusAdded ? "outline" : "primary"}
+                            className={
+                              spusAdded
+                                ? `${styles.assignedButton} ${styles.chromeButton}`
+                                : styles.chromeButton
+                            }
+                            onClick={() => handleAssignSpus(entry)}
+                            disabled={spusAdded || assigningName === entry.name}
+                            size="small"
+                          >
+                            {assigningName === entry.name
+                              ? t("bulkProcessing.chrome.assigning")
+                              : spusAdded
+                              ? t("bulkProcessing.chrome.assignDone")
+                              : t("bulkProcessing.chrome.assign")}
+                          </Button>
+                        );
+                      })()}
+                      <Button
+                        appearance="outline"
+                        onClick={() => handleLoadExtractor(entry.name)}
+                        disabled={extractorLoadingName === entry.name}
+                        size="small"
+                      >
+                        {extractorLoadingName === entry.name ? (
+                          <Spinner size="tiny" />
+                        ) : (
+                          t("bulkProcessing.chrome.load")
+                        )}
+                      </Button>
+                      <Button
+                        appearance="outline"
+                        onClick={() => handleDeleteExtractor(entry.name)}
+                        disabled={extractorLoadingName === entry.name}
+                        size="small"
+                      >
+                        {t("bulkProcessing.chrome.delete")}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : null}
+      </Card>
+
+      <Card className={styles.chromeCard}>
+        <div className={styles.chromeHeaderRow}>
+          <Text size={500} weight="semibold">
             {t("bulkProcessing.chrome.title")}
           </Text>
           <div className={styles.chromeHeaderActions}>
@@ -805,12 +922,12 @@ export default function BulkProcessingPage() {
           </Text>
         ) : null}
         {extractorLoading ? <Spinner size="tiny" /> : null}
-        {!extractorLoading && extractorFiles.length === 0 ? (
+        {!extractorLoading && chromeExtractorFiles.length === 0 ? (
           <Text size={200} className={styles.chromeEmpty}>
             {t("bulkProcessing.chrome.empty")}
           </Text>
         ) : null}
-        {extractorFiles.length ? (
+        {chromeExtractorFiles.length ? (
           <Table size="small" className={styles.chromeTable}>
             <TableHeader>
               <TableRow>
@@ -840,7 +957,7 @@ export default function BulkProcessingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {extractorFiles.map((entry) => (
+              {chromeExtractorFiles.map((entry) => (
                 <TableRow key={entry.name}>
                   <TableCell className={styles.chromeColSelect}>
                     <Checkbox
