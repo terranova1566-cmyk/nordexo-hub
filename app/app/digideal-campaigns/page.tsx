@@ -34,6 +34,7 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  Textarea,
   Tooltip,
   makeStyles,
   mergeClasses,
@@ -82,9 +83,63 @@ type DigidealItem = {
   weight_kg: number | null;
   weight_grams: number | null;
   supplier_url: string | null;
+  supplier_locked?: boolean | null;
+  supplier_count?: number | null;
+  supplier_selected?: boolean | null;
+  supplier_selected_offer_image_url?: string | null;
+  supplier_selected_offer_title?: string | null;
+  supplier_selected_offer_detail_url?: string | null;
+  supplier_payload_status?: string | null;
+  supplier_payload_source?: string | null;
+  supplier_payload_error?: string | null;
+  supplier_payload_saved_at?: string | null;
+  supplier_payload_file_name?: string | null;
+  supplier_payload_file_path?: string | null;
+  supplier_variant_available_count?: number | null;
+  supplier_variant_selected_count?: number | null;
+  supplier_variant_packs_text?: string | null;
   shipping_cost: number | null;
   estimated_rerun_price: number | null;
   report_exists: boolean;
+};
+
+type SupplierOffer = {
+  rank?: number;
+  offerId?: string | number | null;
+  detailUrl?: string | null;
+  imageUrl?: string | null;
+  subject?: string | null;
+  subject_en?: string | null;
+  sellerName?: string | null;
+  saleAmount?: string | number | null;
+  [key: string]: unknown;
+};
+
+type SupplierSelection = {
+  provider: string;
+  product_id: string;
+  selected_offer_id: string | null;
+  selected_detail_url: string | null;
+  selected_offer: SupplierOffer | null;
+  locked?: boolean;
+};
+
+type VariantCombo = {
+  index: number;
+  t1: string;
+  t2: string;
+  t3: string;
+  t1_zh?: string;
+  t1_en?: string;
+  t2_zh?: string;
+  t2_en?: string;
+  t3_zh?: string;
+  t3_en?: string;
+  image_url?: string;
+  price_raw: string;
+  price: number | null;
+  weight_raw?: string;
+  weight_grams?: number | null;
 };
 
 type DigidealResponse = {
@@ -702,6 +757,19 @@ const useStyles = makeStyles({
       border: "1px solid #c8b255",
     },
   },
+  supplierActionSplit: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  supplierSplitCaretButton: {
+    minWidth: "32px",
+    paddingInline: "6px",
+  },
+  supplierSplitCaretIcon: {
+    width: "14px",
+    height: "14px",
+  },
   linkButtonContent: {
     display: "inline-flex",
     alignItems: "center",
@@ -750,9 +818,295 @@ const useStyles = makeStyles({
   },
   estimatedPriceRow: {
     // Keep edit buttons aligned while keeping the badge tight.
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "4px",
+  },
+  estimatedPriceActionRow: {
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
+  },
+  supplierStatusInline: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: tokens.lineHeightBase100,
+  },
+  supplierStatusItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    whiteSpace: "nowrap",
+  },
+  supplierStatusOk: {
+    color: "#1b851a",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  supplierStatusFail: {
+    color: "#b42318",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  supplierInlineLoaderIcon: {
+    width: "12px",
+    height: "12px",
+    animationName: {
+      "0%": { transform: "rotate(0deg)" },
+      "100%": { transform: "rotate(360deg)" },
+    },
+    animationDuration: "1s",
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  },
+  supplierSearchDialog: {
+    width: "min(980px, 94vw)",
+    maxWidth: "min(980px, 94vw)",
+  },
+  supplierSearchContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  supplierSearchHeaderRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "8px",
+  },
+  supplierSearchTitle: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+  },
+  supplierSearchRows: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    maxHeight: "62vh",
+    overflowY: "auto",
+    paddingRight: "4px",
+  },
+  supplierSearchError: {
+    marginBottom: "4px",
+  },
+  supplierRow: {
+    display: "grid",
+    gridTemplateColumns: "96px minmax(0, 1fr)",
+    gap: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    padding: "8px",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  supplierRowClickable: {
+    cursor: "pointer",
+    transition: "background-color 120ms ease, border-color 120ms ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+    },
+  },
+  supplierRowSelected: {
+    backgroundColor: "#eaf4ff",
+    border: "1px solid #0f6cbd",
+  },
+  supplierThumb: {
+    width: "96px",
+    height: "96px",
+    borderRadius: "8px",
+    objectFit: "cover",
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  supplierMeta: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    minWidth: 0,
+  },
+  supplierTitle: {
+    fontSize: tokens.fontSizeBase300,
+    lineHeight: tokens.lineHeightBase300,
+    color: tokens.colorNeutralForeground1,
+    wordBreak: "break-word",
+  },
+  supplierTitleEn: {
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    color: tokens.colorNeutralForeground3,
+    wordBreak: "break-word",
+  },
+  supplierMetaRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  supplierMetaItem: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+    whiteSpace: "nowrap",
+  },
+  supplierLinkRow: {
+    display: "flex",
+    alignItems: "center",
+  },
+  supplierMetaLink: {
+    fontSize: tokens.fontSizeBase200,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    color: tokens.colorBrandForeground1,
+    textDecorationLine: "none",
+    "&:hover": {
+      textDecorationLine: "underline",
+    },
+  },
+  supplierExternalIcon: {
+    width: "14px",
+    height: "14px",
+  },
+  variantsDialog: {
+    width: "min(1080px, 95vw)",
+    maxWidth: "min(1080px, 95vw)",
+  },
+  variantsDialogBody: {
+    maxHeight: "86vh",
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  },
+  variantsHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+  },
+  variantsTitleStack: {
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  variantsTitleText: {
+    fontSize: tokens.fontSizeBase300,
+    fontWeight: tokens.fontWeightSemibold,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  variantsTitleLink: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    textDecorationLine: "none",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    "&:hover": {
+      color: tokens.colorBrandForeground1,
+      textDecorationLine: "underline",
+    },
+  },
+  variantsTopActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexShrink: 0,
+  },
+  variantsListWrap: {
+    overflow: "auto",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "8px",
+    maxHeight: "48vh",
+  },
+  variantsListTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+    "& th, & td": {
+      borderBottom: `1px solid ${tokens.colorNeutralStroke3}`,
+    },
+  },
+  variantsListHeadCell: {
+    textAlign: "left",
+    padding: "8px",
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    backgroundColor: tokens.colorNeutralBackground2,
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+  },
+  variantsListCell: {
+    padding: "8px",
+    verticalAlign: "middle",
+    fontSize: tokens.fontSizeBase200,
+  },
+  variantsRowClickable: {
+    cursor: "pointer",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  variantImageCellWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantImageThumb: {
+    width: "44px",
+    height: "44px",
+    objectFit: "cover",
+    borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    display: "block",
+  },
+  variantImagePopoverSurface: {
+    padding: "6px",
+    borderRadius: "8px",
+  },
+  variantImageZoomWrap: {
+    width: "250px",
+    height: "250px",
+    borderRadius: "6px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantImageZoom: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+  },
+  variantLabelCell: {
+    minWidth: 0,
+  },
+  variantValueWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  variantValueZh: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground1,
+    wordBreak: "break-word",
+  },
+  variantValueEn: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    wordBreak: "break-word",
+  },
+  variantsPacksField: {
+    marginTop: "8px",
+  },
+  variantsDialogActions: {
+    justifyContent: "flex-end",
   },
   estimatedPriceEditButton: {
     minWidth: "unset",
@@ -1689,6 +2043,28 @@ export default function DigidealCampaignsPage() {
   const [supplierPriceDraft, setSupplierPriceDraft] = useState("");
   const [supplierSaving, setSupplierSaving] = useState(false);
   const [supplierError, setSupplierError] = useState<string | null>(null);
+  const [supplierSearchDialogOpen, setSupplierSearchDialogOpen] = useState(false);
+  const [supplierSearchTarget, setSupplierSearchTarget] = useState<DigidealItem | null>(null);
+  const [supplierOffers, setSupplierOffers] = useState<SupplierOffer[]>([]);
+  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
+  const [supplierSearchError, setSupplierSearchError] = useState<string | null>(null);
+  const [supplierSelectedOfferId, setSupplierSelectedOfferId] = useState("");
+  const [supplierSelected, setSupplierSelected] = useState<SupplierSelection | null>(null);
+  const [supplierSearchSaving, setSupplierSearchSaving] = useState(false);
+  const [supplierLockedUrl, setSupplierLockedUrl] = useState<string | null>(null);
+  const [supplierTranslating, setSupplierTranslating] = useState(false);
+  const [supplierPriceSortDir, setSupplierPriceSortDir] = useState<"asc" | "desc" | null>(null);
+  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
+  const [variantsTarget, setVariantsTarget] = useState<DigidealItem | null>(null);
+  const [variantsCombos, setVariantsCombos] = useState<VariantCombo[]>([]);
+  const [variantsSelectedIndexes, setVariantsSelectedIndexes] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [variantsPacksText, setVariantsPacksText] = useState("");
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantsSaving, setVariantsSaving] = useState(false);
+  const [variantsError, setVariantsError] = useState<string | null>(null);
+  const [variantImagePreviewIndex, setVariantImagePreviewIndex] = useState<number | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [linkedDialogOpen, setLinkedDialogOpen] = useState(false);
   const [linkedTarget, setLinkedTarget] = useState<DigidealItem | null>(null);
@@ -1783,6 +2159,388 @@ export default function DigidealCampaignsPage() {
     setSupplierDialogOpen(false);
     setSupplierTarget(null);
   };
+
+  const closeSupplierSearchDialog = useCallback(() => {
+    setSupplierSearchDialogOpen(false);
+    setSupplierSearchTarget(null);
+    setSupplierOffers([]);
+    setSupplierSearchLoading(false);
+    setSupplierSearchError(null);
+    setSupplierSelectedOfferId("");
+    setSupplierSelected(null);
+    setSupplierSearchSaving(false);
+    setSupplierLockedUrl(null);
+    setSupplierTranslating(false);
+    setSupplierPriceSortDir(null);
+  }, []);
+
+  const closeVariantsDialog = useCallback(() => {
+    setVariantsDialogOpen(false);
+    setVariantsTarget(null);
+    setVariantsCombos([]);
+    setVariantsSelectedIndexes(new Set());
+    setVariantsPacksText("");
+    setVariantsLoading(false);
+    setVariantsSaving(false);
+    setVariantsError(null);
+    setVariantImagePreviewIndex(null);
+  }, []);
+
+  const hasCjk = useCallback((value: string) => /[\u3400-\u9fff]/.test(value), []);
+
+  const resolveVariantTexts = useCallback(
+    (raw: string, zhRaw?: string, enRaw?: string) => {
+      const rawText = String(raw || "").trim();
+      const zh = String(zhRaw || "").trim();
+      const en = String(enRaw || "").trim();
+
+      let zhText = zh;
+      let enText = en;
+      if (!zhText && !enText) {
+        if (rawText && hasCjk(rawText)) zhText = rawText;
+        else if (rawText) enText = rawText;
+      } else if (!zhText && rawText && rawText !== enText && hasCjk(rawText)) {
+        zhText = rawText;
+      } else if (!enText && rawText && rawText !== zhText && !hasCjk(rawText)) {
+        enText = rawText;
+      }
+
+      if (!zhText && enText) zhText = enText;
+      return { zhText, enText };
+    },
+    [hasCjk]
+  );
+
+  const normalizeSupplierImageUrl = useCallback((value: string | null | undefined) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("//")) return `https:${raw}`;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return raw;
+  }, []);
+
+  const formatRmb = useCallback((value: number | null | undefined) => {
+    if (!Number.isFinite(value as number)) return null;
+    return `¥${Number(value).toFixed(2)}`;
+  }, []);
+
+  const normalizeOfferPrice = useCallback((value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const textRaw = String(value).trim();
+    if (!textRaw) return null;
+    const text = textRaw.replace(/[^0-9.,-]/g, "");
+    if (!text) return null;
+    const hasDecimalSeparator = text.includes(".") || text.includes(",");
+    const normalizedText = text.includes(",") && !text.includes(".")
+      ? text.replace(",", ".")
+      : text.replace(/,/g, "");
+    const raw = Number(normalizedText);
+    if (!Number.isFinite(raw)) return null;
+    if (!hasDecimalSeparator && Number.isInteger(raw) && raw >= 100 && raw <= 100000) {
+      return raw / 100;
+    }
+    return raw;
+  }, []);
+
+  const pickOfferPriceRmb = useCallback(
+    (offer: SupplierOffer): string | null => {
+      const candidates = [
+        (offer as any)?.price,
+        (offer as any)?.priceValue,
+        (offer as any)?.priceRmb,
+        (offer as any)?.oldPrice,
+      ];
+      for (const candidate of candidates) {
+        const normalized = normalizeOfferPrice(candidate);
+        if (!Number.isFinite(normalized as number)) continue;
+        return formatRmb(normalized as number);
+      }
+      return null;
+    },
+    [formatRmb, normalizeOfferPrice]
+  );
+
+  const pickOfferPriceRmbNumber = useCallback(
+    (offer: SupplierOffer): number | null => {
+      const candidates = [
+        (offer as any)?.price,
+        (offer as any)?.priceValue,
+        (offer as any)?.priceRmb,
+        (offer as any)?.oldPrice,
+      ];
+      for (const candidate of candidates) {
+        const normalized = normalizeOfferPrice(candidate);
+        if (!Number.isFinite(normalized as number)) continue;
+        return normalized as number;
+      }
+      return null;
+    },
+    [normalizeOfferPrice]
+  );
+
+  const buildOfferMeta = useCallback(
+    (offer: SupplierOffer) => {
+      const pickSold = () => {
+        const candidates = [
+          offer?.saleAmount,
+          (offer as any)?.saleAmount30d,
+          (offer as any)?.saleAmount30Days,
+          (offer as any)?.sold30d,
+          (offer as any)?.sold,
+          (offer as any)?.saleCount,
+          (offer as any)?.saleQuantity,
+          (offer as any)?.monthSoldNum,
+        ];
+        for (const candidate of candidates) {
+          if (candidate === null || candidate === undefined) continue;
+          const text = String(candidate).trim();
+          if (text) return text;
+        }
+        return null;
+      };
+      const sold = pickSold();
+      const qtyBegin = (offer as any)?.quantityBegin;
+      const unit = typeof (offer as any)?.unit === "string" ? String((offer as any).unit).trim() : "";
+      const moq =
+        Number.isFinite(Number(qtyBegin)) && Number(qtyBegin) > 0
+          ? `${Number(qtyBegin)}${unit || ""}`
+          : null;
+      const province = typeof (offer as any)?.province === "string" ? String((offer as any).province).trim() : "";
+      const city = typeof (offer as any)?.city === "string" ? String((offer as any).city).trim() : "";
+      const location = province || city ? [province, city].filter(Boolean).join(" / ") : null;
+      const price = pickOfferPriceRmb(offer);
+      return { price, sold, moq, location };
+    },
+    [pickOfferPriceRmb]
+  );
+
+  const openSupplierSearchDialog = useCallback(
+    async (item: DigidealItem) => {
+      setSupplierSearchTarget(item);
+      setSupplierSearchDialogOpen(true);
+      setSupplierSearchError(null);
+      setSupplierOffers([]);
+      setSupplierSelectedOfferId("");
+      setSupplierSelected(null);
+      setSupplierSearchLoading(true);
+      setSupplierSearchSaving(false);
+      setSupplierLockedUrl(null);
+      setSupplierTranslating(false);
+      setSupplierPriceSortDir(null);
+      try {
+        const params = new URLSearchParams({
+          provider: "digideal",
+          product_id: item.product_id,
+        });
+        const imageUrls = normalizeImageUrls(item.image_urls);
+        const imageUrl = item.primary_image_url || imageUrls[0] || null;
+        if (imageUrl) params.set("image_url", imageUrl);
+
+        const response = await fetch(`/api/production/suppliers?${params.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load supplier suggestions.");
+        }
+
+        const offers = Array.isArray(payload?.offers) ? payload.offers : [];
+        setSupplierOffers(offers);
+        const selectedPayload = payload?.selected ?? null;
+        const selectedOfferId =
+          typeof selectedPayload?.selected_offer_id === "string"
+            ? String(selectedPayload.selected_offer_id)
+            : "";
+        setSupplierSelectedOfferId(selectedOfferId);
+        setSupplierSelected(
+          selectedPayload && typeof selectedPayload === "object"
+            ? {
+                provider: "digideal",
+                product_id: item.product_id,
+                selected_offer_id:
+                  typeof selectedPayload.selected_offer_id === "string"
+                    ? selectedPayload.selected_offer_id
+                    : null,
+                selected_detail_url:
+                  typeof selectedPayload.selected_detail_url === "string"
+                    ? selectedPayload.selected_detail_url
+                    : null,
+                selected_offer:
+                  selectedPayload.selected_offer && typeof selectedPayload.selected_offer === "object"
+                    ? (selectedPayload.selected_offer as SupplierOffer)
+                    : null,
+                locked: Boolean(selectedPayload.locked),
+              }
+            : null
+        );
+        const lockedUrl =
+          typeof payload?.locked_supplier_url === "string" && payload.locked_supplier_url.trim()
+            ? payload.locked_supplier_url.trim()
+            : null;
+        setSupplierLockedUrl(lockedUrl);
+
+        const needsTranslation = offers.some((offer: SupplierOffer) => {
+          const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
+          const en = typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
+          return Boolean(subject) && !en;
+        });
+        if (needsTranslation) {
+          setSupplierTranslating(true);
+          fetch("/api/production/suppliers/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: "digideal",
+              product_id: item.product_id,
+            }),
+          })
+            .then(async (res) => {
+              const translatedPayload = await res.json().catch(() => null);
+              if (!translatedPayload || typeof translatedPayload !== "object") return;
+              const updatedOffers = Array.isArray((translatedPayload as any).offers)
+                ? (translatedPayload as any).offers
+                : null;
+              if (updatedOffers) setSupplierOffers(updatedOffers);
+            })
+            .catch(() => null)
+            .finally(() => setSupplierTranslating(false));
+        }
+      } catch (err) {
+        setSupplierSearchError(
+          err instanceof Error ? err.message : "Unable to load supplier suggestions."
+        );
+      } finally {
+        setSupplierSearchLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleSaveSupplierSearch = useCallback(async () => {
+    if (!supplierSearchTarget) return;
+    if (supplierLockedUrl) return;
+    const offerId = supplierSelectedOfferId.trim();
+    if (!offerId) return;
+
+    setSupplierSearchSaving(true);
+    setSupplierSearchError(null);
+    try {
+      const response = await fetch("/api/production/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "digideal",
+          product_id: supplierSearchTarget.product_id,
+          offer_id: offerId,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save supplier selection.");
+      }
+      closeSupplierSearchDialog();
+      setRefreshToken((prev) => prev + 1);
+    } catch (err) {
+      setSupplierSearchError(
+        err instanceof Error ? err.message : "Unable to save supplier selection."
+      );
+    } finally {
+      setSupplierSearchSaving(false);
+    }
+  }, [
+    closeSupplierSearchDialog,
+    supplierLockedUrl,
+    supplierSearchTarget,
+    supplierSelectedOfferId,
+  ]);
+
+  const openVariantsDialog = useCallback(async (item: DigidealItem) => {
+    setVariantsDialogOpen(true);
+    setVariantsTarget(item);
+    setVariantsCombos([]);
+    setVariantsSelectedIndexes(new Set());
+    setVariantsPacksText("");
+    setVariantsLoading(true);
+    setVariantsSaving(false);
+    setVariantsError(null);
+    setVariantImagePreviewIndex(null);
+    try {
+      const params = new URLSearchParams({
+        provider: "digideal",
+        product_id: item.product_id,
+      });
+      const response = await fetch(`/api/production/suppliers/variants?${params.toString()}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || "Unable to load variants."));
+      }
+      const combos = Array.isArray((payload as any)?.combos)
+        ? ((payload as any).combos as VariantCombo[])
+        : [];
+      const selectedIndexes = Array.isArray((payload as any)?.selected_combo_indexes)
+        ? ((payload as any).selected_combo_indexes as unknown[])
+            .map((entry) => Number(entry))
+            .filter((entry) => Number.isInteger(entry) && entry >= 0)
+        : [];
+      const safeSelected = new Set(selectedIndexes.filter((idx) => idx < combos.length));
+      const packsText =
+        typeof (payload as any)?.packs_text === "string"
+          ? (payload as any).packs_text
+          : "";
+      setVariantsCombos(combos);
+      setVariantsSelectedIndexes(safeSelected);
+      setVariantsPacksText(packsText);
+    } catch (err) {
+      setVariantsError(err instanceof Error ? err.message : "Unable to load variants.");
+    } finally {
+      setVariantsLoading(false);
+    }
+  }, []);
+
+  const handleSaveVariants = useCallback(async () => {
+    if (!variantsTarget) return;
+    setVariantsSaving(true);
+    setVariantsError(null);
+    try {
+      const selected = Array.from(variantsSelectedIndexes).sort((a, b) => a - b);
+      const response = await fetch("/api/production/suppliers/variants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "digideal",
+          product_id: variantsTarget.product_id,
+          selected_combo_indexes: selected,
+          packs_text: variantsPacksText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || "Unable to save variants."));
+      }
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.product_id === variantsTarget.product_id
+            ? {
+                ...entry,
+                supplier_variant_selected_count:
+                  Number.isFinite(Number((payload as any)?.selected_count))
+                    ? Number((payload as any).selected_count)
+                    : entry.supplier_variant_selected_count ?? null,
+                supplier_variant_available_count:
+                  Number.isFinite(Number((payload as any)?.available_count))
+                    ? Number((payload as any).available_count)
+                    : entry.supplier_variant_available_count ?? null,
+                supplier_variant_packs_text: variantsPacksText.trim() || null,
+              }
+            : entry
+        )
+      );
+      closeVariantsDialog();
+    } catch (err) {
+      setVariantsError(err instanceof Error ? err.message : "Unable to save variants.");
+    } finally {
+      setVariantsSaving(false);
+    }
+  }, [closeVariantsDialog, variantsPacksText, variantsSelectedIndexes, variantsTarget]);
 
   const openLinkedDialog = (item: DigidealItem) => {
     setLinkedTarget(item);
@@ -3373,8 +4131,34 @@ export default function DigidealCampaignsPage() {
           estimatedPriceValue !== null
             ? formatCurrency(estimatedPriceValue, "SEK") || "-"
             : "-";
-        const showSupplierAdd = isAdmin && !hasEstimatedPrice && !isNordexo;
-        const showSupplierEdit = isAdmin && hasEstimatedPrice;
+        const canManageSupplier = isAdmin && !isNordexo;
+        const hasManualSupplierData =
+          item.purchase_price !== null ||
+          item.weight_grams !== null ||
+          item.weight_kg !== null ||
+          (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
+        const supplierSelected = Boolean(item.supplier_selected);
+        const supplierPayloadStatus = String(item.supplier_payload_status ?? "")
+          .trim()
+          .toLowerCase();
+        const supplierPayloadReady =
+          supplierPayloadStatus === "ready" &&
+          Boolean(item.supplier_payload_file_path);
+        const supplierPayloadFailed = supplierPayloadStatus === "failed";
+        const supplierPayloadLoading =
+          supplierPayloadStatus === "fetching" ||
+          supplierPayloadStatus === "queued" ||
+          supplierPayloadStatus === "processing";
+        const supplierActionLabel = supplierPayloadReady
+          ? "Pick Variant"
+          : hasManualSupplierData
+            ? t("digideal.supplier.edit")
+            : t("digideal.supplier.add");
+        const highlightAddSupplier =
+          canManageSupplier &&
+          !supplierPayloadReady &&
+          !hasManualSupplierData &&
+          !supplierSelected;
         const rerunIcons = [
           {
             key: "full",
@@ -3811,57 +4595,117 @@ export default function DigidealCampaignsPage() {
                 </div>
               )}
             </TableCell>
-            <TableCell className={styles.estimatedPriceCol}>
-              {hasEstimatedPrice ? (
-                <div className={styles.estimatedPriceRow}>
-                  <div className={styles.estimatedPriceBadgeSlot}>
-                    <Badge
-                      appearance="outline"
-                      className={styles.estimatedPriceBadge}
-                    >
-                      {estimatedPriceLabel}
-                    </Badge>
+	            <TableCell className={styles.estimatedPriceCol}>
+	              <div className={styles.estimatedPriceRow}>
+	                <div className={styles.estimatedPriceActionRow}>
+	                  {hasEstimatedPrice ? (
+	                    <div className={styles.estimatedPriceBadgeSlot}>
+	                      <Badge
+	                        appearance="outline"
+	                        className={styles.estimatedPriceBadge}
+	                      >
+	                        {estimatedPriceLabel}
+	                      </Badge>
+	                    </div>
+	                  ) : (
+	                    canManageSupplier ? (
+	                      highlightAddSupplier ? null : (
+	                        <div className={styles.estimatedPriceBadgeSlot} />
+	                      )
+	                    ) : (
+	                      <Text className={styles.estimatedPriceText}>-</Text>
+	                    )
+	                  )}
+	                  {canManageSupplier ? (
+	                    supplierPayloadReady ? (
+	                      <Menu>
+	                        <MenuTrigger disableButtonEnhancement>
+	                          <Button
+	                            appearance="outline"
+	                            size="small"
+	                            className={styles.linkButton}
+	                          >
+	                            {supplierActionLabel}
+	                          </Button>
+	                        </MenuTrigger>
+	                        <MenuPopover>
+	                          <MenuList>
+	                            <MenuItem onClick={() => openSupplierDialog(item)}>
+	                              {t("digideal.supplier.manualInput")}
+	                            </MenuItem>
+	                            <MenuItem onClick={() => void openVariantsDialog(item)}>
+	                              Pick Variant
+	                            </MenuItem>
+	                          </MenuList>
+	                        </MenuPopover>
+	                      </Menu>
+	                    ) : hasManualSupplierData ? (
+	                      <Button
+	                        appearance="outline"
+	                        size="small"
+	                        className={styles.linkButton}
+	                        onClick={() => openSupplierDialog(item)}
+	                      >
+	                        {t("digideal.supplier.edit")}
+	                      </Button>
+	                    ) : (
+	                      <Menu>
+	                        <MenuTrigger disableButtonEnhancement>
+	                          <Button
+	                            appearance="outline"
+	                            size="small"
+	                            className={mergeClasses(
+	                              styles.linkButton,
+	                              highlightAddSupplier ? styles.supplierAddButton : undefined
+	                            )}
+	                          >
+	                            {supplierActionLabel}
+	                          </Button>
+	                        </MenuTrigger>
+	                        <MenuPopover>
+	                          <MenuList>
+	                            <MenuItem onClick={() => openSupplierDialog(item)}>
+	                              {t("digideal.supplier.manualInput")}
+	                            </MenuItem>
+	                            <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
+	                              {t("digideal.supplier.imageSearch")}
+	                            </MenuItem>
+	                          </MenuList>
+	                        </MenuPopover>
+	                      </Menu>
+	                    )
+	                  ) : null}
+	                </div>
+	                {canManageSupplier &&
+	                (supplierPayloadLoading || supplierPayloadReady || supplierPayloadFailed) ? (
+	                  <div className={styles.supplierStatusInline}>
+	                    <span className={styles.supplierStatusItem}>
+	                      {supplierPayloadLoading ? (
+	                        <svg
+	                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={styles.supplierInlineLoaderIcon}
+                          aria-hidden="true"
+                        >
+                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                          <path d="M12 3a9 9 0 1 0 9 9" />
+                        </svg>
+                      ) : null}
+                      <span>1688</span>
+                      {supplierPayloadReady ? (
+                        <span className={styles.supplierStatusOk}>✓</span>
+                      ) : supplierPayloadFailed ? (
+                        <span className={styles.supplierStatusFail}>✕</span>
+                      ) : null}
+                    </span>
                   </div>
-                  {showSupplierEdit ? (
-                    <Button
-                      appearance="outline"
-                      size="small"
-                      className={mergeClasses(
-                        styles.linkButton,
-                        styles.estimatedPriceEditButton
-                      )}
-                      onClick={() => openSupplierDialog(item)}
-                    >
-                      {t("digideal.supplier.edit")}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : showSupplierAdd ? (
-                <Menu>
-                  <MenuTrigger disableButtonEnhancement>
-                    <Button
-                      appearance="outline"
-                      size="small"
-                      className={mergeClasses(
-                        styles.linkButton,
-                        styles.supplierAddButton
-                      )}
-                    >
-                      {t("digideal.supplier.add")}
-                    </Button>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList>
-                      <MenuItem onClick={() => openSupplierDialog(item)}>
-                        {t("digideal.supplier.manualInput")}
-                      </MenuItem>
-                      <MenuItem disabled>{t("digideal.supplier.imageSearch")}</MenuItem>
-                    </MenuList>
-                  </MenuPopover>
-                </Menu>
-              ) : (
-                <Text className={styles.estimatedPriceText}>-</Text>
-              )}
+                ) : null}
+              </div>
             </TableCell>
             <TableCell className={styles.rerunCol}>
               {isNordexo ? (
@@ -5173,6 +6017,530 @@ export default function DigidealCampaignsPage() {
                 disabled={supplierSaving}
               >
                 {t("digideal.supplier.dialog.save")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={supplierSearchDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closeSupplierSearchDialog();
+        }}
+      >
+        <DialogSurface className={styles.supplierSearchDialog}>
+          <DialogBody>
+            <DialogTitle>Find Supplier</DialogTitle>
+            <DialogContent className={styles.supplierSearchContent}>
+              <div className={styles.supplierSearchHeaderRow}>
+                <Text className={styles.supplierSearchTitle}>
+                  {supplierSearchTarget
+                    ? supplierSearchTarget.listing_title ||
+                      supplierSearchTarget.title_h1 ||
+                      supplierSearchTarget.product_slug ||
+                      supplierSearchTarget.product_id
+                    : ""}
+                </Text>
+                <Button
+                  appearance="outline"
+                  size="small"
+                  className={styles.linkButton}
+                  onClick={() =>
+                    setSupplierPriceSortDir((prev) => (prev === "asc" ? "desc" : "asc"))
+                  }
+                >
+                  Filter by Price {supplierPriceSortDir === "asc" ? "↓" : "↑"}
+                </Button>
+              </div>
+              {supplierLockedUrl ? (
+                <MessageBar>
+                  A supplier is already set in DigiDeal EST rerun price. You can view suggestions,
+                  but that manual supplier remains the selected one.
+                </MessageBar>
+              ) : null}
+              {supplierSearchError ? (
+                <MessageBar intent="error" className={styles.supplierSearchError}>
+                  {supplierSearchError}
+                </MessageBar>
+              ) : null}
+              {supplierSearchLoading ? (
+                <Spinner label="Loading suppliers..." />
+              ) : (
+                <div className={styles.supplierSearchRows}>
+                  {supplierSelected?.selected_offer
+                    ? (() => {
+                        const offer = supplierSelected.selected_offer as SupplierOffer;
+                        const offerId =
+                          offer?.offerId === null || offer?.offerId === undefined
+                            ? ""
+                            : String(offer.offerId);
+                        const url =
+                          typeof offer?.detailUrl === "string" ? offer.detailUrl : "";
+                        const title =
+                          typeof offer?.subject === "string" && offer.subject.trim()
+                            ? offer.subject
+                            : offerId || "#selected";
+                        const titleEn =
+                          typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
+                        const imageUrl = normalizeSupplierImageUrl(
+                          typeof offer?.imageUrl === "string" ? offer.imageUrl : ""
+                        );
+                        const meta = buildOfferMeta(offer);
+                        return (
+                          <div className={mergeClasses(styles.supplierRow, styles.supplierRowSelected)}>
+                            <div>
+                              {imageUrl ? (
+                                <img
+                                  src={imageUrl}
+                                  alt={title}
+                                  className={styles.supplierThumb}
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              ) : null}
+                            </div>
+                            <div className={styles.supplierMeta}>
+                              <Text className={styles.supplierTitle}>{title}</Text>
+                              {titleEn ? (
+                                <Text className={styles.supplierTitleEn}>{titleEn}</Text>
+                              ) : null}
+                              <div className={styles.supplierMetaRow}>
+                                {meta.price ? (
+                                  <Text className={styles.supplierMetaItem}>Price: {meta.price}</Text>
+                                ) : null}
+                                {meta.sold ? (
+                                  <Text className={styles.supplierMetaItem}>Sales: {meta.sold}</Text>
+                                ) : null}
+                                {meta.moq ? (
+                                  <Text className={styles.supplierMetaItem}>MOQ: {meta.moq}</Text>
+                                ) : null}
+                                {meta.location ? (
+                                  <Text className={styles.supplierMetaItem}>
+                                    Location: {meta.location}
+                                  </Text>
+                                ) : null}
+                              </div>
+                              {url ? (
+                                <div className={styles.supplierLinkRow}>
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={styles.supplierMetaLink}
+                                  >
+                                    See on 1688.com
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className={styles.supplierExternalIcon}
+                                      aria-hidden="true"
+                                    >
+                                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                      <path d="M10 14l11 -11" />
+                                      <path d="M21 3v8" />
+                                      <path d="M21 3h-8" />
+                                      <path d="M14 10v8a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2h8" />
+                                    </svg>
+                                  </a>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    : null}
+                  {(() => {
+                    const pinnedId = supplierSelected?.selected_offer_id
+                      ? String(supplierSelected.selected_offer_id)
+                      : "";
+                    const decorated = supplierOffers
+                      .filter((offer) => {
+                        if (!pinnedId) return true;
+                        const offerId =
+                          offer?.offerId === null || offer?.offerId === undefined
+                            ? ""
+                            : String(offer.offerId);
+                        return offerId !== pinnedId;
+                      })
+                      .map((offer, idx) => ({
+                        offer,
+                        idx,
+                        price: pickOfferPriceRmbNumber(offer),
+                      }));
+                    if (supplierPriceSortDir) {
+                      decorated.sort((a, b) => {
+                        const ap = a.price;
+                        const bp = b.price;
+                        if (ap === null && bp === null) return a.idx - b.idx;
+                        if (ap === null) return 1;
+                        if (bp === null) return -1;
+                        const diff = ap - bp;
+                        if (diff === 0) return a.idx - b.idx;
+                        return supplierPriceSortDir === "asc" ? diff : -diff;
+                      });
+                    }
+                    return decorated.map(({ offer, idx }) => {
+                      const offerId =
+                        offer?.offerId === null || offer?.offerId === undefined
+                          ? ""
+                          : String(offer.offerId);
+                      const url =
+                        typeof offer?.detailUrl === "string" ? offer.detailUrl : "";
+                      const title =
+                        typeof offer?.subject === "string" && offer.subject.trim()
+                          ? offer.subject
+                          : offerId || `#${idx + 1}`;
+                      const titleEn =
+                        typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
+                      const imageUrl = normalizeSupplierImageUrl(
+                        typeof offer?.imageUrl === "string" ? offer.imageUrl : ""
+                      );
+                      const isSelected = offerId && supplierSelectedOfferId === offerId;
+                      const meta = buildOfferMeta(offer);
+                      const rowKey = `${offerId || idx}`;
+                      return (
+                        <div
+                          key={rowKey}
+                          className={mergeClasses(
+                            styles.supplierRow,
+                            styles.supplierRowClickable,
+                            isSelected ? styles.supplierRowSelected : undefined
+                          )}
+                          onClick={() => {
+                            if (!offerId || supplierLockedUrl) return;
+                            setSupplierSelectedOfferId(offerId);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(ev) => {
+                            if (ev.key !== "Enter" && ev.key !== " ") return;
+                            ev.preventDefault();
+                            if (!offerId || supplierLockedUrl) return;
+                            setSupplierSelectedOfferId(offerId);
+                          }}
+                        >
+                          <div>
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={title}
+                                className={styles.supplierThumb}
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : null}
+                          </div>
+                          <div className={styles.supplierMeta}>
+                            <Text className={styles.supplierTitle}>{title}</Text>
+                            {titleEn ? (
+                              <Text className={styles.supplierTitleEn}>{titleEn}</Text>
+                            ) : supplierTranslating ? (
+                              <Text className={styles.supplierTitleEn}>Translating title...</Text>
+                            ) : null}
+                            <div className={styles.supplierMetaRow}>
+                              {meta.price ? (
+                                <Text className={styles.supplierMetaItem}>Price: {meta.price}</Text>
+                              ) : null}
+                              {meta.sold ? (
+                                <Text className={styles.supplierMetaItem}>Sales: {meta.sold}</Text>
+                              ) : null}
+                              {meta.moq ? (
+                                <Text className={styles.supplierMetaItem}>MOQ: {meta.moq}</Text>
+                              ) : null}
+                              {meta.location ? (
+                                <Text className={styles.supplierMetaItem}>
+                                  Location: {meta.location}
+                                </Text>
+                              ) : null}
+                            </div>
+                            {url ? (
+                              <div className={styles.supplierLinkRow}>
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={styles.supplierMetaLink}
+                                  onClick={(ev) => ev.stopPropagation()}
+                                >
+                                  See on 1688.com
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className={styles.supplierExternalIcon}
+                                    aria-hidden="true"
+                                  >
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                    <path d="M10 14l11 -11" />
+                                    <path d="M21 3v8" />
+                                    <path d="M21 3h-8" />
+                                    <path d="M14 10v8a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2h8" />
+                                  </svg>
+                                </a>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeSupplierSearchDialog}>
+                Close
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleSaveSupplierSearch}
+                disabled={
+                  supplierSearchSaving ||
+                  supplierSelectedOfferId.trim().length === 0 ||
+                  Boolean(supplierLockedUrl)
+                }
+              >
+                Save
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={variantsDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closeVariantsDialog();
+        }}
+      >
+        <DialogSurface className={styles.variantsDialog}>
+          <DialogBody className={styles.variantsDialogBody}>
+            <DialogTitle>Pick Variants</DialogTitle>
+            <DialogContent>
+              <div className={styles.variantsHeaderRow}>
+                {variantsTarget ? (
+                  <div className={styles.variantsTitleStack}>
+                    <Text className={styles.variantsTitleText}>
+                      {variantsTarget.listing_title ||
+                        variantsTarget.title_h1 ||
+                        variantsTarget.product_slug ||
+                        variantsTarget.product_id}
+                    </Text>
+                    {(() => {
+                      const variantsProductUrl =
+                        (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
+                        variantsTarget.supplier_selected_offer_detail_url.trim()
+                          ? variantsTarget.supplier_selected_offer_detail_url.trim()
+                          : null) ||
+                        (typeof variantsTarget.supplier_url === "string" &&
+                        variantsTarget.supplier_url.trim()
+                          ? variantsTarget.supplier_url.trim()
+                          : null) ||
+                        (typeof variantsTarget.product_url === "string" &&
+                        variantsTarget.product_url.trim()
+                          ? variantsTarget.product_url.trim()
+                          : null);
+                      if (!variantsProductUrl) return null;
+                      return (
+                        <a
+                          href={variantsProductUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={styles.variantsTitleLink}
+                          title={variantsProductUrl}
+                        >
+                          {variantsProductUrl}
+                        </a>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                <div className={styles.variantsTopActions}>
+                  <Button
+                    appearance="outline"
+                    size="small"
+                    onClick={() =>
+                      setVariantsSelectedIndexes(new Set(variantsCombos.map((combo) => combo.index)))
+                    }
+                    disabled={variantsLoading || variantsCombos.length === 0}
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    size="small"
+                    onClick={() => setVariantsSelectedIndexes(new Set())}
+                    disabled={variantsLoading || variantsCombos.length === 0}
+                  >
+                    Clear
+                  </Button>
+                  <Text size={200} className={styles.supplierSearchTitle}>
+                    {variantsSelectedIndexes.size} selected
+                  </Text>
+                </div>
+              </div>
+              {variantsError ? <MessageBar intent="error">{variantsError}</MessageBar> : null}
+              {variantsLoading ? (
+                <Spinner label="Loading variants..." />
+              ) : variantsCombos.length === 0 ? (
+                <Text>No variant combinations found in the 1688 JSON. You can still set packs below.</Text>
+              ) : (
+                <div className={styles.variantsListWrap}>
+                  <table className={styles.variantsListTable}>
+                    <thead>
+                      <tr>
+                        <th className={styles.variantsListHeadCell} style={{ width: 42 }}>
+                          Pick
+                        </th>
+                        <th className={styles.variantsListHeadCell} style={{ width: 56 }}>
+                          Image
+                        </th>
+                        <th className={styles.variantsListHeadCell}>Variant</th>
+                        <th className={styles.variantsListHeadCell} style={{ width: 140 }}>
+                          Price (RMB)
+                        </th>
+                        <th className={styles.variantsListHeadCell} style={{ width: 110 }}>
+                          Weight (g)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {variantsCombos.map((combo) => {
+                        const checked = variantsSelectedIndexes.has(combo.index);
+                        const t1Value = resolveVariantTexts(combo.t1, combo.t1_zh, combo.t1_en);
+                        const t2Value = resolveVariantTexts(combo.t2, combo.t2_zh, combo.t2_en);
+                        const t3Value = resolveVariantTexts(combo.t3, combo.t3_zh, combo.t3_en);
+                        const zhParts = [t1Value.zhText, t2Value.zhText, t3Value.zhText].filter(Boolean);
+                        const enParts = [t1Value.enText, t2Value.enText, t3Value.enText]
+                          .filter(Boolean)
+                          .filter((v, i, arr) => arr.indexOf(v) === i);
+                        return (
+                          <tr
+                            key={combo.index}
+                            className={styles.variantsRowClickable}
+                            onClick={() => {
+                              setVariantsSelectedIndexes((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(combo.index)) next.delete(combo.index);
+                                else next.add(combo.index);
+                                return next;
+                              });
+                            }}
+                          >
+                            <td className={styles.variantsListCell}>
+                              <Checkbox
+                                checked={checked}
+                                onClick={(ev) => ev.stopPropagation()}
+                                onChange={(_, data) => {
+                                  setVariantsSelectedIndexes((prev) => {
+                                    const next = new Set(prev);
+                                    if (data.checked) next.add(combo.index);
+                                    else next.delete(combo.index);
+                                    return next;
+                                  });
+                                }}
+                                aria-label={`Pick variant ${combo.index + 1}`}
+                              />
+                            </td>
+                            <td className={styles.variantsListCell}>
+                              {combo.image_url ? (
+                                <div
+                                  className={styles.variantImageCellWrap}
+                                  onMouseEnter={() => setVariantImagePreviewIndex(combo.index)}
+                                  onMouseLeave={() =>
+                                    setVariantImagePreviewIndex((prev) =>
+                                      prev === combo.index ? null : prev
+                                    )
+                                  }
+                                >
+                                  <Popover
+                                    open={variantImagePreviewIndex === combo.index}
+                                    positioning={{ position: "after", align: "center", offset: 6 }}
+                                  >
+                                    <PopoverTrigger disableButtonEnhancement>
+                                      <img
+                                        src={combo.image_url}
+                                        alt={zhParts[0] || enParts[0] || "Variant"}
+                                        className={styles.variantImageThumb}
+                                        referrerPolicy="no-referrer"
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    </PopoverTrigger>
+                                    <PopoverSurface className={styles.variantImagePopoverSurface}>
+                                      <div className={styles.variantImageZoomWrap}>
+                                        <img
+                                          src={combo.image_url}
+                                          alt={zhParts[0] || enParts[0] || "Variant"}
+                                          className={styles.variantImageZoom}
+                                          referrerPolicy="no-referrer"
+                                          loading="lazy"
+                                          decoding="async"
+                                        />
+                                      </div>
+                                    </PopoverSurface>
+                                  </Popover>
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className={mergeClasses(styles.variantsListCell, styles.variantLabelCell)}>
+                              <div className={styles.variantValueWrap}>
+                                <span className={styles.variantValueZh}>
+                                  {zhParts.length > 0
+                                    ? zhParts.join(" / ")
+                                    : enParts.join(" / ") || "-"}
+                                </span>
+                                {enParts.length > 0 && enParts.join(" / ") !== zhParts.join(" / ") ? (
+                                  <span className={styles.variantValueEn}>{enParts.join(" / ")}</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className={styles.variantsListCell}>
+                              {typeof combo.price === "number"
+                                ? `¥${combo.price.toFixed(2)}`
+                                : combo.price_raw || "-"}
+                            </td>
+                            <td className={styles.variantsListCell}>
+                              {typeof combo.weight_grams === "number" &&
+                              Number.isFinite(combo.weight_grams)
+                                ? `${Math.round(combo.weight_grams)}`
+                                : combo.weight_raw || "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <Field label="Packs (comma-separated)" className={styles.variantsPacksField}>
+                <Textarea
+                  value={variantsPacksText}
+                  onChange={(_, data) => setVariantsPacksText(data.value)}
+                  resize="vertical"
+                  rows={1}
+                  placeholder="1, 2, 4"
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions className={styles.variantsDialogActions}>
+              <Button appearance="secondary" onClick={closeVariantsDialog}>
+                Close
+              </Button>
+              <Button appearance="primary" onClick={handleSaveVariants} disabled={variantsSaving}>
+                {variantsSaving ? "Saving..." : "Save"}
               </Button>
             </DialogActions>
           </DialogBody>

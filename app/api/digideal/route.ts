@@ -140,6 +140,12 @@ type DigidealDetailRow = {
   "1688_url"?: string | null;
 };
 
+type SupplierSearchRow = {
+  provider: string;
+  product_id: string;
+  offers: unknown;
+};
+
 const toText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
@@ -858,6 +864,109 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const supplierCountMap = new Map<string, number>();
+    const supplierSelectionMetaMap = new Map<
+      string,
+      {
+        image_url: string | null;
+        title: string | null;
+        detail_url: string | null;
+        payload_status: string | null;
+        payload_source: string | null;
+        payload_error: string | null;
+        payload_saved_at: string | null;
+        payload_file_name: string | null;
+        payload_file_path: string | null;
+        variant_available_count: number | null;
+        variant_selected_count: number | null;
+        variant_packs_text: string | null;
+      }
+    >();
+    if (productIds.length) {
+      const [supplierSearchResponse, supplierSelectionResponse] = await Promise.all([
+        supabase
+          .from("discovery_production_supplier_searches")
+          .select("provider, product_id, offers")
+          .eq("provider", "digideal")
+          .in("product_id", productIds),
+        supabase
+          .from("discovery_production_supplier_selection")
+          .select("provider, product_id, selected_offer")
+          .eq("provider", "digideal")
+          .in("product_id", productIds),
+      ]);
+
+      if (supplierSearchResponse.error) {
+        console.error("digideal supplier search map error", {
+          message: supplierSearchResponse.error.message,
+          details: supplierSearchResponse.error.details,
+          hint: supplierSearchResponse.error.hint,
+          code: supplierSearchResponse.error.code,
+        });
+      } else {
+        (supplierSearchResponse.data as SupplierSearchRow[] | null)?.forEach((row) => {
+          const offers = Array.isArray(row.offers) ? row.offers : [];
+          supplierCountMap.set(String(row.product_id ?? ""), offers.length);
+        });
+      }
+
+      if (supplierSelectionResponse.error) {
+        console.error("digideal supplier selection map error", {
+          message: supplierSelectionResponse.error.message,
+          details: supplierSelectionResponse.error.details,
+          hint: supplierSelectionResponse.error.hint,
+          code: supplierSelectionResponse.error.code,
+        });
+      } else {
+        (
+          supplierSelectionResponse.data as Array<{
+            product_id?: string | null;
+            selected_offer?: unknown;
+          }> | null
+        )?.forEach((row) => {
+          const productId = String(row?.product_id ?? "").trim();
+          if (!productId) return;
+          const offer =
+            row?.selected_offer && typeof row.selected_offer === "object"
+              ? (row.selected_offer as Record<string, unknown>)
+              : null;
+          if (!offer) return;
+
+          const variantAvailableCountRaw = Number(
+            (offer as any)._production_variant_available_count
+          );
+          const variantSelectedCountRaw = Number(
+            (offer as any)._production_variant_selected_count
+          );
+          supplierSelectionMetaMap.set(productId, {
+            image_url:
+              toText((offer as any).imageUrl) || toText((offer as any).image_url) || null,
+            title:
+              toText((offer as any).subject_en) ||
+              toText((offer as any).subject) ||
+              toText((offer as any).title) ||
+              null,
+            detail_url:
+              toText((offer as any).detailUrl) || toText((offer as any).detail_url) || null,
+            payload_status: toText((offer as any)._production_payload_status) || null,
+            payload_source: toText((offer as any)._production_payload_source) || null,
+            payload_error: toText((offer as any)._production_payload_error) || null,
+            payload_saved_at: toText((offer as any)._production_payload_saved_at) || null,
+            payload_file_name: toText((offer as any)._production_payload_file_name) || null,
+            payload_file_path: toText((offer as any)._production_payload_file_path) || null,
+            variant_available_count: Number.isFinite(variantAvailableCountRaw)
+              ? variantAvailableCountRaw
+              : null,
+            variant_selected_count: Number.isFinite(variantSelectedCountRaw)
+              ? variantSelectedCountRaw
+              : null,
+            variant_packs_text:
+              toText((offer as any)._production_variant_packs_text) || null,
+          });
+        });
+      }
+    }
+
     let marketConfig: MarketConfig | null = null;
     let classMap = new Map<string, ShippingConfig>();
     if (productIds.length) {
@@ -1027,6 +1136,8 @@ export async function GET(request: NextRequest) {
         const supplierUrl = toText(
           detail?.["1688_URL"] ?? detail?.["1688_url"]
         );
+        const supplierMeta = supplierSelectionMetaMap.get(product.product_id);
+        const supplierSelected = Boolean(supplierUrl) || Boolean(supplierMeta);
         const storedShipping =
           typeof product.shipping_cost_kr === "number"
             ? toNumber(product.shipping_cost_kr)
@@ -1115,6 +1226,23 @@ export async function GET(request: NextRequest) {
           weight_kg: weightKgValue,
           weight_grams: weightGramsValue,
           supplier_url: supplierUrl || null,
+          supplier_locked: Boolean(supplierUrl),
+          supplier_count: supplierCountMap.get(product.product_id) ?? null,
+          supplier_selected: supplierSelected,
+          supplier_selected_offer_image_url: supplierMeta?.image_url ?? null,
+          supplier_selected_offer_title: supplierMeta?.title ?? null,
+          supplier_selected_offer_detail_url: supplierMeta?.detail_url ?? null,
+          supplier_payload_status: supplierMeta?.payload_status ?? null,
+          supplier_payload_source: supplierMeta?.payload_source ?? null,
+          supplier_payload_error: supplierMeta?.payload_error ?? null,
+          supplier_payload_saved_at: supplierMeta?.payload_saved_at ?? null,
+          supplier_payload_file_name: supplierMeta?.payload_file_name ?? null,
+          supplier_payload_file_path: supplierMeta?.payload_file_path ?? null,
+          supplier_variant_available_count:
+            supplierMeta?.variant_available_count ?? null,
+          supplier_variant_selected_count:
+            supplierMeta?.variant_selected_count ?? null,
+          supplier_variant_packs_text: supplierMeta?.variant_packs_text ?? null,
           shipping_cost: shippingCost,
           estimated_rerun_price: estimatedPrice,
           sold_today: toNumber(product.sold_today) ?? 0,

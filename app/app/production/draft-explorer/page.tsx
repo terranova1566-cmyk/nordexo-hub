@@ -35,7 +35,15 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -75,8 +83,10 @@ type AiPromptMode =
   | "template"
   | "direct"
   | "white_background"
+  | "auto_center_white"
   | "eraser"
   | "upscale";
+type AiTemplatePreset = "standard" | "digideal_main" | "product_scene";
 type AiResolveDecision = "keep_original" | "replace_with_ai" | "keep_both";
 type AiEditJobStatus = "queued" | "running";
 
@@ -304,6 +314,18 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
   },
+  explorerWhiteButton: {
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: "#ffffff",
+    },
+    ":active": {
+      backgroundColor: "#ffffff",
+    },
+    ":disabled": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
   iconWithZipLabel: {
     display: "inline-flex",
     alignItems: "center",
@@ -341,7 +363,7 @@ const useStyles = makeStyles({
   folderPane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "12px",
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "#ffffff",
     padding: "10px",
     display: "flex",
     flexDirection: "column",
@@ -491,7 +513,7 @@ const useStyles = makeStyles({
   filePane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "12px",
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "#ffffff",
     padding: "10px",
     display: "flex",
     flexDirection: "column",
@@ -510,7 +532,7 @@ const useStyles = makeStyles({
   mediaCard: {
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "#ffffff",
     padding: "8px",
     display: "flex",
     flexDirection: "column",
@@ -521,6 +543,10 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorBrandStroke1}`,
     boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
     backgroundColor: tokens.colorBrandBackground2,
+  },
+  mediaCardDropTarget: {
+    border: `1px dashed ${tokens.colorBrandStroke1}`,
+    boxShadow: `0 0 0 2px ${tokens.colorBrandStroke1} inset`,
   },
   mediaSquare: {
     width: "100%",
@@ -534,12 +560,12 @@ const useStyles = makeStyles({
     position: "relative",
     cursor: "pointer",
     "&:hover .thumbDownloadButton": {
-      opacity: 1,
+      opacity: 0.8,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
     "&:focus-within .thumbDownloadButton": {
-      opacity: 1,
+      opacity: 0.8,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
@@ -659,7 +685,28 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     gap: "6px",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
+    justifyContent: "flex-end",
+    whiteSpace: "nowrap",
+  },
+  fileActionUnderline: {
+    backgroundColor: "transparent",
+    border: "none",
+    minWidth: "auto",
+    paddingLeft: "10px",
+    paddingRight: "10px",
+    paddingTop: "2px",
+    paddingBottom: "2px",
+    borderRadius: "6px",
+    borderBottom: `2px solid ${tokens.colorNeutralStroke2}`,
+    ":hover": {
+      borderBottomColor: tokens.colorBrandStroke1,
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  fileActionUnderlineNarrow: {
+    paddingLeft: "8px",
+    paddingRight: "8px",
   },
   textViewerSurface: {
     width: "min(1350px, 96vw)",
@@ -694,7 +741,7 @@ const useStyles = makeStyles({
   filesSection: {
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "#ffffff",
     padding: "10px",
     display: "flex",
     flexDirection: "column",
@@ -709,12 +756,22 @@ const useStyles = makeStyles({
   filesTable: {
     tableLayout: "fixed",
     width: "100%",
+    "& [role='cell'], & [role='columnheader']": {
+      paddingTop: "4px",
+      paddingBottom: "4px",
+    },
+  },
+  filesColSelect: {
+    width: "42px",
   },
   filesColName: {
-    width: "46%",
+    width: "44%",
   },
-  filesColInfo: {
-    width: "34%",
+  filesColSize: {
+    width: "14%",
+  },
+  filesColDate: {
+    width: "22%",
   },
   filesColAction: {
     width: "20%",
@@ -726,6 +783,20 @@ const useStyles = makeStyles({
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
+  filesNameButton: {
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    textAlign: "left",
+    cursor: "text",
+    width: "100%",
+    minWidth: 0,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    lineHeight: 1.2,
+  },
   contextMenu: {
     position: "fixed",
     zIndex: 2000,
@@ -734,7 +805,7 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow16,
     padding: "4px",
-    minWidth: "236px",
+    minWidth: "212px",
     display: "flex",
     flexDirection: "column",
     gap: "1px",
@@ -749,12 +820,42 @@ const useStyles = makeStyles({
     cursor: "pointer",
     fontSize: tokens.fontSizeBase200,
     lineHeight: 1.2,
-    display: "inline-flex",
+    display: "flex",
+    width: "100%",
     alignItems: "center",
     gap: "8px",
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
     },
+  },
+  contextMenuButtonCaret: {
+    marginLeft: "auto",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: 1,
+  },
+  contextMenuSubmenuWrap: {
+    position: "relative",
+    width: "100%",
+  },
+  contextMenuSubmenu: {
+    position: "absolute",
+    left: "calc(100% + 4px)",
+    top: 0,
+    zIndex: 2100,
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow16,
+    padding: "4px",
+    minWidth: "158px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "1px",
+  },
+  contextMenuSubmenuLeft: {
+    left: "auto",
+    right: "calc(100% + 4px)",
   },
   contextMenuIcon: {
     width: "16px",
@@ -869,25 +970,10 @@ const useStyles = makeStyles({
   },
   uploadDropHint: {
     color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase200,
   },
   uploadInputWrap: {
     display: "flex",
     justifyContent: "flex-start",
-    "& input[type='file']": {
-      fontSize: tokens.fontSizeBase100,
-      lineHeight: tokens.lineHeightBase200,
-      maxWidth: "100%",
-    },
-    "& input[type='file']::file-selector-button": {
-      fontSize: tokens.fontSizeBase100,
-      padding: "6px 10px",
-      borderRadius: "8px",
-      border: `1px solid ${tokens.colorNeutralStroke2}`,
-      backgroundColor: tokens.colorNeutralBackground1,
-      cursor: "pointer",
-    },
   },
   uploadDropCenter: {
     display: "flex",
@@ -915,8 +1001,6 @@ const useStyles = makeStyles({
     "& textarea": {
       minHeight: "74px",
       resize: "vertical",
-      fontSize: tokens.fontSizeBase100,
-      lineHeight: tokens.lineHeightBase200,
     },
   },
   urlUploadActions: {
@@ -992,12 +1076,12 @@ const useStyles = makeStyles({
     position: "relative",
     cursor: "pointer",
     "&:hover .thumbDownloadButton": {
-      opacity: 1,
+      opacity: 0.5,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
     "&:focus-within .thumbDownloadButton": {
-      opacity: 1,
+      opacity: 0.5,
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
@@ -1021,7 +1105,7 @@ const useStyles = makeStyles({
     borderRadius: "999px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    color: tokens.colorNeutralForeground1,
+    color: "#b7b7b7",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1030,10 +1114,21 @@ const useStyles = makeStyles({
     boxShadow: tokens.shadow4,
     opacity: 0,
     transform: "translateY(-2px)",
-    transition: "opacity 120ms ease, transform 120ms ease",
+    transition:
+      "opacity 120ms ease, transform 120ms ease, color 120ms ease, border-color 120ms ease, background-color 120ms ease",
     pointerEvents: "none",
     ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
+      opacity: 1,
+      color: tokens.colorBrandForeground1,
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+      backgroundColor: "#ffffff",
+    },
+    ":focus-visible": {
+      opacity: 1,
+      color: tokens.colorBrandForeground1,
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+      outline: `2px solid ${tokens.colorStrokeFocus2}`,
+      outlineOffset: "1px",
     },
   },
   thumbAiButton: {
@@ -1162,11 +1257,6 @@ const useStyles = makeStyles({
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: "#ffffff",
-  },
-  contentSizedTable: {
-    width: "max-content",
-    minWidth: "100%",
-    tableLayout: "fixed",
   },
   stickyHeader: {
     position: "sticky",
@@ -1624,6 +1714,85 @@ const parseDraftRawRow = (value: unknown): Record<string, unknown> => {
 
 const toText = (value: unknown) => (value == null ? "" : String(value));
 
+const sanitizeFileNameSegment = (value: string) =>
+  String(value || "")
+    .trim()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "") || "item";
+
+const formatClipboardDateTime = (date = new Date()) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(
+    date.getHours()
+  )}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+};
+
+const imageExtensionFromMime = (mimeType: string) => {
+  const normalized = String(mimeType || "").toLowerCase();
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("webp")) return "webp";
+  if (normalized.includes("gif")) return "gif";
+  if (normalized.includes("bmp")) return "bmp";
+  if (normalized.includes("avif")) return "avif";
+  if (normalized.includes("tiff")) return "tiff";
+  return "jpg";
+};
+
+const parseImageUrlsInput = (value: string) => {
+  const tokens = value
+    .split(/[\n,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  tokens.forEach((token) => {
+    try {
+      const parsed = new URL(token);
+      if (!["http:", "https:"].includes(parsed.protocol)) return;
+      const normalized = parsed.toString();
+      if (seen.has(normalized)) return;
+      seen.add(normalized);
+      out.push(normalized);
+    } catch {
+      return;
+    }
+  });
+  return out;
+};
+
+const splitFileNameAndExtension = (fileName: string) => {
+  const name = String(fileName || "");
+  const dotIndex = name.lastIndexOf(".");
+  if (dotIndex <= 0) {
+    return { baseName: name, extension: "" };
+  }
+  return {
+    baseName: name.slice(0, dotIndex),
+    extension: name.slice(dotIndex),
+  };
+};
+
+const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR"] as const;
+type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
+const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "TAG IMAGE"] as const;
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
+  const { baseName, extension } = splitFileNameAndExtension(fileName);
+  let nextBase = baseName.trim();
+  TAG_IMAGE_SUFFIXES_TO_STRIP.forEach((tagValue) => {
+    const pattern = new RegExp(
+      `\\s*\\(${escapeRegExp(tagValue)}\\)\\s*$`,
+      "i"
+    );
+    nextBase = nextBase.replace(pattern, "").trim();
+  });
+  return `${nextBase} (${tag})${extension}`;
+};
+
 const stripSkuPackSuffix = (value: string) =>
   String(value || "")
     .trim()
@@ -1745,9 +1914,21 @@ export default function DraftExplorerPage() {
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
     null
   );
+  const [imageReorderDropPath, setImageReorderDropPath] = useState<string | null>(
+    null
+  );
+  const [imageOrderPersisting, setImageOrderPersisting] = useState(false);
   const [contextMenu, setContextMenu] = useState<ExplorerContextMenuState | null>(
     null
   );
+  const [contextMenuSubmenu, setContextMenuSubmenu] = useState<
+    "tag-image" | "edit-chatgpt" | "edit-gemini" | null
+  >(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [contextMenuSubmenuSide, setContextMenuSubmenuSide] = useState<
+    "right" | "left"
+  >("right");
+  const nonImageFileSelectAllRef = useRef<HTMLInputElement | null>(null);
   const [pendingAiEditsByOriginal, setPendingAiEditsByOriginal] = useState<
     Record<string, PendingAiEditRecord>
   >({});
@@ -3294,6 +3475,41 @@ export default function DraftExplorerPage() {
     [listPathEntries]
   );
 
+  const refreshEntries = useCallback(
+    async (pathValue: string) => {
+      if (!pathValue || entriesRefreshing) return;
+      setEntriesRefreshing(true);
+      try {
+        const items = await listPathEntries(pathValue);
+        const available = new Set(items.map((entry) => entry.path));
+        setEntries(items);
+        setSelectedFiles((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set<string>();
+          prev.forEach((value) => {
+            if (available.has(value)) next.add(value);
+          });
+          return next;
+        });
+        setPreviewPath((prev) => (prev && available.has(prev) ? prev : null));
+        setImageDimensions((prev) => {
+          const next: Record<string, { width: number; height: number }> = {};
+          Object.entries(prev).forEach(([pathValue, dims]) => {
+            if (available.has(pathValue)) {
+              next[pathValue] = dims;
+            }
+          });
+          return next;
+        });
+      } catch {
+        // Keep previous entries on refresh failure to avoid flicker.
+      } finally {
+        setEntriesRefreshing(false);
+      }
+    },
+    [entriesRefreshing, listPathEntries]
+  );
+
   const fetchPendingAiEdits = useCallback(async (pathValue: string) => {
     if (!pathValue) {
       setPendingAiEditsByOriginal({});
@@ -3342,7 +3558,7 @@ export default function DraftExplorerPage() {
   const handleExplorerRefresh = useCallback(() => {
     fetchFolders();
     if (currentPath) {
-      fetchEntries(currentPath);
+      refreshEntries(currentPath);
       fetchPendingAiEdits(currentPath);
     }
     if (selectedFolder) {
@@ -3351,7 +3567,7 @@ export default function DraftExplorerPage() {
   }, [
     fetchFolders,
     currentPath,
-    fetchEntries,
+    refreshEntries,
     fetchPendingAiEdits,
     fetchFolderTree,
     selectedFolder,
@@ -3701,12 +3917,61 @@ export default function DraftExplorerPage() {
     });
   }, [currentPath]);
 
+  useLayoutEffect(() => {
+    if (!contextMenu) return;
+    const menu = contextMenuRef.current;
+    if (!menu) return;
+
+    const clampToViewport = () => {
+      const padding = 8;
+      const rect = menu.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width - padding;
+      const maxY = window.innerHeight - rect.height - padding;
+      const nextX = Math.min(Math.max(padding, contextMenu.x), Math.max(padding, maxX));
+      const nextY = Math.min(Math.max(padding, contextMenu.y), Math.max(padding, maxY));
+
+      if (nextX !== contextMenu.x || nextY !== contextMenu.y) {
+        setContextMenu((prev) => (prev ? { ...prev, x: nextX, y: nextY } : prev));
+        return;
+      }
+
+      const submenuWidthEstimate = 180;
+      const gap = 8;
+      const finalRect = menu.getBoundingClientRect();
+      const needed = submenuWidthEstimate + gap;
+      const availableRight = window.innerWidth - padding - finalRect.right;
+      const availableLeft = finalRect.left - padding;
+      const nextSide: "right" | "left" =
+        availableRight >= needed
+          ? "right"
+          : availableLeft >= needed
+            ? "left"
+            : availableRight >= availableLeft
+              ? "right"
+              : "left";
+      setContextMenuSubmenuSide(nextSide);
+    };
+
+    clampToViewport();
+    const handleResize = () => {
+      window.requestAnimationFrame(() => clampToViewport());
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [contextMenu]);
+
   useEffect(() => {
     if (!contextMenu) return;
-    const close = () => setContextMenu(null);
+    const close = () => {
+      setContextMenu(null);
+      setContextMenuSubmenu(null);
+    };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenu(null);
+        setContextMenuSubmenu(null);
       }
     };
     window.addEventListener("click", close);
@@ -4794,6 +5059,22 @@ export default function DraftExplorerPage() {
     });
   };
 
+  const handleToggleAllNonImageFiles = useCallback(() => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      const nonImageFilePaths = entries
+        .filter((entry) => entry.type === "file" && !isImage(entry.name))
+        .map((entry) => entry.path);
+      const allSelected =
+        nonImageFilePaths.length > 0 && nonImageFilePaths.every((p) => next.has(p));
+      nonImageFilePaths.forEach((p) => {
+        if (allSelected) next.delete(p);
+        else next.add(p);
+      });
+      return next;
+    });
+  }, [entries, isImage]);
+
   const isTextFileEditable = useCallback((entry: DraftEntry) => {
     if (entry.type !== "file") return false;
     const name = entry.name.toLowerCase();
@@ -5442,7 +5723,7 @@ export default function DraftExplorerPage() {
         throw new Error(payload?.error || "Unable to save file.");
       }
       if (currentPath) {
-        fetchEntries(currentPath);
+        refreshEntries(currentPath);
       }
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
@@ -5454,11 +5735,11 @@ export default function DraftExplorerPage() {
     }
   }, [
     currentPath,
-    fetchEntries,
     fetchFolderTree,
     fileViewerContent,
     fileViewerPath,
     fileViewerSaving,
+    refreshEntries,
     selectedFolder,
   ]);
 
@@ -5594,6 +5875,7 @@ export default function DraftExplorerPage() {
       setMovingEntry(false);
       setDraggingEntryPaths([]);
       setFolderDropTargetPath(null);
+      setImageReorderDropPath(null);
     }
   };
 
@@ -5611,15 +5893,37 @@ export default function DraftExplorerPage() {
         if (!response.ok) {
           throw new Error(payload?.error || "Unable to create copy.");
         }
-        if (currentPath) {
-          await fetchEntries(currentPath);
-          await fetchPendingAiEdits(currentPath);
+        const copy = payload?.item as { name?: string; path?: string } | undefined;
+        const copyName = String(copy?.name || "").trim();
+        const copyPath = String(copy?.path || "").trim();
+        if (copyName && copyPath) {
+          const now = new Date().toISOString();
+          setEntries((prev) => {
+            if (prev.some((row) => row.path === copyPath)) return prev;
+            const copyEntry: DraftEntry = {
+              type: "file",
+              name: copyName,
+              path: copyPath,
+              size: entry.size,
+              modifiedAt: now,
+            };
+            const sourceIndex = prev.findIndex((row) => row.path === entry.path);
+            if (sourceIndex < 0) return [...prev, copyEntry];
+            const next = [...prev];
+            next.splice(sourceIndex + 1, 0, copyEntry);
+            return next;
+          });
+        } else if (currentPath) {
+          await refreshEntries(currentPath);
+        }
+        if (selectedFolder) {
+          fetchFolderTree(selectedFolder);
         }
       } catch (err) {
         setError((err as Error).message);
       }
     },
-    [currentPath, fetchEntries, fetchPendingAiEdits]
+    [currentPath, fetchFolderTree, refreshEntries, selectedFolder]
   );
 
   const handleCreateCopiesForEntries = useCallback(
@@ -5630,6 +5934,7 @@ export default function DraftExplorerPage() {
       setBulkImageActionPending(true);
       setError(null);
       const failures: string[] = [];
+      const created: Array<{ sourcePath: string; name: string; path: string; size: number }> = [];
       try {
         for (const entry of targets) {
           try {
@@ -5642,13 +5947,50 @@ export default function DraftExplorerPage() {
             if (!response.ok) {
               throw new Error(payload?.error || "Unable to create copy.");
             }
+            const copy = payload?.item as { name?: string; path?: string } | undefined;
+            const copyName = String(copy?.name || "").trim();
+            const copyPath = String(copy?.path || "").trim();
+            if (copyName && copyPath) {
+              created.push({
+                sourcePath: entry.path,
+                name: copyName,
+                path: copyPath,
+                size: entry.size,
+              });
+            }
           } catch (err) {
             failures.push(`${entry.name}: ${(err as Error).message}`);
           }
         }
-        if (currentPath) {
-          await fetchEntries(currentPath);
-          await fetchPendingAiEdits(currentPath);
+        if (created.length > 0) {
+          const now = new Date().toISOString();
+          setEntries((prev) => {
+            const existing = new Set(prev.map((row) => row.path));
+            let next = [...prev];
+            for (const item of created) {
+              if (existing.has(item.path)) continue;
+              existing.add(item.path);
+              const copyEntry: DraftEntry = {
+                type: "file",
+                name: item.name,
+                path: item.path,
+                size: item.size,
+                modifiedAt: now,
+              };
+              const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
+              if (sourceIndex < 0) {
+                next.push(copyEntry);
+              } else {
+                next.splice(sourceIndex + 1, 0, copyEntry);
+              }
+            }
+            return next;
+          });
+        } else if (currentPath) {
+          await refreshEntries(currentPath);
+        }
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
         }
       } finally {
         setBulkImageActionPending(false);
@@ -5661,16 +6003,23 @@ export default function DraftExplorerPage() {
         );
       }
     },
-    [bulkImageActionPending, currentPath, fetchEntries, fetchPendingAiEdits]
+    [
+      bulkImageActionPending,
+      currentPath,
+      fetchFolderTree,
+      refreshEntries,
+      selectedFolder,
+    ]
   );
 
-  const runAiEditsForEntries = useCallback(
-    async (
-      sourceEntries: DraftEntry[],
-      provider: AiEditProvider,
-      mode: AiPromptMode,
-      promptText: string
-    ) => {
+	  const runAiEditsForEntries = useCallback(
+	    async (
+	      sourceEntries: DraftEntry[],
+	      provider: AiEditProvider,
+	      mode: AiPromptMode,
+	      promptText: string,
+	      options?: { templatePreset?: AiTemplatePreset }
+	    ) => {
       const deduped = sourceEntries.filter(
         (entry, index, arr) =>
           entry.type === "file" &&
@@ -5724,17 +6073,18 @@ export default function DraftExplorerPage() {
               startedAt: Date.now(),
             },
           }));
-          try {
-            const response = await fetch("/api/drafts/ai-edits", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                path: entry.path,
-                provider,
-                mode,
-                prompt: promptText,
-              }),
-            });
+	          try {
+	            const response = await fetch("/api/drafts/ai-edits", {
+	              method: "POST",
+	              headers: { "Content-Type": "application/json" },
+	              body: JSON.stringify({
+	                path: entry.path,
+	                provider,
+	                mode,
+	                prompt: promptText,
+	                templatePreset: options?.templatePreset,
+	              }),
+	            });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
               throw new Error(payload?.error || "AI image edit failed.");
@@ -5760,7 +6110,7 @@ export default function DraftExplorerPage() {
       await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
 
       if (currentPath) {
-        await fetchEntries(currentPath);
+        await refreshEntries(currentPath);
         await fetchPendingAiEdits(currentPath);
       }
 
@@ -5782,8 +6132,8 @@ export default function DraftExplorerPage() {
     [
       aiEditJobsByPath,
       currentPath,
-      fetchEntries,
       fetchPendingAiEdits,
+      refreshEntries,
       isImage,
       pendingAiEditsByOriginal,
     ]
@@ -5800,7 +6150,7 @@ export default function DraftExplorerPage() {
       if (targets.length === 0) return;
       if (
         provider === "zimage" &&
-        (mode === "upscale" || mode === "white_background")
+        (mode === "upscale" || mode === "white_background" || mode === "auto_center_white")
       ) {
         setAiEditTargets([]);
         setAiEditProvider(provider);
@@ -5892,7 +6242,7 @@ export default function DraftExplorerPage() {
             )
           );
         } else if (decision === "keep_both" && currentPath) {
-          await fetchEntries(currentPath);
+          await refreshEntries(currentPath);
           await fetchPendingAiEdits(currentPath);
         }
         setAiReviewOriginalPath(null);
@@ -5902,7 +6252,7 @@ export default function DraftExplorerPage() {
         setAiReviewSubmitting(false);
       }
     },
-    [aiReviewSubmitting, currentPath, fetchEntries, fetchPendingAiEdits]
+    [aiReviewSubmitting, currentPath, fetchPendingAiEdits, refreshEntries]
   );
 
   const startRename = (entry: DraftEntry) => {
@@ -5961,16 +6311,11 @@ export default function DraftExplorerPage() {
       const now = new Date().toISOString();
 
       setEntries((prev) => {
-        const next = prev.map((item) =>
+        return prev.map((item) =>
           item.path === entry.path
             ? { ...item, name: newName, path: newPath, modifiedAt: now }
             : item
         );
-        next.sort((a, b) => {
-          if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-        return next;
       });
       setSelectedFiles((prev) => {
         if (!prev.has(entry.path)) return prev;
@@ -5980,6 +6325,14 @@ export default function DraftExplorerPage() {
         return next;
       });
       setPreviewPath((prev) => (prev === entry.path ? newPath : prev));
+      setImageDimensions((prev) => {
+        const dims = prev[entry.path];
+        if (!dims) return prev;
+        const next: Record<string, { width: number; height: number }> = { ...prev };
+        delete next[entry.path];
+        next[newPath] = dims;
+        return next;
+      });
       if (currentPath) {
         fetchPendingAiEdits(currentPath);
       }
@@ -6188,73 +6541,193 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleDeleteSelected = async () => {
-    const paths = Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
-    if (paths.length === 0) return;
-    const locked = paths.filter(
-      (item) => Boolean(pendingAiEditsByOriginal[item]) || Boolean(aiEditJobsByPath[item])
-    );
-    if (locked.length > 0) {
-      setError("Resolve pending/running AI edits before deleting those files.");
+  useEffect(() => {
+    const handleDeleteKey = (event: KeyboardEvent) => {
+      if (event.key !== "Delete") return;
+      const target = event.target as HTMLElement | null;
+      const tagName = String(target?.tagName || "").toLowerCase();
+      if (
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select"
+      ) {
+        return;
+      }
+      if (
+        !currentPath ||
+        movingEntry ||
+        renamePending ||
+        Boolean(renamingPath) ||
+        Boolean(fileViewerPath) ||
+        Boolean(previewPath) ||
+        Boolean(aiReviewOriginalPath) ||
+        aiEditTargets.length > 0 ||
+        variantsEditorOpen ||
+        detailOpen
+      ) {
+        return;
+      }
+
+      const selectedFilePaths = Array.from(selectedFiles).filter(
+        (pathValue) => entryByPath.get(pathValue)?.type === "file"
+      );
+      if (selectedFilePaths.length === 0) return;
+      event.preventDefault();
+      const deletedImagesPath = `${currentPath}/deleted images`.replace(
+        /\/{2,}/g,
+        "/"
+      );
+      void handleMoveEntriesToFolder(selectedFilePaths, deletedImagesPath);
+    };
+
+    window.addEventListener("keydown", handleDeleteKey);
+    return () => {
+      window.removeEventListener("keydown", handleDeleteKey);
+    };
+  }, [
+    aiEditTargets.length,
+    aiReviewOriginalPath,
+    currentPath,
+    detailOpen,
+    entryByPath,
+    fileViewerPath,
+    handleMoveEntriesToFolder,
+    movingEntry,
+    previewPath,
+    renamePending,
+    renamingPath,
+    selectedFiles,
+    variantsEditorOpen,
+  ]);
+
+  const uploadFilesToCurrentPath = useCallback(
+    async (files: File[]) => {
+      if (!currentPath || files.length === 0) return;
+      try {
+        const formData = new FormData();
+        formData.append("targetPath", currentPath);
+        files.forEach((file) => formData.append("files", file));
+        const response = await fetch("/api/drafts/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Upload failed.");
+        }
+        refreshEntries(currentPath);
+        fetchPendingAiEdits(currentPath);
+        if (selectedFolder) {
+          fetchFolderTree(selectedFolder);
+        }
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [
+      currentPath,
+      fetchPendingAiEdits,
+      fetchFolderTree,
+      refreshEntries,
+      selectedFolder,
+    ]
+  );
+
+  const handleUploadFiles = useCallback(
+    async (files: File[]) => {
+      await uploadFilesToCurrentPath(files);
+    },
+    [uploadFilesToCurrentPath]
+  );
+
+  const handleAddImageUrls = useCallback(async () => {
+    if (!currentPath) return;
+    const urls = parseImageUrlsInput(imageUrlInput);
+    if (urls.length === 0) {
+      setError("Add at least one valid image URL.");
       return;
     }
-    const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
-    if (!confirmed) return;
+    setAddingImageUrls(true);
+    setError(null);
     try {
-      const response = await fetch("/api/drafts/delete", {
+      const response = await fetch("/api/drafts/upload-urls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths }),
+        body: JSON.stringify({
+          targetPath: currentPath,
+          urls,
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Delete failed.");
+        throw new Error(payload?.error || "Unable to add images from URL.");
       }
-      const isDeletedPath = (candidatePath: string) =>
-        paths.some(
-          (deletedPath) =>
-            candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
-        );
-      setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
-      setSelectedFiles(new Set());
-      setSelectedTreeFolders(new Set());
-      setPendingAiEditsByOriginal((prev) => {
-        const next: Record<string, PendingAiEditRecord> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setAiEditJobsByPath((prev) => {
-        const next: Record<string, AiEditRuntimeJob> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setImageDimensions((prev) => {
-        const next: Record<string, { width: number; height: number }> = {};
-        Object.entries(prev).forEach(([pathValue, dims]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = dims;
-        });
-        return next;
-      });
-      setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
-      fetchEntries(currentPath);
+      setImageUrlInput("");
+      refreshEntries(currentPath);
       fetchPendingAiEdits(currentPath);
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
       }
+      const failed = Number(payload?.failed || 0);
+      if (failed > 0) {
+        setError(`Added ${payload?.uploaded || 0} image(s), ${failed} failed.`);
+      }
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setAddingImageUrls(false);
     }
-  };
+  }, [
+    currentPath,
+    imageUrlInput,
+    selectedFolder,
+    fetchPendingAiEdits,
+    fetchFolderTree,
+    refreshEntries,
+  ]);
+
+  useEffect(() => {
+    if (!currentPath) return;
+    const handlePaste = (event: ClipboardEvent) => {
+      const clipboardData = event.clipboardData;
+      if (!clipboardData) return;
+      const itemFiles = Array.from(clipboardData.items || [])
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+      const fallbackFiles =
+        itemFiles.length > 0
+          ? []
+          : Array.from(clipboardData.files || []).filter((file) =>
+              file.type.startsWith("image/")
+            );
+      const sourceFiles = itemFiles.length > 0 ? itemFiles : fallbackFiles;
+      if (sourceFiles.length === 0) return;
+
+      event.preventDefault();
+      const segments = currentPath.split("/").filter(Boolean);
+      const currentFolderName = sanitizeFileNameSegment(
+        segments[segments.length - 1] || "folder"
+      );
+      const stamp = formatClipboardDateTime();
+      const renamedFiles = sourceFiles.map((file, index) => {
+        const ext = imageExtensionFromMime(file.type);
+        const suffix = sourceFiles.length > 1 ? `-${index + 1}` : "";
+        const fileName = `${currentFolderName}-clipboard-${stamp}${suffix}.${ext}`;
+        return new File([file], fileName, {
+          type: file.type || `image/${ext}`,
+        });
+      });
+
+      void uploadFilesToCurrentPath(renamedFiles);
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => {
+      window.removeEventListener("paste", handlePaste);
+    };
+  }, [currentPath, uploadFilesToCurrentPath]);
 
   useEffect(() => {
     const handleDeleteKey = (event: KeyboardEvent) => {
@@ -6645,10 +7118,133 @@ export default function DraftExplorerPage() {
     triggerBrowserDownload(`/api/drafts/download?path=${encodeURIComponent(entry.path)}`);
   };
 
+  const resolveContextActionTargets = useCallback(
+    (entry: DraftEntry, options?: { imageOnly?: boolean }) => {
+      const selected = entries.filter(
+        (candidate) => candidate.type === "file" && selectedFiles.has(candidate.path)
+      );
+      if (selected.length > 1 && selected.some((candidate) => candidate.path === entry.path)) {
+        return options?.imageOnly
+          ? selected.filter((candidate) => isImage(candidate.name))
+          : selected;
+      }
+      if (options?.imageOnly) {
+        return entry.type === "file" && isImage(entry.name) ? [entry] : [];
+      }
+      return [entry];
+    },
+    [entries, isImage, selectedFiles]
+  );
+
+  const handleApplyImageTag = useCallback(
+    async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length === 0 || bulkImageActionPending) return;
+
+      setBulkImageActionPending(true);
+      setError(null);
+      const failures: string[] = [];
+      const renames: Record<string, { name: string; path: string }> = {};
+
+      try {
+        for (const entry of targets) {
+          if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
+            failures.push(`${entry.name}: resolve AI status first.`);
+            continue;
+          }
+          const requestedName = buildTaggedImageFileName(entry.name, tag);
+          if (!requestedName || requestedName === entry.name) continue;
+          try {
+            const response = await fetch("/api/drafts/images/rename", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: entry.path, name: requestedName }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Rename failed.");
+            }
+            const renamedPath = String(payload?.path || entry.path);
+            const renamedName = String(payload?.name || requestedName);
+            renames[entry.path] = { path: renamedPath, name: renamedName };
+          } catch (err) {
+            failures.push(`${entry.name}: ${(err as Error).message}`);
+          }
+        }
+
+        if (Object.keys(renames).length > 0) {
+          const now = new Date().toISOString();
+          setEntries((prev) =>
+            prev.map((item) => {
+              const renamed = renames[item.path];
+              if (!renamed) return item;
+              return { ...item, name: renamed.name, path: renamed.path, modifiedAt: now };
+            })
+          );
+          setSelectedFiles((prev) => {
+            if (prev.size === 0) return prev;
+            const next = new Set(prev);
+            Object.entries(renames).forEach(([oldPath, renamed]) => {
+              if (!next.has(oldPath)) return;
+              next.delete(oldPath);
+              next.add(renamed.path);
+            });
+            return next;
+          });
+          setPreviewPath((prev) => {
+            if (!prev) return prev;
+            const renamed = renames[prev];
+            return renamed ? renamed.path : prev;
+          });
+          setImageDimensions((prev) => {
+            const next: Record<string, { width: number; height: number }> = { ...prev };
+            Object.entries(renames).forEach(([oldPath, renamed]) => {
+              const dims = next[oldPath];
+              if (!dims) return;
+              delete next[oldPath];
+              next[renamed.path] = dims;
+            });
+            return next;
+          });
+        }
+      } finally {
+        setBulkImageActionPending(false);
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Failed to tag ${failures.length} image(s): ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+    },
+    [
+      aiEditJobsByPath,
+      bulkImageActionPending,
+      isImage,
+      pendingAiEditsByOriginal,
+    ]
+  );
+
   const handleContextMenuAction = (action: string) => {
     if (!contextMenu) return;
     const { entry } = contextMenu;
     setContextMenu(null);
+    setContextMenuSubmenu(null);
+    if (action.startsWith("tag-image:")) {
+      const tag = action.slice("tag-image:".length).trim().toUpperCase();
+      if (tag === "MAIN" || tag === "ENV" || tag === "VAR") {
+        const targets = resolveContextActionTargets(entry, { imageOnly: true });
+        void handleApplyImageTag(targets, tag);
+        return;
+      }
+    }
     if (action === "open") {
       openEntry(entry);
       return;
@@ -6665,22 +7261,69 @@ export default function DraftExplorerPage() {
       handleCreateCopy(entry);
       return;
     }
-    if (action === "ai-chatgpt-template") {
-      startAiEdit(entry, "chatgpt", "template");
+    if (action === "ai-auto-center-white") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        startAiEditForEntries(targets, "zimage", "auto_center_white");
+      }
       return;
     }
-    if (action === "ai-chatgpt-direct") {
-      startAiEdit(entry, "chatgpt", "direct");
-      return;
-    }
-    if (action === "ai-gemini-template") {
-      startAiEdit(entry, "gemini", "template");
-      return;
-    }
-    if (action === "ai-gemini-direct") {
-      startAiEdit(entry, "gemini", "direct");
-      return;
-    }
+	    if (action === "ai-chatgpt-template") {
+	      startAiEdit(entry, "chatgpt", "template");
+	      return;
+	    }
+	    if (action === "ai-chatgpt-digideal-main") {
+	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+	      if (targets.length > 0) {
+	        setError(null);
+	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
+	          templatePreset: "digideal_main",
+	        });
+	      }
+	      return;
+	    }
+	    if (action === "ai-chatgpt-product-scene") {
+	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+	      if (targets.length > 0) {
+	        setError(null);
+	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
+	          templatePreset: "product_scene",
+	        });
+	      }
+	      return;
+	    }
+	    if (action === "ai-chatgpt-direct") {
+	      startAiEdit(entry, "chatgpt", "direct");
+	      return;
+	    }
+	    if (action === "ai-gemini-template") {
+	      startAiEdit(entry, "gemini", "template");
+	      return;
+	    }
+	    if (action === "ai-gemini-digideal-main") {
+	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+	      if (targets.length > 0) {
+	        setError(null);
+	        void runAiEditsForEntries(targets, "gemini", "template", "", {
+	          templatePreset: "digideal_main",
+	        });
+	      }
+	      return;
+	    }
+	    if (action === "ai-gemini-product-scene") {
+	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+	      if (targets.length > 0) {
+	        setError(null);
+	        void runAiEditsForEntries(targets, "gemini", "template", "", {
+	          templatePreset: "product_scene",
+	        });
+	      }
+	      return;
+	    }
+	    if (action === "ai-gemini-direct") {
+	      startAiEdit(entry, "gemini", "direct");
+	      return;
+	    }
     if (action === "ai-zimage-white") {
       startAiEdit(entry, "zimage", "white_background");
       return;
@@ -6835,12 +7478,114 @@ export default function DraftExplorerPage() {
   const imageEntries = entries.filter(
     (entry) => entry.type === "file" && isImage(entry.name)
   );
+  const persistImageOrder = useCallback(
+    async (orderedPaths: string[]) => {
+      if (!currentPath) return;
+      setImageOrderPersisting(true);
+      try {
+        const response = await fetch("/api/drafts/images/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            folderPath: currentPath,
+            orderedPaths,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to save image order.");
+        }
+      } catch (err) {
+        setError((err as Error).message);
+        if (currentPath) {
+          refreshEntries(currentPath);
+        }
+      } finally {
+        setImageOrderPersisting(false);
+      }
+    },
+    [currentPath, refreshEntries]
+  );
+
+  const reorderImagesInGrid = useCallback(
+    (draggedPaths: string[], dropTargetPath: string | null) => {
+      const currentImagePaths = imageEntries.map((entry) => entry.path);
+      if (currentImagePaths.length <= 1) return;
+      const movingPaths = draggedPaths.filter((pathValue) =>
+        currentImagePaths.includes(pathValue)
+      );
+      if (movingPaths.length === 0) return;
+      const uniqueMoving = Array.from(new Set(movingPaths));
+      if (dropTargetPath && uniqueMoving.includes(dropTargetPath)) {
+        return;
+      }
+      const remaining = currentImagePaths.filter(
+        (pathValue) => !uniqueMoving.includes(pathValue)
+      );
+      let insertAt = remaining.length;
+      if (dropTargetPath) {
+        const targetIndex = remaining.indexOf(dropTargetPath);
+        if (targetIndex >= 0) {
+          insertAt = targetIndex;
+        }
+      }
+      const nextImagePaths = [
+        ...remaining.slice(0, insertAt),
+        ...uniqueMoving,
+        ...remaining.slice(insertAt),
+      ];
+      if (
+        nextImagePaths.length !== currentImagePaths.length ||
+        nextImagePaths.every((pathValue, index) => pathValue === currentImagePaths[index])
+      ) {
+        return;
+      }
+
+      const nextImageOrder = new Map<string, number>();
+      nextImagePaths.forEach((pathValue, index) => {
+        nextImageOrder.set(pathValue, index);
+      });
+      setEntries((prev) => {
+        const dirs = prev.filter((entry) => entry.type === "dir");
+        const files = prev.filter((entry) => entry.type === "file");
+        const sortedFiles = [...files].sort((left, right) => {
+          const leftOrder = nextImageOrder.get(left.path);
+          const rightOrder = nextImageOrder.get(right.path);
+          if (leftOrder !== undefined && rightOrder !== undefined) {
+            return leftOrder - rightOrder;
+          }
+          if (leftOrder !== undefined) return -1;
+          if (rightOrder !== undefined) return 1;
+          return left.name.localeCompare(right.name);
+        });
+        return [...dirs, ...sortedFiles];
+      });
+      void persistImageOrder(nextImagePaths);
+    },
+    [imageEntries, persistImageOrder]
+  );
+
   const selectedImageEntries = imageEntries.filter((entry) =>
     selectedFiles.has(entry.path)
   );
   const nonImageFileEntries = entries.filter(
     (entry) => entry.type === "file" && !isImage(entry.name)
   );
+  const nonImageFilesSelectedCount = nonImageFileEntries.reduce(
+    (count, entry) => count + (selectedFiles.has(entry.path) ? 1 : 0),
+    0
+  );
+  const nonImageFilesAllSelected =
+    nonImageFileEntries.length > 0 &&
+    nonImageFilesSelectedCount === nonImageFileEntries.length;
+  const nonImageFilesSomeSelected =
+    nonImageFilesSelectedCount > 0 && !nonImageFilesAllSelected;
+
+  useEffect(() => {
+    const el = nonImageFileSelectAllRef.current;
+    if (!el) return;
+    el.indeterminate = nonImageFilesSomeSelected;
+  }, [nonImageFilesSomeSelected]);
   const aiReviewRecord = aiReviewOriginalPath
     ? pendingAiEditsByOriginal[aiReviewOriginalPath] ?? null
     : null;
@@ -6859,16 +7604,18 @@ export default function DraftExplorerPage() {
       : aiEditProvider === "gemini"
         ? "Gemini"
         : "ZImage";
-  const aiEditModeLabel =
-    aiEditMode === "template"
-      ? "Template"
-      : aiEditMode === "direct"
-        ? "Direct"
-        : aiEditMode === "white_background"
-          ? "White Background"
-          : aiEditMode === "eraser"
-            ? "Eraser"
-            : "Upscale";
+	  const aiEditModeLabel =
+	    aiEditMode === "template"
+	      ? "Standard Template"
+	      : aiEditMode === "direct"
+	        ? "Direct"
+	        : aiEditMode === "white_background"
+	          ? "White Background"
+	          : aiEditMode === "auto_center_white"
+	            ? "Auto Center Wide"
+	          : aiEditMode === "eraser"
+	            ? "Eraser"
+	            : "Upscale";
   const variantsEditorAllSelected =
     variantsEditorRows.length > 0 &&
     variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
@@ -6883,7 +7630,9 @@ export default function DraftExplorerPage() {
       | "open"
       | "download"
       | "duplicate"
+      | "tag"
       | "ai"
+      | "focuscenter"
       | "background"
       | "eraser"
       | "upscale"
@@ -6948,6 +7697,47 @@ export default function DraftExplorerPage() {
           <path stroke="none" d="M0 0h24v24H0z" fill="none" />
           <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
           <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+        </svg>
+      );
+    }
+    if (type === "tag") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M7 7h.01" />
+          <path d="M3 11l8.586 8.586a2 2 0 0 0 2.828 0l5.172 -5.172a2 2 0 0 0 0 -2.828l-8.586 -8.586h-6v6" />
+        </svg>
+      );
+    }
+    if (type === "focuscenter") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+          <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
+          <path d="M4 16v2a2 2 0 0 0 2 2h2" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v2" />
+          <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
         </svg>
       );
     }
@@ -8985,7 +9775,7 @@ export default function DraftExplorerPage() {
                 setCurrentPath(parts.join("/"));
               }}
               disabled={!currentPath || currentPath === selectedFolder}
-              className={styles.iconButton}
+              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
               aria-label={t("bulkProcessing.explorer.up")}
               title={t("bulkProcessing.explorer.up")}
             >
@@ -9008,7 +9798,7 @@ export default function DraftExplorerPage() {
               appearance="outline"
               onClick={handleDeleteFolder}
               disabled={!selectedFolder || deleteFolderPending}
-              className={styles.iconButton}
+              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
               aria-label={t("bulkProcessing.explorer.deleteFolder")}
               title={t("bulkProcessing.explorer.deleteFolder")}
             >
@@ -9109,6 +9899,7 @@ export default function DraftExplorerPage() {
                   appearance="outline"
                   onClick={handleDownloadAllFolders}
                   disabled={!selectedFolder}
+                  className={styles.explorerWhiteButton}
                 >
                   Download all
                 </Button>
@@ -9116,6 +9907,7 @@ export default function DraftExplorerPage() {
                   appearance="outline"
                   onClick={handleDownloadSelectedZip}
                   disabled={selectedTreeFolders.size === 0}
+                  className={styles.explorerWhiteButton}
                 >
                   <span className={styles.iconWithZipLabel}>
                     <svg
@@ -9141,7 +9933,7 @@ export default function DraftExplorerPage() {
                   appearance="outline"
                   onClick={handleDeleteSelectedFolders}
                   disabled={selectedTreeFolders.size === 0}
-                  className={styles.iconButton}
+                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
                   aria-label={t("bulkProcessing.explorer.deleteSelected")}
                   title={t("bulkProcessing.explorer.deleteSelected")}
                 >
@@ -9194,54 +9986,110 @@ export default function DraftExplorerPage() {
                       >
                         Create Copy
                       </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "chatgpt",
-                            "template"
-                          )
-                        }
-                      >
-                        Edit ChatGPT: Template
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "chatgpt",
-                            "direct"
-                          )
-                        }
-                      >
-                        Edit ChatGPT: Direct
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "gemini",
-                            "template"
-                          )
-                        }
-                      >
-                        Edit Gemini: Template
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "gemini",
-                            "direct"
-                          )
-                        }
-                      >
-                        Edit Gemini: Direct
-                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          startAiEditForEntries(
+	                            selectedImageEntries,
+	                            "chatgpt",
+	                            "template"
+	                          )
+	                        }
+	                      >
+	                        Edit ChatGPT: Standard Template
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          startAiEditForEntries(
+	                            selectedImageEntries,
+	                            "chatgpt",
+	                            "direct"
+	                          )
+	                        }
+	                      >
+	                        Edit ChatGPT: Direct
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          void runAiEditsForEntries(
+	                            selectedImageEntries,
+	                            "chatgpt",
+	                            "template",
+	                            "",
+	                            { templatePreset: "digideal_main" }
+	                          )
+	                        }
+	                      >
+	                        Edit ChatGPT: Digideal Main
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          void runAiEditsForEntries(
+	                            selectedImageEntries,
+	                            "chatgpt",
+	                            "template",
+	                            "",
+	                            { templatePreset: "product_scene" }
+	                          )
+	                        }
+	                      >
+	                        Edit ChatGPT: Product Scene
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          startAiEditForEntries(
+	                            selectedImageEntries,
+	                            "gemini",
+	                            "template"
+	                          )
+	                        }
+	                      >
+	                        Edit Gemini: Standard Template
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          startAiEditForEntries(
+	                            selectedImageEntries,
+	                            "gemini",
+	                            "direct"
+	                          )
+	                        }
+	                      >
+	                        Edit Gemini: Direct
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          void runAiEditsForEntries(
+	                            selectedImageEntries,
+	                            "gemini",
+	                            "template",
+	                            "",
+	                            { templatePreset: "digideal_main" }
+	                          )
+	                        }
+	                      >
+	                        Edit Gemini: Digideal Main
+	                      </MenuItem>
+	                      <MenuItem
+	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+	                        onClick={() =>
+	                          void runAiEditsForEntries(
+	                            selectedImageEntries,
+	                            "gemini",
+	                            "template",
+	                            "",
+	                            { templatePreset: "product_scene" }
+	                          )
+	                        }
+	                      >
+	                        Edit Gemini: Product Scene
+	                      </MenuItem>
                       <MenuItem
                         disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
                         onClick={() =>
@@ -9274,11 +10122,12 @@ export default function DraftExplorerPage() {
                   </MenuPopover>
                 </Menu>
                 <div className={styles.imageToolbarIconGroup}>
+                  {entriesRefreshing ? <Spinner size="tiny" /> : null}
                   <Button
                     appearance="outline"
                     onClick={handleExplorerRefresh}
-                    disabled={entriesLoading || movingEntry}
-                    className={styles.iconButton}
+                    disabled={entriesLoading || entriesRefreshing || movingEntry}
+                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
                     aria-label={t("bulkProcessing.explorer.refresh")}
                     title={t("bulkProcessing.explorer.refresh")}
                   >
@@ -9302,7 +10151,7 @@ export default function DraftExplorerPage() {
                     appearance="outline"
                     onClick={handleDownloadSelectedIndividually}
                     disabled={selectedFiles.size === 0}
-                    className={styles.iconButton}
+                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
                     aria-label={t("bulkProcessing.explorer.downloadSelected")}
                     title={t("bulkProcessing.explorer.downloadSelected")}
                   >
@@ -9327,7 +10176,7 @@ export default function DraftExplorerPage() {
                     appearance="outline"
                     onClick={handleDeleteSelected}
                     disabled={selectedFiles.size + selectedTreeFolders.size === 0}
-                    className={styles.iconButton}
+                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
                     aria-label={t("bulkProcessing.explorer.deleteSelected")}
                     title={t("bulkProcessing.explorer.deleteSelected")}
                   >
@@ -9353,7 +10202,7 @@ export default function DraftExplorerPage() {
                 </div>
                 <Button
                   appearance="outline"
-                  className={styles.iconButton}
+                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
                   disabled={imageEntries.length === 0}
                   aria-label={
                     imageResizeActionIcon === "grow"
@@ -9428,11 +10277,41 @@ export default function DraftExplorerPage() {
                   ) : (
                     <div
                       className={styles.dualGrid}
+                      aria-busy={imageOrderPersisting}
                       style={{
                         gridTemplateColumns:
                           imageViewMode === "big"
                             ? "repeat(auto-fill, minmax(320px, 1fr))"
                             : "repeat(auto-fill, minmax(160px, 1fr))",
+                      }}
+                      onDragOver={(event) => {
+                        const draggedPaths = readDraggedPaths(event.dataTransfer);
+                        const hasImageDrag = draggedPaths.some((pathValue) => {
+                          const draggedEntry = entryByPath.get(pathValue);
+                          return Boolean(
+                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
+                          );
+                        });
+                        if (!hasImageDrag) return;
+                        event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        const draggedPaths = readDraggedPaths(event.dataTransfer);
+                        const hasImageDrag = draggedPaths.some((pathValue) => {
+                          const draggedEntry = entryByPath.get(pathValue);
+                          return Boolean(
+                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
+                          );
+                        });
+                        if (!hasImageDrag) return;
+                        event.preventDefault();
+                        reorderImagesInGrid(draggedPaths, null);
+                        setImageReorderDropPath(null);
+                        setFolderDropTargetPath(null);
+                        setDraggingEntryPaths([]);
+                      }}
+                      onDragLeave={() => {
+                        setImageReorderDropPath(null);
                       }}
                     >
                       {imageEntries.map((entry) => {
@@ -9443,6 +10322,9 @@ export default function DraftExplorerPage() {
                             key={entry.path}
                             className={mergeClasses(
                               styles.mediaCard,
+                              imageReorderDropPath === entry.path
+                                ? styles.mediaCardDropTarget
+                                : undefined,
                               selectedFiles.has(entry.path)
                                 ? styles.mediaCardSelected
                                 : undefined
@@ -9460,13 +10342,53 @@ export default function DraftExplorerPage() {
                                 JSON.stringify(draggedPaths)
                               );
                               setDraggingEntryPaths(draggedPaths);
+                              setImageReorderDropPath(null);
                             }}
                             onDragEnd={() => {
                               setDraggingEntryPaths([]);
                               setFolderDropTargetPath(null);
+                              setImageReorderDropPath(null);
+                            }}
+                            onDragOver={(event) => {
+                              const draggedPaths = readDraggedPaths(event.dataTransfer);
+                              const hasImageDrag = draggedPaths.some((pathValue) => {
+                                const draggedEntry = entryByPath.get(pathValue);
+                                return Boolean(
+                                  draggedEntry?.type === "file" &&
+                                    isImage(draggedEntry.name)
+                                );
+                              });
+                              if (!hasImageDrag) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setImageReorderDropPath(entry.path);
+                            }}
+                            onDragLeave={(event) => {
+                              event.stopPropagation();
+                              if (imageReorderDropPath === entry.path) {
+                                setImageReorderDropPath(null);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              const draggedPaths = readDraggedPaths(event.dataTransfer);
+                              const hasImageDrag = draggedPaths.some((pathValue) => {
+                                const draggedEntry = entryByPath.get(pathValue);
+                                return Boolean(
+                                  draggedEntry?.type === "file" &&
+                                    isImage(draggedEntry.name)
+                                );
+                              });
+                              if (!hasImageDrag) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              reorderImagesInGrid(draggedPaths, entry.path);
+                              setImageReorderDropPath(null);
+                              setFolderDropTargetPath(null);
+                              setDraggingEntryPaths([]);
                             }}
                             onContextMenu={(event) => {
                               event.preventDefault();
+                              setContextMenuSubmenu(null);
                               setContextMenu({
                                 entry,
                                 image: true,
@@ -9532,19 +10454,22 @@ export default function DraftExplorerPage() {
                                 }}
                               >
                                 <svg
+                                  xmlns="http://www.w3.org/2000/svg"
                                   viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
                                   width="16"
                                   height="16"
                                   aria-hidden="true"
                                 >
-                                  <path
-                                    d="M11 4a7 7 0 1 0 4.7 12.2l4 4 1.4-1.4-4-4A7 7 0 0 0 11 4Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
+                                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                  <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+                                  <path d="M7 10l6 0" />
+                                  <path d="M10 7l0 6" />
+                                  <path d="M21 21l-6 -6" />
                                 </svg>
                               </button>
                               <img
@@ -9636,161 +10561,222 @@ export default function DraftExplorerPage() {
                 </>
               )}
             </div>
-              <div className={styles.filesSection}>
-                <div className={styles.filesHeader}>
-                  <Text size={200} weight="semibold">
-                    Files
-                  </Text>
-                  <Text size={100} className={styles.filesInfo}>
-                    {nonImageFileEntries.length} file(s)
-                  </Text>
+              <div className={styles.filesUploadRow}>
+                <div className={styles.filesSection}>
+                  {entriesLoading ? (
+                    <Spinner size="tiny" />
+                  ) : nonImageFileEntries.length === 0 ? (
+                    <Text size={100}>No files in this folder.</Text>
+	                  ) : (
+	                    <Table size="small" className={styles.filesTable}>
+	                      <TableHeader>
+	                        <TableRow>
+	                          <TableHeaderCell className={styles.filesColSelect}>
+	                            <input
+	                              ref={nonImageFileSelectAllRef}
+	                              type="checkbox"
+	                              checked={nonImageFilesAllSelected}
+	                              onChange={handleToggleAllNonImageFiles}
+	                              aria-label="Select all files"
+	                            />
+	                          </TableHeaderCell>
+	                          <TableHeaderCell className={styles.filesColName}>
+	                            File Name
+	                          </TableHeaderCell>
+	                          <TableHeaderCell className={styles.filesColSize}>
+	                            File Size
+	                          </TableHeaderCell>
+	                          <TableHeaderCell className={styles.filesColDate}>
+	                            Date
+	                          </TableHeaderCell>
+	                          <TableHeaderCell className={styles.filesColAction}>
+	                            Actions
+	                          </TableHeaderCell>
+	                        </TableRow>
+	                      </TableHeader>
+	                      <TableBody>
+	                        {nonImageFileEntries.map((entry) => (
+                          <TableRow
+                            key={`file-${entry.path}`}
+                            draggable
+                            onDragStart={(event) => {
+                              const draggedPaths = buildDraggedPathsForEntry(entry);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData(
+                                "text/plain",
+                                draggedPaths[0] ?? entry.path
+                              );
+                              event.dataTransfer.setData(
+                                "application/x-nordexo-paths",
+                                JSON.stringify(draggedPaths)
+                              );
+                              setDraggingEntryPaths(draggedPaths);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingEntryPaths([]);
+                              setFolderDropTargetPath(null);
+                            }}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setContextMenuSubmenu(null);
+                              setContextMenu({
+                                entry,
+                                image: false,
+                                x: event.clientX,
+                                y: event.clientY,
+                              });
+	                            }}
+	                          >
+	                            <TableCell className={styles.filesColSelect}>
+	                              <input
+	                                type="checkbox"
+	                                checked={selectedFiles.has(entry.path)}
+	                                onChange={() => handleToggleFile(entry.path)}
+	                              />
+	                            </TableCell>
+	                            <TableCell className={styles.filesColName}>
+	                              {renamingPath === entry.path ? (
+	                                <Input
+	                                  size="small"
+	                                  value={renameValue}
+	                                  onChange={(_, data) => setRenameValue(data.value)}
+	                                  onBlur={() => commitRename(entry)}
+	                                  onKeyDown={(event) => {
+	                                    if (event.key === "Enter") {
+	                                      event.preventDefault();
+	                                      commitRename(entry);
+	                                    }
+	                                    if (event.key === "Escape") {
+	                                      event.preventDefault();
+	                                      cancelRename();
+	                                    }
+	                                  }}
+	                                  autoFocus
+	                                  className={styles.renameInput}
+	                                />
+	                              ) : (
+	                                <button
+	                                  type="button"
+	                                  className={styles.filesNameButton}
+	                                  onClick={() => startRename(entry)}
+	                                >
+	                                  {entry.name}
+	                                </button>
+	                              )}
+	                            </TableCell>
+	                            <TableCell className={styles.filesColSize}>
+	                              <Text size={100} className={styles.filesInfo}>
+	                                {formatFileSize(entry.size)}
+	                              </Text>
+	                            </TableCell>
+	                            <TableCell className={styles.filesColDate}>
+	                              <Text size={100} className={styles.filesInfo}>
+	                                {formatDateTime(entry.modifiedAt)}
+	                              </Text>
+	                            </TableCell>
+	                            <TableCell className={styles.filesColAction}>
+	                              <div className={styles.fileActions}>
+	                                <Button
+	                                  appearance="transparent"
+	                                  size="small"
+	                                  onClick={() => downloadEntry(entry)}
+	                                  className={styles.fileActionUnderline}
+	                                >
+	                                  {t("bulkProcessing.explorer.download")}
+	                                </Button>
+	                                <Button
+	                                  appearance="transparent"
+	                                  size="small"
+	                                  onClick={() => handleOpenFileViewer(entry)}
+	                                  disabled={!isTextFileEditable(entry)}
+	                                  className={mergeClasses(
+	                                    styles.fileActionUnderline,
+	                                    styles.fileActionUnderlineNarrow
+	                                  )}
+	                                >
+	                                  View
+	                                </Button>
+	                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
-                {entriesLoading ? (
-                  <Spinner size="tiny" />
-                ) : nonImageFileEntries.length === 0 ? (
-                  <Text size={100}>No files in this folder.</Text>
-                ) : (
-                  <Table size="small" className={styles.filesTable}>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHeaderCell className={styles.filesColName}>
-                          File name
-                        </TableHeaderCell>
-                        <TableHeaderCell className={styles.filesColInfo}>
-                          File information
-                        </TableHeaderCell>
-                        <TableHeaderCell className={styles.filesColAction}>
-                          Action
-                        </TableHeaderCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {nonImageFileEntries.map((entry) => (
-                        <TableRow
-                          key={`file-${entry.path}`}
-                          draggable
-                          onDragStart={(event) => {
-                            const draggedPaths = buildDraggedPathsForEntry(entry);
-                            event.dataTransfer.effectAllowed = "move";
-                            event.dataTransfer.setData(
-                              "text/plain",
-                              draggedPaths[0] ?? entry.path
-                            );
-                            event.dataTransfer.setData(
-                              "application/x-nordexo-paths",
-                              JSON.stringify(draggedPaths)
-                            );
-                            setDraggingEntryPaths(draggedPaths);
-                          }}
-                          onDragEnd={() => {
-                            setDraggingEntryPaths([]);
-                            setFolderDropTargetPath(null);
-                          }}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setContextMenu({
-                              entry,
-                              image: false,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <TableCell>
-                            <div className={styles.explorerRow}>
-                              <input
-                                type="checkbox"
-                                checked={selectedFiles.has(entry.path)}
-                                onChange={() => handleToggleFile(entry.path)}
-                              />
-                              {renamingPath === entry.path ? (
-                                <Input
-                                  size="small"
-                                  value={renameValue}
-                                  onChange={(_, data) => setRenameValue(data.value)}
-                                  onBlur={() => commitRename(entry)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter") {
-                                      event.preventDefault();
-                                      commitRename(entry);
-                                    }
-                                    if (event.key === "Escape") {
-                                      event.preventDefault();
-                                      cancelRename();
-                                    }
-                                  }}
-                                  autoFocus
-                                  className={styles.renameInput}
-                                />
-                              ) : (
-                                <button
-                                  type="button"
-                                  className={styles.explorerName}
-                                  onClick={() => startRename(entry)}
-                                >
-                                  {entry.name}
-                                </button>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Text size={100} className={styles.filesInfo}>
-                              {`${formatFileSize(entry.size)} | ${formatDateTime(
-                                entry.modifiedAt
-                              )}`}
-                            </Text>
-                          </TableCell>
-                          <TableCell>
-                            <div className={styles.fileActions}>
-                              <Button
-                                appearance="outline"
-                                size="small"
-                                onClick={() => downloadEntry(entry)}
-                              >
-                                {t("bulkProcessing.explorer.download")}
-                              </Button>
-                              <Button
-                                appearance="subtle"
-                                size="small"
-                                onClick={() => handleOpenFileViewer(entry)}
-                                disabled={!isTextFileEditable(entry)}
-                              >
-                                View
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
-              <div
-                className={mergeClasses(
-                  styles.dropZone,
-                  isDragging ? styles.dropZoneActive : undefined
-                )}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setIsDragging(false);
-                  const files = Array.from(event.dataTransfer.files ?? []);
-                  handleUploadFiles(files);
-                }}
-              >
-                <Text size={200}>{t("bulkProcessing.explorer.drop")}</Text>
-                <div>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(event) =>
-                      handleUploadFiles(Array.from(event.target.files ?? []))
-                    }
+
+                <div className={styles.urlUploadPanel}>
+                  <Text size={200} weight="semibold">
+                    Image URL Input
+                  </Text>
+                  <Textarea
+                    rows={3}
+                    resize="vertical"
+                    value={imageUrlInput}
+                    onChange={(_, data) => setImageUrlInput(data.value)}
+                    placeholder="Paste image URLs separated by commas"
+                    className={styles.urlUploadInput}
                   />
+                  <div className={styles.urlUploadActions}>
+                    <Button
+                      appearance="primary"
+                      size="small"
+                      onClick={handleAddImageUrls}
+                      disabled={!currentPath || addingImageUrls}
+                    >
+                      {addingImageUrls ? "Adding..." : "Add Images"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div
+                  className={mergeClasses(
+                    styles.dropZone,
+                    isDragging ? styles.dropZoneActive : undefined
+                  )}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                    const files = Array.from(event.dataTransfer.files ?? []);
+                    handleUploadFiles(files);
+                  }}
+                >
+                  <Text size={200} className={styles.uploadDropHint}>
+                    Drag and drop files, or choose from your computer.
+                  </Text>
+                  <div className={styles.uploadDropCenter}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.uploadDropIcon}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+                      <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
+                      <path d="M12 11v6" />
+                      <path d="M9.5 13.5l2.5 -2.5l2.5 2.5" />
+                    </svg>
+                  </div>
+                  <div className={styles.uploadInputWrap}>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) =>
+                        handleUploadFiles(Array.from(event.target.files ?? []))
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -10126,109 +11112,271 @@ export default function DraftExplorerPage() {
           </div>
         )}
 
-        {contextMenu ? (
-          <div
-            className={styles.contextMenu}
-            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-            onContextMenu={(event) => event.preventDefault()}
-          >
-            <button
-              type="button"
-              className={styles.contextMenuButton}
-              onClick={() => handleContextMenuAction("open")}
-            >
+	        {contextMenu ? (
+	          <div
+	            className={styles.contextMenu}
+	            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+	            ref={contextMenuRef}
+	            onContextMenu={(event) => event.preventDefault()}
+	          >
+	            {contextMenu.image ? (
+	              <div
+	                className={styles.contextMenuSubmenuWrap}
+	                onMouseEnter={() => setContextMenuSubmenu("tag-image")}
+	              >
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onMouseEnter={() => setContextMenuSubmenu("tag-image")}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setContextMenuSubmenu("tag-image");
+                  }}
+                >
+	                  {renderContextMenuIcon("tag")}
+	                  <span>Tag Image</span>
+	                  <span className={styles.contextMenuButtonCaret}>
+	                    {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+	                  </span>
+	                </button>
+	                {contextMenuSubmenu === "tag-image" ? (
+	                  <div
+	                    className={mergeClasses(
+	                      styles.contextMenuSubmenu,
+	                      contextMenuSubmenuSide === "left"
+	                        ? styles.contextMenuSubmenuLeft
+	                        : undefined
+	                    )}
+	                  >
+	                    <button
+	                      type="button"
+	                      className={styles.contextMenuButton}
+	                      onClick={() => handleContextMenuAction("tag-image:MAIN")}
+                    >
+                      <span>MAIN</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      onClick={() => handleContextMenuAction("tag-image:ENV")}
+                    >
+                      <span>ENV</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      onClick={() => handleContextMenuAction("tag-image:VAR")}
+                    >
+                      <span>VAR</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+	            <button
+	              type="button"
+	              className={styles.contextMenuButton}
+	              onMouseEnter={() => setContextMenuSubmenu(null)}
+	              onClick={() => handleContextMenuAction("open")}
+	            >
               {renderContextMenuIcon("open")}
               <span>Open</span>
             </button>
-            <button
-              type="button"
-              className={styles.contextMenuButton}
-              onClick={() => handleContextMenuAction("download")}
-            >
+	            <button
+	              type="button"
+	              className={styles.contextMenuButton}
+	              onMouseEnter={() => setContextMenuSubmenu(null)}
+	              onClick={() => handleContextMenuAction("download")}
+	            >
               {renderContextMenuIcon("download")}
               <span>Download</span>
             </button>
-            {isTextFileEditable(contextMenu.entry) ? (
-              <button
-                type="button"
-                className={styles.contextMenuButton}
-                onClick={() => handleContextMenuAction("view")}
-              >
+	            {isTextFileEditable(contextMenu.entry) ? (
+	              <button
+	                type="button"
+	                className={styles.contextMenuButton}
+	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onClick={() => handleContextMenuAction("view")}
+	              >
                 {renderContextMenuIcon("open")}
                 <span>View</span>
               </button>
             ) : null}
-            <button
-              type="button"
-              className={styles.contextMenuButton}
-              onClick={() => handleContextMenuAction("create-copy")}
-            >
+	            <button
+	              type="button"
+	              className={styles.contextMenuButton}
+	              onMouseEnter={() => setContextMenuSubmenu(null)}
+	              onClick={() => handleContextMenuAction("create-copy")}
+	            >
               {renderContextMenuIcon("duplicate")}
               <span>Duplicate</span>
             </button>
             {contextMenu.image ? (
               <>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-chatgpt-template")}
-                >
-                  {renderContextMenuIcon("ai")}
-                  <span>Edit ChatGPT: Template</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
-                >
-                  {renderContextMenuIcon("ai")}
-                  <span>Edit ChatGPT: Direct</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-gemini-template")}
-                >
-                  {renderContextMenuIcon("ai")}
-                  <span>Edit Gemini: Template</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-gemini-direct")}
-                >
-                  {renderContextMenuIcon("ai")}
-                  <span>Edit Gemini: Direct</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-zimage-direct")}
-                >
+		                <button
+		                  type="button"
+		                  className={styles.contextMenuButton}
+		                  onMouseEnter={() => setContextMenuSubmenu(null)}
+		                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
+		                >
+	                  {renderContextMenuIcon("focuscenter")}
+	                  <span>Edit Auto Center Wide</span>
+	                </button>
+	                <div
+	                  className={styles.contextMenuSubmenuWrap}
+	                  onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
+	                >
+                  <button
+                    type="button"
+                    className={styles.contextMenuButton}
+                    onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setContextMenuSubmenu("edit-chatgpt");
+                    }}
+                  >
+	                    {renderContextMenuIcon("ai")}
+	                    <span>Edit ChatGPT</span>
+	                    <span className={styles.contextMenuButtonCaret}>
+	                      {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+	                    </span>
+	                  </button>
+		                  {contextMenuSubmenu === "edit-chatgpt" ? (
+		                    <div
+		                      className={mergeClasses(
+		                        styles.contextMenuSubmenu,
+		                        contextMenuSubmenuSide === "left"
+		                          ? styles.contextMenuSubmenuLeft
+		                          : undefined
+		                      )}
+		                    >
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-chatgpt-template")}
+	                      >
+	                        <span>Standard Template</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
+	                      >
+	                        <span>Direct</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-chatgpt-digideal-main")}
+	                      >
+	                        <span>Digideal Main</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-chatgpt-product-scene")}
+	                      >
+	                        <span>Product Scene</span>
+	                      </button>
+	                    </div>
+	                  ) : null}
+	                </div>
+
+	                <div
+	                  className={styles.contextMenuSubmenuWrap}
+	                  onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
+	                >
+                  <button
+                    type="button"
+                    className={styles.contextMenuButton}
+                    onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setContextMenuSubmenu("edit-gemini");
+                    }}
+                  >
+	                    {renderContextMenuIcon("ai")}
+	                    <span>Edit Gemini</span>
+	                    <span className={styles.contextMenuButtonCaret}>
+	                      {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+	                    </span>
+	                  </button>
+		                  {contextMenuSubmenu === "edit-gemini" ? (
+		                    <div
+		                      className={mergeClasses(
+		                        styles.contextMenuSubmenu,
+		                        contextMenuSubmenuSide === "left"
+		                          ? styles.contextMenuSubmenuLeft
+		                          : undefined
+		                      )}
+		                    >
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-gemini-template")}
+	                      >
+	                        <span>Standard Template</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-gemini-direct")}
+	                      >
+	                        <span>Direct</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-gemini-digideal-main")}
+	                      >
+	                        <span>Digideal Main</span>
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={styles.contextMenuButton}
+	                        onClick={() => handleContextMenuAction("ai-gemini-product-scene")}
+	                      >
+	                        <span>Product Scene</span>
+	                      </button>
+	                    </div>
+	                  ) : null}
+	                </div>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onClick={() => handleContextMenuAction("ai-zimage-direct")}
+	                >
                   {renderContextMenuIcon("ai")}
                   <span>Edit Z-Image: Direct</span>
                 </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-zimage-white")}
-                >
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onClick={() => handleContextMenuAction("ai-zimage-white")}
+	                >
                   {renderContextMenuIcon("background")}
                   <span>Edit Z-Image: White BG</span>
                 </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-zimage-eraser")}
-                >
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onClick={() => handleContextMenuAction("ai-zimage-eraser")}
+	                >
                   {renderContextMenuIcon("eraser")}
                   <span>Edit Z-image: Eraser</span>
                 </button>
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
-                >
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
+	                >
                   {renderContextMenuIcon("upscale")}
                   <span>Edit Z-Image: Upscale</span>
                 </button>
@@ -10272,13 +11420,13 @@ export default function DraftExplorerPage() {
                 </div>
               ) : null}
               {aiEditHasPromptInput ? (
-                <Field
-                  label={
-                    aiEditMode === "template"
-                      ? "Prompt (inserted into template)"
-                      : "Prompt (sent directly)"
-                  }
-                >
+	                <Field
+	                  label={
+	                    aiEditMode === "template"
+	                      ? "Prompt (inserted into standard template)"
+	                      : "Prompt (sent directly)"
+	                  }
+	                >
                   <Textarea
                     value={aiEditPrompt}
                     onChange={(_, data) => setAiEditPrompt(data.value)}

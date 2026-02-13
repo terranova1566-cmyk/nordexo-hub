@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { applyDraftImageOrder, readDraftImageOrder } from "@/lib/draft-image-order";
 
 const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
@@ -9,23 +10,11 @@ const isImageFile = (name: string) =>
 const hasTag = (name: string, tag: string) =>
   name.toUpperCase().includes(tag.toUpperCase());
 
-const ensureUnique = async (dir: string, base: string, ext: string) => {
-  let candidate = path.join(dir, `${base}${ext}`);
-  try {
-    await fs.access(candidate);
-  } catch {
-    return candidate;
-  }
-  let i = 2;
-  while (true) {
-    candidate = path.join(dir, `${base}-${i}${ext}`);
-    try {
-      await fs.access(candidate);
-      i += 1;
-    } catch {
-      return candidate;
-    }
-  }
+const toTempName = (name: string, index: number) => {
+  const ext = path.extname(name);
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `.__nordexo_order_tmp_${stamp}_${rand}_${index}${ext}`;
 };
 
 export type NormalizeImageResult = {
@@ -42,41 +31,62 @@ export const normalizeImageNamesInFolder = async (
   spu: string
 ): Promise<NormalizeImageResult> => {
   const entries = await fs.readdir(folder, { withFileTypes: true });
-  const imageFiles = entries
+  const imageFilesByName = entries
     .filter((entry) => entry.isFile() && isImageFile(entry.name))
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b));
+    .map((entry) => entry.name);
+  const imageFiles = applyDraftImageOrder(
+    imageFilesByName,
+    await readDraftImageOrder(folder)
+  );
 
   const hasMain = imageFiles.some((name) => hasTag(name, "MAIN"));
+  let orderedImageFiles = [...imageFiles];
+  const explicitMainIndex = orderedImageFiles.findIndex((name) => hasTag(name, "MAIN"));
+  if (explicitMainIndex > 0) {
+    const [mainName] = orderedImageFiles.splice(explicitMainIndex, 1);
+    orderedImageFiles = [mainName, ...orderedImageFiles];
+  }
+
   let addedMain = false;
   let renamed = 0;
 
-  const targetIndex = hasMain ? -1 : 0;
-  for (let idx = 0; idx < imageFiles.length; idx += 1) {
-    const name = imageFiles[idx];
+  const plan = orderedImageFiles.map((name, index) => {
     const ext = path.extname(name);
-    const stem = path.basename(name, ext);
-    const alreadyPrefixed = stem.toUpperCase().startsWith(`${spu.toUpperCase()}-`);
-    const wantsMain = idx === targetIndex;
-    const isMain = hasTag(name, "MAIN") || wantsMain;
-    const isEnv = hasTag(name, "ENV");
-
-    if (alreadyPrefixed && (!wantsMain || hasTag(name, "MAIN"))) {
-      continue;
-    }
-
-    const serial = idx + 1;
+    const serial = index + 1;
     const parts = [`${spu}-${serial}`];
-    if (isMain) parts.push("MAIN");
-    if (isEnv) parts.push("ENV");
-    const base = parts.join("-");
-    const srcPath = path.join(folder, name);
-    const destPath = await ensureUnique(folder, base, ext);
-    if (srcPath === destPath) continue;
+    // MAIN must always be the first image when publishing.
+    if (index === 0) parts.push("MAIN");
+    if (hasTag(name, "ENV")) parts.push("ENV");
+    if (hasTag(name, "VAR")) parts.push("VAR");
+    return {
+      sourceName: name,
+      targetName: `${parts.join("-")}${ext}`,
+    };
+  });
 
-    await fs.rename(srcPath, destPath);
-    renamed += 1;
-    if (wantsMain && !hasMain) addedMain = true;
+  const toRename = plan.filter((item) => item.sourceName !== item.targetName);
+  if (!hasMain && orderedImageFiles.length > 0) {
+    addedMain = true;
+  }
+
+  if (toRename.length > 0) {
+    const staged: Array<{ tempName: string; targetName: string }> = [];
+    for (let index = 0; index < toRename.length; index += 1) {
+      const item = toRename[index];
+      const tempName = toTempName(item.sourceName, index);
+      await fs.rename(
+        path.join(folder, item.sourceName),
+        path.join(folder, tempName)
+      );
+      staged.push({ tempName, targetName: item.targetName });
+    }
+    for (const item of staged) {
+      await fs.rename(
+        path.join(folder, item.tempName),
+        path.join(folder, item.targetName)
+      );
+      renamed += 1;
+    }
   }
 
   const nextEntries = await fs.readdir(folder, { withFileTypes: true });

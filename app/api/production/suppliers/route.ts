@@ -644,7 +644,14 @@ export async function GET(request: NextRequest) {
 
   for (let i = 0; i < imageCandidates.length; i += 1) {
     const candidate = imageCandidates[i];
+    // 1688 sometimes returns transient "handle image error" for otherwise valid URLs.
+    // Retry once before moving on to the next candidate so DigiDeal webp->jpg rehosts
+    // don’t flake as often.
     run = run1688ImageSearch(request, candidate, limit);
+    if (!run.ok && isImageFetchError(run.error)) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      run = run1688ImageSearch(request, candidate, limit);
+    }
     if (run.ok) break;
     if (i >= imageCandidates.length - 1) break;
     if (!isImageFetchError(run.error)) break;

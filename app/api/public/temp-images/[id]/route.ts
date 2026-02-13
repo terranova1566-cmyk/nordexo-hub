@@ -93,6 +93,9 @@ export async function GET(
     return new NextResponse(buf, {
       headers: {
         "Content-Type": contentType,
+        // Some upstream fetchers (including 1688's image fetch) are sensitive to missing
+        // Content-Length on dynamically served images.
+        "Content-Length": String(buf.byteLength),
         "Cache-Control": "public, max-age=60",
         "X-Robots-Tag": "noindex",
       },

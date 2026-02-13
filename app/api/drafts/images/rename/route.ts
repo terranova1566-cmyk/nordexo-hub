@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
+import { rewriteDraftImageOrderNamesSync } from "@/lib/draft-image-order";
 
 export const runtime = "nodejs";
 
@@ -174,7 +175,11 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (!newName.toUpperCase().startsWith(`${spu.toUpperCase()}-`)) {
+  const oldHasSpuPrefix = oldName.toUpperCase().startsWith(`${spu.toUpperCase()}-`);
+  if (
+    oldHasSpuPrefix &&
+    !newName.toUpperCase().startsWith(`${spu.toUpperCase()}-`)
+  ) {
     return NextResponse.json(
       { error: `Filename must start with ${spu}-` },
       { status: 400 }
@@ -387,6 +392,10 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  try {
+    rewriteDraftImageOrderNamesSync(path.dirname(dest), { [oldName]: newName });
+  } catch {}
 
   return NextResponse.json({
     ok: true,

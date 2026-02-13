@@ -52,6 +52,26 @@
       "context": "Product discovery menu item"
     },
     {
+      "key": "nav.digideal",
+      "text": "DigiDeal",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.digidealDealsManager",
+      "text": "Deals manager",
+      "context": "DigiDeal menu item"
+    },
+    {
+      "key": "nav.digidealProductDelivery",
+      "text": "Product delivery",
+      "context": "DigiDeal menu item"
+    },
+    {
+      "key": "nav.digidealProductSuggestions",
+      "text": "Product suggestions",
+      "context": "DigiDeal menu item"
+    },
+    {
       "key": "nav.digidealCampaigns",
       "text": "DigiDeal Deals",
       "context": "Main navigation item"
@@ -5337,6 +5357,116 @@
       "key": "production.error.adminOnly",
       "text": "This page is only available to administrators.",
       "context": "Production admin access message"
+    },
+    {
+      "key": "digidealDelivery.title",
+      "text": "Product Delivery",
+      "context": "DigiDeal product delivery page title"
+    },
+    {
+      "key": "digidealDelivery.subtitle",
+      "text": "Delivered product batches from partner exports.",
+      "context": "DigiDeal product delivery page subtitle"
+    },
+    {
+      "key": "digidealDelivery.table.createdAt",
+      "text": "Created",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.itemCount",
+      "text": "Items",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.downloads",
+      "text": "Downloads",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealSuggestions.title",
+      "text": "Product Suggestions",
+      "context": "DigiDeal product suggestions page title"
+    },
+    {
+      "key": "digidealSuggestions.subtitle",
+      "text": "Submit product ideas using images or URLs.",
+      "context": "DigiDeal product suggestions page subtitle"
+    },
+    {
+      "key": "digidealSuggestions.images.title",
+      "text": "Images",
+      "context": "DigiDeal product suggestions images section title"
+    },
+    {
+      "key": "digidealSuggestions.images.dropHint",
+      "text": "Drag and drop product images here",
+      "context": "DigiDeal product suggestions image drop hint"
+    },
+    {
+      "key": "digidealSuggestions.images.selectButton",
+      "text": "Select images",
+      "context": "DigiDeal product suggestions select image button"
+    },
+    {
+      "key": "digidealSuggestions.images.helper",
+      "text": "PNG and JPG files are supported.",
+      "context": "DigiDeal product suggestions image helper text"
+    },
+    {
+      "key": "digidealSuggestions.urls.title",
+      "text": "URLs",
+      "context": "DigiDeal product suggestions URL section title"
+    },
+    {
+      "key": "digidealSuggestions.urls.label",
+      "text": "Product links",
+      "context": "DigiDeal product suggestions URL field label"
+    },
+    {
+      "key": "digidealSuggestions.urls.placeholder",
+      "text": "Paste one URL per line or comma-separated URLs",
+      "context": "DigiDeal product suggestions URL placeholder"
+    },
+    {
+      "key": "digidealSuggestions.urls.helper",
+      "text": "You can mix URLs from different sources.",
+      "context": "DigiDeal product suggestions URL helper text"
+    },
+    {
+      "key": "digidealSuggestions.validation.emptyBatch",
+      "text": "Add at least one image or URL before saving.",
+      "context": "DigiDeal product suggestions empty save validation"
+    },
+    {
+      "key": "digidealSuggestions.save",
+      "text": "Save",
+      "context": "DigiDeal product suggestions save button"
+    },
+    {
+      "key": "digidealSuggestions.table.createdAt",
+      "text": "Created",
+      "context": "DigiDeal product suggestions table header"
+    },
+    {
+      "key": "digidealSuggestions.table.images",
+      "text": "Images",
+      "context": "DigiDeal product suggestions table header"
+    },
+    {
+      "key": "digidealSuggestions.table.urls",
+      "text": "URLs",
+      "context": "DigiDeal product suggestions table header"
+    },
+    {
+      "key": "digidealSuggestions.table.total",
+      "text": "Total",
+      "context": "DigiDeal product suggestions table header"
+    },
+    {
+      "key": "digidealSuggestions.table.empty",
+      "text": "No suggestion batches yet.",
+      "context": "DigiDeal product suggestions table empty row"
     },
     {
       "key": "digideal.filters.search",

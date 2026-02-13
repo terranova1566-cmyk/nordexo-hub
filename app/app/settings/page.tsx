@@ -114,6 +114,8 @@ type AIImageEditSettings = {
   prompt_mode: "template" | "direct";
   chatgpt_prompt_template: string;
   gemini_prompt_template: string;
+  digideal_main_prompt_template: string;
+  enviorment_scene_image_prompt_template: string;
 };
 
 const createImage = (url: string) =>
@@ -515,6 +517,8 @@ export default function SettingsPage() {
   const [aiImagePromptMode, setAiImagePromptMode] = useState<"template" | "direct">("template");
   const [aiImageChatgptPrompt, setAiImageChatgptPrompt] = useState("");
   const [aiImageGeminiPrompt, setAiImageGeminiPrompt] = useState("");
+  const [aiImageDigiDealMainPrompt, setAiImageDigiDealMainPrompt] = useState("");
+  const [aiImageEnviormentScenePrompt, setAiImageEnviormentScenePrompt] = useState("");
   const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiImageError, setAiImageError] = useState<string | null>(null);
   const [aiImageForbidden, setAiImageForbidden] = useState(false);
@@ -645,6 +649,10 @@ export default function SettingsPage() {
       setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
       setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
       setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
+      setAiImageDigiDealMainPrompt(payload.digideal_main_prompt_template ?? "");
+      setAiImageEnviormentScenePrompt(
+        payload.enviorment_scene_image_prompt_template ?? ""
+      );
     } catch (err) {
       setAiImageError((err as Error).message);
     } finally {
@@ -718,6 +726,8 @@ export default function SettingsPage() {
           prompt_mode: aiImagePromptMode,
           chatgpt_prompt_template: aiImageChatgptPrompt,
           gemini_prompt_template: aiImageGeminiPrompt,
+          digideal_main_prompt_template: aiImageDigiDealMainPrompt,
+          enviorment_scene_image_prompt_template: aiImageEnviormentScenePrompt,
         }),
       });
       if (!response.ok) {
@@ -728,6 +738,10 @@ export default function SettingsPage() {
       setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
       setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
       setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
+      setAiImageDigiDealMainPrompt(payload.digideal_main_prompt_template ?? "");
+      setAiImageEnviormentScenePrompt(
+        payload.enviorment_scene_image_prompt_template ?? ""
+      );
       setAiImageSaveSuccess(true);
       setTimeout(() => setAiImageSaveSuccess(false), 2500);
     } catch (err) {
@@ -1905,6 +1919,28 @@ export default function SettingsPage() {
                   <textarea
                     value={aiImageGeminiPrompt}
                     onChange={(event) => setAiImageGeminiPrompt(event.target.value)}
+                    className={styles.textArea}
+                    disabled={aiImageForbidden}
+                  />
+                </Field>
+
+                <Field label="DigiDial Main Image Prompt template">
+                  <textarea
+                    value={aiImageDigiDealMainPrompt}
+                    onChange={(event) =>
+                      setAiImageDigiDealMainPrompt(event.target.value)
+                    }
+                    className={styles.textArea}
+                    disabled={aiImageForbidden}
+                  />
+                </Field>
+
+                <Field label="Enviorment scene image template">
+                  <textarea
+                    value={aiImageEnviormentScenePrompt}
+                    onChange={(event) =>
+                      setAiImageEnviormentScenePrompt(event.target.value)
+                    }
                     className={styles.textArea}
                     disabled={aiImageForbidden}
                   />

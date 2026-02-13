@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import {
+  applyDraftImageOrder,
+  readDraftImageOrderSync,
+} from "@/lib/draft-image-order";
 
 export const DRAFT_ROOT = "/srv/resources/media/images/draft_products";
 
@@ -10,6 +14,21 @@ export type DraftEntry = {
   size: number;
   modifiedAt: string;
 };
+
+const IMAGE_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".bmp",
+  ".avif",
+  ".tif",
+  ".tiff",
+]);
+
+const isImageFileName = (name: string) =>
+  IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase());
 
 const normalizeRelative = (value: string) => {
   const trimmed = value.replace(/^\/+/, "");
@@ -54,7 +73,7 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
   if (!absolute) return [];
   if (!fs.existsSync(absolute)) return [];
   const entries = fs.readdirSync(absolute, { withFileTypes: true });
-  return entries
+  const mapped = entries
     .filter((entry) => !entry.name.startsWith("."))
     .map((entry) => {
       const full = path.join(absolute, entry.name);
@@ -66,11 +85,39 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
         size: entry.isDirectory() ? 0 : stat.size,
         modifiedAt: stat.mtime.toISOString(),
       };
-    })
-    .sort((a, b) => {
-      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
-      return a.name.localeCompare(b.name);
     });
+
+  const dirs = mapped
+    .filter((entry) => entry.type === "dir")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = mapped.filter((entry) => entry.type === "file");
+
+  const imageOrder = readDraftImageOrderSync(absolute);
+  const orderedImageNames = applyDraftImageOrder(
+    files.filter((entry) => isImageFileName(entry.name)).map((entry) => entry.name),
+    imageOrder
+  );
+  const imageOrderIndex = new Map<string, number>();
+  orderedImageNames.forEach((name, index) => {
+    imageOrderIndex.set(name.toLowerCase(), index);
+  });
+
+  const sortedFiles = files.sort((left, right) => {
+    const leftIsImage = isImageFileName(left.name);
+    const rightIsImage = isImageFileName(right.name);
+    if (leftIsImage && rightIsImage) {
+      const leftIndex = imageOrderIndex.get(left.name.toLowerCase());
+      const rightIndex = imageOrderIndex.get(right.name.toLowerCase());
+      if (leftIndex !== undefined && rightIndex !== undefined && leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+      if (leftIndex !== undefined && rightIndex === undefined) return -1;
+      if (leftIndex === undefined && rightIndex !== undefined) return 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+
+  return [...dirs, ...sortedFiles];
 };
 
 export const safeRemoveDraftPath = (absolutePath: string) => {

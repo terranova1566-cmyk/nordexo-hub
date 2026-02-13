@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
+  type AiTemplatePreset,
   createPendingAiEdit,
   listPendingAiEdits,
+  resolvePendingAiEdit,
 } from "@/lib/draft-ai-edits";
 
 export const runtime = "nodejs";
@@ -82,6 +84,9 @@ export async function POST(request: Request) {
   const providerRaw = String(body.provider || "").trim().toLowerCase();
   const modeRaw = String(body.mode || "").trim().toLowerCase();
   const prompt = String(body.prompt || "");
+  const templatePresetRaw =
+    typeof body.templatePreset === "string" ? body.templatePreset.trim().toLowerCase() : "";
+  const applyRaw = body.apply;
 
   if (!relativePath) {
     return NextResponse.json({ error: "Missing path." }, { status: 400 });
@@ -93,6 +98,7 @@ export async function POST(request: Request) {
     modeRaw !== "template" &&
     modeRaw !== "direct" &&
     modeRaw !== "white_background" &&
+    modeRaw !== "auto_center_white" &&
     modeRaw !== "eraser" &&
     modeRaw !== "upscale"
   ) {
@@ -102,6 +108,7 @@ export async function POST(request: Request) {
     providerRaw === "zimage" &&
     modeRaw !== "direct" &&
     modeRaw !== "white_background" &&
+    modeRaw !== "auto_center_white" &&
     modeRaw !== "eraser" &&
     modeRaw !== "upscale"
   ) {
@@ -118,14 +125,44 @@ export async function POST(request: Request) {
     );
   }
 
+  let templatePreset: AiTemplatePreset | undefined;
+  if (templatePresetRaw) {
+    if (templatePresetRaw === "standard") templatePreset = "standard";
+    else if (templatePresetRaw === "digideal_main" || templatePresetRaw === "digideal-main") {
+      templatePreset = "digideal_main";
+    } else if (templatePresetRaw === "product_scene" || templatePresetRaw === "product-scene") {
+      templatePreset = "product_scene";
+    } else {
+      return NextResponse.json({ error: "Invalid template preset." }, { status: 400 });
+    }
+  }
+
+  const defaultApply =
+    providerRaw === "zimage" &&
+    (modeRaw === "upscale" || modeRaw === "white_background" || modeRaw === "auto_center_white");
+  const apply = typeof applyRaw === "boolean" ? applyRaw : defaultApply;
+
+  if (apply && providerRaw !== "zimage") {
+    return NextResponse.json({ error: "Apply is only supported for ZImage edits." }, { status: 400 });
+  }
+
   try {
     const record = await createPendingAiEdit({
       relativePath,
       provider: providerRaw,
       mode: modeRaw,
       prompt,
+      templatePreset,
       requestedBy: auth.userId,
     });
+    if (apply) {
+      await resolvePendingAiEdit({
+        originalPath: record.originalPath,
+        decision: "replace_with_ai",
+        requestedBy: auth.userId,
+      });
+      return NextResponse.json({ ok: true, applied: true, originalPath: record.originalPath });
+    }
     return NextResponse.json({ ok: true, item: record });
   } catch (err) {
     return NextResponse.json(

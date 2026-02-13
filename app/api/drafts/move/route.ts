@@ -60,7 +60,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Source not found." }, { status: 404 });
   }
 
-  if (!fs.existsSync(targetAbsolutePath) || !fs.statSync(targetAbsolutePath).isDirectory()) {
+  if (!fs.existsSync(targetAbsolutePath)) {
+    fs.mkdirSync(targetAbsolutePath, { recursive: true });
+  } else if (!fs.statSync(targetAbsolutePath).isDirectory()) {
     return NextResponse.json({ error: "Target folder not found." }, { status: 404 });
   }
 

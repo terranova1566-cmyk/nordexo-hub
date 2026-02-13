@@ -117,6 +117,8 @@ type VariantCombo = {
   image_url?: string;
   price_raw: string;
   price: number | null;
+  weight_raw?: string;
+  weight_grams?: number | null;
 };
 
 type ProductionComment = {
@@ -4705,6 +4707,9 @@ export default function ProductionPage() {
                           <th className={styles.variantsListHeadCell} style={{ width: 140 }}>
                             Price (RMB)
                           </th>
+                          <th className={styles.variantsListHeadCell} style={{ width: 110 }}>
+                            Weight (g)
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4796,6 +4801,12 @@ export default function ProductionPage() {
                                 {typeof combo.price === "number"
                                   ? `¥${combo.price.toFixed(2)}`
                                   : combo.price_raw || "-"}
+                              </td>
+                              <td className={styles.variantsListCell}>
+                                {typeof combo.weight_grams === "number" &&
+                                Number.isFinite(combo.weight_grams)
+                                  ? `${Math.round(combo.weight_grams)}`
+                                  : combo.weight_raw || "-"}
                               </td>
                             </tr>
                           );

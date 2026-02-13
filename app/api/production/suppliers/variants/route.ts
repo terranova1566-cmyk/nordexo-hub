@@ -19,6 +19,8 @@ type VariantCombo = {
   image_url?: string;
   price_raw: string;
   price: number | null;
+  weight_raw?: string;
+  weight_grams?: number | null;
 };
 
 const variantTranslationCache = new Map<string, string>();
@@ -36,6 +38,32 @@ const asPriceNumber = (value: unknown) => {
   if (!text) return null;
   const n = Number(text);
   return Number.isFinite(n) ? n : null;
+};
+
+const asWeightGrams = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, ".").trim();
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+
+  const unit = normalized.toLowerCase();
+  if (
+    unit.includes("kg") ||
+    unit.includes("公斤") ||
+    unit.includes("千克")
+  ) {
+    return Math.round(num * 1000);
+  }
+  if (unit.includes("g") || unit.includes("克")) {
+    return Math.round(num);
+  }
+  if (num <= 20 && normalized.includes(".")) {
+    return Math.round(num * 1000);
+  }
+  return Math.round(num);
 };
 
 const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value);
@@ -131,7 +159,8 @@ async function requireAdmin() {
 
 const normalizeCombos = (
   variations: unknown,
-  variantImageByName: Map<string, string>
+  variantImageByName: Map<string, string>,
+  fallbackWeightGrams: number | null
 ): VariantCombo[] => {
   const combos = Array.isArray((variations as any)?.combos)
     ? ((variations as any).combos as any[])
@@ -181,6 +210,23 @@ const normalizeCombos = (
         .map((key) => variantImageByName.get(key) || "")
         .find(Boolean) || "";
 
+    const details =
+      row.details && typeof row.details === "object"
+        ? (row.details as Record<string, unknown>)
+        : {};
+    const weightRaw = pickText(
+      row.weightRaw,
+      row.weight_raw,
+      row.weight,
+      row.skuWeight,
+      row.sku_weight,
+      row.weightGrams,
+      row.weight_grams,
+      details["重量"],
+      details.weight
+    );
+    const weightGrams = asWeightGrams(weightRaw) ?? fallbackWeightGrams;
+
     return {
       index,
       t1: t1.raw,
@@ -218,6 +264,10 @@ const normalizeCombos = (
             row.price_text
           )
         ),
+      weight_raw: weightRaw || undefined,
+      weight_grams: Number.isFinite(Number(weightGrams))
+        ? Number(weightGrams)
+        : null,
     };
   });
 };
@@ -274,6 +324,27 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
         ? (payload as any).items[0]
         : payload;
   const variations = item && typeof item === "object" ? (item as any).variations : null;
+  const fallbackWeightGrams = (() => {
+    const weights = Array.isArray((item as any)?.product_weights_1688)
+      ? ((item as any).product_weights_1688 as unknown[])
+      : [];
+    const candidates: unknown[] = [
+      ...weights,
+      (item as any)?.weight_grams,
+      (item as any)?.weight,
+      (item as any)?.product_weight_1688,
+      (variations as any)?.weight,
+      (variations as any)?.weight_grams,
+      (variations as any)?.defaultWeight,
+    ];
+    for (const candidate of candidates) {
+      const grams = asWeightGrams(candidate);
+      if (Number.isFinite(Number(grams)) && Number(grams) > 0) {
+        return Number(grams);
+      }
+    }
+    return null;
+  })();
   const variantImages = Array.isArray((item as any)?.variant_images_1688)
     ? ((item as any).variant_images_1688 as Array<Record<string, unknown>>)
     : [];
@@ -292,7 +363,7 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
   }
 
   return {
-    combos: normalizeCombos(variations, variantImageByName),
+    combos: normalizeCombos(variations, variantImageByName, fallbackWeightGrams),
     type1Label: asText((variations as any)?.type1Label),
     type2Label: asText((variations as any)?.type2Label),
     type3Label: asText((variations as any)?.type3Label),

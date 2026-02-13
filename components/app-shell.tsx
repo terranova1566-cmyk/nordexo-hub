@@ -151,7 +151,6 @@ const useStyles = makeStyles({
 });
 
 const navItems = [
-  { label: "nav.digidealCampaigns", href: "/app/digideal-campaigns" },
   { label: "nav.trendResearch", href: "/app/trend-research" },
   { label: "nav.uiKit", href: "/app/ui-kit" },
 ];
@@ -171,6 +170,15 @@ const productMenuItems = [
 const discoveryMenuItems = [
   { label: "nav.productFinder", href: "/app/discovery" },
   { label: "nav.myLists", href: "/app/my-lists" },
+];
+
+const digidealMenuItems = [
+  { label: "nav.digidealDealsManager", href: "/app/digideal/deals-manager" },
+  { label: "nav.digidealProductDelivery", href: "/app/digideal/product-delivery" },
+  {
+    label: "nav.digidealProductSuggestions",
+    href: "/app/digideal/product-suggestions",
+  },
 ];
 
 const ordersMenuItems = [
@@ -287,6 +295,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   );
   const isProductionActive = useMemo(
     () => pathname.startsWith("/app/production"),
+    [pathname]
+  );
+  const isDigidealActive = useMemo(
+    () => pathname.startsWith("/app/digideal") || pathname.startsWith("/app/digideal-campaigns"),
     [pathname]
   );
   const isEmailActive = useMemo(
@@ -492,6 +504,28 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   </MenuPopover>
                 </Menu>
               ) : null}
+              <Menu openOnHover hoverDelay={0}>
+                <MenuTrigger disableButtonEnhancement>
+                  <Button
+                    appearance={isDigidealActive ? "primary" : "subtle"}
+                    className={styles.navButton}
+                  >
+                    {t("nav.digideal")}
+                  </Button>
+                </MenuTrigger>
+                <MenuPopover className={styles.menuPopover}>
+                  <MenuList>
+                    {digidealMenuItems.map((item) => (
+                      <MenuItem
+                        key={item.href}
+                        onClick={() => router.push(item.href)}
+                      >
+                        <span className={styles.navMenuItem}>{t(item.label)}</span>
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </MenuPopover>
+              </Menu>
               {isAdmin ? (
                 <Menu openOnHover hoverDelay={0}>
                   <MenuTrigger disableButtonEnhancement>

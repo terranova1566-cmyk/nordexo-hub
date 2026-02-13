@@ -9,8 +9,11 @@ export type AiPromptMode =
   | "template"
   | "direct"
   | "white_background"
+  | "auto_center_white"
   | "eraser"
   | "upscale";
+
+export type AiTemplatePreset = "standard" | "digideal_main" | "product_scene";
 
 export type PendingAiEditRecord = {
   id: string;
@@ -44,6 +47,7 @@ type CreatePendingAiEditInput = {
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
+  templatePreset?: AiTemplatePreset;
   requestedBy: string | null;
 };
 
@@ -57,12 +61,23 @@ const PROCESSOR_ROOT = "/srv/node-tools/product-processor";
 const PROCESSOR_ENV_PATH = path.join(PROCESSOR_ROOT, ".env");
 const CHATGPT_SCRIPT_PATH = path.join(PROCESSOR_ROOT, "chatgpt_edit.js");
 const GEMINI_SCRIPT_PATH = path.join(PROCESSOR_ROOT, "gemini_edit.py");
+const DIGIDEAL_MAIN_PROMPT_PATH = path.join(
+  PROCESSOR_ROOT,
+  "prompts",
+  "digideal-main-image-prompt.txt"
+);
+const ENVIORMENT_SCENE_PROMPT_PATH = path.join(
+  PROCESSOR_ROOT,
+  "prompts",
+  "enviorment-scene-image-prompt.txt"
+);
 const ZIMAGE_ROOT = "/srv/node-tools/zimage-api";
 const ZIMAGE_ENV_PATH = path.join(ZIMAGE_ROOT, ".env");
 const ZIMAGE_IMAGE_TO_IMAGE_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "image_to_image.js");
 const ZIMAGE_BG_REMOVAL_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "background_removal.js");
 const ZIMAGE_ERASER_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "image_eraser.js");
 const ZIMAGE_UPSCALE_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "upscale.js");
+const AUTO_CENTER_SCRIPT_PATH = path.join(PROCESSOR_ROOT, "auto_center_white.py");
 const ZIMAGE_INPUT_DIR = path.join(ZIMAGE_ROOT, "input");
 const ZIMAGE_OUTPUT_DIR = path.join(ZIMAGE_ROOT, "output");
 const GEMINI_PYTHON_CANDIDATES = [
@@ -89,6 +104,7 @@ const isPromptMode = (value: string): value is AiPromptMode =>
   value === "template" ||
   value === "direct" ||
   value === "white_background" ||
+  value === "auto_center_white" ||
   value === "eraser" ||
   value === "upscale";
 
@@ -97,6 +113,7 @@ const isModeSupported = (provider: AiEditProvider, mode: AiPromptMode) => {
     return (
       mode === "direct" ||
       mode === "white_background" ||
+      mode === "auto_center_white" ||
       mode === "eraser" ||
       mode === "upscale"
     );
@@ -569,12 +586,27 @@ const withEditQueue = <T>(task: () => Promise<T>): Promise<T> => {
   return run;
 };
 
+const loadPromptTemplate = (
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallbackPath: string
+) => {
+  const raw = String(env[key] ?? "").trim();
+  if (raw) return raw;
+  try {
+    return fs.readFileSync(fallbackPath, "utf8").trim();
+  } catch {
+    return "";
+  }
+};
+
 const runImageEditScript = async (input: {
   originalAbsPath: string;
   pendingAbsPath: string;
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
+  templatePreset?: AiTemplatePreset;
 }) => {
   const providerEnv = input.provider === "zimage" ? loadZImageEnv() : loadProcessorEnv();
   const mergedEnv: NodeJS.ProcessEnv = {
@@ -598,8 +630,37 @@ const runImageEditScript = async (input: {
   if (input.provider === "gemini" && !String(mergedEnv.GEMINI_API_KEY ?? "").trim()) {
     throw new Error("GEMINI_API_KEY is missing.");
   }
-  if (input.provider === "zimage" && !String(mergedEnv.ZIMAGE_COOKIE ?? "").trim()) {
+  if (
+    input.provider === "zimage" &&
+    input.mode !== "auto_center_white" &&
+    !String(mergedEnv.ZIMAGE_COOKIE ?? "").trim()
+  ) {
     throw new Error("ZIMAGE_COOKIE is missing.");
+  }
+
+  const templatePreset: AiTemplatePreset = input.templatePreset ?? "standard";
+  if (
+    (input.provider === "chatgpt" || input.provider === "gemini") &&
+    input.mode === "template" &&
+    templatePreset !== "standard"
+  ) {
+    const presetKey =
+      templatePreset === "digideal_main"
+        ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+        : "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE";
+    const presetFallbackPath =
+      templatePreset === "digideal_main"
+        ? DIGIDEAL_MAIN_PROMPT_PATH
+        : ENVIORMENT_SCENE_PROMPT_PATH;
+    const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
+    if (!presetTemplate.trim()) {
+      throw new Error(`Prompt template "${templatePreset}" is missing or empty.`);
+    }
+    if (input.provider === "chatgpt") {
+      mergedEnv.OPENAI_IMAGE_PROMPT_TEMPLATE = presetTemplate;
+    } else {
+      mergedEnv.GEMINI_IMAGE_PROMPT_TEMPLATE = presetTemplate;
+    }
   }
 
   let lastError: Error | null = null;
@@ -660,6 +721,20 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+      } else if (input.mode === "auto_center_white") {
+        fs.copyFileSync(input.originalAbsPath, input.pendingAbsPath);
+        try {
+          await runScript({
+            command: resolveGeminiPython(),
+            args: [AUTO_CENTER_SCRIPT_PATH, "--file", input.pendingAbsPath],
+            env: mergedEnv,
+            timeoutMs,
+            cwd: PROCESSOR_ROOT,
+          });
+        } catch (err) {
+          removeFileQuietly(input.pendingAbsPath);
+          throw err;
+        }
       } else if (input.mode === "eraser") {
         await runZImageTool({
           scriptPath: ZIMAGE_ERASER_SCRIPT_PATH,
@@ -733,6 +808,7 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       provider: input.provider,
       mode: input.mode,
       prompt,
+      templatePreset: input.templatePreset,
     });
 
     if (!fs.existsSync(pendingAbsPath) || fs.statSync(pendingAbsPath).size <= 0) {
@@ -772,6 +848,7 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       requested_by: input.requestedBy,
       provider: input.provider,
       mode: input.mode,
+      template_preset: input.mode === "template" ? input.templatePreset ?? "standard" : undefined,
       original_path: originalPath,
       pending_path: pendingPath,
       timeout_ms: runtimeConfig.timeoutMs,

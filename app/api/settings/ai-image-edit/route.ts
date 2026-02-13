@@ -8,6 +8,10 @@ export const runtime = "nodejs";
 const PROCESSOR_ENV_PATH = "/srv/node-tools/product-processor/.env";
 const CHATGPT_SCRIPT_PATH = "/srv/node-tools/product-processor/chatgpt_edit.js";
 const GEMINI_SCRIPT_PATH = "/srv/node-tools/product-processor/gemini_edit.py";
+const DIGIDEAL_MAIN_PROMPT_PATH =
+  "/srv/node-tools/product-processor/prompts/digideal-main-image-prompt.txt";
+const ENVIORMENT_SCENE_PROMPT_PATH =
+  "/srv/node-tools/product-processor/prompts/enviorment-scene-image-prompt.txt";
 
 const parseEnvFile = (content: string) => {
   const lines = content.split(/\r?\n/);
@@ -125,6 +129,14 @@ const extractPyTemplate = (filePath: string) => {
   }
 };
 
+const extractTextTemplate = (filePath: string) => {
+  try {
+    return fs.readFileSync(filePath, "utf8").trim();
+  } catch {
+    return "";
+  }
+};
+
 const buildResponse = (env: Record<string, string>) => {
   const modeRaw = String(env.IMAGE_EDIT_PROMPT_MODE || "template").trim().toLowerCase();
   const promptMode = modeRaw === "direct" ? "direct" : "template";
@@ -137,10 +149,20 @@ const buildResponse = (env: Record<string, string>) => {
     ? envMultilineToText(env.GEMINI_IMAGE_PROMPT_TEMPLATE)
     : extractPyTemplate(GEMINI_SCRIPT_PATH);
 
+  const digidealMainPrompt = env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE
+    ? envMultilineToText(env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE)
+    : extractTextTemplate(DIGIDEAL_MAIN_PROMPT_PATH);
+
+  const enviormentScenePrompt = env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE
+    ? envMultilineToText(env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE)
+    : extractTextTemplate(ENVIORMENT_SCENE_PROMPT_PATH);
+
   return {
     prompt_mode: promptMode,
     chatgpt_prompt_template: chatgptPrompt,
     gemini_prompt_template: geminiPrompt,
+    digideal_main_prompt_template: digidealMainPrompt,
+    enviorment_scene_image_prompt_template: enviormentScenePrompt,
   };
 };
 
@@ -206,6 +228,18 @@ export async function POST(request: Request) {
 
   if (typeof payload.gemini_prompt_template === "string") {
     updates.GEMINI_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(payload.gemini_prompt_template);
+  }
+
+  if (typeof payload.digideal_main_prompt_template === "string") {
+    updates.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
+      payload.digideal_main_prompt_template
+    );
+  }
+
+  if (typeof payload.enviorment_scene_image_prompt_template === "string") {
+    updates.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
+      payload.enviorment_scene_image_prompt_template
+    );
   }
 
   try {
