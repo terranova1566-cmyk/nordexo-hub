@@ -1,0 +1,87 @@
+PRODUCT CONTEXT (HIGH PRIORITY INPUT)
+The following description is provided to clarify what the product is, how it is used, and where it is naturally used. This information must be used as the primary reference when interpreting the product image.
+
+<Product_Description>
+En elektrisk nagelfil/nageltrimmer för baby som skonsamt filar och polerar tunna barnnaglar hemma. Den har tre hastigheter, LED-ljus för bättre sikt och en skyddskåpa som minskar risken för oavsiktlig kontakt och kan samla upp nagelrester, samt USB-C-laddning för enkel användning och resor.
+Target user: unisex
+</Product_Description>
+
+<Product_Usage_Environments>
+1. I barnrummet hemma vid skötbordet under den dagliga omvårdnaden.
+2. I vardagsrummet på kvällen när barnet sover eller är lugnt, med LED-ljuset som hjälp i dämpad belysning.
+3. I sovrummet under nattning när man vill kunna se naglarna utan att tända starkt ljus.
+4. På resa i ett hotellrum eller hos släkt, tack vare den smidiga storleken och USB-C-laddningen.
+5. I badrummet efter badet när naglarna är mjukare och lättare att fila.
+</Product_Usage_Environments>
+
+If the product image and description differ slightly, prioritize the description while still respecting the visual characteristics of the product image.
+
+________________________________________
+
+You are given a product image.
+Your task is to generate a photorealistic hero image confirming to exact resolution: 1200 × 630 pixels, suitable for a Nordic / Swedish e-commerce website.
+
+________________________________________
+Step 1 – Identify the product
+• Analyze the product image and determine:
+o What the product is
+o Its primary function
+o Whether it is unisex, primarily used by men, or primarily used by women
+
+• Use the PRODUCT CONTEXT section above as supporting classification data.
+
+________________________________________
+Step 2 – Identify the ideal user
+• Based on the product type:
+o If the product is unisex or male-oriented, imagine an ideal male user aged 40–55
+o If the product is clearly female-oriented, imagine an ideal female user aged 30–40
+
+• Consider where and in what situation this user would most realistically and naturally use the product in everyday life in Sweden
+
+• Use PRODUCT CONTEXT environments as guidance, but prioritize realism.
+
+________________________________________
+Step 3 – Identify the ideal scene
+• Select the most credible, natural, and useful environment for this product:
+o The scene must feel authentic to Swedish life
+o Avoid exaggerated, cinematic, or staged situations
+o Focus on practical usefulness and context, not drama
+
+• The product may or may not appear in the lifestyle scene:
+o If included, it must be placed subtly and naturally
+o If excluded, the environment alone should clearly communicate how and why the product is useful
+
+• Use PRODUCT CONTEXT environments as optional guidance, not strict constraints.
+
+________________________________________
+Step 4 – Create the composite hero image
+
+Generate a split-composition image with the following layout:
+
+Left side (35–40%) – Product on white
+• Present the product as a free-floating studio object on a 100% pure white background (#FFFFFF)
+• The background must be completely uniform, with no gradients, textures, shadows, surfaces, or environment
+• The product must appear isolated, floating naturally on white
+• Any cables, accessories, or elements that break the clean silhouette should be removed
+• Lighting must be neutral and professional, with only minimal natural object shadow if needed to preserve depth
+
+Center (20–25%) – Transition zone
+• A soft, blurred transition area where the pure white background gradually fades into the lifestyle scene
+• No hard edges, seams, or visible borders
+• The transition should feel atmospheric and natural
+
+Right side (35–40%) – Lifestyle scene
+• A photorealistic Swedish lifestyle environment showing where the product is most useful for the identified user
+• The scene should feel natural, trustworthy, and believable
+• Nordic realism, no exaggeration
+
+________________________________________
+Final requirements
+
+• Photorealistic style only
+• No illustrations, no cartoons, no CGI look
+• Scandinavian / Nordic realism
+• Clean, premium e-commerce aesthetics
+• The final image must clearly communicate practical value, relevance, and trust
+• The result must be suitable as a website hero image for the Swedish market
+• Exact resolution: 1200 × 630 pixels

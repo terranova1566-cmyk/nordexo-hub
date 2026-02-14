@@ -3,6 +3,18 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveDraftPath } from "@/lib/drafts";
+import { convertBufferToJpeg, looksLikeImageFileName } from "@/lib/image-jpeg";
+
+const ensureUniqueName = (dirPath: string, baseName: string, ext: string) => {
+  const safeExt = ext.replace(/^\./, "") || "jpg";
+  let candidate = `${baseName}.${safeExt}`;
+  let index = 2;
+  while (fs.existsSync(path.join(dirPath, candidate))) {
+    candidate = `${baseName}-${index}.${safeExt}`;
+    index += 1;
+  }
+  return candidate;
+};
 
 export const runtime = "nodejs";
 
@@ -49,12 +61,23 @@ export async function POST(request: Request) {
   let uploaded = 0;
   for (const entry of files) {
     if (!(entry instanceof File)) continue;
-    const safeName = path.basename(entry.name);
+    const safeName = path.basename(entry.name || "file");
     const buffer = Buffer.from(await entry.arrayBuffer());
-    fs.writeFileSync(path.join(targetPath, safeName), buffer);
+    const isImage =
+      String(entry.type || "").toLowerCase().startsWith("image/") ||
+      looksLikeImageFileName(safeName);
+
+    if (isImage) {
+      const baseName = path.parse(safeName).name || "image";
+      const outputName = ensureUniqueName(targetPath, baseName, "jpg");
+      const outAbs = path.join(targetPath, outputName);
+      const jpeg = await convertBufferToJpeg(buffer);
+      fs.writeFileSync(outAbs, jpeg);
+    } else {
+      fs.writeFileSync(path.join(targetPath, safeName), buffer);
+    }
     uploaded += 1;
   }
 
   return NextResponse.json({ uploaded });
 }
-

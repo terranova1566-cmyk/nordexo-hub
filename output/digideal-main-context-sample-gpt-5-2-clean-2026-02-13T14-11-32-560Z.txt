@@ -1,0 +1,113 @@
+DigiDeal Main Context Package Sample (gpt-5.2, cleaned template view)
+Run at: 2026-02-13T14:11:32.560Z
+
+Draft product SPU: ND-22530
+Title used: Mini FM-radio / portabel FM-radio – clip-on lyssning – 76–108 MHz, 30 minnen, USB-C
+
+Description used (HTML stripped):
+Mini FM-radio i fickformat för lyssning via trådbundna hörlurar. Digital FM-tuning med LCD-display gör det enkelt att se aktuell frekvens och ställa in rätt kanal. Autosökning hjälper dig hitta stationer snabbt och minnesfunktionen kan spara upp till 30 stationer för smidig åtkomst. 3,5 mm hörlursuttaget ger privat lyssning, och hörlurskabeln fungerar som antenn för mottagningen. Laddas via USB Type‑C och är enkel att bära med clip-on-fäste när du är i rörelse.
+
+OpenAI URL: https://api.openai.com/v1/chat/completions
+OpenAI model used: gpt-5.2
+
+Prompt sent to OpenAI:
+You create a short product context package for generating Swedish-market lifestyle product images.
+Use the provided title and description as the only source of truth.
+Tasks:
+1) Describe what type of product this is and what it is used for (1-3 sentences).
+2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).
+3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".
+
+Return strict JSON only with this shape:
+{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }
+No markdown, no extra keys.
+
+Title: Mini FM-radio / portabel FM-radio – clip-on lyssning – 76–108 MHz, 30 minnen, USB-C
+
+Main description: Mini FM-radio i fickformat för lyssning via trådbundna hörlurar. Digital FM-tuning med LCD-display gör det enkelt att se aktuell frekvens och ställa in rätt kanal. Autosökning hjälper dig hitta stationer snabbt och minnesfunktionen kan spara upp till 30 stationer för smidig åtkomst. 3,5 mm hörlursuttaget ger privat lyssning, och hörlurskabeln fungerar som antenn för mottagningen. Laddas via USB Type‑C och är enkel att bära med clip-on-fäste när du är i rörelse.
+
+Raw OpenAI response (message.content):
+{
+  "product_description": "En mini portabel FM-radio i fickformat med clip-on-fäste för privat lyssning via trådbundna hörlurar. Den används för att lyssna på FM-stationer med digital tuning, LCD-display, autosökning och upp till 30 sparade favoritkanaler, och laddas via USB-C.",
+  "usage_environments": [
+    "På en pendeltågs- eller bussresa i Stockholm där användaren lyssnar i trådbundna hörlurar för privat lyssning.",
+    "Under en promenad eller joggingtur i en svensk park med radion fastklippt i jackan och hörlurssladden som antenn.",
+    "På en vandring i skogen eller vid en rastplats där den lilla radion används för att följa nyheter och lokala stationer.",
+    "I ett studentrum eller liten lägenhet där man vill lyssna på FM-radio utan att störa andra, via 3,5 mm-hörlurar.",
+    "På jobbet i ett lager eller verkstadsmiljö under pauser, med radion i fickan och snabb åtkomst till sparade stationer."
+  ],
+  "target_user": "unisex"
+}
+
+Parsed JSON object:
+{
+  "product_description": "En mini portabel FM-radio i fickformat med clip-on-fäste för privat lyssning via trådbundna hörlurar. Den används för att lyssna på FM-stationer med digital tuning, LCD-display, autosökning och upp till 30 sparade favoritkanaler, och laddas via USB-C.",
+  "usage_environments": [
+    "På en pendeltågs- eller bussresa i Stockholm där användaren lyssnar i trådbundna hörlurar för privat lyssning.",
+    "Under en promenad eller joggingtur i en svensk park med radion fastklippt i jackan och hörlurssladden som antenn.",
+    "På en vandring i skogen eller vid en rastplats där den lilla radion används för att följa nyheter och lokala stationer.",
+    "I ett studentrum eller liten lägenhet där man vill lyssna på FM-radio utan att störa andra, via 3,5 mm-hörlurar.",
+    "På jobbet i ett lager eller verkstadsmiljö under pauser, med radion i fickan och snabb åtkomst till sparade stationer."
+  ],
+  "target_user": "unisex"
+}
+
+Template placeholder snippet (decoded):
+PRODUCT CONTEXT (HIGH PRIORITY INPUT)
+The following description is provided to clarify what the product is, how it is used, and where it is naturally used. This information must be used as the primary reference when interpreting the product image.
+
+<Product_Description>
+{{INSERT_PRODUCT_DESCRIPTION_HERE}}
+</Product_Description>
+
+<Product_Usage_Environments>
+{{INSERT_ENVIRONMENT_SUGGESTIONS_HERE}}
+</Product_Usage_Environments>
+
+If the product image and description differ slightly, prioritize the description while still respecting the visual characteristics of the product image.
+
+________________________________________
+
+You are given a product image.
+
+Filled template snippet (decoded):
+<Product_Description>
+En mini portabel FM-radio i fickformat med clip-on-fäste för privat lyssning via trådbundna hörlurar. Den används för att lyssna på FM-stationer med digital tuning, LCD-display, autosökning och upp till 30 sparade favoritkanaler, och laddas via USB-C.
+Target user: unisex
+</Product_Description>
+
+<Product_Usage_Environments>
+1. På en pendeltågs- eller bussresa i Stockholm där användaren lyssnar i trådbundna hörlurar för privat lyssning.
+2. Under en promenad eller joggingtur i en svensk park med radion fastklippt i jackan och hörlurssladden som antenn.
+3. På en vandring i skogen eller vid en rastplats där den lilla radion används för att följa nyheter och lokala stationer.
+4. I ett studentrum eller liten lägenhet där man vill lyssna på FM-radio utan att störa andra, via 3,5 mm-hörlurar.
+5. På jobbet i ett lager eller verkstadsmiljö under pauser, med radion i fickan och snabb åtkomst till sparade stationer.
+</Product_Usage_Environments>
+
+If the product image and description differ slightly, prioritize the description while still respecting the visual characteristics of the product image.
+
+________________________________________
+
+You are given a product image.
+Your task is to generate a photorealistic hero image confirming to exact resolution: 1200 × 630 pixels, suitable for a Nordic / Swedish e-commerce website.
+
+________________________________________
+Step 1 – Identify the product
+• Analyze the product image and determine:
+o What the product is
+o Its primary function
+o Whether it is unisex, primarily used by men, or primarily used by women
+
+• Use the PRODUCT CONTEXT section above as supporting classification data.
+
+________________________________________
+Step 2 – Identify the ideal user
+• Based on the product type:
+o If the product is unisex or male-oriented, imagine an ideal male user aged 40–55
+o If the product is clearly female-oriented, imagine an ideal female user aged 30–40
+
+• Consider where and in what situation this user would most realistically and naturally use the product in everyday life in Sweden
+
+• Use PRODUCT CONTEXT environments as guidance, but prioritize realism.
+
+________________________________________

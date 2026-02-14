@@ -1,8 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { spawn } from "child_process";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { convertImageFileToJpegInPlace } from "@/lib/image-jpeg";
 
 export type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 export type AiPromptMode =
@@ -51,6 +53,14 @@ type CreatePendingAiEditInput = {
   requestedBy: string | null;
 };
 
+type CreateTemplatePresetOutputsInput = {
+  relativePath: string;
+  provider: Exclude<AiEditProvider, "zimage">;
+  templatePreset: Exclude<AiTemplatePreset, "standard">;
+  count: number;
+  requestedBy: string | null;
+};
+
 type ResolvePendingAiEditInput = {
   originalPath: string;
   decision: ResolveDecision;
@@ -89,13 +99,35 @@ const GEMINI_PYTHON_CANDIDATES = [
 const AI_EDIT_STATE_FILE = ".ai-edits.json";
 const AI_EDIT_LOG_PATH = path.join(process.cwd(), "logs", "draft-ai-edits.log");
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const CONTEXT_CACHE_TTL_MS = 10 * 60 * 1000;
 
 let editQueueTail: Promise<void> = Promise.resolve();
+const digidealContextCache = new Map<
+  string,
+  {
+    key: string;
+    createdAtMs: number;
+    value: { product_description: string; usage_environments: string[]; target_user: string };
+  }
+>();
+let supabaseAdminClient: SupabaseClient<any, "public", any> | null = null;
 
 const normalizeRelativePath = (value: string) =>
   value.replace(/\\/g, "/").replace(/^\/+/, "");
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const stripHtmlToText = (value: string | null | undefined) => {
+  if (!value) return "";
+  return String(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const buildHash = (value: string) =>
+  createHash("sha1").update(String(value || "")).digest("hex");
 
 const isProvider = (value: string): value is AiEditProvider =>
   value === "chatgpt" || value === "gemini" || value === "zimage";
@@ -123,6 +155,21 @@ const isModeSupported = (provider: AiEditProvider, mode: AiPromptMode) => {
 
 const isWithinDraftRoot = (absolutePath: string) =>
   absolutePath === DRAFT_ROOT || absolutePath.startsWith(`${DRAFT_ROOT}${path.sep}`);
+
+const getSupabaseAdminClient = () => {
+  if (supabaseAdminClient) return supabaseAdminClient;
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+  supabaseAdminClient = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return supabaseAdminClient;
+};
 
 const parseEnvFile = (content: string): Record<string, string> => {
   const values: Record<string, string> = {};
@@ -159,6 +206,22 @@ const loadEnvFromFile = (envPath: string): Record<string, string> => {
 
 const loadProcessorEnv = () => loadEnvFromFile(PROCESSOR_ENV_PATH);
 const loadZImageEnv = () => loadEnvFromFile(ZIMAGE_ENV_PATH);
+
+const extractJsonFromText = (text: string) => {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {}
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+};
 
 const readPositiveInt = (
   env: Record<string, string>,
@@ -592,13 +655,497 @@ const loadPromptTemplate = (
   fallbackPath: string
 ) => {
   const raw = String(env[key] ?? "").trim();
-  if (raw) return raw;
+  if (raw) return raw.replace(/\\n/g, "\n");
   try {
     return fs.readFileSync(fallbackPath, "utf8").trim();
   } catch {
     return "";
   }
 };
+
+const looksLikeSpu = (value: string) => /^[a-z0-9]{1,8}-\d{3,}$/i.test(value);
+
+const extractSpuFromRelativePath = (relativePath: string) => {
+  const parts = normalizeRelativePath(relativePath).split("/").filter(Boolean);
+  const folderParts = parts.slice(0, -1);
+  if (folderParts.length === 0) return null;
+  // Prefer the segment right under the run folder when possible.
+  if (folderParts.length >= 2 && looksLikeSpu(folderParts[1])) {
+    return folderParts[1];
+  }
+  // Fallback: find the first segment that looks like an SPU code.
+  for (const segment of folderParts) {
+    if (looksLikeSpu(segment)) return segment;
+  }
+  return null;
+};
+
+const loadDraftProductContext = async (spu: string) => {
+  const client = getSupabaseAdminClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("draft_products")
+    .select(
+      "draft_spu,draft_title,draft_description_html,draft_product_description_main_html,draft_mf_product_short_title,draft_mf_product_long_title",
+      { count: "exact" }
+    )
+    .eq("draft_status", "draft")
+    .eq("draft_spu", spu)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const title =
+    String(
+      data.draft_mf_product_long_title ||
+        data.draft_title ||
+        data.draft_mf_product_short_title ||
+        data.draft_spu ||
+        spu
+    ).trim() || spu;
+
+  const description =
+    stripHtmlToText(
+      (data.draft_product_description_main_html as string | null) ||
+        (data.draft_description_html as string | null) ||
+        ""
+    ).slice(0, 5000);
+
+  return { spu, title, description };
+};
+
+const buildOpenAiChatCompletionsUrl = (env: NodeJS.ProcessEnv) => {
+  const base = String(env.OPENAI_BASE_URL || env.OPENAI_IMAGE_BASE_URL || "").trim();
+  if (!base) return "https://api.openai.com/v1/chat/completions";
+  const trimmed = base.replace(/\/+$/, "");
+  if (trimmed.endsWith("/v1")) return `${trimmed}/chat/completions`;
+  return `${trimmed}/v1/chat/completions`;
+};
+
+const generateDigidealMainPackage = async (input: {
+  title: string;
+  description: string;
+  env: NodeJS.ProcessEnv;
+}) => {
+  const apiKey = String(input.env.OPENAI_API_KEY || input.env.OPENAI_IMAGE_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY (required for DigiDeal context generation).");
+  }
+
+  const model =
+    String(
+      input.env.DIGIDEAL_MAIN_CONTEXT_MODEL ||
+        input.env.OPENAI_EDIT_MODEL ||
+        "gpt-5.2"
+    ).trim() || "gpt-5.2";
+
+  const key = buildHash(`${model}\n${input.title}\n${input.description}`);
+  const cached = digidealContextCache.get(key);
+  if (cached && Date.now() - cached.createdAtMs < CONTEXT_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const prompt = [
+    "You create a short product context package for generating Swedish-market lifestyle product images.",
+    "Use the provided title and description as the only source of truth.",
+    "Tasks:",
+    "1) Provide a short, concrete, visual description answering only: \"What is this product?\"",
+    "   - Keep it to 1 sentence.",
+    "   - Focus on physical/visual identity and intended use context at a high level (e.g. what it is for), without listing features.",
+    "   - Avoid specs, numbers, connectivity, materials lists, brand/model names, or marketing phrasing.",
+    "2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).",
+    "   - Each environment MUST be meaningfully different from the others (no repeats).",
+    "   - Vary: room/location, time-of-day/lighting (e.g. bright daytime vs evening), and context (home/travel/outdoor if plausible).",
+    "   - Prefer modern Nordic/Swedish settings when describing interiors (clean, contemporary home vibe).",
+    "   - IMPORTANT: Prefix each usage environment with an explicit number like: \"1. ...\", \"2. ...\", \"3. ...\".",
+    '3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".',
+    "",
+    "Return strict JSON only with this shape:",
+    '{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }',
+    "No markdown, no extra keys.",
+    "",
+    `Title: ${input.title}`,
+    "",
+    `Main description: ${input.description || "-"}`,
+  ].join("\n");
+
+  const controller = new AbortController();
+  const timeoutMs = 45000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(buildOpenAiChatCompletionsUrl(input.env), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI error (${response.status}): ${errText.slice(0, 300)}`);
+    }
+
+    const result = await response.json().catch(() => null);
+    const content = String(result?.choices?.[0]?.message?.content || "").trim();
+    const parsed = extractJsonFromText(content);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Unable to parse DigiDeal context response.");
+    }
+
+    const rawProduct = String((parsed as any).product_description || "").trim();
+    const rawUser = String((parsed as any).target_user || "").trim().toLowerCase();
+    const rawEnvs = Array.isArray((parsed as any).usage_environments)
+      ? ((parsed as any).usage_environments as unknown[])
+      : [];
+
+    const usageEnvironments = rawEnvs
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .slice(0, 5);
+
+    const targetUser =
+      rawUser === "male" || rawUser === "female" || rawUser === "child" || rawUser === "unisex"
+        ? rawUser
+        : "unisex";
+
+    const value = {
+      product_description: rawProduct || input.title,
+      usage_environments:
+        usageEnvironments.length > 0
+          ? usageEnvironments
+          : ["A realistic Swedish everyday setting where the product is naturally used."],
+      target_user: targetUser,
+    };
+
+    digidealContextCache.set(key, { key, createdAtMs: Date.now(), value });
+    return value;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const applyDigidealMainPackageToTemplate = (
+  template: string,
+  payload: {
+    product_description: string;
+    usage_environments: string[];
+    target_user: string;
+  },
+  options?: {
+    targetUserOverride?: "male" | "female" | "child" | "unisex";
+    preferredEnvironmentIndex?: number;
+  }
+) => {
+  const safeProduct = String(payload.product_description || "").trim();
+  const safeUserRaw = String(payload.target_user || "").trim().toLowerCase();
+  const safeUser =
+    safeUserRaw === "male" ||
+    safeUserRaw === "female" ||
+    safeUserRaw === "child" ||
+    safeUserRaw === "unisex"
+      ? safeUserRaw
+      : "unisex";
+  const effectiveUser = options?.targetUserOverride ?? safeUser;
+  const safeEnvs = Array.isArray(payload.usage_environments)
+    ? payload.usage_environments.map((v) => String(v || "").trim()).filter(Boolean)
+    : [];
+
+  // Reinforce that the image is the source of truth and the product must remain unchanged.
+  // This lives inside the context block so it always travels with the template preset.
+  const productIntegrityNote = [
+    "IMPORTANT: The input image is the source of truth.",
+    "The product on the left-side studio shot must be identical to the original input image (100% unchanged).",
+    "Do NOT redesign, replace, or infer product details from description alone; this description is only context.",
+  ].join("\n");
+
+  const preferredEnvironmentIndex = Number.isFinite(options?.preferredEnvironmentIndex)
+    ? Math.max(1, Math.floor(options!.preferredEnvironmentIndex!))
+    : null;
+  const preferredEnvironmentNote =
+    preferredEnvironmentIndex != null
+      ? `For this output, prefer usage environment #${preferredEnvironmentIndex} from the list below.`
+      : "";
+  const sceneUserNote =
+    effectiveUser === "male" || effectiveUser === "female" || effectiveUser === "child"
+      ? `For this output, the person in the lifestyle scene should be: ${effectiveUser}.`
+      : "";
+
+  const productBlock = [
+    productIntegrityNote,
+    preferredEnvironmentNote,
+    sceneUserNote,
+    "",
+    safeProduct,
+    effectiveUser ? `Target user: ${effectiveUser}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const alreadyNumbered =
+    safeEnvs.length > 0 && safeEnvs.every((line) => /^\s*\d+\.\s+/.test(line));
+  const envBlock = alreadyNumbered
+    ? safeEnvs.join("\n")
+    : safeEnvs.map((line, idx) => `${idx + 1}. ${line}`).join("\n");
+
+  const hasPlaceholders =
+    /{{\s*INSERT_PRODUCT_DESCRIPTION_HERE\s*}}/.test(template) ||
+    /{{\s*INSERT_ENVIRONMENT_SUGGESTIONS_HERE\s*}}/.test(template);
+
+  let next = template
+    .replace(/{{\s*INSERT_PRODUCT_DESCRIPTION_HERE\s*}}/g, productBlock)
+    .replace(/{{\s*INSERT_ENVIRONMENT_SUGGESTIONS_HERE\s*}}/g, envBlock);
+  if (!hasPlaceholders) {
+    next = [
+      "<Product_Description>",
+      productBlock,
+      "</Product_Description>",
+      "",
+      "<Product_Usage_Environments>",
+      envBlock,
+      "</Product_Usage_Environments>",
+      "",
+      next,
+    ].join("\n");
+  }
+  return next;
+};
+
+const formatTimestampForFilename = (date: Date) => {
+  const iso = date.toISOString(); // 2026-02-13T15:21:18.880Z
+  const compact = iso.replace(/\.\d{3}Z$/, "Z");
+  const y = compact.slice(0, 4);
+  const mo = compact.slice(5, 7);
+  const d = compact.slice(8, 10);
+  const hh = compact.slice(11, 13);
+  const mm = compact.slice(14, 16);
+  const ss = compact.slice(17, 19);
+  return `${y}${mo}${d}-${hh}${mm}${ss}`;
+};
+
+const detectImageExtension = (absolutePath: string) => {
+  try {
+    const fd = fs.openSync(absolutePath, "r");
+    const header = Buffer.alloc(16);
+    const bytes = fs.readSync(fd, header, 0, header.length, 0);
+    fs.closeSync(fd);
+    if (bytes >= 12) {
+      // PNG: 89 50 4E 47 0D 0A 1A 0A
+      if (
+        header[0] === 0x89 &&
+        header[1] === 0x50 &&
+        header[2] === 0x4e &&
+        header[3] === 0x47
+      ) {
+        return ".png";
+      }
+      // JPEG: FF D8 FF
+      if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) {
+        return ".jpg";
+      }
+      // WEBP: RIFF....WEBP
+      if (
+        header[0] === 0x52 &&
+        header[1] === 0x49 &&
+        header[2] === 0x46 &&
+        header[3] === 0x46 &&
+        header[8] === 0x57 &&
+        header[9] === 0x45 &&
+        header[10] === 0x42 &&
+        header[11] === 0x50
+      ) {
+        return ".webp";
+      }
+    }
+  } catch {}
+  return path.extname(absolutePath) || ".png";
+};
+
+const uniqueChildPath = (folderAbsPath: string, baseName: string, ext: string) => {
+  const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
+  let candidate = path.join(folderAbsPath, `${baseName}${safeExt}`);
+  if (!fs.existsSync(candidate)) return candidate;
+  let idx = 2;
+  while (idx < 1000) {
+    candidate = path.join(folderAbsPath, `${baseName}-${idx}${safeExt}`);
+    if (!fs.existsSync(candidate)) return candidate;
+    idx += 1;
+  }
+  return path.join(folderAbsPath, `${baseName}-${randomUUID()}${safeExt}`);
+};
+
+export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsInput) =>
+  withEditQueue(async () => {
+    if (input.provider !== "chatgpt" && input.provider !== "gemini") {
+      throw new Error("Template preset outputs only support ChatGPT or Gemini.");
+    }
+    if (input.templatePreset !== "digideal_main" && input.templatePreset !== "product_scene") {
+      throw new Error("Unsupported template preset.");
+    }
+    const count = Math.max(1, Math.min(3, Math.floor(Number(input.count || 1))));
+
+    const { absolutePath: originalAbsPath, relativePath: originalPath } = resolveImagePath(
+      input.relativePath
+    );
+    const folderAbsPath = path.dirname(originalAbsPath);
+
+    const now = new Date();
+    const stamp = formatTimestampForFilename(now);
+    const prefix = input.templatePreset === "digideal_main" ? "DD" : "SCENE";
+    const suffixTag = input.templatePreset === "product_scene" ? " (ENV)" : "";
+
+    const providerEnv = loadProcessorEnv();
+    const mergedEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...providerEnv,
+    };
+
+    const presetKey =
+      input.templatePreset === "digideal_main"
+        ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+        : "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE";
+    const presetFallbackPath =
+      input.templatePreset === "digideal_main"
+        ? DIGIDEAL_MAIN_PROMPT_PATH
+        : ENVIORMENT_SCENE_PROMPT_PATH;
+    const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
+    if (!presetTemplate.trim()) {
+      throw new Error(`Prompt template "${input.templatePreset}" is missing or empty.`);
+    }
+
+    let digidealPkg:
+      | { product_description: string; usage_environments: string[]; target_user: string }
+      | null = null;
+    if (input.templatePreset === "digideal_main") {
+      const relative = toRelativePath(originalAbsPath);
+      const spu = extractSpuFromRelativePath(relative);
+      const context = spu ? await loadDraftProductContext(spu) : null;
+      const title = context?.title || spu || path.parse(originalAbsPath).name;
+      const description = context?.description || "";
+      digidealPkg = await generateDigidealMainPackage({
+        title,
+        description,
+        env: mergedEnv,
+      });
+    }
+
+    const clampUser = (value: string | null | undefined) => {
+      const raw = String(value || "").trim().toLowerCase();
+      if (raw === "male" || raw === "female" || raw === "child" || raw === "unisex") return raw;
+      return "unisex";
+    };
+
+    const oppositeUser = (value: "male" | "female" | "child" | "unisex") => {
+      if (value === "male") return "female";
+      if (value === "female") return "male";
+      return value;
+    };
+
+    const buildUserPlan = (base: "male" | "female" | "child" | "unisex", outputs: number) => {
+      if (outputs <= 1) return [base];
+      if (base === "child") return Array.from({ length: outputs }, () => "child" as const);
+      if (base === "unisex") {
+        if (outputs === 2) return ["female", "male"] as const;
+        return ["female", "male", "unisex"] as const;
+      }
+      // If the model leans male/female, still include an opposite-sex variant at least once.
+      if (outputs === 2) return [base, oppositeUser(base)] as const;
+      return [base, oppositeUser(base), base] as const;
+    };
+
+    const baseUser =
+      input.templatePreset === "digideal_main" && digidealPkg
+        ? (clampUser(digidealPkg.target_user) as "male" | "female" | "child" | "unisex")
+        : "unisex";
+    const userPlan = buildUserPlan(baseUser, count);
+
+    const planned: { tmpAbs: string; finalAbs: string | null; idx: number }[] = [];
+    for (let i = 1; i <= count; i += 1) {
+      // Use .png as a safe temporary extension; we'll correct it after the tool returns.
+      const baseName = `${prefix}-${i}-${stamp}${suffixTag}`;
+      const tmpAbs = uniqueChildPath(folderAbsPath, baseName, ".png");
+      planned.push({ tmpAbs, finalAbs: null, idx: i });
+    }
+
+    planned.forEach((row) => removeFileQuietly(row.tmpAbs));
+
+    const tasks = planned.map(async (row) => {
+      let promptTemplateOverride = presetTemplate;
+      if (input.templatePreset === "digideal_main" && digidealPkg) {
+        const envCount = digidealPkg.usage_environments?.length || 0;
+        const preferredEnvironmentIndex =
+          envCount > 0 ? ((row.idx - 1) % envCount) + 1 : row.idx;
+        promptTemplateOverride = applyDigidealMainPackageToTemplate(presetTemplate, digidealPkg, {
+          targetUserOverride: userPlan[Math.min(userPlan.length - 1, row.idx - 1)],
+          preferredEnvironmentIndex,
+        });
+      } else if (input.templatePreset === "product_scene" && count > 1) {
+        promptTemplateOverride = [
+          presetTemplate,
+          "",
+          `Variation directive: Output ${row.idx}/${count}. Choose a distinct Swedish lifestyle environment and lighting/time-of-day compared to the other outputs.`,
+        ].join("\n");
+      }
+
+      const runtimeConfig = await runImageEditScript({
+        originalAbsPath,
+        pendingAbsPath: row.tmpAbs,
+        provider: input.provider,
+        mode: "template",
+        prompt: "",
+        templatePreset: "standard",
+        promptTemplateOverride,
+      });
+
+      if (!fs.existsSync(row.tmpAbs) || fs.statSync(row.tmpAbs).size <= 0) {
+        throw new Error("AI edit returned no image.");
+      }
+
+      const detectedExt = detectImageExtension(row.tmpAbs);
+      const parsed = path.parse(row.tmpAbs);
+      const desiredAbs = detectedExt === parsed.ext
+        ? row.tmpAbs
+        : uniqueChildPath(folderAbsPath, parsed.name, detectedExt);
+
+      if (desiredAbs !== row.tmpAbs) {
+        if (!moveFileWithFallback(row.tmpAbs, desiredAbs)) {
+          // Keep the temporary file rather than losing output.
+          row.finalAbs = row.tmpAbs;
+        } else {
+          row.finalAbs = desiredAbs;
+        }
+      } else {
+        row.finalAbs = row.tmpAbs;
+      }
+
+      return { runtimeConfig };
+    });
+
+    // Run the requested outputs in parallel (max 3) within the global edit queue.
+    await Promise.all(tasks);
+
+    const createdPaths = planned
+      .map((row) => row.finalAbs)
+      .filter((abs): abs is string => Boolean(abs))
+      .map((abs) => toRelativePath(abs));
+
+    appendAiEditLog({
+      action: "preset_outputs",
+      requested_by: input.requestedBy,
+      provider: input.provider,
+      template_preset: input.templatePreset,
+      original_path: originalPath,
+      created_paths: createdPaths,
+    });
+
+    return createdPaths;
+  });
 
 const runImageEditScript = async (input: {
   originalAbsPath: string;
@@ -607,6 +1154,7 @@ const runImageEditScript = async (input: {
   mode: AiPromptMode;
   prompt: string;
   templatePreset?: AiTemplatePreset;
+  promptTemplateOverride?: string;
 }) => {
   const providerEnv = input.provider === "zimage" ? loadZImageEnv() : loadProcessorEnv();
   const mergedEnv: NodeJS.ProcessEnv = {
@@ -639,7 +1187,20 @@ const runImageEditScript = async (input: {
   }
 
   const templatePreset: AiTemplatePreset = input.templatePreset ?? "standard";
+
+  // Allow the caller to fully override the template prompt (used for multi-output presets).
   if (
+    (input.provider === "chatgpt" || input.provider === "gemini") &&
+    input.mode === "template" &&
+    String(input.promptTemplateOverride || "").trim()
+  ) {
+    const nextTemplate = String(input.promptTemplateOverride || "").trim();
+    if (input.provider === "chatgpt") {
+      mergedEnv.OPENAI_IMAGE_PROMPT_TEMPLATE = nextTemplate;
+    } else {
+      mergedEnv.GEMINI_IMAGE_PROMPT_TEMPLATE = nextTemplate;
+    }
+  } else if (
     (input.provider === "chatgpt" || input.provider === "gemini") &&
     input.mode === "template" &&
     templatePreset !== "standard"
@@ -656,10 +1217,27 @@ const runImageEditScript = async (input: {
     if (!presetTemplate.trim()) {
       throw new Error(`Prompt template "${templatePreset}" is missing or empty.`);
     }
+
+    let nextTemplate = presetTemplate;
+    if (templatePreset === "digideal_main") {
+      const relative = toRelativePath(input.originalAbsPath);
+      const spu = extractSpuFromRelativePath(relative);
+      const context = spu ? await loadDraftProductContext(spu) : null;
+      const title = context?.title || spu || path.parse(input.originalAbsPath).name;
+      const description = context?.description || "";
+
+      const pkg = await generateDigidealMainPackage({
+        title,
+        description,
+        env: mergedEnv,
+      });
+      nextTemplate = applyDigidealMainPackageToTemplate(nextTemplate, pkg);
+    }
+
     if (input.provider === "chatgpt") {
-      mergedEnv.OPENAI_IMAGE_PROMPT_TEMPLATE = presetTemplate;
+      mergedEnv.OPENAI_IMAGE_PROMPT_TEMPLATE = nextTemplate;
     } else {
-      mergedEnv.GEMINI_IMAGE_PROMPT_TEMPLATE = presetTemplate;
+      mergedEnv.GEMINI_IMAGE_PROMPT_TEMPLATE = nextTemplate;
     }
   }
 
@@ -686,6 +1264,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.provider === "gemini") {
         const args = [
           GEMINI_SCRIPT_PATH,
@@ -705,6 +1284,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.mode === "white_background") {
         await runZImageTool({
           scriptPath: ZIMAGE_BG_REMOVAL_SCRIPT_PATH,
@@ -713,6 +1293,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.mode === "upscale") {
         await runZImageTool({
           scriptPath: ZIMAGE_UPSCALE_SCRIPT_PATH,
@@ -721,6 +1302,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.mode === "auto_center_white") {
         fs.copyFileSync(input.originalAbsPath, input.pendingAbsPath);
         try {
@@ -735,6 +1317,7 @@ const runImageEditScript = async (input: {
           removeFileQuietly(input.pendingAbsPath);
           throw err;
         }
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.mode === "eraser") {
         await runZImageTool({
           scriptPath: ZIMAGE_ERASER_SCRIPT_PATH,
@@ -744,6 +1327,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else {
         await runZImageTool({
           scriptPath: ZIMAGE_IMAGE_TO_IMAGE_SCRIPT_PATH,
@@ -753,6 +1337,7 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
       }
 
       return {

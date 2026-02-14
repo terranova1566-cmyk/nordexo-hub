@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   type AiTemplatePreset,
+  createTemplatePresetOutputs,
   createPendingAiEdit,
   listPendingAiEdits,
   resolvePendingAiEdit,
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
   const prompt = String(body.prompt || "");
   const templatePresetRaw =
     typeof body.templatePreset === "string" ? body.templatePreset.trim().toLowerCase() : "";
+  const outputCountRaw = body.outputCount ?? body.outputs ?? body.count;
   const applyRaw = body.apply;
 
   if (!relativePath) {
@@ -137,6 +139,13 @@ export async function POST(request: Request) {
     }
   }
 
+  const outputCount = (() => {
+    if (outputCountRaw == null) return 1;
+    const parsed = Number(outputCountRaw);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.max(1, Math.min(3, Math.floor(parsed)));
+  })();
+
   const defaultApply =
     providerRaw === "zimage" &&
     (modeRaw === "upscale" || modeRaw === "white_background" || modeRaw === "auto_center_white");
@@ -147,6 +156,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    // DigiDeal Main & Product Scene now auto-save outputs directly into the folder (no review/resolve flow).
+    if (
+      (providerRaw === "chatgpt" || providerRaw === "gemini") &&
+      modeRaw === "template" &&
+      (templatePreset === "digideal_main" || templatePreset === "product_scene")
+    ) {
+      const createdPaths = await createTemplatePresetOutputs({
+        relativePath,
+        provider: providerRaw,
+        templatePreset,
+        count: outputCount,
+        requestedBy: auth.userId,
+      });
+      return NextResponse.json({ ok: true, createdPaths });
+    }
+
     const record = await createPendingAiEdit({
       relativePath,
       provider: providerRaw,

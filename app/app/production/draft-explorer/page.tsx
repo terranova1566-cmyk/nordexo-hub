@@ -63,6 +63,12 @@ type DraftFolder = {
   modifiedAt: string;
 };
 
+type DraftRunPreviewItem = {
+  draft_spu: string;
+  title: string;
+  draft_main_image_url: string | null;
+};
+
 type DraftFolderTreeNode = {
   name: string;
   path: string;
@@ -341,9 +347,100 @@ const useStyles = makeStyles({
     height: "19px",
     flexShrink: 0,
   },
-  folderDropdown: {
-    minWidth: "360px",
-    maxWidth: "504px",
+  batchPickerTrigger: {
+    minWidth: "432px",
+    maxWidth: "605px",
+    justifyContent: "space-between",
+    paddingLeft: "12px",
+    paddingRight: "10px",
+  },
+  batchPickerTriggerLabel: {
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
+    textAlign: "left",
+  },
+  batchPickerChevron: {
+    width: "16px",
+    height: "16px",
+    flexShrink: 0,
+    marginLeft: "8px",
+    opacity: 0.8,
+  },
+  batchPickerSurface: {
+    padding: "8px",
+    borderRadius: "12px",
+    minWidth: "560px",
+    maxWidth: "720px",
+    maxHeight: "520px",
+    overflow: "auto",
+  },
+  batchPickerRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+    gap: "8px",
+    alignItems: "center",
+    padding: "6px 6px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  batchPickerRowActive: {
+    backgroundColor: tokens.colorBrandBackground2,
+  },
+  batchPickerRowName: {
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+  },
+  batchPickerViewButton: {
+    minWidth: "52px",
+    height: "28px",
+    padding: "0 10px",
+  },
+  batchPickerActions: {
+    display: "flex",
+    gap: "8px",
+    paddingTop: "8px",
+    marginTop: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    flexWrap: "wrap",
+  },
+  runPreviewSurface: {
+    width: "820px",
+    maxWidth: "92vw",
+  },
+  runPreviewBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    padding: "16px 18px 14px",
+  },
+  runPreviewTableWrap: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "12px",
+    overflow: "auto",
+    maxHeight: "62vh",
+  },
+  runPreviewThumb: {
+    width: "46px",
+    height: "46px",
+    borderRadius: "8px",
+    objectFit: "cover",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  runPreviewDeleteButton: {
+    minWidth: "70px",
+    height: "30px",
+  },
+  runPreviewActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
   },
   viewToggle: {
     display: "flex",
@@ -689,22 +786,14 @@ const useStyles = makeStyles({
     justifyContent: "flex-end",
     whiteSpace: "nowrap",
   },
-  fileActionUnderline: {
-    backgroundColor: "transparent",
-    border: "none",
+  fileActionButton: {
+    borderRadius: "8px",
+    boxShadow: "none",
     minWidth: "auto",
     paddingLeft: "10px",
     paddingRight: "10px",
-    paddingTop: "2px",
-    paddingBottom: "2px",
-    borderRadius: "6px",
-    borderBottom: `2px solid ${tokens.colorNeutralStroke2}`,
-    ":hover": {
-      borderBottomColor: tokens.colorBrandStroke1,
-      backgroundColor: tokens.colorNeutralBackground2,
-    },
   },
-  fileActionUnderlineNarrow: {
+  fileActionButtonNarrow: {
     paddingLeft: "8px",
     paddingRight: "8px",
   },
@@ -970,10 +1059,25 @@ const useStyles = makeStyles({
   },
   uploadDropHint: {
     color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase200,
   },
   uploadInputWrap: {
     display: "flex",
     justifyContent: "flex-start",
+    "& input[type='file']": {
+      fontSize: tokens.fontSizeBase100,
+      lineHeight: tokens.lineHeightBase200,
+      maxWidth: "100%",
+    },
+    "& input[type='file']::file-selector-button": {
+      fontSize: tokens.fontSizeBase100,
+      padding: "6px 10px",
+      borderRadius: "8px",
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      backgroundColor: tokens.colorNeutralBackground1,
+      cursor: "pointer",
+    },
   },
   uploadDropCenter: {
     display: "flex",
@@ -1001,6 +1105,8 @@ const useStyles = makeStyles({
     "& textarea": {
       minHeight: "74px",
       resize: "vertical",
+      fontSize: tokens.fontSizeBase100,
+      lineHeight: tokens.lineHeightBase200,
     },
   },
   urlUploadActions: {
@@ -1630,6 +1736,53 @@ const useStyles = makeStyles({
     WebkitLineClamp: "2",
     WebkitBoxOrient: "vertical",
   },
+  variantsEditorThumbButton: {
+    width: "100%",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  variantsEditorThumbImageClickable: {
+    cursor: "pointer",
+  },
+  variantsImagePreviewSurface: {
+    width: "min(820px, 92vw)",
+    height: "min(820px, 92vw)",
+    maxWidth: "92vw",
+    maxHeight: "92vw",
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  variantsImagePreviewBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    height: "100%",
+  },
+  variantsImagePreviewTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  variantsImagePreviewImgWrap: {
+    flex: 1,
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantsImagePreviewImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+  },
   variantsEditorActions: {
     justifyContent: "flex-end",
     marginTop: "auto",
@@ -1859,8 +2012,6 @@ export default function DraftExplorerPage() {
   const [selectedFolder, setSelectedFolder] = useState<string>("");
   const [currentPath, setCurrentPath] = useState<string>("");
   const [batchPickerOpen, setBatchPickerOpen] = useState(false);
-  const [spuPickerOpen, setSpuPickerOpen] = useState(false);
-  const [runSpuOptions, setRunSpuOptions] = useState<RunSpuOption[]>([]);
   const [selectedRunsForMerge, setSelectedRunsForMerge] = useState<Set<string>>(
     new Set()
   );
@@ -1869,15 +2020,12 @@ export default function DraftExplorerPage() {
   const [runPreviewOpen, setRunPreviewOpen] = useState(false);
   const [runPreviewRun, setRunPreviewRun] = useState<string>("");
   const [runPreviewLoading, setRunPreviewLoading] = useState(false);
-	  const [runPreviewItems, setRunPreviewItems] = useState<DraftRunPreviewItem[]>(
-	    []
-	  );
-	  const [runPreviewSelectedSpus, setRunPreviewSelectedSpus] = useState<
-	    Set<string>
-	  >(new Set());
-	  const [runPreviewDeletedSpus, setRunPreviewDeletedSpus] = useState<Set<string>>(
-	    new Set()
-	  );
+  const [runPreviewItems, setRunPreviewItems] = useState<DraftRunPreviewItem[]>(
+    []
+  );
+  const [runPreviewDeletedSpus, setRunPreviewDeletedSpus] = useState<Set<string>>(
+    new Set()
+  );
   const [runPreviewSaving, setRunPreviewSaving] = useState(false);
   const [entries, setEntries] = useState<DraftEntry[]>([]);
   const [mainViewVariantImageEntries, setMainViewVariantImageEntries] = useState<
@@ -1924,6 +2072,13 @@ export default function DraftExplorerPage() {
   const [contextMenuSubmenu, setContextMenuSubmenu] = useState<
     "tag-image" | "edit-chatgpt" | "edit-gemini" | null
   >(null);
+  const [contextMenuNestedSubmenu, setContextMenuNestedSubmenu] = useState<
+    | "chatgpt-digideal"
+    | "chatgpt-scene"
+    | "gemini-digideal"
+    | "gemini-scene"
+    | null
+  >(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenuSubmenuSide, setContextMenuSubmenuSide] = useState<
     "right" | "left"
@@ -1949,24 +2104,6 @@ export default function DraftExplorerPage() {
   const [fileViewerSaving, setFileViewerSaving] = useState(false);
   const [fileViewerError, setFileViewerError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [reloadingImagePaths, setReloadingImagePaths] = useState<Set<string>>(
-    new Set()
-  );
-  const [previewDeletePending, setPreviewDeletePending] = useState(false);
-  const [photopeaOpen, setPhotopeaOpen] = useState(false);
-  const [photopeaEntry, setPhotopeaEntry] = useState<DraftEntry | null>(null);
-  const [photopeaReady, setPhotopeaReady] = useState(false);
-  const [photopeaLoading, setPhotopeaLoading] = useState(false);
-  const [photopeaExporting, setPhotopeaExporting] = useState(false);
-  const [photopeaPersisting, setPhotopeaPersisting] = useState(false);
-  const [photopeaError, setPhotopeaError] = useState<string | null>(null);
-  const [photopeaSessionKey, setPhotopeaSessionKey] = useState(0);
-  const photopeaIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const photopeaFileBufferRef = useRef<ArrayBuffer | null>(null);
-  const photopeaExportBufferRef = useRef<ArrayBuffer | null>(null);
-  const photopeaPersistingRef = useRef(false);
-  const photopeaReadyRef = useRef(false);
-  const photopeaFileSentRef = useRef(false);
   const [variantsImagePreview, setVariantsImagePreview] = useState<{
     src: string;
     label: string;
@@ -3634,81 +3771,12 @@ export default function DraftExplorerPage() {
     });
   }, []);
 
-  const handleDeleteRuns = useCallback(async () => {
-    const runs = Array.from(selectedRunsForMerge);
-    if (runs.length === 0 || deleteRunsPending) return;
-    const confirmed = window.confirm(
-      `Delete ${runs.length} selected batch folder${
-        runs.length === 1 ? "" : "s"
-      }? This will also delete linked SPU and SKU draft data.`
-    );
-    if (!confirmed) return;
-
-    setDeleteRunsPending(true);
-    setError(null);
-
-    const failedRuns: string[] = [];
-    const failureMessages: string[] = [];
-    let deletedRuns = 0;
-
-    for (const run of runs) {
-      try {
-        const response = await fetch(
-          `/api/drafts/folders/${encodeURIComponent(run)}`,
-          { method: "DELETE" }
-        );
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
-            payload?.error || `Delete failed (HTTP ${response.status}).`
-          );
-        }
-        deletedRuns += 1;
-      } catch (err) {
-        failedRuns.push(run);
-        failureMessages.push(
-          `${run}: ${err instanceof Error ? err.message : "Delete failed."}`
-        );
-      }
-    }
-
-    setSelectedRunsForMerge(new Set(failedRuns));
-    if (failedRuns.length === 0) {
-      setBatchPickerOpen(false);
-    }
-
-    await fetchFolders();
-    if (draftTab === "spu") {
-      await fetchSpuRows();
-    } else {
-      await fetchSkuRows();
-    }
-
-    if (failureMessages.length > 0) {
-      setError(
-        `Deleted ${deletedRuns}/${runs.length} batch folder${
-          runs.length === 1 ? "" : "s"
-        }. Errors: ${failureMessages.join(" | ")}`
-      );
-    }
-
-    setDeleteRunsPending(false);
-  }, [
-    selectedRunsForMerge,
-    deleteRunsPending,
-    fetchFolders,
-    draftTab,
-    fetchSpuRows,
-    fetchSkuRows,
-  ]);
-
-	  const openRunPreview = useCallback(async (run: string) => {
-	    setRunPreviewRun(run);
-	    setRunPreviewSelectedSpus(new Set());
-	    setRunPreviewDeletedSpus(new Set());
-	    setRunPreviewItems([]);
-	    setRunPreviewOpen(true);
-	    setRunPreviewLoading(true);
+  const openRunPreview = useCallback(async (run: string) => {
+    setRunPreviewRun(run);
+    setRunPreviewDeletedSpus(new Set());
+    setRunPreviewItems([]);
+    setRunPreviewOpen(true);
+    setRunPreviewLoading(true);
     try {
       const response = await fetch(
         `/api/drafts/folders/${encodeURIComponent(run)}/preview`
@@ -3729,63 +3797,13 @@ export default function DraftExplorerPage() {
     }
   }, []);
 
-	  const handleRunPreviewDelete = useCallback((spu: string) => {
-	    setRunPreviewDeletedSpus((prev) => {
-	      const next = new Set(prev);
-	      next.add(spu);
-	      return next;
-	    });
-	    setRunPreviewSelectedSpus((prev) => {
-	      if (!prev.has(spu)) return prev;
-	      const next = new Set(prev);
-	      next.delete(spu);
-	      return next;
-	    });
-	  }, []);
-
-	  const visibleRunPreviewItems = useMemo(
-	    () => runPreviewItems.filter((item) => !runPreviewDeletedSpus.has(item.draft_spu)),
-	    [runPreviewItems, runPreviewDeletedSpus]
-	  );
-
-	  const allRunPreviewSelected = useMemo(
-	    () =>
-	      visibleRunPreviewItems.length > 0 &&
-	      visibleRunPreviewItems.every((item) => runPreviewSelectedSpus.has(item.draft_spu)),
-	    [visibleRunPreviewItems, runPreviewSelectedSpus]
-	  );
-
-	  const someRunPreviewSelected = useMemo(
-	    () => visibleRunPreviewItems.some((item) => runPreviewSelectedSpus.has(item.draft_spu)),
-	    [visibleRunPreviewItems, runPreviewSelectedSpus]
-	  );
-
-	  const toggleSelectAllRunPreview = useCallback(() => {
-	    if (allRunPreviewSelected) {
-	      setRunPreviewSelectedSpus(new Set());
-	      return;
-	    }
-	    setRunPreviewSelectedSpus(new Set(visibleRunPreviewItems.map((item) => item.draft_spu)));
-	  }, [allRunPreviewSelected, visibleRunPreviewItems]);
-
-	  const toggleSelectRunPreviewSpu = useCallback((spu: string) => {
-	    setRunPreviewSelectedSpus((prev) => {
-	      const next = new Set(prev);
-	      if (next.has(spu)) next.delete(spu);
-	      else next.add(spu);
-	      return next;
-	    });
-	  }, []);
-
-	  const handleRunPreviewDeleteSelected = useCallback(() => {
-	    if (runPreviewSelectedSpus.size === 0) return;
-	    setRunPreviewDeletedSpus((prev) => {
-	      const next = new Set(prev);
-	      runPreviewSelectedSpus.forEach((spu) => next.add(spu));
-	      return next;
-	    });
-	    setRunPreviewSelectedSpus(new Set());
-	  }, [runPreviewSelectedSpus]);
+  const handleRunPreviewDelete = useCallback((spu: string) => {
+    setRunPreviewDeletedSpus((prev) => {
+      const next = new Set(prev);
+      next.add(spu);
+      return next;
+    });
+  }, []);
 
   const handleRunPreviewSave = useCallback(async () => {
     if (!runPreviewRun || runPreviewDeletedSpus.size === 0) {
@@ -3967,11 +3985,13 @@ export default function DraftExplorerPage() {
     const close = () => {
       setContextMenu(null);
       setContextMenuSubmenu(null);
+      setContextMenuNestedSubmenu(null);
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenu(null);
         setContextMenuSubmenu(null);
+        setContextMenuNestedSubmenu(null);
       }
     };
     window.addEventListener("click", close);
@@ -3983,6 +4003,10 @@ export default function DraftExplorerPage() {
       window.removeEventListener("keydown", handleEscape);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    setContextMenuNestedSubmenu(null);
+  }, [contextMenuSubmenu]);
 
   const handleToggleFile = (pathValue: string) => {
     setSelectedFiles((prev) => {
@@ -6018,7 +6042,7 @@ export default function DraftExplorerPage() {
 	      provider: AiEditProvider,
 	      mode: AiPromptMode,
 	      promptText: string,
-	      options?: { templatePreset?: AiTemplatePreset }
+	      options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
 	    ) => {
       const deduped = sourceEntries.filter(
         (entry, index, arr) =>
@@ -6083,6 +6107,7 @@ export default function DraftExplorerPage() {
 	                mode,
 	                prompt: promptText,
 	                templatePreset: options?.templatePreset,
+                  outputCount: options?.outputCount,
 	              }),
 	            });
             const payload = await response.json().catch(() => ({}));
@@ -7237,6 +7262,7 @@ export default function DraftExplorerPage() {
     const { entry } = contextMenu;
     setContextMenu(null);
     setContextMenuSubmenu(null);
+    setContextMenuNestedSubmenu(null);
     if (action.startsWith("tag-image:")) {
       const tag = action.slice("tag-image:".length).trim().toUpperCase();
       if (tag === "MAIN" || tag === "ENV" || tag === "VAR") {
@@ -7272,22 +7298,28 @@ export default function DraftExplorerPage() {
 	      startAiEdit(entry, "chatgpt", "template");
 	      return;
 	    }
-	    if (action === "ai-chatgpt-digideal-main") {
+	    if (action.startsWith("ai-chatgpt-digideal-main")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
 	        setError(null);
+          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+          const outputCount = countRaw ? Number(countRaw) : 1;
 	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
 	          templatePreset: "digideal_main",
+            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
 	        });
 	      }
 	      return;
 	    }
-	    if (action === "ai-chatgpt-product-scene") {
+	    if (action.startsWith("ai-chatgpt-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
 	        setError(null);
+          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+          const outputCount = countRaw ? Number(countRaw) : 1;
 	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
 	          templatePreset: "product_scene",
+            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
 	        });
 	      }
 	      return;
@@ -7300,22 +7332,28 @@ export default function DraftExplorerPage() {
 	      startAiEdit(entry, "gemini", "template");
 	      return;
 	    }
-	    if (action === "ai-gemini-digideal-main") {
+	    if (action.startsWith("ai-gemini-digideal-main")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
 	        setError(null);
+          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+          const outputCount = countRaw ? Number(countRaw) : 1;
 	        void runAiEditsForEntries(targets, "gemini", "template", "", {
 	          templatePreset: "digideal_main",
+            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
 	        });
 	      }
 	      return;
 	    }
-	    if (action === "ai-gemini-product-scene") {
+	    if (action.startsWith("ai-gemini-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
 	        setError(null);
+          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+          const outputCount = countRaw ? Number(countRaw) : 1;
 	        void runAiEditsForEntries(targets, "gemini", "template", "", {
 	          templatePreset: "product_scene",
+            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
 	        });
 	      }
 	      return;
@@ -8802,7 +8840,7 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 63 }}>
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -8844,7 +8882,7 @@ export default function DraftExplorerPage() {
                         <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
                           Color (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th className={styles.variantsEditorHeadCell} style={{ width: 63 }}>
                           Size (ZH)
                         </th>
                         <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
@@ -8859,15 +8897,12 @@ export default function DraftExplorerPage() {
                         <th className={styles.variantsEditorHeadCell} style={{ width: 68 }}>
                           Weight
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 58 }}>
-                          Unit
-                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {variantsEditorRows.length === 0 ? (
                         <tr>
-                          <td className={styles.variantsEditorCell} colSpan={14}>
+                          <td className={styles.variantsEditorCell} colSpan={13}>
                             No variants yet. Add one or run AI update.
                           </td>
                         </tr>
@@ -9054,20 +9089,6 @@ export default function DraftExplorerPage() {
                                 }
                               />
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_weight_unit}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_weight_unit",
-                                    data.value
-                                  )
-                                }
-                              />
-                            </td>
                           </tr>
                         ))
                       )}
@@ -9118,12 +9139,26 @@ export default function DraftExplorerPage() {
                           entry.name;
                         return (
                           <div key={entry.path} className={styles.variantsEditorThumbCard}>
-                            <img
-                              src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
-                              alt={label}
-                              className={styles.variantsEditorThumbImage}
-                              loading="lazy"
-                            />
+                            <button
+                              type="button"
+                              className={styles.variantsEditorThumbButton}
+                              onClick={() =>
+                                setVariantsImagePreview({
+                                  src: buildDraftDownloadUrl(entry.path, entry.modifiedAt),
+                                  label,
+                                })
+                              }
+                            >
+                              <img
+                                src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                                alt={label}
+                                className={mergeClasses(
+                                  styles.variantsEditorThumbImage,
+                                  styles.variantsEditorThumbImageClickable
+                                )}
+                                loading="lazy"
+                              />
+                            </button>
                             <Text className={styles.variantsEditorThumbLabel} size={100}>
                               {label}
                             </Text>
@@ -9159,6 +9194,119 @@ export default function DraftExplorerPage() {
                 {variantsEditorSaving ? "Saving..." : t("common.save")}
               </Button>
             </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(variantsImagePreview)}
+        onOpenChange={(_, data) => {
+          if (!data.open) setVariantsImagePreview(null);
+        }}
+      >
+        <DialogSurface className={styles.variantsImagePreviewSurface}>
+          <DialogBody className={styles.variantsImagePreviewBody}>
+            <div className={styles.variantsImagePreviewTop}>
+              <Button
+                appearance="subtle"
+                size="small"
+                onClick={() => setVariantsImagePreview(null)}
+              >
+                Close
+              </Button>
+            </div>
+            <div className={styles.variantsImagePreviewImgWrap}>
+              {variantsImagePreview ? (
+                <img
+                  src={variantsImagePreview.src}
+                  alt={variantsImagePreview.label}
+                  className={styles.variantsImagePreviewImg}
+                />
+              ) : null}
+            </div>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={runPreviewOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            setRunPreviewOpen(false);
+            setRunPreviewRun("");
+            setRunPreviewItems([]);
+            setRunPreviewDeletedSpus(new Set());
+          }
+        }}
+      >
+        <DialogSurface className={styles.runPreviewSurface}>
+          <DialogBody className={styles.runPreviewBody}>
+            <DialogTitle>
+              Batch Preview{runPreviewRun ? ` - ${runPreviewRun}` : ""}
+            </DialogTitle>
+            {runPreviewLoading ? <Spinner size="small" /> : null}
+            <div className={styles.runPreviewTableWrap}>
+              <Table size="small" aria-label="Batch preview">
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Action</TableHeaderCell>
+                    <TableHeaderCell>Image</TableHeaderCell>
+                    <TableHeaderCell>SPU</TableHeaderCell>
+                    <TableHeaderCell>Title</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runPreviewItems
+                    .filter((item) => !runPreviewDeletedSpus.has(item.draft_spu))
+                    .map((item) => (
+                      <TableRow key={item.draft_spu}>
+                        <TableCell>
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.runPreviewDeleteButton}
+                            onClick={() => handleRunPreviewDelete(item.draft_spu)}
+                          >
+                            Delete
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          {item.draft_main_image_url ? (
+                            <img
+                              src={item.draft_main_image_url}
+                              alt={item.draft_spu}
+                              className={styles.runPreviewThumb}
+                            />
+                          ) : (
+                            <div
+                              className={styles.runPreviewThumb}
+                              style={{ display: "inline-block" }}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>{item.draft_spu}</TableCell>
+                        <TableCell>{item.title}</TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className={styles.runPreviewActions}>
+              <Button
+                appearance="outline"
+                onClick={() => setRunPreviewOpen(false)}
+                disabled={runPreviewSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => void handleRunPreviewSave()}
+                disabled={runPreviewSaving}
+              >
+                {runPreviewSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
           </DialogBody>
         </DialogSurface>
       </Dialog>
@@ -9750,21 +9898,121 @@ export default function DraftExplorerPage() {
 
         <div className={styles.explorerControlsRow}>
           <div className={styles.explorerControlsLeft}>
-            <Dropdown
-              value={selectedFolder}
-              selectedOptions={selectedFolder ? [selectedFolder] : []}
-              placeholder={t("bulkProcessing.explorer.selectFolder")}
-              className={styles.folderDropdown}
-              onOptionSelect={(_, data) => {
-                void handleSelectFolder(String(data.optionValue ?? ""));
-              }}
+            <Popover
+              open={batchPickerOpen}
+              onOpenChange={(_, data) => setBatchPickerOpen(data.open)}
+              positioning="below-start"
             >
-              {folders.map((folder) => (
-                <Option key={folder.path} value={folder.path}>
-                  {folder.name}
-                </Option>
-              ))}
-            </Dropdown>
+              <PopoverTrigger disableButtonEnhancement>
+                <Button
+                  appearance="outline"
+                  className={mergeClasses(
+                    styles.batchPickerTrigger,
+                    styles.explorerWhiteButton
+                  )}
+                  aria-label={t("bulkProcessing.explorer.selectFolder")}
+                  title={t("bulkProcessing.explorer.selectFolder")}
+                >
+                  <span className={styles.batchPickerTriggerLabel}>
+                    {selectedFolder ||
+                      t("bulkProcessing.explorer.selectFolder")}
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.batchPickerChevron}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M6 9l6 6l6 -6" />
+                  </svg>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.batchPickerSurface}>
+                {folders.map((folder) => {
+                  const active = folder.path === selectedFolder;
+                  const checked = selectedRunsForMerge.has(folder.path);
+                  return (
+                    <div
+                      key={folder.path}
+                      className={mergeClasses(
+                        styles.batchPickerRow,
+                        active ? styles.batchPickerRowActive : undefined
+                      )}
+                      onClick={() => {
+                        setBatchPickerOpen(false);
+                        void handleSelectFolder(folder.path);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setBatchPickerOpen(false);
+                          void handleSelectFolder(folder.path);
+                        }
+                      }}
+                    >
+                      <span className={styles.batchPickerRowName}>
+                        {folder.name}
+                      </span>
+                      <Button
+                        size="small"
+                        appearance="outline"
+                        className={styles.batchPickerViewButton}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void openRunPreview(folder.path);
+                        }}
+                      >
+                        View
+                      </Button>
+                      <span
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                        }}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onChange={() => toggleRunForMerge(folder.path)}
+                        />
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className={styles.batchPickerActions}>
+                  <Button
+                    appearance="outline"
+                    onClick={handleSelectAllRunsForMerge}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    onClick={handleUnselectRunsForMerge}
+                  >
+                    Unselect
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    disabled={selectedRunsForMerge.size < 2 || mergeRunsPending}
+                    onClick={() => void handleMergeRuns()}
+                  >
+                    {mergeRunsPending ? "Merging..." : "Merge"}
+                  </Button>
+                </div>
+              </PopoverSurface>
+            </Popover>
             <Button
               appearance="outline"
               onClick={() => {
@@ -10010,34 +10258,111 @@ export default function DraftExplorerPage() {
 	                      >
 	                        Edit ChatGPT: Direct
 	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          void runAiEditsForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "template",
-	                            "",
-	                            { templatePreset: "digideal_main" }
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Digideal Main
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          void runAiEditsForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "template",
-	                            "",
-	                            { templatePreset: "product_scene" }
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Product Scene
-	                      </MenuItem>
+                        <Menu>
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem
+                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                            >
+                              Edit ChatGPT: Digideal Main
+                            </MenuItem>
+                          </MenuTrigger>
+                          <MenuPopover>
+                            <MenuList className={styles.compactMenuList}>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 1 }
+                                  )
+                                }
+                              >
+                                1 image
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 2 }
+                                  )
+                                }
+                              >
+                                2 images
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 3 }
+                                  )
+                                }
+                              >
+                                3 images
+                              </MenuItem>
+                            </MenuList>
+                          </MenuPopover>
+                        </Menu>
+
+                        <Menu>
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem
+                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                            >
+                              Edit ChatGPT: Product Scene
+                            </MenuItem>
+                          </MenuTrigger>
+                          <MenuPopover>
+                            <MenuList className={styles.compactMenuList}>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 1 }
+                                  )
+                                }
+                              >
+                                1 image
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 2 }
+                                  )
+                                }
+                              >
+                                2 images
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "chatgpt",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 3 }
+                                  )
+                                }
+                              >
+                                3 images
+                              </MenuItem>
+                            </MenuList>
+                          </MenuPopover>
+                        </Menu>
 	                      <MenuItem
 	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
 	                        onClick={() =>
@@ -10062,34 +10387,111 @@ export default function DraftExplorerPage() {
 	                      >
 	                        Edit Gemini: Direct
 	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          void runAiEditsForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "template",
-	                            "",
-	                            { templatePreset: "digideal_main" }
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Digideal Main
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          void runAiEditsForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "template",
-	                            "",
-	                            { templatePreset: "product_scene" }
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Product Scene
-	                      </MenuItem>
+                        <Menu>
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem
+                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                            >
+                              Edit Gemini: Digideal Main
+                            </MenuItem>
+                          </MenuTrigger>
+                          <MenuPopover>
+                            <MenuList className={styles.compactMenuList}>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 1 }
+                                  )
+                                }
+                              >
+                                1 image
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 2 }
+                                  )
+                                }
+                              >
+                                2 images
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "digideal_main", outputCount: 3 }
+                                  )
+                                }
+                              >
+                                3 images
+                              </MenuItem>
+                            </MenuList>
+                          </MenuPopover>
+                        </Menu>
+
+                        <Menu>
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem
+                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                            >
+                              Edit Gemini: Product Scene
+                            </MenuItem>
+                          </MenuTrigger>
+                          <MenuPopover>
+                            <MenuList className={styles.compactMenuList}>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 1 }
+                                  )
+                                }
+                              >
+                                1 image
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 2 }
+                                  )
+                                }
+                              >
+                                2 images
+                              </MenuItem>
+                              <MenuItem
+                                onClick={() =>
+                                  void runAiEditsForEntries(
+                                    selectedImageEntries,
+                                    "gemini",
+                                    "template",
+                                    "",
+                                    { templatePreset: "product_scene", outputCount: 3 }
+                                  )
+                                }
+                              >
+                                3 images
+                              </MenuItem>
+                            </MenuList>
+                          </MenuPopover>
+                        </Menu>
                       <MenuItem
                         disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
                         onClick={() =>
@@ -10677,21 +11079,21 @@ export default function DraftExplorerPage() {
 	                            <TableCell className={styles.filesColAction}>
 	                              <div className={styles.fileActions}>
 	                                <Button
-	                                  appearance="transparent"
+	                                  appearance="outline"
 	                                  size="small"
 	                                  onClick={() => downloadEntry(entry)}
-	                                  className={styles.fileActionUnderline}
+	                                  className={styles.fileActionButton}
 	                                >
 	                                  {t("bulkProcessing.explorer.download")}
 	                                </Button>
 	                                <Button
-	                                  appearance="transparent"
+	                                  appearance="outline"
 	                                  size="small"
 	                                  onClick={() => handleOpenFileViewer(entry)}
 	                                  disabled={!isTextFileEditable(entry)}
 	                                  className={mergeClasses(
-	                                    styles.fileActionUnderline,
-	                                    styles.fileActionUnderlineNarrow
+	                                    styles.fileActionButton,
+	                                    styles.fileActionButtonNarrow
 	                                  )}
 	                                >
 	                                  View
@@ -10706,7 +11108,7 @@ export default function DraftExplorerPage() {
                 </div>
 
                 <div className={styles.urlUploadPanel}>
-                  <Text size={200} weight="semibold">
+                  <Text size={100} weight="semibold">
                     Image URL Input
                   </Text>
                   <Textarea
@@ -10746,7 +11148,7 @@ export default function DraftExplorerPage() {
                     handleUploadFiles(files);
                   }}
                 >
-                  <Text size={200} className={styles.uploadDropHint}>
+                  <Text size={100} className={styles.uploadDropHint}>
                     Drag and drop files, or choose from your computer.
                   </Text>
                   <div className={styles.uploadDropCenter}>
@@ -11266,20 +11668,123 @@ export default function DraftExplorerPage() {
 	                      >
 	                        <span>Direct</span>
 	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-digideal-main")}
-	                      >
-	                        <span>Digideal Main</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-product-scene")}
-	                      >
-	                        <span>Product Scene</span>
-	                      </button>
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("chatgpt-digideal");
+                            }}
+                          >
+                            <span>Digideal Main</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "chatgpt-digideal" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("chatgpt-scene");
+                            }}
+                          >
+                            <span>Product Scene</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "chatgpt-scene" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-product-scene:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-product-scene:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-product-scene:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
 	                    </div>
 	                  ) : null}
 	                </div>
@@ -11327,20 +11832,123 @@ export default function DraftExplorerPage() {
 	                      >
 	                        <span>Direct</span>
 	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-digideal-main")}
-	                      >
-	                        <span>Digideal Main</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-product-scene")}
-	                      >
-	                        <span>Product Scene</span>
-	                      </button>
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("gemini-digideal");
+                            }}
+                          >
+                            <span>Digideal Main</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "gemini-digideal" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("gemini-scene");
+                            }}
+                          >
+                            <span>Product Scene</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "gemini-scene" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-product-scene:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-product-scene:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-product-scene:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
 	                    </div>
 	                  ) : null}
 	                </div>

@@ -27,10 +27,17 @@ const parseEnvFile = (content: string) => {
 
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
-    const isQuoted =
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"));
-    if (isQuoted) {
+    const isDoubleQuoted = value.startsWith('"') && value.endsWith('"');
+    const isSingleQuoted = value.startsWith("'") && value.endsWith("'");
+    if (isDoubleQuoted) {
+      // We write multiline-ish values using JSON.stringify(), which escapes backslashes.
+      // Parse it back so the UI doesn't accumulate extra backslashes on every save.
+      try {
+        value = JSON.parse(value);
+      } catch {
+        value = value.slice(1, -1);
+      }
+    } else if (isSingleQuoted) {
       value = value.slice(1, -1);
     } else {
       // Support inline comments in .env values: KEY=value # comment
@@ -137,9 +144,16 @@ const extractTextTemplate = (filePath: string) => {
   }
 };
 
+const getFileMtimeIso = (filePath: string) => {
+  try {
+    return fs.statSync(filePath).mtime.toISOString();
+  } catch {
+    return null;
+  }
+};
+
 const buildResponse = (env: Record<string, string>) => {
-  const modeRaw = String(env.IMAGE_EDIT_PROMPT_MODE || "template").trim().toLowerCase();
-  const promptMode = modeRaw === "direct" ? "direct" : "template";
+  const envUpdatedAt = getFileMtimeIso(PROCESSOR_ENV_PATH);
 
   const chatgptPrompt = env.OPENAI_IMAGE_PROMPT_TEMPLATE
     ? envMultilineToText(env.OPENAI_IMAGE_PROMPT_TEMPLATE)
@@ -158,11 +172,36 @@ const buildResponse = (env: Record<string, string>) => {
     : extractTextTemplate(ENVIORMENT_SCENE_PROMPT_PATH);
 
   return {
-    prompt_mode: promptMode,
     chatgpt_prompt_template: chatgptPrompt,
     gemini_prompt_template: geminiPrompt,
     digideal_main_prompt_template: digidealMainPrompt,
     enviorment_scene_image_prompt_template: enviormentScenePrompt,
+    meta: {
+      chatgpt_prompt_template: {
+        source: env.OPENAI_IMAGE_PROMPT_TEMPLATE ? "env" : "script",
+        updated_at: env.OPENAI_IMAGE_PROMPT_TEMPLATE
+          ? envUpdatedAt
+          : getFileMtimeIso(CHATGPT_SCRIPT_PATH),
+      },
+      gemini_prompt_template: {
+        source: env.GEMINI_IMAGE_PROMPT_TEMPLATE ? "env" : "script",
+        updated_at: env.GEMINI_IMAGE_PROMPT_TEMPLATE
+          ? envUpdatedAt
+          : getFileMtimeIso(GEMINI_SCRIPT_PATH),
+      },
+      digideal_main_prompt_template: {
+        source: env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE ? "env" : "file",
+        updated_at: env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE
+          ? envUpdatedAt
+          : getFileMtimeIso(DIGIDEAL_MAIN_PROMPT_PATH),
+      },
+      enviorment_scene_image_prompt_template: {
+        source: env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE ? "env" : "file",
+        updated_at: env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE
+          ? envUpdatedAt
+          : getFileMtimeIso(ENVIORMENT_SCENE_PROMPT_PATH),
+      },
+    },
   };
 };
 
@@ -173,7 +212,11 @@ const requireAdmin = async () => {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      supabase,
+    };
   }
 
   const { data: settings, error: settingsError } = await supabase
@@ -186,14 +229,19 @@ const requireAdmin = async () => {
     return {
       ok: false as const,
       response: NextResponse.json({ error: settingsError.message }, { status: 500 }),
+      supabase,
     };
   }
 
   if (!settings?.is_admin) {
-    return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      supabase,
+    };
   }
 
-  return { ok: true as const };
+  return { ok: true as const, supabase };
 };
 
 export async function GET() {
@@ -214,32 +262,44 @@ export async function POST(request: Request) {
   }
 
   const updates: Record<string, string> = {};
-
-  if (typeof payload.prompt_mode === "string") {
-    const mode = payload.prompt_mode.trim().toLowerCase();
-    if (mode === "template" || mode === "direct") {
-      updates.IMAGE_EDIT_PROMPT_MODE = mode;
-    }
-  }
+  const versions: Array<{ prompt_id: string; template_text: string }> = [];
 
   if (typeof payload.chatgpt_prompt_template === "string") {
-    updates.OPENAI_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(payload.chatgpt_prompt_template);
+    updates.OPENAI_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
+      payload.chatgpt_prompt_template
+    );
+    versions.push({
+      prompt_id: "OAIIMGED",
+      template_text: payload.chatgpt_prompt_template,
+    });
   }
 
   if (typeof payload.gemini_prompt_template === "string") {
     updates.GEMINI_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(payload.gemini_prompt_template);
+    versions.push({
+      prompt_id: "GEMIMGED",
+      template_text: payload.gemini_prompt_template,
+    });
   }
 
   if (typeof payload.digideal_main_prompt_template === "string") {
     updates.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
       payload.digideal_main_prompt_template
     );
+    versions.push({
+      prompt_id: "DDMAINIM",
+      template_text: payload.digideal_main_prompt_template,
+    });
   }
 
   if (typeof payload.enviorment_scene_image_prompt_template === "string") {
     updates.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
       payload.enviorment_scene_image_prompt_template
     );
+    versions.push({
+      prompt_id: "ENVSCNIM",
+      template_text: payload.enviorment_scene_image_prompt_template,
+    });
   }
 
   try {
@@ -251,6 +311,15 @@ export async function POST(request: Request) {
       { error: (err as Error)?.message || "Failed to write settings." },
       { status: 500 }
     );
+  }
+
+  if (versions.length > 0) {
+    const { error: versionsError } = await auth.supabase
+      .from("ai_image_edit_prompt_versions")
+      .insert(versions);
+    if (versionsError) {
+      return NextResponse.json({ error: versionsError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json(buildResponse(readEnv()));

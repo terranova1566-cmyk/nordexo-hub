@@ -12,6 +12,7 @@ import {
   Dropdown,
   Field,
   Input,
+  Textarea,
   MessageBar,
   Option,
   Popover,
@@ -111,11 +112,48 @@ type ZImageSettings = {
 };
 
 type AIImageEditSettings = {
-  prompt_mode: "template" | "direct";
   chatgpt_prompt_template: string;
   gemini_prompt_template: string;
   digideal_main_prompt_template: string;
   enviorment_scene_image_prompt_template: string;
+};
+
+type AIImageEditPromptMeta = {
+  source?: string | null;
+  updated_at?: string | null;
+};
+
+type AIImageEditSettingsResponse = AIImageEditSettings & {
+  meta?: {
+    chatgpt_prompt_template?: AIImageEditPromptMeta;
+    gemini_prompt_template?: AIImageEditPromptMeta;
+    digideal_main_prompt_template?: AIImageEditPromptMeta;
+    enviorment_scene_image_prompt_template?: AIImageEditPromptMeta;
+  };
+};
+
+type AIImagePromptKey =
+  | "chatgpt"
+  | "gemini"
+  | "digideal_main"
+  | "enviorment_scene"
+  | `custom:${string}`;
+
+type AIImageEditCustomPrompt = {
+  prompt_id: string;
+  name: string;
+  usage?: string | null;
+  description?: string | null;
+  template_text?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type AIImageEditPromptVersion = {
+  id: string;
+  prompt_id: string;
+  template_text: string;
+  created_at: string;
 };
 
 const createImage = (url: string) =>
@@ -169,6 +207,7 @@ const useStyles = makeStyles({
   tabsCard: {
     padding: "8px 16px",
     borderRadius: "var(--app-radius)",
+    backgroundColor: "#fafafa",
   },
   sectionGrid: {
     display: "flex",
@@ -196,12 +235,22 @@ const useStyles = makeStyles({
   card: {
     padding: "16px",
     borderRadius: "var(--app-radius)",
+    backgroundColor: "#fafafa",
     display: "flex",
     flexDirection: "column",
     gap: "12px",
   },
   helperText: {
     color: tokens.colorNeutralForeground3,
+  },
+  sectionTitleBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  sectionSubtitle: {
+    marginTop: "-2px",
   },
   categoryTrigger: {
     justifyContent: "space-between",
@@ -444,10 +493,204 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground1,
     resize: "vertical",
   },
+  aiImageGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(300px, 25%) minmax(0, 1fr)",
+    gap: "16px",
+    alignItems: "stretch",
+    "@media (max-width: 980px)": {
+      gridTemplateColumns: "minmax(0, 1fr)",
+    },
+  },
+  aiImageSidebar: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  },
+  aiImageSidebarHeader: {
+    padding: "12px 12px 10px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#fafafa",
+  },
+  aiImageSidebarSearch: {
+    marginTop: "8px",
+  },
+  fullWidthControl: {
+    width: "100%",
+  },
+  aiImagePromptList: {
+    display: "flex",
+    flexDirection: "column",
+    overflowY: "auto",
+    flex: "1 1 auto",
+    minHeight: 0,
+  },
+  aiImageSidebarFooter: {
+    padding: "12px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#fafafa",
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  aiImagePromptItem: {
+    border: "none",
+    background: "transparent",
+    textAlign: "left",
+    cursor: "pointer",
+    padding: "12px 12px 10px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    transition: "background-color 0.12s ease",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "-2px",
+    },
+  },
+  aiImagePromptItemActive: {
+    backgroundColor: "#edf6ff",
+  },
+  aiImagePromptTopRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: "10px",
+  },
+  aiImagePromptUpdated: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    color: tokens.colorNeutralForeground3,
+    whiteSpace: "nowrap",
+  },
+  aiImagePromptUsage: {
+    marginTop: "4px",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  aiImagePromptDescription: {
+    marginTop: "2px",
+    color: tokens.colorNeutralForeground4,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  highlight: {
+    backgroundColor: "#fff6bf",
+    borderRadius: "2px",
+    padding: "0 1px",
+  },
+  aiImageEditor: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    // Allow the editor to grow with the prompt so the page can scroll naturally.
+    overflow: "visible",
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  },
+  aiImageEditorHeader: {
+    padding: "12px 12px 10px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#fafafa",
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  aiImageEditorHeaderControls: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  promptNameInput: {
+    // Fluent Input feels tall in dialogs; tighten to match other fields in the app.
+    minHeight: "34px",
+  },
+  aiImageEditorHeaderText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  aiImageEditorTextArea: {
+    flex: "0 0 auto",
+    minHeight: "520px",
+    border: "none",
+    borderRadius: 0,
+    resize: "none",
+    padding: "12px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "hidden",
+  },
+  aiImageEditorHighlightedText: {
+    margin: 0,
+    padding: "12px",
+    fontFamily: "monospace",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  aiImageEditorActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+    padding: "12px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#fafafa",
+  },
+  revertButton: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  deleteButton: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorStatusDangerForeground1,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  monoInline: {
+    fontFamily: "monospace",
+  },
 });
 
 const normalizeKeyword = (value: string) =>
   value.trim().toLowerCase();
+
+const normalizeSearchQuery = (value: string) => value.trim().toLowerCase();
+
+const splitForHighlight = (text: string, query: string) => {
+  const q = normalizeSearchQuery(query);
+  const t = String(text || "");
+  if (!q) return [{ text: t, hit: false }];
+  const lower = t.toLowerCase();
+  const parts: Array<{ text: string; hit: boolean }> = [];
+  let idx = 0;
+  while (idx < t.length) {
+    const next = lower.indexOf(q, idx);
+    if (next === -1) {
+      parts.push({ text: t.slice(idx), hit: false });
+      break;
+    }
+    if (next > idx) {
+      parts.push({ text: t.slice(idx, next), hit: false });
+    }
+    parts.push({ text: t.slice(next, next + q.length), hit: true });
+    idx = next + q.length;
+  }
+  return parts;
+};
 
 export default function SettingsPage() {
   const styles = useStyles();
@@ -514,17 +757,52 @@ export default function SettingsPage() {
   const [zimageSaving, setZimageSaving] = useState(false);
   const [zimageSaveError, setZimageSaveError] = useState<string | null>(null);
   const [zimageSaveSuccess, setZimageSaveSuccess] = useState(false);
-  const [aiImagePromptMode, setAiImagePromptMode] = useState<"template" | "direct">("template");
   const [aiImageChatgptPrompt, setAiImageChatgptPrompt] = useState("");
   const [aiImageGeminiPrompt, setAiImageGeminiPrompt] = useState("");
   const [aiImageDigiDealMainPrompt, setAiImageDigiDealMainPrompt] = useState("");
   const [aiImageEnviormentScenePrompt, setAiImageEnviormentScenePrompt] = useState("");
+  const [aiImageSelectedPrompt, setAiImageSelectedPrompt] =
+    useState<AIImagePromptKey>("chatgpt");
+  const [aiImagePromptSearch, setAiImagePromptSearch] = useState("");
+  const [aiImageCustomPrompts, setAiImageCustomPrompts] = useState<
+    AIImageEditCustomPrompt[]
+  >([]);
+  const [aiImageCustomOriginalById, setAiImageCustomOriginalById] = useState<
+    Record<string, string>
+  >({});
+  const [aiImageVersions, setAiImageVersions] = useState<
+    AIImageEditPromptVersion[]
+  >([]);
+  const [aiImageSelectedVersionId, setAiImageSelectedVersionId] = useState("");
+  const [aiImageVersionsLoading, setAiImageVersionsLoading] = useState(false);
+  const [aiImageVersionsError, setAiImageVersionsError] = useState<string | null>(
+    null
+  );
+  const [aiImageMeta, setAiImageMeta] =
+    useState<AIImageEditSettingsResponse["meta"] | null>(null);
+  const [aiImageOriginal, setAiImageOriginal] = useState<AIImageEditSettings | null>(
+    null
+  );
   const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiImageError, setAiImageError] = useState<string | null>(null);
   const [aiImageForbidden, setAiImageForbidden] = useState(false);
   const [aiImageSaving, setAiImageSaving] = useState(false);
   const [aiImageSaveError, setAiImageSaveError] = useState<string | null>(null);
   const [aiImageSaveSuccess, setAiImageSaveSuccess] = useState(false);
+  const [aiImageDeleteSaving, setAiImageDeleteSaving] = useState(false);
+  const [aiImageDeleteError, setAiImageDeleteError] = useState<string | null>(
+    null
+  );
+  const [aiImageDeleteSuccess, setAiImageDeleteSuccess] = useState(false);
+  const [aiImageNewPromptOpen, setAiImageNewPromptOpen] = useState(false);
+  const [aiImageNewPromptName, setAiImageNewPromptName] = useState("");
+  const [aiImageNewPromptDescription, setAiImageNewPromptDescription] =
+    useState("");
+  const [aiImageNewPromptSeedText, setAiImageNewPromptSeedText] = useState("");
+  const [aiImageNewPromptSaving, setAiImageNewPromptSaving] = useState(false);
+  const [aiImageNewPromptError, setAiImageNewPromptError] = useState<string | null>(
+    null
+  );
   const [serviceRestarting, setServiceRestarting] = useState<
     Record<string, boolean>
   >({});
@@ -537,6 +815,7 @@ export default function SettingsPage() {
   const [spuUploadSuccess, setSpuUploadSuccess] = useState(false);
   const [spuDownloadStatus, setSpuDownloadStatus] = useState("all");
   const spuUploadRef = useRef<HTMLInputElement | null>(null);
+  const aiImageEditorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -637,22 +916,65 @@ export default function SettingsPage() {
     setAiImageError(null);
     setAiImageForbidden(false);
     try {
-      const response = await fetch("/api/settings/ai-image-edit");
-      if (response.status === 403 || response.status === 401) {
+      const [builtResponse, promptsResponse] = await Promise.all([
+        fetch("/api/settings/ai-image-edit"),
+        fetch("/api/settings/ai-image-edit/prompts"),
+      ]);
+
+      if (
+        builtResponse.status === 403 ||
+        builtResponse.status === 401 ||
+        promptsResponse.status === 403 ||
+        promptsResponse.status === 401
+      ) {
         setAiImageForbidden(true);
         return;
       }
-      if (!response.ok) {
+
+      if (!builtResponse.ok) {
         throw new Error(t("settings.aiImage.error"));
       }
-      const payload = (await response.json()) as AIImageEditSettings;
-      setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
-      setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
-      setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
-      setAiImageDigiDealMainPrompt(payload.digideal_main_prompt_template ?? "");
-      setAiImageEnviormentScenePrompt(
-        payload.enviorment_scene_image_prompt_template ?? ""
-      );
+      if (!promptsResponse.ok) {
+        throw new Error(t("settings.aiImage.error"));
+      }
+
+      const payload = (await builtResponse.json()) as AIImageEditSettingsResponse;
+      const normalized: AIImageEditSettings = {
+        chatgpt_prompt_template: payload.chatgpt_prompt_template ?? "",
+        gemini_prompt_template: payload.gemini_prompt_template ?? "",
+        digideal_main_prompt_template: payload.digideal_main_prompt_template ?? "",
+        enviorment_scene_image_prompt_template:
+          payload.enviorment_scene_image_prompt_template ?? "",
+      };
+      setAiImageChatgptPrompt(normalized.chatgpt_prompt_template);
+      setAiImageGeminiPrompt(normalized.gemini_prompt_template);
+      setAiImageDigiDealMainPrompt(normalized.digideal_main_prompt_template);
+      setAiImageEnviormentScenePrompt(normalized.enviorment_scene_image_prompt_template);
+      setAiImageMeta(payload.meta ?? null);
+      setAiImageOriginal(normalized);
+
+      const promptsPayload = (await promptsResponse.json()) as
+        | { prompts?: AIImageEditCustomPrompt[] }
+        | AIImageEditCustomPrompt[];
+      const prompts = Array.isArray(promptsPayload)
+        ? promptsPayload
+        : Array.isArray(promptsPayload?.prompts)
+          ? promptsPayload.prompts
+          : [];
+
+      setAiImageCustomPrompts(prompts);
+      const originalById: Record<string, string> = {};
+      for (const prompt of prompts) {
+        if (!prompt?.prompt_id) continue;
+        originalById[prompt.prompt_id] = String(prompt.template_text ?? "");
+      }
+      setAiImageCustomOriginalById(originalById);
+      setAiImageSelectedPrompt((prev) => {
+        if (!String(prev).startsWith("custom:")) return prev;
+        const promptId = String(prev).slice("custom:".length);
+        const exists = prompts.some((p) => p.prompt_id === promptId);
+        return exists ? prev : ("chatgpt" as AIImagePromptKey);
+      });
     } catch (err) {
       setAiImageError((err as Error).message);
     } finally {
@@ -664,6 +986,45 @@ export default function SettingsPage() {
     if (activeTab !== "ai-image-edit") return;
     loadAiImageSettings();
   }, [activeTab, loadAiImageSettings]);
+
+  const loadAiImageVersions = useCallback(
+    async (promptId: string) => {
+      const id = String(promptId || "").trim();
+      if (!id) {
+        setAiImageVersions([]);
+        setAiImageSelectedVersionId("");
+        return;
+      }
+      setAiImageVersionsLoading(true);
+      setAiImageVersionsError(null);
+      try {
+        const response = await fetch(
+          `/api/settings/ai-image-edit/versions?prompt_id=${encodeURIComponent(id)}`
+        );
+        if (response.status === 403 || response.status === 401) {
+          setAiImageForbidden(true);
+          return;
+        }
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.error || t("settings.aiImage.error"));
+        }
+        const payload = (await response.json()) as {
+          versions?: AIImageEditPromptVersion[];
+        };
+        const versions = Array.isArray(payload?.versions) ? payload.versions : [];
+        setAiImageVersions(versions);
+        setAiImageSelectedVersionId(versions[0]?.id ? String(versions[0].id) : "");
+      } catch (err) {
+        setAiImageVersionsError((err as Error).message);
+        setAiImageVersions([]);
+        setAiImageSelectedVersionId("");
+      } finally {
+        setAiImageVersionsLoading(false);
+      }
+    },
+    [t]
+  );
 
   const handleZImageSave = async () => {
     setZimageSaving(true);
@@ -714,40 +1075,146 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAiImageSave = async () => {
+  const handleAiImageSave = async (overrideText?: string) => {
     setAiImageSaving(true);
     setAiImageSaveError(null);
     setAiImageSaveSuccess(false);
     try {
-      const response = await fetch("/api/settings/ai-image-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt_mode: aiImagePromptMode,
-          chatgpt_prompt_template: aiImageChatgptPrompt,
-          gemini_prompt_template: aiImageGeminiPrompt,
-          digideal_main_prompt_template: aiImageDigiDealMainPrompt,
-          enviorment_scene_image_prompt_template: aiImageEnviormentScenePrompt,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || t("settings.aiImage.saveError"));
+      const selectedKey = String(aiImageSelectedPrompt);
+      const textOverride =
+        typeof overrideText === "string" ? overrideText : undefined;
+      const promptIdForVersions = selectedKey.startsWith("custom:")
+        ? selectedKey.slice("custom:".length)
+        : selectedKey === "gemini"
+          ? "GEMIMGED"
+          : selectedKey === "digideal_main"
+            ? "DDMAINIM"
+            : selectedKey === "enviorment_scene"
+              ? "ENVSCNIM"
+              : "OAIIMGED";
+      if (selectedKey.startsWith("custom:")) {
+        const promptId = selectedKey.slice("custom:".length);
+        const prompt = aiImageCustomPrompts.find((p) => p.prompt_id === promptId);
+        const templateText = String(textOverride ?? prompt?.template_text ?? "");
+        const response = await fetch(
+          `/api/settings/ai-image-edit/prompts/${encodeURIComponent(promptId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ template_text: templateText }),
+          }
+        );
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.error || t("settings.aiImage.saveError"));
+        }
+        const saved = (await response.json()) as AIImageEditCustomPrompt;
+        setAiImageCustomPrompts((prev) =>
+          prev.map((item) => (item.prompt_id === promptId ? saved : item))
+        );
+        setAiImageCustomOriginalById((prev) => ({
+          ...prev,
+          [promptId]: String(saved?.template_text ?? ""),
+        }));
+      } else {
+        const body: Record<string, string> = {};
+        if (selectedKey === "chatgpt") {
+          body.chatgpt_prompt_template = String(textOverride ?? aiImageChatgptPrompt);
+        } else if (selectedKey === "gemini") {
+          body.gemini_prompt_template = String(textOverride ?? aiImageGeminiPrompt);
+        } else if (selectedKey === "digideal_main") {
+          body.digideal_main_prompt_template = String(
+            textOverride ?? aiImageDigiDealMainPrompt
+          );
+        } else if (selectedKey === "enviorment_scene") {
+          body.enviorment_scene_image_prompt_template = String(
+            textOverride ?? aiImageEnviormentScenePrompt
+          );
+        }
+
+        const response = await fetch("/api/settings/ai-image-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.error || t("settings.aiImage.saveError"));
+        }
+        const payload = (await response.json()) as AIImageEditSettingsResponse;
+        const normalized: AIImageEditSettings = {
+          chatgpt_prompt_template: payload.chatgpt_prompt_template ?? "",
+          gemini_prompt_template: payload.gemini_prompt_template ?? "",
+          digideal_main_prompt_template: payload.digideal_main_prompt_template ?? "",
+          enviorment_scene_image_prompt_template:
+            payload.enviorment_scene_image_prompt_template ?? "",
+        };
+
+        // Keep unsaved edits for non-selected prompts intact.
+        if (selectedKey === "chatgpt") {
+          setAiImageChatgptPrompt(normalized.chatgpt_prompt_template);
+        } else if (selectedKey === "gemini") {
+          setAiImageGeminiPrompt(normalized.gemini_prompt_template);
+        } else if (selectedKey === "digideal_main") {
+          setAiImageDigiDealMainPrompt(normalized.digideal_main_prompt_template);
+        } else if (selectedKey === "enviorment_scene") {
+          setAiImageEnviormentScenePrompt(
+            normalized.enviorment_scene_image_prompt_template
+          );
+        }
+
+        setAiImageMeta(payload.meta ?? null);
+        setAiImageOriginal(normalized);
       }
-      const payload = (await response.json()) as AIImageEditSettings;
-      setAiImagePromptMode(payload.prompt_mode === "direct" ? "direct" : "template");
-      setAiImageChatgptPrompt(payload.chatgpt_prompt_template ?? "");
-      setAiImageGeminiPrompt(payload.gemini_prompt_template ?? "");
-      setAiImageDigiDealMainPrompt(payload.digideal_main_prompt_template ?? "");
-      setAiImageEnviormentScenePrompt(
-        payload.enviorment_scene_image_prompt_template ?? ""
-      );
+      await loadAiImageVersions(promptIdForVersions);
       setAiImageSaveSuccess(true);
       setTimeout(() => setAiImageSaveSuccess(false), 2500);
     } catch (err) {
       setAiImageSaveError((err as Error).message);
     } finally {
       setAiImageSaving(false);
+    }
+  };
+
+  const handleAiImageCreatePrompt = async () => {
+    const name = aiImageNewPromptName.trim();
+    if (!name) return;
+    setAiImageNewPromptSaving(true);
+    setAiImageNewPromptError(null);
+    try {
+      const response = await fetch("/api/settings/ai-image-edit/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: aiImageNewPromptDescription.trim() || null,
+          template_text: aiImageNewPromptSeedText,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || t("settings.aiImage.saveError"));
+      }
+      const created = (await response.json()) as AIImageEditCustomPrompt;
+      if (!created?.prompt_id) {
+        throw new Error(t("settings.aiImage.saveError"));
+      }
+      setAiImageCustomPrompts((prev) => [created, ...prev]);
+      setAiImageCustomOriginalById((prev) => ({
+        ...prev,
+        [created.prompt_id]: String(created.template_text ?? ""),
+      }));
+      setAiImageSelectedPrompt(
+        `custom:${created.prompt_id}` as AIImagePromptKey
+      );
+      setAiImageNewPromptOpen(false);
+      setAiImageNewPromptName("");
+      setAiImageNewPromptDescription("");
+      setAiImageNewPromptSeedText("");
+    } catch (err) {
+      setAiImageNewPromptError((err as Error).message);
+    } finally {
+      setAiImageNewPromptSaving(false);
     }
   };
 
@@ -1165,6 +1632,323 @@ export default function SettingsPage() {
       : t("settings.discovery.categories.count", {
           count: categorySelections.length,
         });
+
+  const aiImagePromptItems = useMemo(() => {
+    const meta = aiImageMeta ?? {};
+    const builtIns = [
+      {
+        key: "chatgpt" as const,
+        promptId: "OAIIMGED",
+        title: t("settings.aiImage.chatgptPrompt"),
+        usage: "OpenAI image edit",
+        description:
+          "Controls the default prompt used by the ChatGPT image-edit worker.",
+        updatedAt: meta.chatgpt_prompt_template?.updated_at ?? null,
+      },
+      {
+        key: "gemini" as const,
+        promptId: "GEMIMGED",
+        title: t("settings.aiImage.geminiPrompt"),
+        usage: "Gemini image edit",
+        description:
+          "Controls the default prompt used by the Gemini image-edit worker.",
+        updatedAt: meta.gemini_prompt_template?.updated_at ?? null,
+      },
+      {
+        key: "digideal_main" as const,
+        promptId: "DDMAINIM",
+        title: t("settings.aiImage.digidealMainPrompt"),
+        usage: "DigiDeal main image analysis",
+        description: "Used when generating the DigiDeal main image prompt payload.",
+        updatedAt: meta.digideal_main_prompt_template?.updated_at ?? null,
+      },
+      {
+        key: "enviorment_scene" as const,
+        promptId: "ENVSCNIM",
+        title: t("settings.aiImage.enviormentScenePrompt"),
+        usage: "Environment scene analysis",
+        description: "Used when generating the environment scene prompt payload.",
+        updatedAt: meta.enviorment_scene_image_prompt_template?.updated_at ?? null,
+      },
+    ];
+
+    const custom = aiImageCustomPrompts
+      .filter((prompt) => Boolean(prompt?.prompt_id))
+      .map((prompt) => {
+        const key = `custom:${prompt.prompt_id}` as AIImagePromptKey;
+        return {
+          key,
+          promptId: prompt.prompt_id,
+          title: prompt.name || prompt.prompt_id,
+          usage: prompt.usage || "Custom prompt",
+          description: prompt.description || "Custom prompt template.",
+          updatedAt: prompt.updated_at ?? null,
+        };
+      });
+
+    return [...builtIns, ...custom];
+  }, [aiImageMeta, aiImageCustomPrompts, t]);
+
+  const filteredAiImagePromptItems = useMemo(() => {
+    const q = normalizeSearchQuery(aiImagePromptSearch);
+    if (!q) return aiImagePromptItems;
+
+    const currentValueForKey = (key: string) => {
+      if (key.startsWith("custom:")) {
+        const promptId = key.slice("custom:".length);
+        const prompt = aiImageCustomPrompts.find((p) => p.prompt_id === promptId);
+        return String(prompt?.template_text ?? "");
+      }
+      if (key === "gemini") return aiImageGeminiPrompt;
+      if (key === "digideal_main") return aiImageDigiDealMainPrompt;
+      if (key === "enviorment_scene") return aiImageEnviormentScenePrompt;
+      return aiImageChatgptPrompt;
+    };
+
+    return aiImagePromptItems.filter((item) => {
+      const key = String(item.key);
+      const currentValue = currentValueForKey(key);
+      const haystack = [
+        item.title,
+        item.usage,
+        item.description,
+        item.promptId,
+        currentValue,
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [
+    aiImagePromptItems,
+    aiImagePromptSearch,
+    aiImageCustomPrompts,
+    aiImageChatgptPrompt,
+    aiImageGeminiPrompt,
+    aiImageDigiDealMainPrompt,
+    aiImageEnviormentScenePrompt,
+  ]);
+
+  const selectedAiPrompt =
+    aiImagePromptItems.find((item) => item.key === aiImageSelectedPrompt) ??
+    aiImagePromptItems[0];
+
+  useEffect(() => {
+    if (activeTab !== "ai-image-edit") return;
+    if (aiImageForbidden) return;
+    if (!selectedAiPrompt?.promptId) return;
+    loadAiImageVersions(String(selectedAiPrompt.promptId));
+  }, [
+    activeTab,
+    aiImageForbidden,
+    loadAiImageVersions,
+    selectedAiPrompt?.promptId,
+  ]);
+
+  const latestAiImageVersionId = aiImageVersions[0]?.id
+    ? String(aiImageVersions[0].id)
+    : "";
+  const isViewingLatestAiImageVersion =
+    !latestAiImageVersionId || aiImageSelectedVersionId === latestAiImageVersionId;
+  const selectedAiImageVersion = aiImageVersions.find(
+    (version) => String(version.id) === aiImageSelectedVersionId
+  );
+  const selectedAiImageVersionLabel = selectedAiImageVersion?.created_at
+    ? formatDateTime(selectedAiImageVersion.created_at)
+    : aiImageVersions[0]?.created_at
+      ? formatDateTime(aiImageVersions[0].created_at)
+      : "-";
+
+  const selectedAiPromptValue = useMemo(() => {
+    const selectedKey = String(aiImageSelectedPrompt);
+    if (selectedKey.startsWith("custom:")) {
+      const promptId = selectedKey.slice("custom:".length);
+      const prompt = aiImageCustomPrompts.find((p) => p.prompt_id === promptId);
+      return String(prompt?.template_text ?? "");
+    }
+    switch (aiImageSelectedPrompt) {
+      case "gemini":
+        return aiImageGeminiPrompt;
+      case "digideal_main":
+        return aiImageDigiDealMainPrompt;
+      case "enviorment_scene":
+        return aiImageEnviormentScenePrompt;
+      case "chatgpt":
+      default:
+        return aiImageChatgptPrompt;
+    }
+  }, [
+    aiImageSelectedPrompt,
+    aiImageChatgptPrompt,
+    aiImageGeminiPrompt,
+    aiImageDigiDealMainPrompt,
+    aiImageEnviormentScenePrompt,
+    aiImageCustomPrompts,
+  ]);
+
+  const highlightedAiPromptParts = useMemo(() => {
+    const query = aiImagePromptSearch;
+    if (!query) return [{ text: selectedAiPromptValue, hit: false }];
+    return splitForHighlight(selectedAiPromptValue, query);
+  }, [aiImagePromptSearch, selectedAiPromptValue]);
+
+  useEffect(() => {
+    if (activeTab !== "ai-image-edit") return;
+    if (aiImageForbidden) return;
+    if (aiImagePromptSearch.trim()) return;
+    const el = aiImageEditorTextareaRef.current;
+    if (!el) return;
+    // Auto-grow textarea so the page scrolls instead of the editor having its own scrollbar.
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [
+    activeTab,
+    aiImageForbidden,
+    aiImagePromptSearch,
+    aiImageSelectedPrompt,
+    selectedAiPromptValue,
+  ]);
+
+  const selectedAiPromptOriginalValue = useMemo(() => {
+    const selectedKey = String(aiImageSelectedPrompt);
+    if (selectedKey.startsWith("custom:")) {
+      const promptId = selectedKey.slice("custom:".length);
+      return aiImageCustomOriginalById[promptId] ?? "";
+    }
+    if (!aiImageOriginal) return "";
+    switch (aiImageSelectedPrompt) {
+      case "gemini":
+        return aiImageOriginal.gemini_prompt_template ?? "";
+      case "digideal_main":
+        return aiImageOriginal.digideal_main_prompt_template ?? "";
+      case "enviorment_scene":
+        return aiImageOriginal.enviorment_scene_image_prompt_template ?? "";
+      case "chatgpt":
+      default:
+        return aiImageOriginal.chatgpt_prompt_template ?? "";
+    }
+  }, [aiImageOriginal, aiImageSelectedPrompt, aiImageCustomOriginalById]);
+
+  const selectedAiPromptIsDirty =
+    selectedAiPromptValue !== selectedAiPromptOriginalValue;
+
+  const updateSelectedAiPromptValue = (nextValue: string) => {
+    const selectedKey = String(aiImageSelectedPrompt);
+    if (selectedKey.startsWith("custom:")) {
+      const promptId = selectedKey.slice("custom:".length);
+      setAiImageCustomPrompts((prev) =>
+        prev.map((item) =>
+          item.prompt_id === promptId
+            ? { ...item, template_text: nextValue }
+            : item
+        )
+      );
+      return;
+    }
+    switch (aiImageSelectedPrompt) {
+      case "gemini":
+        setAiImageGeminiPrompt(nextValue);
+        break;
+      case "digideal_main":
+        setAiImageDigiDealMainPrompt(nextValue);
+        break;
+      case "enviorment_scene":
+        setAiImageEnviormentScenePrompt(nextValue);
+        break;
+      case "chatgpt":
+      default:
+        setAiImageChatgptPrompt(nextValue);
+        break;
+    }
+  };
+
+  const revertSelectedAiPrompt = async () => {
+    // If the user is viewing an older saved version, "Revert" means restore that
+    // version as the latest saved template (i.e. a rollback).
+    if (!isViewingLatestAiImageVersion && selectedAiImageVersion) {
+      await handleAiImageSave(String(selectedAiImageVersion.template_text ?? ""));
+      return;
+    }
+
+    const selectedKey = String(aiImageSelectedPrompt);
+    if (selectedKey.startsWith("custom:")) {
+      const promptId = selectedKey.slice("custom:".length);
+      const original = aiImageCustomOriginalById[promptId] ?? "";
+      setAiImageCustomPrompts((prev) =>
+        prev.map((item) =>
+          item.prompt_id === promptId
+            ? { ...item, template_text: original }
+            : item
+        )
+      );
+      return;
+    }
+
+    if (!aiImageOriginal) return;
+    switch (aiImageSelectedPrompt) {
+      case "gemini":
+        setAiImageGeminiPrompt(aiImageOriginal.gemini_prompt_template ?? "");
+        break;
+      case "digideal_main":
+        setAiImageDigiDealMainPrompt(
+          aiImageOriginal.digideal_main_prompt_template ?? ""
+        );
+        break;
+      case "enviorment_scene":
+        setAiImageEnviormentScenePrompt(
+          aiImageOriginal.enviorment_scene_image_prompt_template ?? ""
+        );
+        break;
+      case "chatgpt":
+      default:
+        setAiImageChatgptPrompt(aiImageOriginal.chatgpt_prompt_template ?? "");
+        break;
+    }
+  };
+
+  const handleAiImageDeletePrompt = async () => {
+    const selectedKey = String(aiImageSelectedPrompt);
+    if (!selectedKey.startsWith("custom:")) return;
+    const promptId = selectedKey.slice("custom:".length);
+    if (!promptId) return;
+
+    const ok = window.confirm(
+      t("settings.aiImage.prompts.deleteConfirm", { promptId })
+    );
+    if (!ok) return;
+
+    setAiImageDeleteSaving(true);
+    setAiImageDeleteError(null);
+    setAiImageDeleteSuccess(false);
+    try {
+      const response = await fetch(
+        `/api/settings/ai-image-edit/prompts/${encodeURIComponent(promptId)}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || t("settings.aiImage.saveError"));
+      }
+      setAiImageCustomPrompts((prev) =>
+        prev.filter((item) => item.prompt_id !== promptId)
+      );
+      setAiImageCustomOriginalById((prev) => {
+        const next = { ...prev };
+        delete next[promptId];
+        return next;
+      });
+      setAiImageSelectedPrompt("chatgpt");
+      setAiImageVersions([]);
+      setAiImageSelectedVersionId("");
+      setAiImageDeleteSuccess(true);
+      setTimeout(() => setAiImageDeleteSuccess(false), 2500);
+    } catch (err) {
+      setAiImageDeleteError((err as Error).message);
+    } finally {
+      setAiImageDeleteSaving(false);
+    }
+  };
 
   return (
     <div className={styles.page}>
@@ -1852,6 +2636,7 @@ export default function SettingsPage() {
               </>
             )}
           </Card>
+
         </div>
       ) : null}
 
@@ -1859,7 +2644,15 @@ export default function SettingsPage() {
         <div className={styles.sectionGrid}>
           <Card className={styles.card}>
             <div className={styles.systemHeader}>
-              <Text weight="semibold">{t("settings.aiImage.title")}</Text>
+              <div className={styles.sectionTitleBlock}>
+                <Text weight="semibold">{t("settings.aiImage.title")}</Text>
+                <Text
+                  size={200}
+                  className={mergeClasses(styles.helperText, styles.sectionSubtitle)}
+                >
+                  {t("settings.aiImage.helper")}
+                </Text>
+              </div>
               <Button
                 appearance="subtle"
                 onClick={loadAiImageSettings}
@@ -1868,9 +2661,6 @@ export default function SettingsPage() {
                 {t("settings.aiImage.refresh")}
               </Button>
             </div>
-            <Text size={200} className={styles.helperText}>
-              {t("settings.aiImage.helper")}
-            </Text>
 
             {aiImageForbidden ? (
               <MessageBar>{t("settings.aiImage.forbidden")}</MessageBar>
@@ -1879,85 +2669,354 @@ export default function SettingsPage() {
             ) : null}
 
             {aiImageSaveError ? <MessageBar>{aiImageSaveError}</MessageBar> : null}
+            {aiImageDeleteError ? <MessageBar>{aiImageDeleteError}</MessageBar> : null}
+            {aiImageVersionsError ? (
+              <MessageBar>{aiImageVersionsError}</MessageBar>
+            ) : null}
             {aiImageSaveSuccess ? (
               <MessageBar>{t("settings.aiImage.saveSuccess")}</MessageBar>
+            ) : null}
+            {aiImageDeleteSuccess ? (
+              <MessageBar>{t("settings.aiImage.prompts.deleteSuccess")}</MessageBar>
             ) : null}
 
             {aiImageLoading ? (
               <Spinner label={t("settings.aiImage.loading")} />
             ) : (
               <>
-                <Field label={t("settings.aiImage.mode.label")}>
-                  <Dropdown
-                    value={aiImagePromptMode}
-                    selectedOptions={[aiImagePromptMode]}
-                    onOptionSelect={(_, data) =>
-                      setAiImagePromptMode(
-                        String(data.optionValue) === "direct" ? "direct" : "template"
-                      )
-                    }
-                    disabled={aiImageForbidden}
-                  >
-                    <Option value="template">{t("settings.aiImage.mode.template")}</Option>
-                    <Option value="direct">{t("settings.aiImage.mode.direct")}</Option>
-                  </Dropdown>
-                </Field>
-                <Text size={200} className={styles.helperText}>
-                  {t("settings.aiImage.mode.helper")}
-                </Text>
+                <div className={styles.aiImageGrid}>
+                  <div className={styles.aiImageSidebar}>
+                    <div className={styles.aiImageSidebarHeader}>
+                      <Text weight="semibold">
+                        {t("settings.aiImage.prompts.title")}
+                      </Text>
+                      <div className={styles.aiImageSidebarSearch}>
+                        <Input
+                          value={aiImagePromptSearch}
+                          onChange={(_, data) => setAiImagePromptSearch(data.value)}
+                          placeholder={t("settings.aiImage.prompts.searchPlaceholder")}
+                          disabled={aiImageForbidden}
+                          className={styles.fullWidthControl}
+                          size="small"
+                        />
+                      </div>
+                    </div>
+                    <div className={styles.aiImagePromptList}>
+                      {filteredAiImagePromptItems.map((item) => {
+                        const updated = item.updatedAt
+                          ? formatDateTime(item.updatedAt)
+                          : "";
+                        const updatedLabel = updated || "-";
+                        const active = item.key === aiImageSelectedPrompt;
+                        const query = aiImagePromptSearch;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            className={mergeClasses(
+                              styles.aiImagePromptItem,
+                              active ? styles.aiImagePromptItemActive : undefined
+                            )}
+                            onClick={() => setAiImageSelectedPrompt(item.key)}
+                          >
+                            <div className={styles.aiImagePromptTopRow}>
+                              <Text weight="semibold">
+                                {splitForHighlight(item.title, query).map(
+                                  (part, idx) =>
+                                    part.hit ? (
+                                      <span
+                                        key={`${idx}-${part.text}`}
+                                        className={styles.highlight}
+                                      >
+                                        {part.text}
+                                      </span>
+                                    ) : (
+                                      <span key={`${idx}-${part.text}`}>
+                                        {part.text}
+                                      </span>
+                                    )
+                                )}
+                              </Text>
+                              <span className={styles.aiImagePromptUpdated}>
+                                {updatedLabel}
+                              </span>
+                            </div>
+                            <div className={styles.aiImagePromptUsage}>
+                              {splitForHighlight(item.usage, query).map(
+                                (part, idx) =>
+                                  part.hit ? (
+                                    <span
+                                      key={`${idx}-${part.text}`}
+                                      className={styles.highlight}
+                                    >
+                                      {part.text}
+                                    </span>
+                                  ) : (
+                                    <span key={`${idx}-${part.text}`}>
+                                      {part.text}
+                                    </span>
+                                  )
+                              )}
+                            </div>
+                            <div className={styles.aiImagePromptDescription}>
+                              {splitForHighlight(item.description, query).map(
+                                (part, idx) =>
+                                  part.hit ? (
+                                    <span
+                                      key={`${idx}-${part.text}`}
+                                      className={styles.highlight}
+                                    >
+                                      {part.text}
+                                    </span>
+                                  ) : (
+                                    <span key={`${idx}-${part.text}`}>
+                                      {part.text}
+                                    </span>
+                                  )
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className={styles.aiImageSidebarFooter}>
+                      <Button
+                        appearance="primary"
+                        size="small"
+                        onClick={() => {
+                          setAiImageNewPromptName("");
+                          setAiImageNewPromptDescription("");
+                          setAiImageNewPromptSeedText("");
+                          setAiImageNewPromptError(null);
+                          setAiImageNewPromptOpen(true);
+                        }}
+                        disabled={aiImageForbidden}
+                      >
+                        {t("common.addNew")}
+                      </Button>
+                    </div>
+                  </div>
 
-                <Field label={t("settings.aiImage.chatgptPrompt")}>
-                  <textarea
-                    value={aiImageChatgptPrompt}
-                    onChange={(event) => setAiImageChatgptPrompt(event.target.value)}
-                    className={styles.textArea}
-                    disabled={aiImageForbidden}
-                  />
-                </Field>
+                  <div className={styles.aiImageEditor}>
+                    <div className={styles.aiImageEditorHeader}>
+                      <div className={styles.aiImageEditorHeaderText}>
+                        <Text weight="semibold">{selectedAiPrompt.title}</Text>
+                        <Text size={200} className={styles.helperText}>
+                          {selectedAiPrompt.usage}
+                        </Text>
+                        <Text size={200} className={styles.helperText}>
+                          {t("settings.aiImage.prompts.promptId")}:{" "}
+                          <span className={styles.monoInline}>
+                            {splitForHighlight(
+                              String(selectedAiPrompt.promptId || ""),
+                              aiImagePromptSearch
+                            ).map((part, idx) =>
+                              part.hit ? (
+                                <span
+                                  key={`${idx}-${part.text}`}
+                                  className={styles.highlight}
+                                >
+                                  {part.text}
+                                </span>
+                              ) : (
+                                <span key={`${idx}-${part.text}`}>{part.text}</span>
+                              )
+                            )}
+                          </span>
+                        </Text>
+                      </div>
+                      <div className={styles.aiImageEditorHeaderControls}>
+                        <Field label={t("settings.aiImage.prompts.versionLabel")}>
+                          <Dropdown
+                            value={selectedAiImageVersionLabel}
+                            selectedOptions={
+                              aiImageSelectedVersionId
+                                ? [aiImageSelectedVersionId]
+                                : []
+                            }
+                            onOptionSelect={(_, data) => {
+                              const nextId = String(data.optionValue || "");
+                              setAiImageSelectedVersionId(nextId);
+                              const version = aiImageVersions.find(
+                                (item) => String(item.id) === nextId
+                              );
+                              if (version) {
+                                updateSelectedAiPromptValue(
+                                  String(version.template_text ?? "")
+                                );
+                              }
+                            }}
+                            disabled={
+                              aiImageForbidden ||
+                              aiImageVersionsLoading ||
+                              aiImageVersions.length === 0
+                            }
+                          >
+                            {aiImageVersions.map((version) => (
+                              <Option
+                                key={version.id}
+                                value={String(version.id)}
+                              >
+                                {formatDateTime(version.created_at)}
+                              </Option>
+                            ))}
+                          </Dropdown>
+                        </Field>
+                      </div>
+                  </div>
 
-                <Field label={t("settings.aiImage.geminiPrompt")}>
-                  <textarea
-                    value={aiImageGeminiPrompt}
-                    onChange={(event) => setAiImageGeminiPrompt(event.target.value)}
-                    className={styles.textArea}
-                    disabled={aiImageForbidden}
-                  />
-                </Field>
+                    {aiImagePromptSearch.trim() ? (
+                      <pre className={styles.aiImageEditorHighlightedText}>
+                        {highlightedAiPromptParts.map((part, idx) =>
+                          part.hit ? (
+                            <span
+                              key={`${idx}-${part.text}`}
+                              className={styles.highlight}
+                            >
+                              {part.text}
+                            </span>
+                          ) : (
+                            <span key={`${idx}-${part.text}`}>{part.text}</span>
+                          )
+                        )}
+                      </pre>
+                    ) : (
+                      <textarea
+                        ref={aiImageEditorTextareaRef}
+                        value={selectedAiPromptValue}
+                        onChange={(event) =>
+                          updateSelectedAiPromptValue(event.target.value)
+                        }
+                        className={mergeClasses(
+                          styles.textArea,
+                          styles.aiImageEditorTextArea
+                        )}
+                        disabled={aiImageForbidden}
+                      />
+                    )}
 
-                <Field label="DigiDial Main Image Prompt template">
-                  <textarea
-                    value={aiImageDigiDealMainPrompt}
-                    onChange={(event) =>
-                      setAiImageDigiDealMainPrompt(event.target.value)
-                    }
-                    className={styles.textArea}
-                    disabled={aiImageForbidden}
-                  />
-                </Field>
-
-                <Field label="Enviorment scene image template">
-                  <textarea
-                    value={aiImageEnviormentScenePrompt}
-                    onChange={(event) =>
-                      setAiImageEnviormentScenePrompt(event.target.value)
-                    }
-                    className={styles.textArea}
-                    disabled={aiImageForbidden}
-                  />
-                </Field>
-
-                <div className={styles.saveRow}>
-                  <Button
-                    appearance="primary"
-                    onClick={handleAiImageSave}
-                    disabled={aiImageSaving || aiImageForbidden}
-                  >
-                    {aiImageSaving ? t("settings.aiImage.saving") : t("common.save")}
-                  </Button>
+                    <div className={styles.aiImageEditorActions}>
+                      <Button
+                        appearance="outline"
+                        className={styles.revertButton}
+                        onClick={() => {
+                          setAiImageNewPromptName("");
+                          setAiImageNewPromptSeedText(selectedAiPromptValue);
+                          setAiImageNewPromptDescription("");
+                          setAiImageNewPromptError(null);
+                          setAiImageNewPromptOpen(true);
+                        }}
+                        disabled={aiImageForbidden || aiImageSaving}
+                      >
+                        {t("settings.aiImage.prompts.saveAsNew")}
+                      </Button>
+                      <Button
+                        appearance="outline"
+                        className={styles.revertButton}
+                        onClick={revertSelectedAiPrompt}
+                        disabled={
+                          aiImageForbidden ||
+                          aiImageSaving ||
+                          !selectedAiPromptIsDirty
+                        }
+                      >
+                        {t("common.revert")}
+                      </Button>
+                      <Button
+                        appearance="primary"
+                        onClick={() => handleAiImageSave()}
+                        disabled={aiImageSaving || aiImageForbidden}
+                      >
+                        {aiImageSaving
+                          ? t("settings.aiImage.saving")
+                          : t("common.save")}
+                      </Button>
+                      <Button
+                        appearance="outline"
+                        className={styles.deleteButton}
+                        onClick={handleAiImageDeletePrompt}
+                        disabled={
+                          aiImageForbidden ||
+                          aiImageSaving ||
+                          aiImageDeleteSaving ||
+                          !String(aiImageSelectedPrompt).startsWith("custom:")
+                        }
+                      >
+                        {aiImageDeleteSaving
+                          ? t("common.loading")
+                          : t("common.delete")}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
           </Card>
+
+          <Dialog
+            open={aiImageNewPromptOpen}
+            onOpenChange={(_, data) => setAiImageNewPromptOpen(data.open)}
+          >
+            <DialogSurface className={styles.dialogSurface}>
+              <DialogBody>
+                <DialogTitle>
+                  {t("settings.aiImage.prompts.addNewTitle")}
+                </DialogTitle>
+                <Field label={t("settings.aiImage.prompts.nameLabel")}>
+                  <Input
+                    value={aiImageNewPromptName}
+                    onChange={(_, data) => setAiImageNewPromptName(data.value)}
+                    placeholder={t("settings.aiImage.prompts.namePlaceholder")}
+                    disabled={aiImageForbidden || aiImageNewPromptSaving}
+                    autoFocus
+                    className={mergeClasses(
+                      styles.fullWidthControl,
+                      styles.promptNameInput
+                    )}
+                    size="small"
+                  />
+                </Field>
+                <Field label={t("settings.aiImage.prompts.descriptionLabel")}>
+                  <Textarea
+                    value={aiImageNewPromptDescription}
+                    onChange={(_, data) =>
+                      setAiImageNewPromptDescription(String(data.value))
+                    }
+                    placeholder={t(
+                      "settings.aiImage.prompts.descriptionPlaceholder"
+                    )}
+                    disabled={aiImageForbidden || aiImageNewPromptSaving}
+                    rows={3}
+                    className={styles.fullWidthControl}
+                    size="small"
+                  />
+                </Field>
+                {aiImageNewPromptError ? (
+                  <MessageBar>{aiImageNewPromptError}</MessageBar>
+                ) : null}
+                <DialogActions className={styles.dialogActions}>
+                  <Button
+                    appearance="subtle"
+                    onClick={() => setAiImageNewPromptOpen(false)}
+                    disabled={aiImageNewPromptSaving}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    onClick={handleAiImageCreatePrompt}
+                    disabled={
+                      aiImageNewPromptSaving ||
+                      aiImageForbidden ||
+                      !aiImageNewPromptName.trim()
+                    }
+                  >
+                    {aiImageNewPromptSaving ? t("common.loading") : t("common.save")}
+                  </Button>
+                </DialogActions>
+              </DialogBody>
+            </DialogSurface>
+          </Dialog>
         </div>
       ) : null}
 

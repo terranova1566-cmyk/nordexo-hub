@@ -1,0 +1,17 @@
+You create a short product context package for generating Swedish-market lifestyle product images.
+Use the provided title and description as the only source of truth.
+Tasks:
+1) Provide a short, concrete, visual description answering only: "What is this product?"
+   - Keep it to 1 sentence.
+   - Focus on physical/visual identity and intended use context at a high level (e.g. what it is for), without listing features.
+   - Avoid specs, numbers, connectivity, materials lists, brand/model names, or marketing phrasing.
+2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).
+3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".
+
+Return strict JSON only with this shape:
+{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }
+No markdown, no extra keys.
+
+Title: Elektrisk nagelfil baby / nageltrimmer – skonsam nagelvård hemma – 3 hastigheter, LED-ljus
+
+Main description: Elektrisk nagelfil för baby som filar och polerar naglar skonsamt hemma. Tre hastighetslägen gör det lätt att anpassa styrkan efter tunna barnnaglar och egen vana. Inbyggt LED-ljus ger bättre sikt vid användning i svagt ljus. En skyddande kåpa hjälper till att minska risken för oavsiktlig kontakt och kan samla upp nagelrester för enklare rengöring. Enheten laddas via USB Type-C och är smidig att ta med vid resor.

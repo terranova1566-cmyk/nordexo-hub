@@ -1,0 +1,17 @@
+You create a short product context package for generating Swedish-market lifestyle product images.
+Use the provided title and description as the only source of truth.
+Tasks:
+1) Provide a short, concrete, visual description answering only: "What is this product?"
+   - Keep it to 1 sentence.
+   - Focus on physical/visual identity and intended use context at a high level (e.g. what it is for), without listing features.
+   - Avoid specs, numbers, connectivity, materials lists, brand/model names, or marketing phrasing.
+2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).
+3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".
+
+Return strict JSON only with this shape:
+{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }
+No markdown, no extra keys.
+
+Title: Öronplockare / öronrensare – öronvaxborttagning – 8 delar, inbyggt LED-ljus
+
+Main description: LED-upplyst öronplockarset med 8 delar för personlig öronrengöring och borttagning av öronvax. Inbyggt ljus ger bättre sikt när du arbetar nära och vill se tydligare i hörselgången. Verktygen är utformade för att ge olika alternativ beroende på behov, och aluminiumhöljet håller vikten nere för mer kontrollerad hantering. Setet är kompakt och lätt att förvara i badrumsskåp eller ta med på resa.

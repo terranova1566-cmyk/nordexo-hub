@@ -3,30 +3,9 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveDraftPath } from "@/lib/drafts";
+import { convertBufferToJpeg } from "@/lib/image-jpeg";
 
 export const runtime = "nodejs";
-
-const imageExtFromMimeType = (mimeType: string) => {
-  const normalized = String(mimeType || "").toLowerCase();
-  if (!normalized || !normalized.startsWith("image/")) return "";
-  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
-  if (normalized.includes("png")) return "png";
-  if (normalized.includes("webp")) return "webp";
-  if (normalized.includes("gif")) return "gif";
-  if (normalized.includes("bmp")) return "bmp";
-  if (normalized.includes("avif")) return "avif";
-  if (normalized.includes("tiff")) return "tiff";
-  return "jpg";
-};
-
-const imageExtFromUrl = (urlValue: string) => {
-  const ext = path.extname(urlValue).toLowerCase().replace(".", "");
-  if (!ext) return "";
-  if (["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif", "tif", "tiff"].includes(ext)) {
-    return ext === "jpeg" ? "jpg" : ext === "tif" ? "tiff" : ext;
-  }
-  return "";
-};
 
 const toSafeBaseName = (value: string) =>
   String(value || "")
@@ -135,9 +114,10 @@ export async function POST(request: Request) {
       const parsedUrl = new URL(sourceUrl);
       const rawName = path.basename(parsedUrl.pathname || "").replace(/\.[^.]+$/, "");
       const baseName = toSafeBaseName(rawName || `image-${index + 1}`);
-      const ext = imageExtFromMimeType(mimeType) || imageExtFromUrl(parsedUrl.pathname) || "jpg";
-      const fileName = ensureUniqueName(targetPath, baseName, ext);
-      fs.writeFileSync(path.join(targetPath, fileName), buffer);
+      // Always store downloaded images as JPEG.
+      const fileName = ensureUniqueName(targetPath, baseName, "jpg");
+      const jpeg = await convertBufferToJpeg(buffer);
+      fs.writeFileSync(path.join(targetPath, fileName), jpeg);
       uploaded += 1;
     } catch (err) {
       errors.push({

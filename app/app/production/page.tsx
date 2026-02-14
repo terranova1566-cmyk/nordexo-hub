@@ -2361,6 +2361,15 @@ export default function ProductionPage() {
 
   const openSupplierDialog = useCallback(
     async (item: ProductionItem) => {
+      const isImageFetchError = (message: unknown) => {
+        const msg = String(message || "").toLowerCase();
+        return (
+          msg.includes("handle image error") ||
+          msg.includes("image_fetch_error") ||
+          msg.includes("image fetch error")
+        );
+      };
+
       setSupplierTarget(item);
       setSupplierDialogOpen(true);
       setSupplierError(null);
@@ -2389,11 +2398,23 @@ export default function ProductionPage() {
         const imageUrl = item.image_url || localImageUrl;
         if (imageUrl) params.set("image_url", imageUrl);
 
-        const response = await fetch(`/api/production/suppliers?${params.toString()}`);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || t("production.suppliers.errorLoad"));
-        }
+        const fetchWithRetry = async () => {
+          const delaysMs = [500, 1200, 2500, 5000, 8000];
+          let lastError: Error | null = null;
+          for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
+            const response = await fetch(`/api/production/suppliers?${params.toString()}`);
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok) return payload;
+            const message = payload?.error || t("production.suppliers.errorLoad");
+            const err = new Error(message);
+            lastError = err;
+            if (!isImageFetchError(message) || attempt >= delaysMs.length) throw err;
+            await new Promise((resolve) => window.setTimeout(resolve, delaysMs[attempt]));
+          }
+          throw lastError || new Error(t("production.suppliers.errorLoad"));
+        };
+
+        const payload = await fetchWithRetry();
         const offers = Array.isArray(payload?.offers) ? payload.offers : [];
         setSupplierOffers(offers);
         const input = payload?.input ?? null;
@@ -2473,8 +2494,12 @@ export default function ProductionPage() {
             });
         }
       } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : t("production.suppliers.errorLoad");
         setSupplierError(
-          err instanceof Error ? err.message : t("production.suppliers.errorLoad")
+          isImageFetchError(msg)
+            ? "1688 image search temporarily failed to fetch the image. Please retry in a moment."
+            : msg
         );
       } finally {
         setSupplierLoading(false);

@@ -1,0 +1,56 @@
+DigiDeal Main Context Package Sample
+Run at: 2026-02-13T14:06:31.287Z
+
+Draft product SPU: ND-22533
+Title used: Bluetooth ljudsändare / Bluetooth ljudmottagare – trådlös ljudbrygga – aptX HD, AUX 3,5 mm, RCA
+
+Description used (HTML stripped):
+Bluetooth ljudadapter som fungerar som både sändare (TX) och mottagare (RX) för utrustning med 3,5 mm AUX eller RCA. I TX-läge skickas ljud från exempelvis TV eller dator till Bluetooth-hörlurar eller högtalare. I RX-läge tas ljud emot från mobil eller dator och spelas upp via stereo, förstärkare eller aktiva högtalare. Stöd för aptX HD ger bättre ljudkvalitet än standardkodekar när kompatibla enheter används. Dubbla externa antenner och Bluetooth 5.4 ger stabil anslutning och upp till 15 m räckvidd.
+
+OpenAI URL: https://api.openai.com/v1/chat/completions
+OpenAI model requested: gpt-5.1.2
+
+Prompt sent to OpenAI:
+You create a short product context package for generating Swedish-market lifestyle product images.
+Use the provided title and description as the only source of truth.
+Tasks:
+1) Describe what type of product this is and what it is used for (1-3 sentences).
+2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).
+3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".
+
+Return strict JSON only with this shape:
+{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }
+No markdown, no extra keys.
+
+Title: Bluetooth ljudsändare / Bluetooth ljudmottagare – trådlös ljudbrygga – aptX HD, AUX 3,5 mm, RCA
+
+Main description: Bluetooth ljudadapter som fungerar som både sändare (TX) och mottagare (RX) för utrustning med 3,5 mm AUX eller RCA. I TX-läge skickas ljud från exempelvis TV eller dator till Bluetooth-hörlurar eller högtalare. I RX-läge tas ljud emot från mobil eller dator och spelas upp via stereo, förstärkare eller aktiva högtalare. Stöd för aptX HD ger bättre ljudkvalitet än standardkodekar när kompatibla enheter används. Dubbla externa antenner och Bluetooth 5.4 ger stabil anslutning och upp till 15 m räckvidd.
+
+OpenAI call ERROR:
+OpenAI error (404): {
+    "error": {
+        "message": "The model `gpt-5.1.2` does not exist or you do not have access to it.",
+        "type": "invalid_request_error",
+        "param": null,
+        "code": "model_not_found"
+    }
+}
+
+
+Template placeholder snippet (DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE):
+PRODUCT CONTEXT (HIGH PRIORITY INPUT)\
+The following description is provided to clarify what the product is, how it is used, and where it is naturally used. This information must be used as the primary reference when interpreting the product image.\
+\
+<Product_Description>\
+{{INSERT_PRODUCT_DESCRIPTION_HERE}}\
+</Product_Description>\
+\
+<Product_Usage_Environments>\
+{{INSERT_ENVIRONMENT_SUGGESTIONS_HERE}}\
+</Product_Usage_Environments>\
+\
+If the product image and description differ slightly, prioritize the description while still respecting the visual characteristics of the product image.\
+\
+________________________________________\
+\
+You are given a product image.\

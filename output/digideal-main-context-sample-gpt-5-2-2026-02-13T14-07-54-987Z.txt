@@ -1,0 +1,135 @@
+DigiDeal Main Context Package Sample (gpt-5.2)
+Run at: 2026-02-13T14:07:54.987Z
+
+Draft product SPU: ND-22545
+Title used: Temperaturgivare / hygrometer – inomhusövervakning, Tuya Smart Life, Wi‑Fi Bluetooth
+
+Description used (HTML stripped):
+Smart temperatur- och luftfuktighetssensor för övervakning av inomhusklimat via app. Mätvärden visas i realtid och kan användas som triggers i smarta scenarion, exempelvis för att starta fläkt, luftfuktare eller avfuktare när valda gränser passeras. Anslutning sker via Wi‑Fi och Bluetooth och sensorn fungerar med Tuya Smart och Smart Life. Batteridrift på 3 V AAA gör installationen enkel och flexibel utan kabeldragning. Passar för rum där temperatur och luftfuktighet behöver följas löpande.
+
+OpenAI URL: https://api.openai.com/v1/chat/completions
+OpenAI model used: gpt-5.2
+
+Prompt sent to OpenAI:
+You create a short product context package for generating Swedish-market lifestyle product images.
+Use the provided title and description as the only source of truth.
+Tasks:
+1) Describe what type of product this is and what it is used for (1-3 sentences).
+2) Provide 3-5 realistic Swedish-market usage environments/scenes where this product would naturally be used (each as one sentence).
+3) Identify the best target user for the scene as one of: "male", "female", "child", "unisex".
+
+Return strict JSON only with this shape:
+{ "product_description": string, "usage_environments": string[], "target_user": "male"|"female"|"child"|"unisex" }
+No markdown, no extra keys.
+
+Title: Temperaturgivare / hygrometer – inomhusövervakning, Tuya Smart Life, Wi‑Fi Bluetooth
+
+Main description: Smart temperatur- och luftfuktighetssensor för övervakning av inomhusklimat via app. Mätvärden visas i realtid och kan användas som triggers i smarta scenarion, exempelvis för att starta fläkt, luftfuktare eller avfuktare när valda gränser passeras. Anslutning sker via Wi‑Fi och Bluetooth och sensorn fungerar med Tuya Smart och Smart Life. Batteridrift på 3 V AAA gör installationen enkel och flexibel utan kabeldragning. Passar för rum där temperatur och luftfuktighet behöver följas löpande.
+
+Raw OpenAI response (message.content):
+{
+  "product_description": "Detta är en smart temperatur- och luftfuktighetssensor (hygrometer) för inomhusbruk som övervakar klimatet och visar mätvärden i realtid i en app. Den kan även användas som trigger i smarta scenarion för att automatiskt starta exempelvis fläkt, luftfuktare eller avfuktare när gränsvärden passeras.",
+  "usage_environments": [
+    "I ett vardagsrum där man vill följa inomhusklimatet i realtid via Tuya Smart/Smart Life och styra en fläkt vid hög temperatur.",
+    "I ett sovrum där sensorn triggar en luftfuktare när luftfuktigheten blir för låg under natten.",
+    "I ett badrum eller tvättstuga där sensorn kan starta en avfuktare när luftfuktigheten stiger efter dusch eller tvätt.",
+    "I ett hemmakontor där man vill hålla koll på temperatur och luftfuktighet för en jämn och behaglig arbetsmiljö.",
+    "I ett rum där man löpande behöver följa temperatur och luftfuktighet och vill ha enkel batteridriven installation utan kabeldragning."
+  ],
+  "target_user": "unisex"
+}
+
+Parsed JSON object:
+{
+  "product_description": "Detta är en smart temperatur- och luftfuktighetssensor (hygrometer) för inomhusbruk som övervakar klimatet och visar mätvärden i realtid i en app. Den kan även användas som trigger i smarta scenarion för att automatiskt starta exempelvis fläkt, luftfuktare eller avfuktare när gränsvärden passeras.",
+  "usage_environments": [
+    "I ett vardagsrum där man vill följa inomhusklimatet i realtid via Tuya Smart/Smart Life och styra en fläkt vid hög temperatur.",
+    "I ett sovrum där sensorn triggar en luftfuktare när luftfuktigheten blir för låg under natten.",
+    "I ett badrum eller tvättstuga där sensorn kan starta en avfuktare när luftfuktigheten stiger efter dusch eller tvätt.",
+    "I ett hemmakontor där man vill hålla koll på temperatur och luftfuktighet för en jämn och behaglig arbetsmiljö.",
+    "I ett rum där man löpande behöver följa temperatur och luftfuktighet och vill ha enkel batteridriven installation utan kabeldragning."
+  ],
+  "target_user": "unisex"
+}
+
+Filled template (first ~80 lines):
+PRODUCT CONTEXT (HIGH PRIORITY INPUT)\
+The following description is provided to clarify what the product is, how it is used, and where it is naturally used. This information must be used as the primary reference when interpreting the product image.\
+\
+<Product_Description>\
+Detta är en smart temperatur- och luftfuktighetssensor (hygrometer) för inomhusbruk som övervakar klimatet och visar mätvärden i realtid i en app. Den kan även användas som trigger i smarta scenarion för att automatiskt starta exempelvis fläkt, luftfuktare eller avfuktare när gränsvärden passeras.
+Target user: unisex\
+</Product_Description>\
+\
+<Product_Usage_Environments>\
+1. I ett vardagsrum där man vill följa inomhusklimatet i realtid via Tuya Smart/Smart Life och styra en fläkt vid hög temperatur.
+2. I ett sovrum där sensorn triggar en luftfuktare när luftfuktigheten blir för låg under natten.
+3. I ett badrum eller tvättstuga där sensorn kan starta en avfuktare när luftfuktigheten stiger efter dusch eller tvätt.
+4. I ett hemmakontor där man vill hålla koll på temperatur och luftfuktighet för en jämn och behaglig arbetsmiljö.
+5. I ett rum där man löpande behöver följa temperatur och luftfuktighet och vill ha enkel batteridriven installation utan kabeldragning.\
+</Product_Usage_Environments>\
+\
+If the product image and description differ slightly, prioritize the description while still respecting the visual characteristics of the product image.\
+\
+________________________________________\
+\
+You are given a product image.\
+Your task is to generate a photorealistic hero image confirming to exact resolution: 1200 × 630 pixels, suitable for a Nordic / Swedish e-commerce website.\
+\
+________________________________________\
+Step 1 – Identify the product\
+• Analyze the product image and determine:\
+o What the product is\
+o Its primary function\
+o Whether it is unisex, primarily used by men, or primarily used by women\
+\
+• Use the PRODUCT CONTEXT section above as supporting classification data.\
+\
+________________________________________\
+Step 2 – Identify the ideal user\
+• Based on the product type:\
+o If the product is unisex or male-oriented, imagine an ideal male user aged 40–55\
+o If the product is clearly female-oriented, imagine an ideal female user aged 30–40\
+\
+• Consider where and in what situation this user would most realistically and naturally use the product in everyday life in Sweden\
+\
+• Use PRODUCT CONTEXT environments as guidance, but prioritize realism.\
+\
+________________________________________\
+Step 3 – Identify the ideal scene\
+• Select the most credible, natural, and useful environment for this product:\
+o The scene must feel authentic to Swedish life\
+o Avoid exaggerated, cinematic, or staged situations\
+o Focus on practical usefulness and context, not drama\
+\
+• The product may or may not appear in the lifestyle scene:\
+o If included, it must be placed subtly and naturally\
+o If excluded, the environment alone should clearly communicate how and why the product is useful\
+\
+• Use PRODUCT CONTEXT environments as optional guidance, not strict constraints.\
+\
+________________________________________\
+Step 4 – Create the composite hero image\
+\
+Generate a split-composition image with the following layout:\
+\
+Left side (35–40%) – Product on white\
+• Present the product as a free-floating studio object on a 100% pure white background (#FFFFFF)\
+• The background must be completely uniform, with no gradients, textures, shadows, surfaces, or environment\
+• The product must appear isolated, floating naturally on white\
+• Any cables, accessories, or elements that break the clean silhouette should be removed\
+• Lighting must be neutral and professional, with only minimal natural object shadow if needed to preserve depth\
+\
+Center (20–25%) – Transition zone\
+• A soft, blurred transition area where the pure white background gradually fades into the lifestyle scene\
+• No hard edges, seams, or visible borders\
+• The transition should feel atmospheric and natural\
+\
+Right side (35–40%) – Lifestyle scene\
+• A photorealistic Swedish lifestyle environment showing where the product is most useful for the identified user\
+• The scene should feel natural, trustworthy, and believable\
+• Nordic realism, no exaggeration\
+\
+________________________________________\
+Final requirements\
+\

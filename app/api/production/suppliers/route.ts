@@ -123,6 +123,9 @@ const isImageFetchError = (error: string) => {
   );
 };
 
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
+
 const toUniqueImageCandidates = (
   request: Request,
   ...values: Array<string | null | undefined>
@@ -645,12 +648,25 @@ export async function GET(request: NextRequest) {
   for (let i = 0; i < imageCandidates.length; i += 1) {
     const candidate = imageCandidates[i];
     // 1688 sometimes returns transient "handle image error" for otherwise valid URLs.
-    // Retry once before moving on to the next candidate so DigiDeal webp->jpg rehosts
+    // Retry a few times before moving on to the next candidate so DigiDeal webp->jpg rehosts
     // don’t flake as often.
     run = run1688ImageSearch(request, candidate, limit);
     if (!run.ok && isImageFetchError(run.error)) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      run = run1688ImageSearch(request, candidate, limit);
+      for (const delayMs of [250, 600, 1200]) {
+        await sleep(delayMs);
+        run = run1688ImageSearch(request, candidate, limit);
+        if (run.ok) break;
+        if (!isImageFetchError(run.error)) break;
+      }
+      if (!run.ok && isImageFetchError(run.error)) {
+        // Helps debug the (rare) cases where 1688 can't fetch a URL that looks valid.
+        console.warn("[api/production/suppliers] image fetch error after retries", {
+          provider,
+          productId,
+          candidate,
+          error: run.error,
+        });
+      }
     }
     if (run.ok) break;
     if (i >= imageCandidates.length - 1) break;

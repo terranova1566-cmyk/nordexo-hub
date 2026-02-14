@@ -40,7 +40,7 @@ import {
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useI18n } from "@/components/i18n-provider";
@@ -123,6 +123,8 @@ type SupplierSelection = {
   selected_offer: SupplierOffer | null;
   locked?: boolean;
 };
+
+type CropRectNorm = { x: number; y: number; w: number; h: number };
 
 type VariantCombo = {
   index: number;
@@ -662,7 +664,7 @@ const useStyles = makeStyles({
     maxWidth: "90px",
   },
   estimatedPriceCol: {
-    minWidth: "200px",
+    minWidth: "260px",
   },
   linkedProductCol: {
     minWidth: "180px",
@@ -757,6 +759,18 @@ const useStyles = makeStyles({
       border: "1px solid #c8b255",
     },
   },
+  supplierSelectedButton: {
+    backgroundColor: "#d6f5da",
+    color: "#165a23",
+    border: "1px solid #165a23",
+    width: "fit-content",
+    minWidth: "unset",
+    paddingLeft: "10px",
+    paddingRight: "10px",
+    "&:hover": {
+      backgroundColor: "#c3eccc",
+    },
+  },
   supplierActionSplit: {
     display: "inline-flex",
     alignItems: "center",
@@ -821,6 +835,7 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start",
+    width: "100%",
     gap: "4px",
   },
   estimatedPriceActionRow: {
@@ -866,9 +881,27 @@ const useStyles = makeStyles({
     maxWidth: "min(980px, 94vw)",
   },
   supplierSearchContent: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+  },
+  supplierBusyLayer: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.55)",
+    backdropFilter: "blur(2px)",
+    zIndex: 5,
+    padding: "16px",
+  },
+  supplierBusyInner: {
+    borderRadius: "12px",
+    padding: "10px 12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   supplierSearchHeaderRow: {
     display: "flex",
@@ -966,6 +999,119 @@ const useStyles = makeStyles({
     width: "14px",
     height: "14px",
   },
+  cropOverlay: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.55)",
+    backdropFilter: "blur(2px)",
+    zIndex: 9,
+    padding: "16px",
+  },
+  cropModal: {
+    width: "min(520px, 92vw)",
+    aspectRatio: "1 / 1",
+    borderRadius: "14px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
+    position: "relative",
+    overflow: "hidden",
+  },
+  cropModalHeader: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 2,
+    padding: "10px 12px",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(6px)",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  cropModalActions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+    padding: "10px 12px",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(6px)",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: "8px",
+  },
+  cropModalTitle: {
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  cropStage: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  cropStageViewport: {
+    position: "absolute",
+    left: "12px",
+    right: "12px",
+    top: "52px",
+    bottom: "58px",
+    borderRadius: "12px",
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  cropStagePadding: {
+    position: "absolute",
+    inset: "16px",
+    borderRadius: "10px",
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  cropImage: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    pointerEvents: "none",
+  },
+  cropMissing: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "16px",
+    textAlign: "center",
+  },
+  cropRect: {
+    position: "absolute",
+    border: "2px solid #0f6cbd",
+    borderRadius: "8px",
+    backgroundColor: "rgba(15,108,189,0.08)",
+    boxSizing: "border-box",
+    touchAction: "none",
+  },
+  cropHandle: {
+    position: "absolute",
+    width: "14px",
+    height: "14px",
+    borderRadius: "4px",
+    backgroundColor: "#ffffff",
+    border: "2px solid #0f6cbd",
+    boxSizing: "border-box",
+    touchAction: "none",
+  },
+  cropHandleNW: { left: "-7px", top: "-7px", cursor: "nwse-resize" },
+  cropHandleNE: { right: "-7px", top: "-7px", cursor: "nesw-resize" },
+  cropHandleSW: { left: "-7px", bottom: "-7px", cursor: "nesw-resize" },
+  cropHandleSE: { right: "-7px", bottom: "-7px", cursor: "nwse-resize" },
   variantsDialog: {
     width: "min(1080px, 95vw)",
     maxWidth: "min(1080px, 95vw)",
@@ -1112,6 +1258,20 @@ const useStyles = makeStyles({
     minWidth: "unset",
     paddingInline: "8px",
     marginLeft: "0px",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+    width: "fit-content",
+    maxWidth: "none",
+    "& .fui-Button__content": {
+      whiteSpace: "nowrap",
+      flexWrap: "nowrap",
+    },
+    "& .fui-Button__text": {
+      whiteSpace: "nowrap",
+    },
+  },
+  supplierManualEditButton: {
+    paddingInline: "6px",
   },
   supplierDialog: {
     minWidth: "420px",
@@ -2054,6 +2214,22 @@ export default function DigidealCampaignsPage() {
   const [supplierLockedUrl, setSupplierLockedUrl] = useState<string | null>(null);
   const [supplierTranslating, setSupplierTranslating] = useState(false);
   const [supplierPriceSortDir, setSupplierPriceSortDir] = useState<"asc" | "desc" | null>(null);
+  const [supplierSearchBusy, setSupplierSearchBusy] = useState(false);
+  const [supplierSearchImageUrl, setSupplierSearchImageUrl] = useState<string | null>(null);
+
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
+  const [cropNaturalSize, setCropNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const cropStageRef = useRef<HTMLDivElement | null>(null);
+  const [cropRect, setCropRect] = useState<CropRectNorm>({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+  const dragRef = useRef<{
+    handle: "nw" | "ne" | "sw" | "se" | "move";
+    startX: number;
+    startY: number;
+    startRect: CropRectNorm;
+    imgBox: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+  const [recropSearching, setRecropSearching] = useState(false);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const [variantsTarget, setVariantsTarget] = useState<DigidealItem | null>(null);
   const [variantsCombos, setVariantsCombos] = useState<VariantCombo[]>([]);
@@ -2165,6 +2341,7 @@ export default function DigidealCampaignsPage() {
     setSupplierSearchTarget(null);
     setSupplierOffers([]);
     setSupplierSearchLoading(false);
+    setSupplierSearchBusy(false);
     setSupplierSearchError(null);
     setSupplierSelectedOfferId("");
     setSupplierSelected(null);
@@ -2172,6 +2349,13 @@ export default function DigidealCampaignsPage() {
     setSupplierLockedUrl(null);
     setSupplierTranslating(false);
     setSupplierPriceSortDir(null);
+    setSupplierSearchImageUrl(null);
+    setCropDialogOpen(false);
+    setCropImageUrl(null);
+    setCropNaturalSize(null);
+    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    dragRef.current = null;
+    setRecropSearching(false);
   }, []);
 
   const closeVariantsDialog = useCallback(() => {
@@ -2226,7 +2410,12 @@ export default function DigidealCampaignsPage() {
 
   const normalizeOfferPrice = useCallback((value: unknown) => {
     if (value === null || value === undefined || value === "") return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (Number.isInteger(value) && value >= 100 && value <= 100000) {
+        return value / 100;
+      }
+      return value;
+    }
     const textRaw = String(value).trim();
     if (!textRaw) return null;
     const text = textRaw.replace(/[^0-9.,-]/g, "");
@@ -2315,6 +2504,15 @@ export default function DigidealCampaignsPage() {
     [pickOfferPriceRmb]
   );
 
+  const isSupplierImageFetchError = useCallback((message: unknown) => {
+    const msg = String(message || "").toLowerCase();
+    return (
+      msg.includes("handle image error") ||
+      msg.includes("image_fetch_error") ||
+      msg.includes("image fetch error")
+    );
+  }, []);
+
   const openSupplierSearchDialog = useCallback(
     async (item: DigidealItem) => {
       setSupplierSearchTarget(item);
@@ -2324,10 +2522,18 @@ export default function DigidealCampaignsPage() {
       setSupplierSelectedOfferId("");
       setSupplierSelected(null);
       setSupplierSearchLoading(true);
+      setSupplierSearchBusy(false);
       setSupplierSearchSaving(false);
       setSupplierLockedUrl(null);
       setSupplierTranslating(false);
       setSupplierPriceSortDir(null);
+      setSupplierSearchImageUrl(null);
+      setCropDialogOpen(false);
+      setCropImageUrl(null);
+      setCropNaturalSize(null);
+      setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+      dragRef.current = null;
+      setRecropSearching(false);
       try {
         const params = new URLSearchParams({
           provider: "digideal",
@@ -2336,15 +2542,38 @@ export default function DigidealCampaignsPage() {
         const imageUrls = normalizeImageUrls(item.image_urls);
         const imageUrl = item.primary_image_url || imageUrls[0] || null;
         if (imageUrl) params.set("image_url", imageUrl);
+        setSupplierSearchImageUrl(imageUrl);
 
-        const response = await fetch(`/api/production/suppliers?${params.toString()}`);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load supplier suggestions.");
-        }
+        const fetchWithRetry = async () => {
+          const delaysMs = [500, 1200, 2500, 5000, 8000];
+          let lastError: Error | null = null;
+          for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
+            const response = await fetch(`/api/production/suppliers?${params.toString()}`);
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok) return payload;
+            const message = payload?.error || "Unable to load supplier suggestions.";
+            const err = new Error(message);
+            lastError = err;
+            if (!isSupplierImageFetchError(message) || attempt >= delaysMs.length) throw err;
+            await new Promise((resolve) => window.setTimeout(resolve, delaysMs[attempt]));
+          }
+          throw lastError || new Error("Unable to load supplier suggestions.");
+        };
+
+        const payload = await fetchWithRetry();
 
         const offers = Array.isArray(payload?.offers) ? payload.offers : [];
         setSupplierOffers(offers);
+        const input = payload?.input ?? null;
+        const recropSourceUrl =
+          typeof input?.recrop?.imageUrl === "string" ? input.recrop.imageUrl : null;
+        const usedPicUrl =
+          recropSourceUrl ||
+          (typeof input?.usedPicUrl === "string" ? input.usedPicUrl : null) ||
+          (typeof input?.picUrl === "string" ? input.picUrl : null) ||
+          imageUrl ||
+          null;
+        setSupplierSearchImageUrl(usedPicUrl);
         const selectedPayload = payload?.selected ?? null;
         const selectedOfferId =
           typeof selectedPayload?.selected_offer_id === "string"
@@ -2405,15 +2634,268 @@ export default function DigidealCampaignsPage() {
             .finally(() => setSupplierTranslating(false));
         }
       } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Unable to load supplier suggestions.";
         setSupplierSearchError(
-          err instanceof Error ? err.message : "Unable to load supplier suggestions."
+          isSupplierImageFetchError(msg)
+            ? "1688 image search temporarily failed to fetch the image. Please retry in a moment."
+            : msg
         );
       } finally {
         setSupplierSearchLoading(false);
       }
     },
-    []
+    [isSupplierImageFetchError]
   );
+
+  const closeCropDialog = useCallback(() => {
+    setCropDialogOpen(false);
+    setCropImageUrl(null);
+    setCropNaturalSize(null);
+    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    dragRef.current = null;
+    setRecropSearching(false);
+  }, []);
+
+  const openCropDialog = useCallback(() => {
+    if (!supplierSearchTarget) return;
+    const imageUrls = normalizeImageUrls(supplierSearchTarget.image_urls);
+    const fallback =
+      supplierSearchImageUrl ||
+      supplierSearchTarget.primary_image_url ||
+      imageUrls[0] ||
+      null;
+    setCropImageUrl(fallback);
+    setCropDialogOpen(true);
+    setCropNaturalSize(null);
+    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    dragRef.current = null;
+  }, [supplierSearchImageUrl, supplierSearchTarget]);
+
+  const getCropImageBox = useCallback(() => {
+    const stage = cropStageRef.current;
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
+    const n = cropNaturalSize;
+    if (!n || !n.w || !n.h) {
+      return {
+        stage: rect,
+        img: { left: 0, top: 0, width: rect.width, height: rect.height },
+      };
+    }
+
+    const scale = Math.min(rect.width / n.w, rect.height / n.h);
+    const renderedW = n.w * scale;
+    const renderedH = n.h * scale;
+    const left = (rect.width - renderedW) / 2;
+    const top = (rect.height - renderedH) / 2;
+    return {
+      stage: rect,
+      img: { left, top, width: renderedW, height: renderedH },
+    };
+  }, [cropNaturalSize]);
+
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+  const clampRect = useCallback((r: CropRectNorm) => {
+    const minSize = 0.06;
+    const w = Math.max(minSize, Math.min(1, r.w));
+    const h = Math.max(minSize, Math.min(1, r.h));
+    const x = clamp01(r.x);
+    const y = clamp01(r.y);
+    const x2 = Math.min(1, x + w);
+    const y2 = Math.min(1, y + h);
+    return { x: Math.max(0, x2 - w), y: Math.max(0, y2 - h), w, h };
+  }, []);
+
+  const beginDrag = useCallback(
+    (ev: React.PointerEvent, handle: "nw" | "ne" | "sw" | "se" | "move") => {
+      if (!cropDialogOpen) return;
+      const box = getCropImageBox();
+      if (!box) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+      dragRef.current = {
+        handle,
+        startX: ev.clientX,
+        startY: ev.clientY,
+        startRect: cropRect,
+        imgBox: box.img,
+      };
+    },
+    [cropDialogOpen, cropRect, getCropImageBox]
+  );
+
+  const onDragMove = useCallback(
+    (ev: React.PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const stage = cropStageRef.current;
+      if (!stage) return;
+      ev.preventDefault();
+      const dxPx = ev.clientX - drag.startX;
+      const dyPx = ev.clientY - drag.startY;
+      const dx = drag.imgBox.width > 0 ? dxPx / drag.imgBox.width : 0;
+      const dy = drag.imgBox.height > 0 ? dyPx / drag.imgBox.height : 0;
+
+      const s = drag.startRect;
+      let next: CropRectNorm = { ...s };
+      if (drag.handle === "move") {
+        next = { ...s, x: s.x + dx, y: s.y + dy };
+      } else if (drag.handle === "nw") {
+        next = { x: s.x + dx, y: s.y + dy, w: s.w - dx, h: s.h - dy };
+      } else if (drag.handle === "ne") {
+        next = { x: s.x, y: s.y + dy, w: s.w + dx, h: s.h - dy };
+      } else if (drag.handle === "sw") {
+        next = { x: s.x + dx, y: s.y, w: s.w - dx, h: s.h + dy };
+      } else if (drag.handle === "se") {
+        next = { x: s.x, y: s.y, w: s.w + dx, h: s.h + dy };
+      }
+      setCropRect(clampRect(next));
+    },
+    [clampRect]
+  );
+
+  const endDrag = useCallback((ev: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    ev.preventDefault();
+    dragRef.current = null;
+  }, []);
+
+  const handleRecropSearch = useCallback(async () => {
+    if (!supplierSearchTarget) return;
+    if (!cropImageUrl) return;
+    if (!cropNaturalSize || !cropNaturalSize.w || !cropNaturalSize.h) return;
+
+    setRecropSearching(true);
+    setSupplierSearchBusy(true);
+    setSupplierSearchError(null);
+    closeCropDialog();
+
+    try {
+      const x = Math.round(cropRect.x * cropNaturalSize.w);
+      const y = Math.round(cropRect.y * cropNaturalSize.h);
+      const width = Math.round(cropRect.w * cropNaturalSize.w);
+      const height = Math.round(cropRect.h * cropNaturalSize.h);
+
+      const response = await fetch("/api/production/suppliers/recrop-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "digideal",
+          product_id: supplierSearchTarget.product_id,
+          image_url: cropImageUrl,
+          crop: { x, y, width, height },
+          limit: 10,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg = payload?.error || "Unable to load supplier suggestions.";
+        throw new Error(msg);
+      }
+
+      const offers = Array.isArray(payload?.offers) ? payload.offers : [];
+      setSupplierOffers(offers);
+
+      const selectedPayload = payload?.selected ?? null;
+      const selectedOfferId =
+        typeof selectedPayload?.selected_offer_id === "string"
+          ? String(selectedPayload.selected_offer_id)
+          : "";
+      setSupplierSelectedOfferId(selectedOfferId);
+      setSupplierSelected(
+        selectedPayload && typeof selectedPayload === "object"
+          ? {
+              provider: "digideal",
+              product_id: supplierSearchTarget.product_id,
+              selected_offer_id:
+                typeof selectedPayload.selected_offer_id === "string"
+                  ? selectedPayload.selected_offer_id
+                  : null,
+              selected_detail_url:
+                typeof selectedPayload.selected_detail_url === "string"
+                  ? selectedPayload.selected_detail_url
+                  : null,
+              selected_offer:
+                selectedPayload.selected_offer && typeof selectedPayload.selected_offer === "object"
+                  ? (selectedPayload.selected_offer as SupplierOffer)
+                  : null,
+              locked: Boolean(selectedPayload.locked),
+            }
+          : null
+      );
+
+      const lockedUrl =
+        typeof payload?.locked_supplier_url === "string" && payload.locked_supplier_url.trim()
+          ? payload.locked_supplier_url.trim()
+          : null;
+      setSupplierLockedUrl(lockedUrl);
+
+      const input = payload?.input ?? null;
+      const recropSourceUrl =
+        typeof input?.recrop?.imageUrl === "string" ? input.recrop.imageUrl : null;
+      const usedPicUrl =
+        recropSourceUrl ||
+        (typeof input?.usedPicUrl === "string" ? input.usedPicUrl : null) ||
+        (typeof input?.picUrl === "string" ? input.picUrl : null) ||
+        cropImageUrl;
+      setSupplierSearchImageUrl(usedPicUrl);
+
+      const needsTranslation = offers.some((offer: SupplierOffer) => {
+        const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
+        const en = typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
+        return Boolean(subject) && !en;
+      });
+      if (needsTranslation) {
+        setSupplierTranslating(true);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+        fetch("/api/production/suppliers/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "digideal",
+            product_id: supplierSearchTarget.product_id,
+          }),
+          signal: controller.signal,
+        })
+          .then(async (res) => {
+            const translatedPayload = await res.json().catch(() => null);
+            if (!translatedPayload || typeof translatedPayload !== "object") return;
+            const updatedOffers = Array.isArray((translatedPayload as any).offers)
+              ? (translatedPayload as any).offers
+              : null;
+            if (updatedOffers) setSupplierOffers(updatedOffers);
+          })
+          .catch(() => null)
+          .finally(() => {
+            window.clearTimeout(timeout);
+            setSupplierTranslating(false);
+          });
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Unable to load supplier suggestions.";
+      setSupplierSearchError(
+        isSupplierImageFetchError(msg)
+          ? "1688 image search temporarily failed to fetch the image. Please retry in a moment."
+          : msg
+      );
+    } finally {
+      setRecropSearching(false);
+      setSupplierSearchBusy(false);
+    }
+  }, [
+    closeCropDialog,
+    cropImageUrl,
+    cropNaturalSize,
+    cropRect,
+    isSupplierImageFetchError,
+    supplierSearchTarget,
+  ]);
 
   const handleSaveSupplierSearch = useCallback(async () => {
     if (!supplierSearchTarget) return;
@@ -2437,6 +2919,59 @@ export default function DigidealCampaignsPage() {
       if (!response.ok) {
         throw new Error(payload?.error || "Unable to save supplier selection.");
       }
+      if (payload?.selected) {
+        const selectedOffer =
+          payload.selected?.selected_offer && typeof payload.selected.selected_offer === "object"
+            ? (payload.selected.selected_offer as SupplierOffer)
+            : null;
+        const selectedImageUrl =
+          selectedOffer && typeof (selectedOffer as any)?.imageUrl === "string"
+            ? normalizeSupplierImageUrl(String((selectedOffer as any).imageUrl))
+            : null;
+        const selectedTitle =
+          selectedOffer && typeof (selectedOffer as any)?.subject === "string"
+            ? String((selectedOffer as any).subject)
+            : null;
+        const selectedDetailUrl =
+          selectedOffer && typeof (selectedOffer as any)?.detailUrl === "string"
+            ? String((selectedOffer as any).detailUrl)
+            : null;
+        const payloadStatus =
+          selectedOffer && typeof (selectedOffer as any)?._production_payload_status === "string"
+            ? String((selectedOffer as any)._production_payload_status)
+            : typeof payload?.payload_fetch_status === "string"
+              ? String(payload.payload_fetch_status)
+              : "fetching";
+        const payloadSource =
+          selectedOffer && typeof (selectedOffer as any)?._production_payload_source === "string"
+            ? String((selectedOffer as any)._production_payload_source)
+            : "auto";
+        const payloadError =
+          selectedOffer && typeof (selectedOffer as any)?._production_payload_error === "string"
+            ? String((selectedOffer as any)._production_payload_error)
+            : null;
+
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.product_id === supplierSearchTarget.product_id
+              ? {
+                  ...entry,
+                  supplier_selected: true,
+                  supplier_selected_offer_image_url: selectedImageUrl,
+                  supplier_selected_offer_title: selectedTitle,
+                  supplier_selected_offer_detail_url: selectedDetailUrl,
+                  supplier_payload_status: payloadStatus,
+                  supplier_payload_source: payloadSource,
+                  supplier_payload_error: payloadError,
+                  supplier_payload_saved_at: null,
+                  supplier_variant_available_count: null,
+                  supplier_variant_selected_count: null,
+                  supplier_variant_packs_text: null,
+                }
+              : entry
+          )
+        );
+      }
       closeSupplierSearchDialog();
       setRefreshToken((prev) => prev + 1);
     } catch (err) {
@@ -2448,6 +2983,7 @@ export default function DigidealCampaignsPage() {
     }
   }, [
     closeSupplierSearchDialog,
+    normalizeSupplierImageUrl,
     supplierLockedUrl,
     supplierSearchTarget,
     supplierSelectedOfferId,
@@ -4138,6 +4674,7 @@ export default function DigidealCampaignsPage() {
           item.weight_kg !== null ||
           (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
         const supplierSelected = Boolean(item.supplier_selected);
+        const supplierLocked = Boolean(item.supplier_locked);
         const supplierPayloadStatus = String(item.supplier_payload_status ?? "")
           .trim()
           .toLowerCase();
@@ -4151,9 +4688,11 @@ export default function DigidealCampaignsPage() {
           supplierPayloadStatus === "processing";
         const supplierActionLabel = supplierPayloadReady
           ? "Pick Variant"
-          : hasManualSupplierData
-            ? t("digideal.supplier.edit")
-            : t("digideal.supplier.add");
+          : supplierSelected && !supplierLocked
+            ? "Supplier Selected"
+            : hasManualSupplierData
+              ? t("digideal.supplier.edit")
+              : t("digideal.supplier.add");
         const highlightAddSupplier =
           canManageSupplier &&
           !supplierPayloadReady &&
@@ -4516,24 +5055,6 @@ export default function DigidealCampaignsPage() {
                 "-"
               )}
             </TableCell>
-            <TableCell className={styles.optimizeCol}>
-              {isNordexo ? (
-                "-"
-              ) : (
-                <Button
-                  appearance="outline"
-                  size="small"
-                  className={styles.linkButton}
-                  onClick={() => {
-                    if (!hasReport) return;
-                    openOptimizeDialog(title, item.product_id);
-                  }}
-                  disabled={!hasReport}
-                >
-                  {t("digideal.optimize.analyze")}
-                </Button>
-              )}
-            </TableCell>
             <TableCell className={styles.linkedProductCol}>
               {isNordexo ? (
                 "-"
@@ -4598,36 +5119,36 @@ export default function DigidealCampaignsPage() {
 	            <TableCell className={styles.estimatedPriceCol}>
 	              <div className={styles.estimatedPriceRow}>
 	                <div className={styles.estimatedPriceActionRow}>
-	                  {hasEstimatedPrice ? (
-	                    <div className={styles.estimatedPriceBadgeSlot}>
-	                      <Badge
-	                        appearance="outline"
-	                        className={styles.estimatedPriceBadge}
-	                      >
-	                        {estimatedPriceLabel}
-	                      </Badge>
-	                    </div>
-	                  ) : (
-	                    canManageSupplier ? (
-	                      highlightAddSupplier ? null : (
-	                        <div className={styles.estimatedPriceBadgeSlot} />
-	                      )
-	                    ) : (
-	                      <Text className={styles.estimatedPriceText}>-</Text>
-	                    )
-	                  )}
+		                  {hasEstimatedPrice ? (
+		                    <div className={styles.estimatedPriceBadgeSlot}>
+		                      <Badge
+		                        appearance="outline"
+		                        className={styles.estimatedPriceBadge}
+		                      >
+		                        {estimatedPriceLabel}
+		                      </Badge>
+		                    </div>
+		                  ) : canManageSupplier ? null : (
+		                    <Text className={styles.estimatedPriceText}>-</Text>
+		                  )}
 	                  {canManageSupplier ? (
-	                    supplierPayloadReady ? (
-	                      <Menu>
-	                        <MenuTrigger disableButtonEnhancement>
-	                          <Button
-	                            appearance="outline"
-	                            size="small"
-	                            className={styles.linkButton}
-	                          >
-	                            {supplierActionLabel}
-	                          </Button>
-	                        </MenuTrigger>
+		                    supplierPayloadReady ? (
+		                      <Menu>
+		                        <MenuTrigger disableButtonEnhancement>
+		                          <Button
+		                            appearance="outline"
+		                            size="small"
+		                            className={mergeClasses(
+		                              styles.linkButton,
+		                              styles.estimatedPriceEditButton,
+		                              supplierSelected && !supplierLocked
+		                                ? styles.supplierSelectedButton
+		                                : undefined
+		                            )}
+		                          >
+		                            {supplierActionLabel}
+		                          </Button>
+		                        </MenuTrigger>
 	                        <MenuPopover>
 	                          <MenuList>
 	                            <MenuItem onClick={() => openSupplierDialog(item)}>
@@ -4639,29 +5160,37 @@ export default function DigidealCampaignsPage() {
 	                          </MenuList>
 	                        </MenuPopover>
 	                      </Menu>
-	                    ) : hasManualSupplierData ? (
-	                      <Button
-	                        appearance="outline"
-	                        size="small"
-	                        className={styles.linkButton}
-	                        onClick={() => openSupplierDialog(item)}
-	                      >
-	                        {t("digideal.supplier.edit")}
-	                      </Button>
-	                    ) : (
-	                      <Menu>
-	                        <MenuTrigger disableButtonEnhancement>
-	                          <Button
-	                            appearance="outline"
-	                            size="small"
-	                            className={mergeClasses(
-	                              styles.linkButton,
-	                              highlightAddSupplier ? styles.supplierAddButton : undefined
-	                            )}
-	                          >
-	                            {supplierActionLabel}
-	                          </Button>
-	                        </MenuTrigger>
+		                    ) : hasManualSupplierData ? (
+		                      <Button
+		                        appearance="outline"
+		                        size="small"
+		                        className={mergeClasses(
+		                          styles.linkButton,
+		                          styles.estimatedPriceEditButton,
+		                          styles.supplierManualEditButton
+		                        )}
+		                        onClick={() => openSupplierDialog(item)}
+		                      >
+		                        {t("digideal.supplier.edit")}
+		                      </Button>
+		                    ) : (
+		                      <Menu>
+		                        <MenuTrigger disableButtonEnhancement>
+		                          <Button
+		                            appearance="outline"
+		                            size="small"
+		                            className={mergeClasses(
+		                              styles.linkButton,
+		                              highlightAddSupplier ? styles.supplierAddButton : undefined,
+		                              styles.estimatedPriceEditButton,
+		                              supplierSelected && !supplierLocked
+		                                ? styles.supplierSelectedButton
+		                                : undefined
+		                            )}
+		                          >
+		                            {supplierActionLabel}
+		                          </Button>
+		                        </MenuTrigger>
 	                        <MenuPopover>
 	                          <MenuList>
 	                            <MenuItem onClick={() => openSupplierDialog(item)}>
@@ -5523,9 +6052,6 @@ export default function DigidealCampaignsPage() {
                 <TableHeaderCell className={styles.linkCol}>
                   {t("digideal.table.link")}
                 </TableHeaderCell>
-                <TableHeaderCell className={styles.optimizeCol}>
-                  {t("digideal.table.optimize")}
-                </TableHeaderCell>
                 <TableHeaderCell className={styles.linkedProductCol}>
                   {t("digideal.table.linkedProduct")}
                 </TableHeaderCell>
@@ -6028,14 +6554,21 @@ export default function DigidealCampaignsPage() {
           if (!data.open) closeSupplierSearchDialog();
         }}
       >
-        <DialogSurface className={styles.supplierSearchDialog}>
-          <DialogBody>
-            <DialogTitle>Find Supplier</DialogTitle>
-            <DialogContent className={styles.supplierSearchContent}>
-              <div className={styles.supplierSearchHeaderRow}>
-                <Text className={styles.supplierSearchTitle}>
-                  {supplierSearchTarget
-                    ? supplierSearchTarget.listing_title ||
+	        <DialogSurface className={styles.supplierSearchDialog}>
+	          <DialogBody>
+	            <DialogTitle>Find Supplier</DialogTitle>
+	            <DialogContent className={styles.supplierSearchContent}>
+	              {supplierSearchBusy ? (
+	                <div className={styles.supplierBusyLayer}>
+	                  <div className={styles.supplierBusyInner}>
+	                    <Spinner label="Loading suppliers..." />
+	                  </div>
+	                </div>
+	              ) : null}
+	              <div className={styles.supplierSearchHeaderRow}>
+	                <Text className={styles.supplierSearchTitle}>
+	                  {supplierSearchTarget
+	                    ? supplierSearchTarget.listing_title ||
                       supplierSearchTarget.title_h1 ||
                       supplierSearchTarget.product_slug ||
                       supplierSearchTarget.product_id
@@ -6063,10 +6596,10 @@ export default function DigidealCampaignsPage() {
                   {supplierSearchError}
                 </MessageBar>
               ) : null}
-              {supplierSearchLoading ? (
-                <Spinner label="Loading suppliers..." />
-              ) : (
-                <div className={styles.supplierSearchRows}>
+	              {supplierSearchLoading ? (
+	                <Spinner label="Loading suppliers..." />
+	              ) : (
+	                <div className={styles.supplierSearchRows}>
                   {supplierSelected?.selected_offer
                     ? (() => {
                         const offer = supplierSelected.selected_offer as SupplierOffer;
@@ -6294,23 +6827,131 @@ export default function DigidealCampaignsPage() {
                         </div>
                       );
                     });
-                  })()}
-                </div>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button appearance="secondary" onClick={closeSupplierSearchDialog}>
-                Close
-              </Button>
-              <Button
-                appearance="primary"
-                onClick={handleSaveSupplierSearch}
-                disabled={
-                  supplierSearchSaving ||
-                  supplierSelectedOfferId.trim().length === 0 ||
-                  Boolean(supplierLockedUrl)
-                }
-              >
+	                  })()}
+	                </div>
+	              )}
+
+	              {cropDialogOpen ? (
+	                <div
+	                  className={styles.cropOverlay}
+	                  role="dialog"
+	                  aria-modal="true"
+	                  onClick={(ev) => {
+	                    ev.stopPropagation();
+	                  }}
+	                >
+	                  <div className={styles.cropModal} onClick={(ev) => ev.stopPropagation()}>
+	                    <div className={styles.cropModalHeader}>
+	                      <Text className={styles.cropModalTitle}>Recrop Image</Text>
+	                    </div>
+
+	                    {cropImageUrl ? (
+	                      <div className={styles.cropStage}>
+	                        <div className={styles.cropStageViewport}>
+	                          <div
+	                            className={styles.cropStagePadding}
+	                            ref={(el) => {
+	                              cropStageRef.current = el;
+	                            }}
+	                            onPointerMove={onDragMove}
+	                            onPointerUp={endDrag}
+	                            onPointerCancel={endDrag}
+	                            onPointerLeave={endDrag}
+	                          >
+	                            <img
+	                              src={cropImageUrl}
+	                              alt="Recrop Image"
+	                              className={styles.cropImage}
+	                              referrerPolicy="no-referrer"
+	                              onLoad={(ev) => {
+	                                const img = ev.currentTarget;
+	                                if (img?.naturalWidth && img?.naturalHeight) {
+	                                  setCropNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+	                                }
+	                              }}
+	                            />
+	                            {(() => {
+	                              const box = getCropImageBox();
+	                              if (!box) return null;
+	                              const left = box.img.left + cropRect.x * box.img.width;
+	                              const top = box.img.top + cropRect.y * box.img.height;
+	                              const width = cropRect.w * box.img.width;
+	                              const height = cropRect.h * box.img.height;
+	                              return (
+	                                <div
+	                                  className={styles.cropRect}
+	                                  style={{ left, top, width, height }}
+	                                  onPointerDown={(ev) => beginDrag(ev, "move")}
+	                                >
+	                                  <div
+	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
+	                                    onPointerDown={(ev) => beginDrag(ev, "nw")}
+	                                  />
+	                                  <div
+	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
+	                                    onPointerDown={(ev) => beginDrag(ev, "ne")}
+	                                  />
+	                                  <div
+	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
+	                                    onPointerDown={(ev) => beginDrag(ev, "sw")}
+	                                  />
+	                                  <div
+	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
+	                                    onPointerDown={(ev) => beginDrag(ev, "se")}
+	                                  />
+	                                </div>
+	                              );
+	                            })()}
+	                          </div>
+	                        </div>
+	                      </div>
+	                    ) : (
+	                      <div className={styles.cropMissing}>
+	                        <Text>No image available to crop.</Text>
+	                      </div>
+	                    )}
+
+	                    <div className={styles.cropModalActions}>
+	                      <Button
+	                        appearance="secondary"
+	                        onClick={closeCropDialog}
+	                        disabled={recropSearching}
+	                      >
+	                        Close
+	                      </Button>
+	                      <Button
+	                        appearance="primary"
+	                        onClick={handleRecropSearch}
+	                        disabled={recropSearching || !cropImageUrl || !cropNaturalSize}
+	                      >
+	                        Search
+	                      </Button>
+	                    </div>
+	                  </div>
+	                </div>
+	              ) : null}
+	            </DialogContent>
+	            <DialogActions>
+	              <Button
+	                appearance="outline"
+	                onClick={openCropDialog}
+	                disabled={supplierSearchLoading || supplierSearchBusy || !supplierSearchTarget}
+	              >
+	                Recrop Image
+	              </Button>
+	              <Button appearance="secondary" onClick={closeSupplierSearchDialog}>
+	                Close
+	              </Button>
+	              <Button
+	                appearance="primary"
+	                onClick={handleSaveSupplierSearch}
+	                disabled={
+	                  supplierSearchSaving ||
+	                  supplierSearchBusy ||
+	                  supplierSelectedOfferId.trim().length === 0 ||
+	                  Boolean(supplierLockedUrl)
+	                }
+	              >
                 Save
               </Button>
             </DialogActions>

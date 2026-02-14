@@ -2154,17 +2154,17 @@
     },
     {
       "key": "settings.aiImage.tab",
-      "text": "AI Image Edit",
+      "text": "AI Prompts",
       "context": "Settings tab label"
     },
     {
       "key": "settings.aiImage.title",
-      "text": "AI Image Edit",
+      "text": "AI Prompts",
       "context": "Settings section title"
     },
     {
       "key": "settings.aiImage.helper",
-      "text": "Manage ChatGPT and Gemini image-edit prompts and prompt mode.",
+      "text": "Manage prompts for AI models within the app.",
       "context": "Settings helper text"
     },
     {
@@ -2231,6 +2231,86 @@
       "key": "settings.aiImage.geminiPrompt",
       "text": "Gemini prompt template",
       "context": "Settings field label"
+    },
+    {
+      "key": "settings.aiImage.digidealMainPrompt",
+      "text": "DigiDeal main image prompt template",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.aiImage.enviormentScenePrompt",
+      "text": "Environment scene image prompt template",
+      "context": "Settings field label"
+    },
+    {
+      "key": "settings.aiImage.prompts.title",
+      "text": "Prompts",
+      "context": "AI image edit prompt list title"
+    },
+    {
+      "key": "settings.aiImage.prompts.searchPlaceholder",
+      "text": "Search prompts",
+      "context": "AI image edit prompt search placeholder"
+    },
+    {
+      "key": "settings.aiImage.prompts.promptId",
+      "text": "Prompt ID",
+      "context": "AI image edit prompt ID label"
+    },
+    {
+      "key": "settings.aiImage.prompts.versionLabel",
+      "text": "Prompt version",
+      "context": "AI image edit prompt version dropdown label"
+    },
+    {
+      "key": "settings.aiImage.prompts.saveAsNew",
+      "text": "Save as new",
+      "context": "AI image edit button label to duplicate prompt into a new prompt"
+    },
+    {
+      "key": "settings.aiImage.prompts.deleteConfirm",
+      "text": "Delete this prompt ({promptId})? This cannot be undone.",
+      "context": "AI image edit confirm message when deleting a custom prompt"
+    },
+    {
+      "key": "settings.aiImage.prompts.deleteSuccess",
+      "text": "Prompt deleted.",
+      "context": "AI image edit message after deleting a custom prompt"
+    },
+    {
+      "key": "settings.aiImage.prompts.addNewTitle",
+      "text": "Add new prompt",
+      "context": "AI image edit prompt create dialog title"
+    },
+    {
+      "key": "settings.aiImage.prompts.nameLabel",
+      "text": "Prompt name",
+      "context": "AI image edit prompt create dialog field label"
+    },
+    {
+      "key": "settings.aiImage.prompts.namePlaceholder",
+      "text": "Enter a prompt name",
+      "context": "AI image edit prompt create dialog placeholder"
+    },
+    {
+      "key": "settings.aiImage.prompts.descriptionLabel",
+      "text": "Prompt description",
+      "context": "AI image edit prompt create dialog field label"
+    },
+    {
+      "key": "settings.aiImage.prompts.descriptionPlaceholder",
+      "text": "Optional: add a short description",
+      "context": "AI image edit prompt create dialog placeholder"
+    },
+    {
+      "key": "common.revert",
+      "text": "Revert",
+      "context": "Revert button label"
+    },
+    {
+      "key": "common.addNew",
+      "text": "Add new",
+      "context": "Add new button label"
     },
     {
       "key": "settings.system.tab",
