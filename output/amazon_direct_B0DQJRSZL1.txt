@@ -1,0 +1,188 @@
+{
+  "asin": "B0DQJRSZL1",
+  "domain": "com",
+  "productUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+  "title": "Valentines Day Gifts for Him Her, Stocking Stuffers for Men Women Adults, Anniversary Birthday Gifts for Men Women, Date Night Food Dice",
+  "brand": "Brand: FUAOIS",
+  "price": {
+    "amount": 89,
+    "currency": "SEK"
+  },
+  "description": "Amazon.com: Valentines Day Gifts for Him Her, Stocking Stuffers for Men Women Adults, Anniversary Birthday Gifts for Men Women, Date Night Food Dice : Toys & Games",
+  "bulletPoints": [
+    "🎁【Valentines Day Gifts for Him Her】一 Plan a date night or surprise your loved one with this unique gift idea. Say goodbye to the age-old question of \"What's for dinner?\" by simply rolling the dice. Whether you're looking for a fun gift for him/her, valentine's day gifts for him/her, or anniversary gifts for men women, our food decision dice are the perfect choice.",
+    "🎁【Anniversary Gifts for Men Women】一 Our date night dice are made of high-quality wood, which is lightweight, durable, and easy to carry, retaining the original color of the wood. The engraved text and patterns are not only clear and easy to read but also not easy to wear and crack. Perfect for anniversary gifts for men and women or Valentine's Day gifts for boyfriends or girlfriends.",
+    "🎁【Perfect Gifts For Him Her 】一 Funny gifts make every occasion memorable, perfect gifts for couples, husband, wife, boyfriend, girlfriend, anniversary gifts for men and women, anniversary gifts for husband, Christmas gift ideas for wife, Christmas gifts for men, birthday gifts for boyfriend, wedding anniversary gifts for her, birthday gifts for girlfriend, Valentine's Day gifts for boyfriend, girlfriend.",
+    "🍕【12 Food Choices】— The food selection dice game offers 12 kinds of food to choose from: Pizza, Burger, Chinese, Chicken, Sandwich, Seafood, Mexican, Pasta, Steak, Breakfast, Wild Card, and Sushi. It's not just a game; it's a perfect gift for couples, perfect for Valentine's Day, Anniversary, Christmas, and Birthday.",
+    "🎁【Funny Date Night Gifts for Couples】一 Are you often worried about what to eat with your partner on date night? Roll this food decision dice and let it solve your troubles! Funny valentines day gifts for boyfriend girlfriend husband wife sweetheart, wedding gifts for couple, anniversary gifts for her him, engagement gifts for couples, birthday gifts for girlfriend boyfriend, couple gifts, boyfriend gifts, girlfriend gifts, bridal shower gifts."
+  ],
+  "images": [
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SY450_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SY355_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SX569_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SX466_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SX425_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SX522_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SX679_.jpg",
+    "https://m.media-amazon.com/images/I/71PXBU4OCEL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71n4SMaIe5L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71FXCWpYzQL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71iS1uIYooL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71JhnN77xtL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71AsAt2jWvL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71EtC09q3ML._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41jSUk+7mjL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51Ei2KJYl+L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41cDq0iM4vL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41cvu9GscyL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51Bl05lN1PL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41FyCNcZj6L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41NdRjGZAPL._AC_.jpg"
+  ],
+  "variants": [],
+  "relatedProductAsins": [
+    "B0BRNZ6FSW",
+    "B0CB89SNJ5",
+    "B0DHVFHPP2",
+    "B0FD3RNDQK",
+    "B08PQ14F57"
+  ],
+  "relatedProductCards": [
+    {
+      "asin": "B0BRNZ6FSW",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0BRNZ6FSW",
+      "title": "It's a Date!, 40 Fun and Romantic Scratch Off Date Night Ideas for Him, Her, Girlfriend, Boyfriend, Wife, Husband & Couples, Valentine's Gift for Men and Women",
+      "imageUrl": "https://m.media-amazon.com/images/I/41OFgXPxtZL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 170,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DQJRSZL1",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0BRNZ6FSW",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JD0T-BuL5Bw18WzUE7vGRcUAAAGcYCUz1AEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICCM73J9/clv1c_ek-wBfHXbcbWXixXZFvu-lwLsHSxs2DpZz-pTtr22hO7zHXLSIeaNfg-26HcXJuKbA0wI4P95HOZFDeNt0yttsUYfSxsdgSg4eWHRCGXbULXw8A7zWhVHn6MojjwrL90cwkfT5jdpprejuSV0lC6qvqLoNuQ_jVqMmewTza-9qZ3MbsNPYS3R0z5LsDATp_PHKHSqcfqXIfJwIL4sjj0ofzqF9eXrHbOKEMWtD1q1owNiCr3DJvRyS3zQ8IRGUSCl-C50gZf0LrU0jq7lDACw6lin4tOXBAJ-ggVVMIJdC5OBtqxeGjvAl9xF12ytRNG_tpZsFSRL3fpkV_96byQLrJzctZGT8rdg_-2p9OjmDqdTkyzXsXywuJ9pmvk01m1kXlPIevQikEudqlrJrbqauG6oSUVJyeQtjHNzlXP5B_pASKhYxR-FhbLk094g7lzCITOX1k3HBgJtVQj8joZFIKeRJT7844b7t-BGDoM4OeriFnRgm7eYbkDxUhqhodpvkKgsUvA_k42w7j6nPyrmHEH8iFtqUEKsgDX2iagTIbfWZ1objaO-A7sMJYBZA04yon7kSuEik-pYPHuwqLVYkTT03LwmdbHIMXUxfk2wzUutsqLAMaM2CdWR2sNUVF-YHs-cS23gTV62r0bWGJy1EdqdCCGuPRF7jIS7PDWNk0dCEPXl0re6VxNxAun3XV33BDqBP1vcUYe80RMvZFajwkjhs4cUJklVx86F6AYX0WeOPTOj5_0q6YvLei2M_l0W0uxUiNJ184Hj3QHYWXWZqxzC7g_c4LHo2INCLMmT-PwwgFGQt77zTg2v9sfo2cUjUUZPMMb3KT6Ct8s12U5KyXQWiMFWKezmoreuzjfDuNmnkpfR6EKlXfo83RzVKJopHLqcD6LIEPNl2p13D-23nsearY4aYqMyutiff2Nr4F0AQ3bVyBH-yYEoTkL-z54OZiVBJPibEDRT0rpCBNajHpN3XdfqKx33AtUpquYprInUxgc9W-y7VYnHVtEwsCSvZtIc-b2BxiUlcOyg7cih935xr5CV3AY-DDBVdXI2p706dv1sWa9WjNoHVuDxps-v74sqbidDP1UIvFKYTGaoNfsfhcAaQhmc-DfOfRX0-It-U3d_BH7R2TrhovlhGZqLEjZTHO01gAz0r0Nbv7TQc50IPfO3CfLUVwoLpVauFdJXtY8E5jkzsxEODwTODK3yUq2yokQKrN3iFVAj9HVzMTxt8b-4gIh-XGvxO5AIrjQXqvHdoVqQNXJORCf_6O8EL8H_YbMQEKXpGjysgUOeF95ii5r3R31E3ymDdfgz5aLsMEBFqL3a0NV_HbGjUU-4oQIx9o8RdSgvDBDfYp3ikd7fcltPclv3_ZDw5NdwnGwkGvUF4zdJyoWlKmQxFgjmdgGtLtuXFJY27GYbv60Kg7hJMMzIZuAR5h6elnrsPOHrmHqk7AV1uE5o7Ng9wRmRfLjJ9BEI-e5glArmvcT6-j5oac88gNpIODWi54X9sWLyjHt4dPG4QqCig/https://www.amazon.com/dp/B0BRNZ6FSW/?_encoding=UTF8&pd_rd_i=B0BRNZ6FSW&pd_rd_i=B0BRNZ6FSW&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=kYh7m&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_w=kYh7m&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09"
+      }
+    },
+    {
+      "asin": "B0CB89SNJ5",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CB89SNJ5",
+      "title": "RULE DICE Metal DND Dice Set, D&D Dungeons and Dragons Dice, Large Role Playing Polyhedral D&D Dice Sets, Red Weighted Metallic D and D Dices, MTG RPG Dice DND with D & D Gifts Box",
+      "imageUrl": "https://m.media-amazon.com/images/I/51gN093uewL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 358,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DQJRSZL1",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CB89SNJ5",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JG-RELtpgaOLya31sFC8IPIAAAGcYCUz1QEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICDsScPy/clv1c_ek-wxYH3FcbSDXHEC4cZsmPkEFXzGncplBWNPlSjP4CKgnJocjCLSQj9HRsKXQSW_-miZhkoAROJgq3o-31_s8Uaje2xPr--c3VpTgVm7_21iyAoajT8UCFwMvh3pVgF0JYI5RATYZ7g2HdMJK8jlCDXMNydik2KEyAyTLSj-KS_aQtdRSyPCF6lKO_e9RdPvtrSZ0tEHj3wTbQ80wjB8Ow-t2cyAEqyiJh50OOdqRYqSG6SG2qYbJGTz4aKSXGRefjpxVHarOSj9Rf-4sLXCY4CvfPw6iz9nm6rtiu4OwIXS0oy4Rm2ltj6mSrbQREotChw_g2aBijyTz8tvK_HuBPB0HR-MuJgTBaV8LdQvQocCCnmAF8EJFDclPU2D3HDn1NrfQpzXqmp-Wu6zYJ4IOMO1ppLIhNjcyup-lK3Iuf8PLaNSbgrM6mPPq90Uq8HFLhsrIY8bLu2cjSfwXxe2zzJifCNf3rMaBb5B7PT-BM2ydOPgQ2rksNhzF5__NDHDi6r4wEMGrApO9aIRiitzNGqODmajx3IKHPZkLhao9caQMepNEiuZd76rfJ7kLOD4WabAvFcVQ9VJYPqiMUmDSVCjnH4Ei-HKUIo_pHoQm-2DS7U6Dwk1yXykRpdZd1oa7MF4dRox4haUxXpO-V9SXguzNCpMveQGmnrA1iIOmgnjepIWnJ9jxUz2Tqdu3jD9Vo5mlGfwuXPop1iFhIbXwIbLi699OUO8YxfH0DlVsE_-8SviMZxLdDOvFXUkYa8FoMhWUaJMSnJsG3GzWjqZ4akIUsPlor3d0yM-pvUJJ5JW91bq3WJRBUavegJU1VWmKYWpFFoT6RKA2aRSxp4QpyrKEHJToakbXqdkLe68z4V41dW7BaNims4e0x09VpTNqoOcvleQRlBTOTChonQ34mazp-8I66pti_cMK_mLtKWREn4ZyuOOCRW-PN-98sxOmfgXPg8ZrbcIosjCEo9UTM7zu-o9Slc5q55tV73EhmVofC3MI50XQdacjmICK8ZX8fcDEniGFEmeUQDHv10egtsSWvPP4sPUhyFeuNPZWEF-q9cGAe8QDPRAb9Y870YnpbYB6Wr54Uvf2bdE7KKcxODbf_j3jhC-fTyX0SuRDknPIdxSJacdwCAWcRjmThdMkw17ENmRzwBg79EATky6JI44lDPTaU4ysqvkTnsEjEJHR9fWgZ4U6HXfExaHhwb6WyCCsjkGn2y4jiX8v8FmB24OJtdRO6pFT6bI62ggb5UWbGZTQbmDBOVBtcQryNlyXueN8Li6lrdv35d_AJDGmfXWh7WbQMUY5q9T_iHXER6A8wCIu6yZVqsV3ukeujOe1173K_mOFQfTbEFayTIwEwvFjDGptAWtu9fEzmkm0OlFQ52oC3xNu13zNfWwgbHggcvQOy1ZFE--DIPDXu4hULPoOj0k4w3lNTR12HK1jlPdt01PQXRR4keZNg3UpDFon791gq8fVAUD-RVYjvP9Qo4vrfg20jiChqdCDNcdsq91c4o1Ss2rdydu6aoTUcG-avJN5HZL5rFKFkpDyF4VZ6VmnAH/https://www.amazon.com/dp/B0CB89SNJ5/?_encoding=UTF8&pd_rd_i=B0CB89SNJ5&pd_rd_i=B0CB89SNJ5&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=kYh7m&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_w=kYh7m&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09"
+      }
+    },
+    {
+      "asin": "B0DHVFHPP2",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DHVFHPP2",
+      "title": "Zomiboo 2 Pcs 3.93'' Large Foam Dice for Classroom Jumbo 6 Sided Giant Dice Casino Party Decoration Squeeze Anxiety Stress Relieve Toy Gifts for Valentine's Day Adults Kids Board Game, Red Green",
+      "imageUrl": "https://m.media-amazon.com/images/I/41-MnAb6mNL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 179,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DQJRSZL1",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DHVFHPP2",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JAHqTX6B97oOvnNNwfCZx6AAAAGcYCUz1gEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICDlnJlf/clv1c_ek-wxYHXLbbWDfHOAIfj8e5gSssXIXbpm22oQyVivxuwK_pzlE71twt70tveHBsWaeUIIkaJsImAOt2wgVFS9c35VyCrWjJdcqtIAAmRHP0sjydnrhTnqzXoQvhyoGaZ2QRZj8GPbkYLx11YQ4t8gVd04NuY5jVql1b9wDmQHE6fe0pcs6xR6diAyiRSNYDkovm1N-PPFR3wPbQ9G2jDcw6yFwE6BV-nG60KJoM22bsjC0UiTjRTvs54pcCG1qDjCC6aOqW928MyBagR8rfMusQv_amUgzfx-gNFIyV2NVY9SJvTMB0ywrtLm6DOW913GtEzGmnlpbxXy0DXKNH7Lw1oJuklNwjJgrYLlJmuG4bU2OCV887_keqVtQu1wqlYnN2K3puYBvx55Y8vi4B3F4PxtZAmNyDI3Rtq9gQ-8EsIcie1R1gr908ZoF5R2XdbZ3FwnmlFIBpZAtBN6P_Sci8To5h2HP41aaXwVf8iPRlZyHEFAQvtsvdq3Z2pMHTTEkL01xQWZn_SkCKzs3cAimF0sVVhrChVZnAv5xGi2cn8GfHXnQgpXbrgfpYJthnGEChFgDoRxVkyrd2EbkuzebkkvPQSGV57KvXbS57Qf6R7oeh8QWHangkyUyp2JP90T4t7xRoFptEYhHQpUpCkRQv1ALvbmMTz_3vogfm406JV9XbhAC1NERv2SBx--u4OhQ_NI0Day7uM99DMSA1GSUsgQIDMWXWsN3GMSrUJGhqZKGy2gqdCcrB6cC6yqMnhqb0ks_P8BiyMVRaN_mQiO9f5xo6M1fS1ThlvNHxSuiEmIvrch0-Hfd_vDr032OCAPKq7vqO-7vtL6PhpKbd1OiJW-c8-bj6ahRO5-jvNZVlBIzB5_aq2j91F-_RRV8HvanNpP6bSdLn0XNDGrTX5cgm0iw5vo-TeH8oK4CEcw8IyYPh7VRTTk0Kn_nIhtNhMgTPMMTUyxqr8Ad9sLqjNyRWMvUgX4y9U0T-SVV0Q9uFpGX9FmsL8gBs5-VnzKHnArmjDe0dj2LeMvllVz-YdmCJDa0Ak4EcnWkj9temoSdHOctJlSGmuMWOPaYauexMVElsIytOap9p9Gr5UOi3kOO86W8JVZDzusIMGN340mVis-UKrawDOUwZAZp7vaey9rHeDl-pne8JS-LrWfqx_wHSbxwC_wZ8lvRDjhphFwPt_435P_iACbawno7PaffOwACxgwkYn8VhcwJHJxn6zV5zCZscEZ73qpDdV8tzoxT8ravCACpddl4Z6Q6JvuTZz4CaKgwtualjFgsai79XMtLZxgFh0nPdgfMxx0TfFEudTATHfMf3-sycs6owpvG33NP8uG7AQS51_0zZlF6Rt4p-72AB8Un8G2rNsLKKTpAS2t3lJnhpE1eM5MTw1YTGO4JsTkqoDWtvQ-Kmlcvofopq_eQGUic-sITiLwHdfmCvtdxUNdw-N96PaDZY9gNprynMgt4SMH75QpgpIceKjhHVb87M1WumF371dy0XSkCim3LbchMMETy146q2eKoTxcQ80VocTe7AGd9dh_xTxIuRSdw/https://www.amazon.com/dp/B0DHVFHPP2/?_encoding=UTF8&pd_rd_i=B0DHVFHPP2&pd_rd_i=B0DHVFHPP2&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=kYh7m&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_w=kYh7m&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09"
+      }
+    },
+    {
+      "asin": "B0FD3RNDQK",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FD3RNDQK",
+      "title": "Valentines Gifts for her Him Boyfriend I Love You Birthday Anniversary Small Gifts for Men Women Wife Husband Easter Basket Stuffers Valentines Day Decoration Wedding Gift Ideas for Couples Girlfriend",
+      "imageUrl": "https://m.media-amazon.com/images/I/51I1z3vyOYL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 134,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DQJRSZL1",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FD3RNDQK",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JEUmOiEx1rTJwQHpN-Z_U8QAAAGcYCUz1gEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICCl1axU/clv1c_ek-wBfHXbcbWXhRXZFvu-lwLsHSxs2DpR3iekcVAl-iegVLYdjca__2fcVcyoUHFg_DoSL-L09z5OWg7AjTYQb8bOt7xxTGzInXMWlxt7Y4uqlRjYsODtmnp5OkU5fHfl7oct5BztN9Dr6XMSIxcEVCHItuEBpXrnbDz1iuYfM6feklf4UHmhbf6s2v7_KHUx88eKdx73yaLVr2_skIR4i_CH0Y-RYiluAgiaxAxY9HE6JQs-4GZMkQ5mD0OJJfWwdsOZQn5tAgwcEcby38iuItnrtqCLdM-1vyF4gpDQlfOhEd_EXZLAx_cjvwFwpumeh1oNSghuYjqp7iWxiPPDWtCrUNw50ZLlYg4fwYZT35Y2GKFnQOoqB3zgwEqPy2c9kgA6-DjejNs2sPz1c3VGBBK91DkhJrWhOswRuFexBJZxfiyaiWiB4cno69m3B9IlJRKnzFWxtXPZq448kvv5U-tKz2VkqDqa0A2LwVMgPMv8ElVsmpPaZnDQnmipadhSOghsFUXKJDMGNwvOTS9nPPxYKAU06rAiEVjmUmNRjISLBlAbUXDgwkf9OR8sQNnJ8a5-Bg1ME0tl_ysEk2r46U1UbLWhdCFzrLk2x1d7KRsZvCZ_8tB3SU3V373dOVoQmy7iZf0wH0n1YIXPiVJYjP_H2SWai89vuFOnRRPf7HTlBvv3GTCiV71JWlo9K6iYf-IAuizEQBOmRB7zGp5B8hetPhDTPL_53SK4kj2Az56Us1flbNbqQ1VO8rPc2reNqM5v3GvToCPtrMPKsIItKWLiM6OpdtZc8vf5nVkkqBWTh_d5KEjeiS3Jtl_hqwkDMZi5oFJ2pdoiaxNWcjEaWYuezCoDZq1CTTB7SWDgFJkT1PIx-5EcdfBj_ULRxu6IaHda5ySJwSMNzs6ucE5JNMWcAvPi4aJpk5BaO_94QXWesOsZ539ryV-tn_1K6lSgvuEguCiJhbllZLLAEwbtj3-MwXeNx_aFYhpY7Vjqanz2WayZW9j5wa-r9jKpwNayTxubxEjLlJsof5FzvnqkC48Xgmz4y_C3cBwdo5xZtHGHCZMe7puoPIKVLiXi64jDNrjnakFXEMjTeQlX3nipg6fU4LuQcR9trTaq2x1GlbJ0FZV15gf_tAzpSyBoDMMZPuh0DV95WRAr5lutw6sglQNnF2RPUFLeKDOq3hhOgSpayPC7N2vFnhaBjjbKbJJh9XrDynKSeWGbpvAS-MfFfOVWewuS63vbI_Xa-SHq43eNCLZfDywVBpRCW1q-Zj_E3kxKNBMYazMcn1OspJALArxBaWJW9it5vL8UsvISkS_STJ5jcXyxkVQDrkOkGGuuA-0_HLlR8LsxQdlfpLXEI4SHGTuDF8jSbxyBKtlxkAHMgIfEtFaZHCVhwclQMC4i5YOxeVLsNQf8D4OA7iYtU7NI9j2cOwzlhVR1G3y1gFHcl90HR3OoUougMS1ksw9o33c5gL8bUgWHzThvb6dUNjOVefR1vGG0ANgR1vtOgeJKMdKE7c3JMn_Mwr8PCUX4_waOk1XmxYm-JuKAvSSfVrlWZXW/https://www.amazon.com/dp/B0FD3RNDQK/?_encoding=UTF8&pd_rd_i=B0FD3RNDQK&pd_rd_i=B0FD3RNDQK&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=kYh7m&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_w=kYh7m&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09"
+      }
+    },
+    {
+      "asin": "B08PQ14F57",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B08PQ14F57",
+      "title": "WHAT DO YOU MEME? Let’s Get Deep by Relatable – Valentine’s Day Couples Game, Intimacy Card Game with 200 Questions, Romantic Gift for Her, Valentines Day Gifts for Couples",
+      "imageUrl": "https://m.media-amazon.com/images/I/41w-mPe22BL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 161,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DQJRSZL1",
+      "provider": "direct",
+      "raw": {
+        "asin": "B08PQ14F57",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JJmOyfKOGJyRxKZI3oJuNIsAAAGcYCUz1wEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICBH_NHl/clv1c_ek-wxfHXLcTWDVVAWi4bJhJ0SsCze_7OamIk6sTyVU74eJtTiroeLvg-pNw3YwQ5dxja1xNN9IkgOmewAXOUosxzW3_VPuyc_08UKoLlyOfwq7HzCYlOg8HuplH0J38oXRvcpqV7WgxGa4fowGXC7m0ak52fkiWKEsFixDi01lbX2Uk8X6mDjMBnRrAE7BKKV1AKidcx11cJlmfxKknJ-k7QTGsqYArymcHelEx8qRYki26KySmIbNohf_19XpCy52OzuaW9ihVvzjq0DZu7fAU7w2BHc8EOtnqjti9o71lUrLCxOX86DxQ7MHI2vE53mJDQ0mFcR5C0GhVlkHgUl1hxVmZYpmZmhVVim_gc_1f0Os_dCu6FFuNkucYtNaeKuXduMBGJMWLclskwVfCxsNNwPCH2iN6hwJPevSbwygnZiQL1zyMiHmov21dkWh9s_iAvlWXXEiijFnYDqUpPEC-zCUx3vztcpbEkvVZwhVmluIQR1VfqUyn5PI9lf24CJ9EDrfiKRnwBpye5ahLAJts2uSMJVPB3yVYHyybgShyyW_hs1Bt9zzdA0sdFQw_g2PY1-xDTMA2RQ7QFc49ZTRTDXKB9Sg3nkcDHxCdt5FxU5iFZMOkhzdM2SDmHRJGzdgCN7H0H1n2fiXuZV29FxnPdGNWvkT6EIJWAJc2CIA0ygyTUXCKuxYdTwvaa4g4Qb6pZuz3dJSYBiqwcUNn-0oTNJdQcEBTO9L8AnedyN6vyUEw8zmwS3psZLSz0E9Lfe2t21ZO9Y7mDBVk2l2gDfZo1H6CER4Cq3gvJs_aDlhkcHd3N3-Z_7okcqxFiYwOmDqEBN9QFAB_BfFm33-CoIirHs_qnotii57OmGARofWBSKeAcWX2pFYO8Rr56kLuKQSDD7opfFHP8_KSnapZV-m2w6Mu5qKn1dgJZftaFgQN1LFxQY0JLp7cZ84sAeIm8nN_AP2SNiy7vlIqjVpttDcZhI2wu76cDEJTin4PNPugae3fBgJlZkpmQNMl3Z879aNlcQ1XHxw8LVFJ-JAiQ9iEOKDcNmy3VbuUx9ng87oy7tk05Q_WsAF_bT1gWHCCjEw6kHkZ5OFqWWBH1A3c70dg6dzhixQn-jJbI4X5jwoOsrW_DYEKa-iovPeYYu_FxdkEZ1UqpwSFxRGfPldLFBda05TJ3KLOeiqk7pDBFOXifFxHocjBh8OvIVGhvqgq_x484JOSoNwCVwak7yDD2nyHoMpyPZ73CSfAi5uxAvxz7btklK8nfqQhps_DfEVCtaiW1_95sOLbnTm8nqgBSdnVms9m9hIEzCqeSkL61WakbDLhzJTnm4qDRxEYKdU9ZWIhrb0koe8RrbJt2NjNqyJ4GB_FWFy6_fct44hJxerWS_IQxeBS9hxZ0pTkuz0z6hfHHwxzvFeek4pxzbY7iU230OfZ-95VevEpX8FFWc0Qko4MhQtOLfsjCFujU4AvPXiz6kXuvhg6QyMAroAXsI9BsJoOnUeCP0ZoSa-XT9PmNH9rGvVZ0ocbreRqorUfpDQWCcbAjUkH--pU4pinbwbvcs40/https://www.amazon.com/dp/B08PQ14F57/?_encoding=UTF8&pd_rd_i=B08PQ14F57&pd_rd_i=B08PQ14F57&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=kYh7m&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=WZN8MQ6ZEWXZ7FRST0PY&pd_rd_wg=j6wBC&pd_rd_w=kYh7m&pd_rd_r=3074d943-4487-4388-893c-debcf76fdc09"
+      }
+    }
+  ],
+  "provider": "direct",
+  "raw": {
+    "fetched": {
+      "url": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "finalUrl": "https://www.amazon.com/dp/B0DQJRSZL1",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    "parsed": {
+      "canonicalUrl": "https://www.amazon.com/Daughter-Anniversary-Valentines-Boyfriend-Girlfriend/dp/B0DQJRSZL1",
+      "priceText": "EUR8.41",
+      "details": {
+        "Product Dimensions": "2.5 x 2.5 x 0.3 cm",
+        "Item Weight": "18 g",
+        "ASIN": "B0DQJRSZL1",
+        "Item model number": "SZ-01",
+        "Manufacturer recommended age": "12 months and up",
+        "Best Sellers Rank": "#7 in Toys & Games (See Top 100 in Toys & Games) #1 in Dice & Accessories",
+        "Customer Reviews": "4.6 4.6 out of 5 stars (1,278) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.6 out of 5 stars",
+        "Manufacturer": "FUAOIS"
+      },
+      "rating": 4.6,
+      "reviewCount": 1278,
+      "details_raw": {
+        "Product Dimensions": "1 x 1 x 0.1 inches",
+        "Item Weight": "0.634 ounces",
+        "ASIN": "B0DQJRSZL1",
+        "Item model number": "SZ-01",
+        "Manufacturer recommended age": "12 months and up",
+        "Best Sellers Rank": "#7 in Toys & Games (See Top 100 in Toys & Games) #1 in Dice & Accessories",
+        "Customer Reviews": "4.6 4.6 out of 5 stars (1,278) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.6 out of 5 stars",
+        "Manufacturer": "FUAOIS"
+      }
+    },
+    "variantImageErrors": []
+  }
+}

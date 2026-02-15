@@ -1133,11 +1133,14 @@ export async function GET(request: NextRequest) {
           weightKgValue,
           weightGramsValue
         );
-        const supplierUrl = toText(
+        const manualSupplierUrl = toText(
           detail?.["1688_URL"] ?? detail?.["1688_url"]
         );
         const supplierMeta = supplierSelectionMetaMap.get(product.product_id);
-        const supplierSelected = Boolean(supplierUrl) || Boolean(supplierMeta);
+        // Allow estimated price calculation after picking a supplier + variant via the
+        // production-supplier flow (no manual DigiDeal supplier lock set yet).
+        const selectedSupplierUrl = manualSupplierUrl || toText(supplierMeta?.detail_url);
+        const supplierSelected = Boolean(manualSupplierUrl) || Boolean(supplierMeta);
         const storedShipping =
           typeof product.shipping_cost_kr === "number"
             ? toNumber(product.shipping_cost_kr)
@@ -1152,7 +1155,7 @@ export async function GET(request: NextRequest) {
         const canEstimate =
           purchasePrice !== null &&
           weightKg !== null &&
-          Boolean(supplierUrl) &&
+          Boolean(selectedSupplierUrl) &&
           marketConfig !== null;
         const shippingClass = "NOR";
         const classConfig = marketConfig
@@ -1225,8 +1228,8 @@ export async function GET(request: NextRequest) {
           purchase_price: purchasePrice,
           weight_kg: weightKgValue,
           weight_grams: weightGramsValue,
-          supplier_url: supplierUrl || null,
-          supplier_locked: Boolean(supplierUrl),
+          supplier_url: manualSupplierUrl || null,
+          supplier_locked: Boolean(manualSupplierUrl),
           supplier_count: supplierCountMap.get(product.product_id) ?? null,
           supplier_selected: supplierSelected,
           supplier_selected_offer_image_url: supplierMeta?.image_url ?? null,

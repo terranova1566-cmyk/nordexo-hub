@@ -1,0 +1,512 @@
+{
+  "domain": "com",
+  "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+  "asins": [
+    "B0DXKWX22K",
+    "B08YDW8HKX",
+    "B07CXF452P",
+    "B0F1MR58SZ",
+    "B0CTK3PTVK",
+    "B088DB5V13",
+    "B07GC42RZ6",
+    "B0DQXZX6HB",
+    "B07MDJNF6R",
+    "B0D83J4YGX",
+    "B001T4XU2G",
+    "B0DLH2BP3Q",
+    "B0DFGH7R5J",
+    "B0F9W8KMWB",
+    "B0CJWGSGHP",
+    "B0DLGXMVT1",
+    "B01JQGQFNE",
+    "B0DVZ8D9XG",
+    "B0FFGP96D5",
+    "B00OD3W1BQ",
+    "B0CSFJ16ZV",
+    "B0B8GKF2C7",
+    "B076JLXFXS",
+    "B0DZHRDVYD"
+  ],
+  "cards": [
+    {
+      "asin": "B0DXKWX22K",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DXKWX22K",
+      "title": "GTPLAYER Gaming Chair,Office Chair with Pocket Spring Lumbar Support, Ergonomic Comfortable Wide Office Desk Computer Chair with Outward Fixed Soft Armrests and Footrest (PU Leather, Black)",
+      "imageUrl": "https://m.media-amazon.com/images/I/61DRhYv8yoL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1287,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DXKWX22K",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/GTRACING-Ergonomic-Comfortable-Computer-Armrests/dp/B0DXKWX22K/ref=sr_1_1?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-1&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B08YDW8HKX",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B08YDW8HKX",
+      "title": "No Stud TV Wall Mount, Drywall Studless TV Hanger No Damage, No Drill, Non Screws, Dry Wall Flat Screen TVs Easy Install Bar Bracket fits VESA 12-139.7 cm TVs up to 44.9 kg, Include Hardware Levels",
+      "imageUrl": "https://m.media-amazon.com/images/I/51lTMcHC88S._AC_UL320_.jpg",
+      "price": {
+        "amount": 179,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B08YDW8HKX",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Drywall-Studless-Install-Bracket-Hardware/dp/B08YDW8HKX/ref=sr_1_2?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-2&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B07CXF452P",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B07CXF452P",
+      "title": "USX Mount Full Motion TV Wall Mount for Most 42-228.6 cm Flat Screen/LED/4K, TV Mount Bracket Dual Swivel Articulating Tilt 6 Arms, Max 16\" Wood Studs, VESA 60.0 x 40.0 cm, Holds up to 59.9 kg",
+      "imageUrl": "https://m.media-amazon.com/images/I/8113Ft7pAdS._AC_UL320_.jpg",
+      "price": {
+        "amount": 397,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B07CXF452P",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/USX-MOUNT-TVs-Fits-600x400mm-Weight-Capacity/dp/B07CXF452P/ref=sr_1_3?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-3&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0F1MR58SZ",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0F1MR58SZ",
+      "title": "Gaming Chair, 181.4 kg Adult Chair, High Back Computer Chair with Footrest and Linked Armrests, Office Video Game Chair with Lumbar Support (Grey)",
+      "imageUrl": "https://m.media-amazon.com/images/I/71oMqVKplqL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1275,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0F1MR58SZ",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Gamtimer-Computer-Footrest-Armrests-Support/dp/B0F1MR58SZ/ref=sr_1_4?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-4&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0CTK3PTVK",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CTK3PTVK",
+      "title": "MAXYOYO Giant Bean Bag Chair, Oversized Bean Bag Couch for Adults and Kids, Faux Fur Shell-Shaped Large Chair with Filler, Stuffed Big Accent Sofa Lounge Floor Sofa for Gaming, Reading, Beige",
+      "imageUrl": "https://m.media-amazon.com/images/I/71TKweXl7jL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1360,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CTK3PTVK",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/MAXYOYO-Oversized-Shell-Shaped-Stuffed-Reading/dp/B0CTK3PTVK/ref=sr_1_5?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-5&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B088DB5V13",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B088DB5V13",
+      "title": "LORYERGO TV Tray - TV Table for Eating, Folding Table Trays with 6 Height & 3 Tilt Angle, TV Tray Table with Removable Cup Holder, Dinner Tray for Eating or Working on Couch, Bed & Office",
+      "imageUrl": "https://m.media-amazon.com/images/I/6139tFxYXeL._AC_UL320_.jpg",
+      "price": {
+        "amount": 340,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B088DB5V13",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/LORYERGO-Tray-Table-Adjustable-Multifunctional/dp/B088DB5V13/ref=sr_1_6?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-6&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B07GC42RZ6",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B07GC42RZ6",
+      "title": "Winsome Alex Set of 2 Foldable Snack Tables, for Living Room, 26\", Natural",
+      "imageUrl": "https://m.media-amazon.com/images/I/71EmJrXhjzL._AC_UL320_.jpg",
+      "price": {
+        "amount": 447,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B07GC42RZ6",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Winsome-Wood-42290-Table-Natural/dp/B07GC42RZ6/ref=sr_1_7?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-7&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DQXZX6HB",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DQXZX6HB",
+      "title": "Giant Plush Bean Bag Chair for Adults with Armrests - Oversized Comfy Orange Beanbag Lounge Lazy Floor Sofa Accent Chair for Living Room, Bedroom & Dorm, Cozy Fluffy Single Cloud Mini Couch",
+      "imageUrl": "https://m.media-amazon.com/images/I/81nJZUtFCUL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1790,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DQXZX6HB",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Giant-Plush-Chair-Adults-Armrests/dp/B0DQXZX6HB/ref=sr_1_8?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-8&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B07MDJNF6R",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B07MDJNF6R",
+      "title": "Amazon Basics Portable TV Dinner 4-Pack Rectangular Folding Tray Table with Storage Rack, Black, 15\" x 19\" x 26\"",
+      "imageUrl": "https://m.media-amazon.com/images/I/71HHbQBwNzL._AC_UL320_.jpg",
+      "price": {
+        "amount": 540,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B07MDJNF6R",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Amazon-Basics-Rectangular-Foldable-Storage/dp/B07MDJNF6R/ref=sr_1_9?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-9&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0D83J4YGX",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0D83J4YGX",
+      "title": "MAXYOYO Giant Bean Bag Chair for Adults, Upholstered Floor Sofa with Pillows and Armrests, Large Bean Bag Sofa Plush Chair Bean Bag Couch for Bedroom Living Room, White",
+      "imageUrl": "https://m.media-amazon.com/images/I/71xv7wO8RmL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1163,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0D83J4YGX",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/MAXYOYO-Upholstered-Pillows-Armrests-Bedroom/dp/B0D83J4YGX/ref=sr_1_10?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-10&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B001T4XU2G",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B001T4XU2G",
+      "title": "The Crew Furniture Classic Video Rocker Floor Gaming Chair, for Kids and Teens, PU Faux Leather & Polyester Mesh, Black/Red",
+      "imageUrl": "https://m.media-amazon.com/images/I/71kTugJgrEL._AC_UL320_.jpg",
+      "price": {
+        "amount": 445,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B001T4XU2G",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Furniture-51206-Classic-Rocker-Racing/dp/B001T4XU2G/ref=sr_1_11?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-11&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DLH2BP3Q",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DLH2BP3Q",
+      "title": "Bean Bag Chair, Memory Foam Bean Bag Sofa Large Bean Bag Chair for Adults, Bean Bag Chairs for Teens with High Density Comfortable Foam, Memory Foam Lazy Sofa for Living Room, Bedroom (Black)",
+      "imageUrl": "https://m.media-amazon.com/images/I/91h5iR1TlaL._AC_UL320_.jpg",
+      "price": {
+        "amount": 859,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DLH2BP3Q",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Memory-Adults-Density-Comfortable-Bedroom/dp/B0DLH2BP3Q/ref=sr_1_12?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-12&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DFGH7R5J",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DFGH7R5J",
+      "title": "Yaheetech Gaming Chair, Video Game Chair with Massage Lumbar Support and Footrest Height Adjustable Ergonomic Computer Gaming Chair with Swivel Seat and Headrest, Black/White",
+      "imageUrl": "https://m.media-amazon.com/images/I/71iUkFA-zEL._AC_UL320_.jpg",
+      "price": {
+        "amount": 984,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DFGH7R5J",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Yaheetech-Footrest-Adjustable-Ergonomic-Computer/dp/B0DFGH7R5J/ref=sr_1_13?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-13&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0F9W8KMWB",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0F9W8KMWB",
+      "title": "Aquzee Video Game Console Shelf, Stereo Racks - Media Stand with Outlet & Led Strip Light, 4-Tier Gaming Shelf for PS4 PS5 Xbox Games Organizer, Small Entertainment Center, AV Media Stand for CD DVD",
+      "imageUrl": "https://m.media-amazon.com/images/I/71rayC87qKL._AC_UL320_.jpg",
+      "price": {
+        "amount": 537,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0F9W8KMWB",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Aquzee-Video-Console-Shelf-Stereo/dp/B0F9W8KMWB/ref=sr_1_14?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-14&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0CJWGSGHP",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CJWGSGHP",
+      "title": "FranFusion Inflatable Gaming Chair for Kids & Teens with Cup Holders and Side Pocket - This Air Bean Bag Game Chair is The Perfect Furniture for Gamer Room Décor (Gaming Time with Ottoman)",
+      "imageUrl": "https://m.media-amazon.com/images/I/616py2z-uQL._AC_UL320_.jpg",
+      "price": {
+        "amount": 403,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CJWGSGHP",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/FranFusion-Inflatable-Gaming-Holders-Pocket/dp/B0CJWGSGHP/ref=sr_1_15?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-15&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DLGXMVT1",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DLGXMVT1",
+      "title": "Bean Bag Chair, Memory Foam Bean Bag Sofa Large Bean Bag Chair for Adults, Bean Bag Chairs for Teens with High Density Comfortable Foam, Memory Foam Lazy Sofa for Living Room, Bedroom (Coffee)",
+      "imageUrl": "https://m.media-amazon.com/images/I/919QJR3fNyL._AC_UL320_.jpg",
+      "price": {
+        "amount": 895,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DLGXMVT1",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Memory-Adults-Density-Comfortable-Bedroom/dp/B0DLGXMVT1/ref=sr_1_16?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-16&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B01JQGQFNE",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B01JQGQFNE",
+      "title": "WALI Floating TV Shelf, 3 Tier Glass Projector Shelf for DVD Players, Routers, Game Consoles, Cable Boxes, Living Room Decor Accessories, Wall Mount Shelves Holds Up to 8.0 kg(CS303B), 3-Shelf, Black",
+      "imageUrl": "https://m.media-amazon.com/images/I/71DcRbMVFKL._AC_UL320_.jpg",
+      "price": {
+        "amount": 376,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B01JQGQFNE",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/WALI-Floating-Strengthened-Tempered-Accessories/dp/B01JQGQFNE/ref=sr_1_17?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-17&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DVZ8D9XG",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DVZ8D9XG",
+      "title": "Bean Bag Chairs for Adults, BeanBag Reading Chair Memory Foam Couch, Floor Chair Soft Teddy Material, Comfy Reading Nook Chairs for Bedroom Living Room Office (Black)",
+      "imageUrl": "https://m.media-amazon.com/images/I/71xqbbsc4gL._AC_UL320_.jpg",
+      "price": {
+        "amount": 948,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DVZ8D9XG",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Chairs-Adults-Material-Reading-Bedroom/dp/B0DVZ8D9XG/ref=sr_1_18?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-18&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0FFGP96D5",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FFGP96D5",
+      "title": "MAXYOYO Giant Bean Bag Chair with Pillow, 3 in 1 Convertible Bean Bag Chair for Adults with Washable Cover, Removable Floor Cushion Stuffed Floor Lounger for Living Room Bedroom, Orange, Full",
+      "imageUrl": "https://m.media-amazon.com/images/I/91mUStxLG0L._AC_UL320_.jpg",
+      "price": {
+        "amount": 886,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FFGP96D5",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/MAXYOYO-Convertible-Washable-Removable-Cushion/dp/B0FFGP96D5/ref=sr_1_19?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-19&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B00OD3W1BQ",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B00OD3W1BQ",
+      "title": "Urban Lifestyle Faux Fur Saucer Chair, One Size, Black",
+      "imageUrl": "https://m.media-amazon.com/images/I/51NfVF9RhzL._AC_UL320_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B00OD3W1BQ",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Urban-Shop-Saucer-Chair-Metal/dp/B00OD3W1BQ/ref=sr_1_20?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-20&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0CSFJ16ZV",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CSFJ16ZV",
+      "title": "Sofa Armrest Tray Table for Couch - 360° Swivel Height Adjustable End for Small Spaces, Snack Side Table for Bed or Chair with Phone & Tablet Slot (Rustic,Standard)",
+      "imageUrl": "https://m.media-amazon.com/images/I/81B+rVLgcML._AC_UL320_.jpg",
+      "price": {
+        "amount": 322,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CSFJ16ZV",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/YUHFERA-Sofa-Armrest-Table-Couch/dp/B0CSFJ16ZV/ref=sr_1_21?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-21&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0B8GKF2C7",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0B8GKF2C7",
+      "title": "GTPLAYER Gaming Chair with Speakers, Video Game Chairs with Footrest, PC Gamer Chairs for Adults - Padded High Back Ergonomic Reclining Silla Gamer, Linkage Armrest, Ace Pro, Ivory",
+      "imageUrl": "https://m.media-amazon.com/images/I/61vEYQ0Um4L._AC_UL320_.jpg",
+      "price": {
+        "amount": 1521,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0B8GKF2C7",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/GTPLAYER-Speakers-Computer-Ergonomic-Reclining/dp/B0B8GKF2C7/ref=sr_1_22?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-22&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B076JLXFXS",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B076JLXFXS",
+      "title": "AlienTech Home Furniture Softeating Modern Design Accordin Folding Paper Stool Sofa Chair Kraft Paper Relaxing Foot Stool-Fashion Paper Design, Ideal for School, Kitchen,Living & Dining Room",
+      "imageUrl": "https://m.media-amazon.com/images/I/71GQNTamS0L._AC_UL320_.jpg",
+      "price": {
+        "amount": 1879,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B076JLXFXS",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/AlienTech-Furniture-Softeating-Accordin-Stool-Fashion/dp/B076JLXFXS/ref=sr_1_23?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-23&ts_id=5422303011"
+      }
+    },
+    {
+      "asin": "B0DZHRDVYD",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DZHRDVYD",
+      "title": "Bean Bag Chair with Ottoman, Cozy Comfy Reading Nook Chairs, Ultra Soft Corduroy Fabric Bean Bag Chairs for Adults, Reading Chair with Ottoman for Living Room, Bedroom Apartment (Black)",
+      "imageUrl": "https://m.media-amazon.com/images/I/91ablmfI9cL._AC_UL320_.jpg",
+      "price": {
+        "amount": 1432,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/Indoor-Lounge-Recreation-Furniture/b/ref=dp_bc_3?ie=UTF8&node=5422303011",
+      "sourceType": "listing",
+      "sourceAsin": null,
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DZHRDVYD",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/Ottoman-Reading-Corduroy-Bedroom-Apartment/dp/B0DZHRDVYD/ref=sr_1_24?c=ts&dib=eyJ2IjoiMSJ9.NlfyDYn1ah18uEcH3X3QcEt3fGgYvzilpBDoF2020wA5caAEK_RQSMG9LicaEz8vwiHgRCE-UlZoUOWLQ-IDVI6NRnbffUSxLwNcG0lUBTzmgfkuURehEBxKMETgkDv1b6p7qjmes9IVIDy8ahZ1g0MiVwKVCv615lRMaBdZVgUpIJtOjhBHQbdnd0jROOfixUHn2jzYVUwl2vtznqXKYK7zdwRXgc4sPDpeO4yoQ8mLAjNWpppbWQwmDOTqGgOjawr8DkpmXNR3FzJSXzQTyHwSua8QBt-5qXGuf1ccexE.Eeol_PsKCNC8vWENbxvxFpPFnqkEsLFD30cTQyOu8rQ&dib_tag=se&keywords=Game+%26+Recreation+Room+Furniture&qid=1771139639&s=furniture&sr=1-24&ts_id=5422303011"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "type": "AmazonScrapeError",
+  "provider": "direct",
+  "code": "missing_asin",
+  "message": "Could not extract ASIN from product URL.",
+  "url": "https://www.amazon.com/errors/validateCaptcha",
+  "detail": null,
+  "stack": "AmazonScrapeError: Could not extract ASIN from product URL.\n    at scrapeAmazonProductFullDirect (/srv/nordexo-hub/lib/amazon/scrape.ts:304:11)\n    at scrapeAmazonProductFull (/srv/nordexo-hub/lib/amazon/scrape.ts:91:26)\n    at main (/srv/nordexo-hub/tools/amazon-scrape-test.ts:160:25)"
+}

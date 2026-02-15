@@ -616,6 +616,22 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "10px",
   },
+  entriesContentArea: {
+    position: "relative",
+    minHeight: "44px",
+  },
+  entriesContentOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 6,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.55)",
+    borderRadius: "10px",
+    pointerEvents: "all",
+    cursor: "wait",
+  },
   explorerPathLabel: {
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase100,
@@ -759,10 +775,23 @@ const useStyles = makeStyles({
   },
   imageToolbar: {
     display: "flex",
-    justifyContent: "flex-end",
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
+  },
+  imageToolbarTabs: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    marginRight: "auto",
+    flexWrap: "wrap",
+  },
+  imageToolbarRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
   imageToolbarActions: {
     marginRight: "2px",
@@ -888,7 +917,8 @@ const useStyles = makeStyles({
   },
   contextMenu: {
     position: "fixed",
-    zIndex: 2000,
+    // Needs to sit above Fluent Dialog layers.
+    zIndex: 2000000,
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
@@ -931,7 +961,7 @@ const useStyles = makeStyles({
     position: "absolute",
     left: "calc(100% + 4px)",
     top: 0,
-    zIndex: 2100,
+    zIndex: 2000001,
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
@@ -1137,6 +1167,43 @@ const useStyles = makeStyles({
     objectFit: "contain",
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground1,
+  },
+  previewNavButton: {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: "44px",
+    height: "44px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    color: tokens.colorBrandForeground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: 4,
+    opacity: 0.7,
+    boxShadow: tokens.shadow8,
+    transition: "opacity 120ms ease, transform 120ms ease",
+    ":hover": {
+      opacity: 1,
+    },
+    ":disabled": {
+      opacity: 0.35,
+      cursor: "default",
+    },
+  },
+  previewNavButtonLeft: {
+    left: "12px",
+  },
+  previewNavButtonRight: {
+    right: "12px",
+  },
+  previewNavIcon: {
+    width: "22px",
+    height: "22px",
+    flexShrink: 0,
   },
   previewMetaRow: {
     display: "flex",
@@ -2104,6 +2171,10 @@ export default function DraftExplorerPage() {
   const [fileViewerSaving, setFileViewerSaving] = useState(false);
   const [fileViewerError, setFileViewerError] = useState<string | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [reloadingImagePaths, setReloadingImagePaths] = useState<Set<string>>(
+    new Set()
+  );
+  const [previewDeletePending, setPreviewDeletePending] = useState(false);
   const [variantsImagePreview, setVariantsImagePreview] = useState<{
     src: string;
     label: string;
@@ -6114,6 +6185,33 @@ export default function DraftExplorerPage() {
             if (!response.ok) {
               throw new Error(payload?.error || "AI image edit failed.");
             }
+            if (
+              payload?.applied === true &&
+              typeof payload?.originalPath === "string" &&
+              payload.originalPath.trim()
+            ) {
+              const originalPath = String(payload.originalPath).trim();
+              const now = new Date().toISOString();
+              setReloadingImagePaths((prev) => {
+                const next = new Set(prev);
+                next.add(originalPath);
+                return next;
+              });
+              setEntries((prev) =>
+                prev.map((item) =>
+                  item.path === originalPath ? { ...item, modifiedAt: now } : item
+                )
+              );
+              // Safety timeout to avoid stuck spinners if the browser never fires onLoad.
+              setTimeout(() => {
+                setReloadingImagePaths((prev) => {
+                  if (!prev.has(originalPath)) return prev;
+                  const next = new Set(prev);
+                  next.delete(originalPath);
+                  return next;
+                });
+              }, 45000);
+            }
             const item = payload?.item as PendingAiEditRecord | undefined;
             if (item?.originalPath) {
               setPendingAiEditsByOriginal((prev) => ({
@@ -7516,6 +7614,113 @@ export default function DraftExplorerPage() {
   const imageEntries = entries.filter(
     (entry) => entry.type === "file" && isImage(entry.name)
   );
+
+  const normalizeFolderToken = useCallback(
+    (value: string) => String(value || "").toLowerCase().replace(/[\s_-]+/g, ""),
+    []
+  );
+
+  const isVariantImagesFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+      if (normalized === "variants" || normalized === "variant") return true;
+      if (normalized === "variantimages" || normalized === "variantimage") return true;
+      return normalized.includes("variant") && normalized.includes("image");
+    },
+    [normalizeFolderToken]
+  );
+
+  const imageTabTargets = useMemo(() => {
+    if (!currentPath) {
+      return {
+        mainPath: null as string | null,
+        variantsPath: null as string | null,
+        active: null as "main" | "variants" | null,
+      };
+    }
+
+    const parts = currentPath.split("/").filter(Boolean);
+    if (parts.length < 2) {
+      return {
+        mainPath: null,
+        variantsPath: null,
+        active: null,
+      };
+    }
+
+    const run = parts[0];
+    const top = parts[1];
+    if (!run || !top || isChunksDirectory(top)) {
+      return {
+        mainPath: null,
+        variantsPath: null,
+        active: null,
+      };
+    }
+
+    const mainPath = `${run}/${top}`;
+    let variantsPath: string | null = null;
+
+    const findNodeByPath = (
+      node: DraftFolderTreeNode,
+      targetPath: string
+    ): DraftFolderTreeNode | null => {
+      if (node.path === targetPath) return node;
+      for (const child of node.children) {
+        const hit = findNodeByPath(child, targetPath);
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    const findVariantNode = (
+      node: DraftFolderTreeNode
+    ): DraftFolderTreeNode | null => {
+      const direct = node.children.find((child) =>
+        isVariantImagesFolderName(child.name)
+      );
+      if (direct) return direct;
+      const fallback = node.children.find((child) =>
+        normalizeFolderToken(child.name).includes("variant")
+      );
+      if (fallback) return fallback;
+      const queue = [...node.children];
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (!next) break;
+        if (isVariantImagesFolderName(next.name)) return next;
+        queue.push(...next.children);
+      }
+      return null;
+    };
+
+    if (folderTree) {
+      const mainNode = findNodeByPath(folderTree, mainPath);
+      if (mainNode) {
+        const variantNode = findVariantNode(mainNode);
+        variantsPath = variantNode?.path ?? null;
+      }
+    }
+
+    let active: "main" | "variants" | null = null;
+    if (
+      variantsPath &&
+      (currentPath === variantsPath || currentPath.startsWith(`${variantsPath}/`))
+    ) {
+      active = "variants";
+    } else if (currentPath === mainPath || currentPath.startsWith(`${mainPath}/`)) {
+      active = "main";
+    }
+
+    return { mainPath, variantsPath, active };
+  }, [
+    currentPath,
+    folderTree,
+    isChunksDirectory,
+    isVariantImagesFolderName,
+    normalizeFolderToken,
+  ]);
   const persistImageOrder = useCallback(
     async (orderedPaths: string[]) => {
       if (!currentPath) return;
@@ -7634,6 +7839,140 @@ export default function DraftExplorerPage() {
     (previewPath ? previewPath.split("/").filter(Boolean).pop() ?? previewPath : "");
   const previewFileSizeText =
     previewEntry && previewEntry.type === "file" ? formatSizeKb(previewEntry.size) : "-";
+  const previewPendingAi = previewPath
+    ? pendingAiEditsByOriginal[previewPath] ?? null
+    : null;
+  const previewRuntimeJob = previewPath ? aiEditJobsByPath[previewPath] ?? null : null;
+  const previewNav = useMemo(() => {
+    if (!previewPath) {
+      return {
+        index: -1,
+        prevPath: null as string | null,
+        nextPath: null as string | null,
+        next2Path: null as string | null,
+      };
+    }
+    const paths = imageEntries.map((entry) => entry.path);
+    const index = paths.indexOf(previewPath);
+    const prevPath = index > 0 ? paths[index - 1] ?? null : null;
+    const nextPath =
+      index >= 0 && index < paths.length - 1 ? paths[index + 1] ?? null : null;
+    const next2Path =
+      index >= 0 && index < paths.length - 2 ? paths[index + 2] ?? null : null;
+    return { index, prevPath, nextPath, next2Path };
+  }, [imageEntries, previewPath]);
+  const previewBusy =
+    Boolean(previewRuntimeJob) ||
+    Boolean(previewPath && reloadingImagePaths.has(previewPath));
+
+  useEffect(() => {
+    if (!previewPath) return;
+    const candidates = [previewNav.nextPath, previewNav.next2Path].filter(Boolean) as string[];
+    candidates.forEach((pathValue) => {
+      const entry = entryByPath.get(pathValue);
+      const img = new Image();
+      img.decoding = "async";
+      img.src = buildDraftDownloadUrl(pathValue, entry?.modifiedAt);
+      // Best-effort decode to make next/next+1 swaps feel instantaneous.
+      if (typeof img.decode === "function") {
+        void img.decode().catch(() => undefined);
+      }
+    });
+  }, [
+    buildDraftDownloadUrl,
+    entryByPath,
+    previewNav.next2Path,
+    previewNav.nextPath,
+    previewPath,
+  ]);
+
+  const handlePreviewNavigate = useCallback(
+    (direction: "prev" | "next") => {
+      if (!previewPath) return;
+      const target =
+        direction === "prev" ? previewNav.prevPath : previewNav.nextPath;
+      if (!target) return;
+      setPreviewPath(target);
+    },
+    [previewNav.nextPath, previewNav.prevPath, previewPath]
+  );
+
+  const handlePreviewDelete = useCallback(async () => {
+    if (!previewPath || !currentPath || previewDeletePending) return;
+    if (pendingAiEditsByOriginal[previewPath] || aiEditJobsByPath[previewPath]) {
+      setError("Resolve pending/running AI edits before deleting this image.");
+      return;
+    }
+    const nextPreviewPath = previewNav.nextPath ?? previewNav.prevPath ?? null;
+    setPreviewDeletePending(true);
+    setError(null);
+    try {
+      const deletedImagesPath = `${currentPath}/deleted images`.replace(/\/{2,}/g, "/");
+      const response = await fetch("/api/drafts/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath: previewPath,
+          targetPath: deletedImagesPath,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Delete failed.");
+      }
+
+      setEntries((prev) => prev.filter((entry) => entry.path !== previewPath));
+      setSelectedFiles((prev) => {
+        if (!prev.has(previewPath)) return prev;
+        const next = new Set(prev);
+        next.delete(previewPath);
+        return next;
+      });
+      setPendingAiEditsByOriginal((prev) => {
+        if (!prev[previewPath]) return prev;
+        const next: Record<string, PendingAiEditRecord> = { ...prev };
+        delete next[previewPath];
+        return next;
+      });
+      setAiEditJobsByPath((prev) => {
+        if (!prev[previewPath]) return prev;
+        const next: Record<string, AiEditRuntimeJob> = { ...prev };
+        delete next[previewPath];
+        return next;
+      });
+      setImageDimensions((prev) => {
+        if (!prev[previewPath]) return prev;
+        const next: Record<string, { width: number; height: number }> = { ...prev };
+        delete next[previewPath];
+        return next;
+      });
+      setReloadingImagePaths((prev) => {
+        if (!prev.has(previewPath)) return prev;
+        const next = new Set(prev);
+        next.delete(previewPath);
+        return next;
+      });
+
+      setPreviewPath(nextPreviewPath);
+      if (selectedFolder) {
+        fetchFolderTree(selectedFolder);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPreviewDeletePending(false);
+    }
+  }, [
+    aiEditJobsByPath,
+    currentPath,
+    fetchFolderTree,
+    pendingAiEditsByOriginal,
+    previewDeletePending,
+    previewNav.nextPath,
+    previewNav.prevPath,
+    previewPath,
+    selectedFolder,
+  ]);
   const aiEditHasPromptInput =
     aiEditMode === "template" || aiEditMode === "direct" || aiEditMode === "eraser";
   const aiEditProviderLabel =
@@ -10210,30 +10549,72 @@ export default function DraftExplorerPage() {
             <div className={styles.contentColumn}>
             <div className={styles.filePane}>
               <div className={styles.imageToolbar}>
-                <Menu>
-                  <MenuTrigger disableButtonEnhancement>
-                    <Button
-                      appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
-                      disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                      className={styles.imageToolbarActions}
-                    >
-                      {bulkImageActionPending ? "Working..." : "Actions"}
-                    </Button>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList className={styles.compactMenuList}>
-                      <MenuItem
+                <div className={styles.imageToolbarTabs}>
+                  <Button
+                    size="small"
+                    appearance={
+                      imageTabTargets.active === "main" ? "primary" : "outline"
+                    }
+                    disabled={!imageTabTargets.mainPath || movingEntry}
+                    className={
+                      imageTabTargets.active === "main"
+                        ? undefined
+                        : styles.explorerWhiteButton
+                    }
+                    onClick={() => {
+                      if (!imageTabTargets.mainPath) return;
+                      setCurrentPath(imageTabTargets.mainPath);
+                    }}
+                  >
+                    Main
+                  </Button>
+                  <Button
+                    size="small"
+                    appearance={
+                      imageTabTargets.active === "variants"
+                        ? "primary"
+                        : "outline"
+                    }
+                    disabled={!imageTabTargets.variantsPath || movingEntry}
+                    className={
+                      imageTabTargets.active === "variants"
+                        ? undefined
+                        : styles.explorerWhiteButton
+                    }
+                    onClick={() => {
+                      if (!imageTabTargets.variantsPath) return;
+                      setCurrentPath(imageTabTargets.variantsPath);
+                    }}
+                  >
+                    Variants
+                  </Button>
+                </div>
+
+                <div className={styles.imageToolbarRight}>
+                  <Menu>
+                    <MenuTrigger disableButtonEnhancement>
+                      <Button
+                        appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
                         disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() => handleDownloadEntries(selectedImageEntries)}
+                        className={styles.imageToolbarActions}
                       >
-                        Download Selected Images
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() => handleCreateCopiesForEntries(selectedImageEntries)}
-                      >
-                        Create Copy
-                      </MenuItem>
+                        {bulkImageActionPending ? "Working..." : "Actions"}
+                      </Button>
+                    </MenuTrigger>
+                    <MenuPopover>
+                      <MenuList className={styles.compactMenuList}>
+                        <MenuItem
+                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                          onClick={() => handleDownloadEntries(selectedImageEntries)}
+                        >
+                          Download Selected Images
+                        </MenuItem>
+                        <MenuItem
+                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                          onClick={() => handleCreateCopiesForEntries(selectedImageEntries)}
+                        >
+                          Create Copy
+                        </MenuItem>
 	                      <MenuItem
 	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
 	                        onClick={() =>
@@ -10522,113 +10903,113 @@ export default function DraftExplorerPage() {
                       </MenuItem>
                     </MenuList>
                   </MenuPopover>
-                </Menu>
-                <div className={styles.imageToolbarIconGroup}>
-                  {entriesRefreshing ? <Spinner size="tiny" /> : null}
+                  </Menu>
+                  <div className={styles.imageToolbarIconGroup}>
+                    {entriesRefreshing ? <Spinner size="tiny" /> : null}
+                    <Button
+                      appearance="outline"
+                      onClick={handleExplorerRefresh}
+                      disabled={entriesLoading || entriesRefreshing || movingEntry}
+                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                      aria-label={t("bulkProcessing.explorer.refresh")}
+                      title={t("bulkProcessing.explorer.refresh")}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.iconSvg}
+                        aria-hidden="true"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                      </svg>
+                    </Button>
+                    <Button
+                      appearance="outline"
+                      onClick={handleDownloadSelectedIndividually}
+                      disabled={selectedFiles.size === 0}
+                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                      aria-label={t("bulkProcessing.explorer.downloadSelected")}
+                      title={t("bulkProcessing.explorer.downloadSelected")}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.iconSvg}
+                        aria-hidden="true"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                        <path d="M7 11l5 5l5 -5" />
+                        <path d="M12 4l0 12" />
+                      </svg>
+                    </Button>
+                    <Button
+                      appearance="outline"
+                      onClick={handleDeleteSelected}
+                      disabled={selectedFiles.size + selectedTreeFolders.size === 0}
+                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                      aria-label={t("bulkProcessing.explorer.deleteSelected")}
+                      title={t("bulkProcessing.explorer.deleteSelected")}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.iconSvg}
+                        aria-hidden="true"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M4 7l16 0" />
+                        <path d="M10 11l0 6" />
+                        <path d="M14 11l0 6" />
+                        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+                        <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+                      </svg>
+                    </Button>
+                  </div>
                   <Button
                     appearance="outline"
-                    onClick={handleExplorerRefresh}
-                    disabled={entriesLoading || entriesRefreshing || movingEntry}
                     className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                    aria-label={t("bulkProcessing.explorer.refresh")}
-                    title={t("bulkProcessing.explorer.refresh")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.iconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                      <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                    </svg>
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    onClick={handleDownloadSelectedIndividually}
-                    disabled={selectedFiles.size === 0}
-                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                    aria-label={t("bulkProcessing.explorer.downloadSelected")}
-                    title={t("bulkProcessing.explorer.downloadSelected")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.iconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
-                      <path d="M7 11l5 5l5 -5" />
-                      <path d="M12 4l0 12" />
-                    </svg>
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    onClick={handleDeleteSelected}
-                    disabled={selectedFiles.size + selectedTreeFolders.size === 0}
-                    className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                    aria-label={t("bulkProcessing.explorer.deleteSelected")}
-                    title={t("bulkProcessing.explorer.deleteSelected")}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.iconSvg}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M4 7l16 0" />
-                      <path d="M10 11l0 6" />
-                      <path d="M14 11l0 6" />
-                      <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                      <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-                    </svg>
-                  </Button>
-                </div>
-                <Button
-                  appearance="outline"
-                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                  disabled={imageEntries.length === 0}
-                  aria-label={
-                    imageResizeActionIcon === "grow"
-                      ? "Make images bigger"
-                      : "Make images smaller"
-                  }
-                  title={
-                    imageResizeActionIcon === "grow"
-                      ? "Make images bigger"
-                      : "Make images smaller"
-                  }
-                  onClick={() => {
-                    if (imageResizeActionIcon === "grow") {
-                      setImageViewMode("big");
-                    } else {
-                      setImageViewMode("small");
+                    disabled={imageEntries.length === 0}
+                    aria-label={
+                      imageResizeActionIcon === "grow"
+                        ? "Make images bigger"
+                        : "Make images smaller"
                     }
-                  }}
-                  onMouseLeave={() => {
-                    setImageResizeActionIcon(
-                      imageViewMode === "big" ? "shrink" : "grow"
-                    );
-                  }}
-                >
+                    title={
+                      imageResizeActionIcon === "grow"
+                        ? "Make images bigger"
+                        : "Make images smaller"
+                    }
+                    onClick={() => {
+                      if (imageResizeActionIcon === "grow") {
+                        setImageViewMode("big");
+                      } else {
+                        setImageViewMode("small");
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      setImageResizeActionIcon(
+                        imageViewMode === "big" ? "shrink" : "grow"
+                      );
+                    }}
+                  >
                   {imageResizeActionIcon === "grow" ? (
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -10667,13 +11048,9 @@ export default function DraftExplorerPage() {
                     </svg>
                   )}
                 </Button>
-              </div>
-              {entriesLoading ? (
-                <div style={{ padding: "12px" }}>
-                  <Spinner size="tiny" />
                 </div>
-              ) : (
-                <>
+              </div>
+              <div className={styles.entriesContentArea} aria-busy={entriesLoading}>
                   {imageEntries.length === 0 ? (
                     <Text size={200}>No images in this folder.</Text>
                   ) : (
@@ -10719,6 +11096,8 @@ export default function DraftExplorerPage() {
                       {imageEntries.map((entry) => {
                         const pendingAi = pendingAiEditsByOriginal[entry.path] ?? null;
                         const runtimeJob = aiEditJobsByPath[entry.path] ?? null;
+                        const reloadBusy = reloadingImagePaths.has(entry.path);
+                        const busy = Boolean(runtimeJob) || reloadBusy;
                         return (
                           <div
                             key={entry.path}
@@ -10879,20 +11258,27 @@ export default function DraftExplorerPage() {
                                 alt={entry.name}
                                 className={mergeClasses(
                                   styles.thumbImage,
-                                  runtimeJob ? styles.mediaImageBusy : undefined
+                                  busy ? styles.mediaImageBusy : undefined
                                 )}
                                 onLoad={(event) => {
                                   const img = event.currentTarget;
+                                  const pathValue = entry.path;
                                   setImageDimensions((prev) => ({
                                     ...prev,
-                                    [entry.path]: {
+                                    [pathValue]: {
                                       width: img.naturalWidth,
                                       height: img.naturalHeight,
                                     },
                                   }));
+                                  setReloadingImagePaths((prev) => {
+                                    if (!prev.has(pathValue)) return prev;
+                                    const next = new Set(prev);
+                                    next.delete(pathValue);
+                                    return next;
+                                  });
                                 }}
                               />
-                              {runtimeJob ? (
+                              {busy ? (
                                 <div className={styles.mediaBusyOverlay}>
                                   <div className={styles.mediaBusyContent}>
                                     <Spinner size="small" />
@@ -10960,17 +11346,20 @@ export default function DraftExplorerPage() {
                     </div>
                   )}
 
-                </>
-              )}
+                {entriesLoading ? (
+                  <div className={styles.entriesContentOverlay}>
+                    <Spinner size="tiny" />
+                  </div>
+                ) : null}
+              </div>
             </div>
               <div className={styles.filesUploadRow}>
                 <div className={styles.filesSection}>
-                  {entriesLoading ? (
-                    <Spinner size="tiny" />
-                  ) : nonImageFileEntries.length === 0 ? (
+                  <div className={styles.entriesContentArea} aria-busy={entriesLoading}>
+                  {nonImageFileEntries.length === 0 ? (
                     <Text size={100}>No files in this folder.</Text>
-	                  ) : (
-	                    <Table size="small" className={styles.filesTable}>
+		                  ) : (
+		                    <Table size="small" className={styles.filesTable}>
 	                      <TableHeader>
 	                        <TableRow>
 	                          <TableHeaderCell className={styles.filesColSelect}>
@@ -11105,6 +11494,12 @@ export default function DraftExplorerPage() {
                       </TableBody>
                     </Table>
                   )}
+                  {entriesLoading ? (
+                    <div className={styles.entriesContentOverlay}>
+                      <Spinner size="tiny" />
+                    </div>
+                  ) : null}
+                  </div>
                 </div>
 
                 <div className={styles.urlUploadPanel}>
@@ -12178,26 +12573,152 @@ export default function DraftExplorerPage() {
           <DialogSurface className={styles.previewDialog}>
             <DialogBody className={styles.previewDialogBody}>
               <DialogTitle>{`Image - ${previewFileName || ""}`}</DialogTitle>
-              {previewPath ? (
-                <img
-                  src={buildDraftDownloadUrl(
-                    previewPath,
-                    entryByPath.get(previewPath)?.modifiedAt
-                  )}
-                  alt={previewPath}
-                  className={styles.previewImageLarge}
-                  onLoad={(event) => {
-                    const img = event.currentTarget;
-                    setImageDimensions((prev) => ({
-                      ...prev,
-                      [previewPath]: {
-                        width: img.naturalWidth,
-                        height: img.naturalHeight,
-                      },
-                    }));
-                  }}
-                />
-              ) : null}
+              <div
+                className={styles.previewImageFrame}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  if (!previewEntry) return;
+                  setContextMenuSubmenu(null);
+                  setContextMenuNestedSubmenu(null);
+                  setContextMenu({
+                    entry: previewEntry,
+                    image: true,
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+                }}
+              >
+                {previewPendingAi && previewPath ? (
+                  <button
+                    type="button"
+                    className={styles.aiPendingBadge}
+                    title={`Review AI edit for ${previewFileName || "image"}`}
+                    aria-label={`Review AI edit for ${previewFileName || "image"}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const pathValue = previewPath;
+                      setPreviewPath(null);
+                      setAiReviewOriginalPath(pathValue);
+                    }}
+                    disabled={previewBusy}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      width="16"
+                      height="16"
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M15 8h.01" />
+                      <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
+                      <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
+                      <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
+                      <path d="M14 19h4" />
+                      <path d="M21 15v6" />
+                    </svg>
+                  </button>
+                ) : null}
+
+                {previewNav.prevPath ? (
+                  <button
+                    type="button"
+                    className={mergeClasses(
+                      styles.previewNavButton,
+                      styles.previewNavButtonLeft
+                    )}
+                    onClick={() => handlePreviewNavigate("prev")}
+                    aria-label="Previous image"
+                    title="Previous image"
+                    disabled={previewBusy || previewDeletePending}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className={styles.previewNavIcon}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M13.883 5.007l.058 -.005h.118l.058 .005l.06 .009l.052 .01l.108 .032l.067 .027l.132 .07l.09 .065l.081 .073l.083 .094l.054 .077l.054 .096l.017 .036l.027 .067l.032 .108l.01 .053l.01 .06l.004 .057l.002 .059v12c0 .852 -.986 1.297 -1.623 .783l-.084 -.076l-6 -6a1 1 0 0 1 -.083 -1.32l.083 -.094l6 -6l.094 -.083l.077 -.054l.096 -.054l.036 -.017l.067 -.027l.108 -.032l.053 -.01l.06 -.01z" />
+                    </svg>
+                  </button>
+                ) : null}
+
+                {previewNav.nextPath ? (
+                  <button
+                    type="button"
+                    className={mergeClasses(
+                      styles.previewNavButton,
+                      styles.previewNavButtonRight
+                    )}
+                    onClick={() => handlePreviewNavigate("next")}
+                    aria-label="Next image"
+                    title="Next image"
+                    disabled={previewBusy || previewDeletePending}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className={styles.previewNavIcon}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M9 6c0 -.852 .986 -1.297 1.623 -.783l.084 .076l6 6a1 1 0 0 1 .083 1.32l-.083 .094l-6 6l-.094 .083l-.077 .054l-.096 .054l-.036 .017l-.067 .027l-.108 .032l-.053 .01l-.06 .01l-.057 .004l-.059 .002l-.059 -.002l-.058 -.005l-.06 -.009l-.052 -.01l-.108 -.032l-.067 -.027l-.132 -.07l-.09 -.065l-.081 -.073l-.083 -.094l-.054 -.077l-.054 -.096l-.017 -.036l-.027 -.067l-.032 -.108l-.01 -.053l-.01 -.06l-.004 -.057l-.002 -12.059z" />
+                    </svg>
+                  </button>
+                ) : null}
+
+                {previewPath ? (
+                  <img
+                    src={buildDraftDownloadUrl(
+                      previewPath,
+                      entryByPath.get(previewPath)?.modifiedAt
+                    )}
+                    alt={previewPath}
+                    data-preview-path={previewPath}
+                    className={mergeClasses(
+                      styles.previewImageLarge,
+                      previewBusy ? styles.mediaImageBusy : undefined
+                    )}
+                    onLoad={(event) => {
+                      const img = event.currentTarget;
+                      const pathValue =
+                        event.currentTarget.dataset.previewPath || previewPath;
+                      if (!pathValue) return;
+                      setImageDimensions((prev) => ({
+                        ...prev,
+                        [pathValue]: {
+                          width: img.naturalWidth,
+                          height: img.naturalHeight,
+                        },
+                      }));
+                      setReloadingImagePaths((prev) => {
+                        if (!prev.has(pathValue)) return prev;
+                        const next = new Set(prev);
+                        next.delete(pathValue);
+                        return next;
+                      });
+                    }}
+                  />
+                ) : null}
+
+                {previewBusy ? (
+                  <div className={styles.mediaBusyOverlay}>
+                    <div className={styles.mediaBusyContent}>
+                      <Spinner size="small" />
+                      <span>Updating</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <div className={styles.previewMetaRow}>
                 <Text size={100} className={styles.previewMetaText}>
                   {previewDimensions ? (
@@ -12218,6 +12739,13 @@ export default function DraftExplorerPage() {
                   )}
                 </Text>
                 <DialogActions className={styles.previewActions}>
+                  <Button
+                    appearance="outline"
+                    onClick={() => void handlePreviewDelete()}
+                    disabled={!previewPath || previewBusy || previewDeletePending}
+                  >
+                    {previewDeletePending ? "Deleting..." : "Delete"}
+                  </Button>
                   <Button appearance="primary" onClick={() => setPreviewPath(null)}>
                     {t("common.close")}
                   </Button>

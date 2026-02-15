@@ -129,6 +129,155 @@ const toPriceNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const toWeightGrams = (value) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, ".").trim();
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+
+  const unit = normalized.toLowerCase();
+  if (unit.includes("kg") || unit.includes("公斤") || unit.includes("千克")) {
+    return Math.round(num * 1000);
+  }
+  if (unit.includes("g") || unit.includes("克")) {
+    return Math.round(num);
+  }
+  if (num <= 20 && normalized.includes(".")) {
+    return Math.round(num * 1000);
+  }
+  return Math.round(num);
+};
+
+const normalizeVariantNameStrict = (value) =>
+  asText(value)
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+const normalizeVariantNameLoose = (value) =>
+  normalizeVariantNameStrict(value).replace(/[（(].*?[）)]/g, "");
+
+const parseVariantWeightTableFromReadableText = (value) => {
+  const text = asText(value).replace(/\r/g, "\n");
+  const out = { weightByName: new Map(), weights: [] };
+  if (!text) return out;
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return out;
+
+  let headerIndex = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.includes("\t")) continue;
+    const lower = line.toLowerCase();
+    const hasWeight = line.includes("重量") || lower.includes("weight");
+    if (!hasWeight) continue;
+    const looksLikeSizeTable =
+      line.includes("体积") ||
+      line.includes("长(") ||
+      line.includes("宽(") ||
+      line.includes("高(") ||
+      lower.includes("cm");
+    if (!looksLikeSizeTable) continue;
+    headerIndex = i;
+    break;
+  }
+  if (headerIndex === -1) return out;
+
+  let started = false;
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line) continue;
+    if (/^【/.test(line)) break;
+    if (!line.includes("\t")) {
+      if (started) break;
+      continue;
+    }
+
+    const parts = line
+      .split(/\t+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length < 2) continue;
+
+    const name = parts[0];
+    const grams = toWeightGrams(parts[parts.length - 1]);
+    if (!grams) continue;
+
+    started = true;
+    out.weights.push(grams);
+    const strictName = normalizeVariantNameStrict(name);
+    const looseName = normalizeVariantNameLoose(name);
+    if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
+    if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
+  }
+
+  return out;
+};
+
+const enrichVariantWeightsFromReadableText = (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const extracted =
+    payload.extracted && typeof payload.extracted === "object" ? payload.extracted : null;
+  if (!extracted) return payload;
+  const variations =
+    extracted.variations && typeof extracted.variations === "object"
+      ? extracted.variations
+      : null;
+  const combos = Array.isArray(variations?.combos) ? variations.combos : null;
+  if (!combos || combos.length === 0) return payload;
+
+  const table = parseVariantWeightTableFromReadableText(extracted.readableText);
+  if (!table.weightByName || table.weightByName.size === 0) return payload;
+
+  const nextCombos = combos.map((combo) => {
+    if (!combo || typeof combo !== "object") return combo;
+    const row = { ...combo };
+    const candidates = [
+      row.t1,
+      row.t1_zh,
+      row.t1_en,
+      row.t2,
+      row.t2_zh,
+      row.t2_en,
+      row.t3,
+      row.t3_zh,
+      row.t3_en,
+      row.name,
+    ]
+      .map((v) => asText(v))
+      .filter(Boolean);
+
+    const strictKeys = candidates.map((c) => normalizeVariantNameStrict(c)).filter(Boolean);
+    const looseKeys = candidates.map((c) => normalizeVariantNameLoose(c)).filter(Boolean);
+    const grams =
+      strictKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
+      looseKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
+      null;
+    if (!grams) return row;
+
+    row.weight_grams = Number(grams);
+    row.weightRaw = `${Number(grams)}g`;
+    return row;
+  });
+
+  return {
+    ...payload,
+    extracted: {
+      ...extracted,
+      variations: {
+        ...variations,
+        combos: nextCombos,
+      },
+    },
+  };
+};
+
 const getVariationQuality = (payload) => {
   const combos = Array.isArray(payload?.extracted?.variations?.combos)
     ? payload.extracted.variations.combos
@@ -811,7 +960,7 @@ const run1688OfferDetail = async (detailUrl, offerId) => {
       };
     }
 
-    return { ok: true, payload: parsed, mode };
+    return { ok: true, payload: enrichVariantWeightsFromReadableText(parsed), mode };
   } catch (error) {
     return {
       ok: false,

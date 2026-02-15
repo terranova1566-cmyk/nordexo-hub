@@ -4,7 +4,7 @@ export const loadDigidealFromSupabase = async (adminClient, productId) => {
   const { data, error } = await adminClient
     .from("digideal_products")
     .select(
-      "product_id, listing_title, title_h1, product_url, source_url, description_html, primary_image_url, image_urls, description_images"
+      "product_id, listing_title, title_h1, product_url, description_html, primary_image_url, image_urls, description_images"
     )
     .eq("product_id", productId)
     .maybeSingle();
@@ -31,7 +31,7 @@ export const loadDigidealFromSupabase = async (adminClient, productId) => {
   return {
     title: firstString(data.title_h1, data.listing_title),
     description: stripHtml(data.description_html || ""),
-    url: firstString(data.product_url, data.source_url),
+    url: firstString(data.product_url),
     imageUrls,
     error: "",
   };

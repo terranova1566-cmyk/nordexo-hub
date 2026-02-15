@@ -151,6 +151,9 @@ type SupplierSelection = {
 
 type CropRectNorm = { x: number; y: number; w: number; h: number };
 
+const DEFAULT_CROP_MARGIN_PX = 15;
+const DEFAULT_CROP_RECT_FALLBACK: CropRectNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
+
 type CatalogProduct = {
   id: string;
   spu: string | null;
@@ -1202,8 +1205,8 @@ const useStyles = makeStyles({
     maxWidth: "760px",
   },
   variantsDialog: {
-    minWidth: "760px",
-    maxWidth: "980px",
+    width: "min(735px, 92vw)",
+    maxWidth: "min(735px, 92vw)",
   },
   variantsDialogBody: {
     display: "flex",
@@ -1221,6 +1224,7 @@ const useStyles = makeStyles({
   variantsListTable: {
     width: "100%",
     borderCollapse: "collapse",
+    tableLayout: "fixed",
   },
   variantsListHeadCell: {
     position: "sticky",
@@ -1239,9 +1243,20 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
     verticalAlign: "middle",
   },
+  variantEditInput: {
+    width: "84px",
+    maxWidth: "84px",
+    minWidth: 0,
+    "& input": {
+      fontSize: tokens.fontSizeBase200,
+      paddingBlock: "4px",
+      paddingInline: "6px",
+      fontVariantNumeric: "tabular-nums",
+    },
+  },
   variantImageThumb: {
-    width: "48px",
-    height: "48px",
+    width: "49px",
+    height: "49px",
     borderRadius: "6px",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground3,
@@ -1249,12 +1264,12 @@ const useStyles = makeStyles({
     display: "block",
   },
   variantImageCellWrap: {
-    width: "48px",
-    height: "48px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    margin: "0 auto",
+    width: "100%",
+    height: "100%",
+    lineHeight: 0,
   },
   variantImagePopoverSurface: {
     width: "270px",
@@ -1289,7 +1304,7 @@ const useStyles = makeStyles({
     display: "block",
   },
   variantLabelCell: {
-    minWidth: "180px",
+    minWidth: 0,
   },
   variantsRowClickable: {
     cursor: "pointer",
@@ -1378,10 +1393,22 @@ const useStyles = makeStyles({
   },
   variantsHeaderRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: "10px",
-    marginBottom: "2px",
+    marginBottom: "12px",
+  },
+  variantsHeaderLeft: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "12px",
+    minWidth: 0,
+  },
+  variantsHeaderRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "12px",
+    flexShrink: 0,
   },
   variantsTitleStack: {
     display: "flex",
@@ -1417,6 +1444,43 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     marginLeft: "auto",
+  },
+  variantsHeroThumbWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantsHeroThumbFrame: {
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsHeroThumbImage: {
+    width: "auto",
+    height: "auto",
+    maxWidth: "150px",
+    maxHeight: "75px",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsHeroPopoverSurface: {
+    padding: 0,
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    boxShadow: tokens.shadow16,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsHeroZoomImage: {
+    width: "450px",
+    maxWidth: "70vw",
+    height: "auto",
+    maxHeight: "70vh",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   rowStatusInProgress: {
     "& .fui-TableCell": {
@@ -1634,7 +1698,8 @@ export default function ProductionPage() {
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
   const [cropNaturalSize, setCropNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const cropStageRef = useRef<HTMLDivElement | null>(null);
-  const [cropRect, setCropRect] = useState<CropRectNorm>({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+  const [cropRect, setCropRect] = useState<CropRectNorm>(DEFAULT_CROP_RECT_FALLBACK);
+  const cropTouchedRef = useRef(false);
   const dragRef = useRef<{
     handle: "nw" | "ne" | "sw" | "se" | "move";
     startX: number;
@@ -1678,6 +1743,12 @@ export default function ProductionPage() {
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const [variantsTarget, setVariantsTarget] = useState<ProductionItem | null>(null);
   const [variantsCombos, setVariantsCombos] = useState<VariantCombo[]>([]);
+  const [variantPriceDraftByIndex, setVariantPriceDraftByIndex] = useState<Record<number, string>>(
+    {}
+  );
+  const [variantWeightDraftByIndex, setVariantWeightDraftByIndex] = useState<Record<number, string>>(
+    {}
+  );
   const [variantsTypeLabels, setVariantsTypeLabels] = useState<{
     t1: string;
     t2: string;
@@ -1691,6 +1762,59 @@ export default function ProductionPage() {
   const [variantsSaving, setVariantsSaving] = useState(false);
   const [variantsError, setVariantsError] = useState<string | null>(null);
   const [variantImagePreviewIndex, setVariantImagePreviewIndex] = useState<number | null>(null);
+  const [variantsHeroPreviewOpen, setVariantsHeroPreviewOpen] = useState(false);
+  const [variantsHeroZoomReady, setVariantsHeroZoomReady] = useState(false);
+
+  const variantsHeroImageSrc = useMemo(() => {
+    if (!variantsTarget) return null;
+    const local =
+      typeof variantsTarget.image_local_url === "string" && variantsTarget.image_local_url.trim()
+        ? variantsTarget.image_local_url.trim()
+        : typeof variantsTarget.image_local_path === "string" && variantsTarget.image_local_path.trim()
+          ? `/api/discovery/local-image?path=${encodeURIComponent(variantsTarget.image_local_path)}`
+          : null;
+    return local || variantsTarget.image_url || null;
+  }, [variantsTarget]);
+
+  useEffect(() => {
+    if (!variantsDialogOpen || !variantsHeroImageSrc) {
+      setVariantsHeroZoomReady(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let active = true;
+    setVariantsHeroZoomReady(false);
+
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = variantsHeroImageSrc;
+
+    const markReady = async () => {
+      try {
+        if (typeof img.decode === "function") {
+          await img.decode();
+        }
+      } catch {
+        // ignore decode failures
+      }
+      if (active) setVariantsHeroZoomReady(true);
+    };
+
+    img.onload = () => {
+      void markReady();
+    };
+    img.onerror = () => {
+      // Don't block hover popover forever on transient image failures.
+      if (active) setVariantsHeroZoomReady(true);
+    };
+
+    return () => {
+      active = false;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [variantsDialogOpen, variantsHeroImageSrc]);
 
   useEffect(() => {
     let isActive = true;
@@ -1801,7 +1925,8 @@ export default function ProductionPage() {
     setCropDialogOpen(false);
     setCropImageUrl(null);
     setCropNaturalSize(null);
-    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
     dragRef.current = null;
     setRecropSearching(false);
   }, []);
@@ -1839,6 +1964,8 @@ export default function ProductionPage() {
     setVariantsDialogOpen(false);
     setVariantsTarget(null);
     setVariantsCombos([]);
+    setVariantPriceDraftByIndex({});
+    setVariantWeightDraftByIndex({});
     setVariantsTypeLabels({ t1: "", t2: "", t3: "" });
     setVariantsSelectedIndexes(new Set());
     setVariantsPacksText("");
@@ -1846,6 +1973,8 @@ export default function ProductionPage() {
     setVariantsSaving(false);
     setVariantsError(null);
     setVariantImagePreviewIndex(null);
+    setVariantsHeroPreviewOpen(false);
+    setVariantsHeroZoomReady(false);
   }, []);
 
   const openCompetitorOverrideDialog = useCallback((item: ProductionItem) => {
@@ -1920,6 +2049,8 @@ export default function ProductionPage() {
     setVariantsDialogOpen(true);
     setVariantsTarget(item);
     setVariantsCombos([]);
+    setVariantPriceDraftByIndex({});
+    setVariantWeightDraftByIndex({});
     setVariantsTypeLabels({ t1: "", t2: "", t3: "" });
     setVariantsSelectedIndexes(new Set());
     setVariantsPacksText("");
@@ -1954,6 +2085,52 @@ export default function ProductionPage() {
           ? (payload as any).packs_text
           : "";
       setVariantsCombos(combos);
+      const nextPriceDrafts: Record<number, string> = {};
+      const nextWeightDrafts: Record<number, string> = {};
+      combos.forEach((combo, idx) => {
+        const comboIndex =
+          typeof combo?.index === "number" && Number.isFinite(combo.index)
+            ? combo.index
+            : idx;
+        const priceDraft = (() => {
+          if (typeof combo.price === "number" && Number.isFinite(combo.price)) {
+            return combo.price.toFixed(2);
+          }
+          const raw = String(combo.price_raw || "").trim();
+          const match = raw.match(/-?\\d+(?:\\.\\d+)?/);
+          return match?.[0] ? match[0] : "";
+        })();
+        const weightDraft = (() => {
+          if (
+            typeof combo.weight_grams === "number" &&
+            Number.isFinite(combo.weight_grams) &&
+            combo.weight_grams > 0
+          ) {
+            return String(Math.round(combo.weight_grams));
+          }
+          const raw = String(combo.weight_raw || "").trim();
+          if (!raw) return "";
+          const normalized = raw.replace(/,/g, ".").trim().toLowerCase();
+          const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);
+          if (!match?.[0]) return "";
+          const num = Number(match[0]);
+          if (!Number.isFinite(num) || num <= 0) return "";
+          if (normalized.includes("kg") || normalized.includes("公斤") || normalized.includes("千克")) {
+            return String(Math.round(num * 1000));
+          }
+          if (normalized.includes("g") || normalized.includes("克")) {
+            return String(Math.round(num));
+          }
+          if (num <= 20 && normalized.includes(".")) {
+            return String(Math.round(num * 1000));
+          }
+          return String(Math.round(num));
+        })();
+        nextPriceDrafts[comboIndex] = priceDraft;
+        nextWeightDrafts[comboIndex] = weightDraft;
+      });
+      setVariantPriceDraftByIndex(nextPriceDrafts);
+      setVariantWeightDraftByIndex(nextWeightDrafts);
       setVariantsTypeLabels({
         t1: typeof (payload as any)?.type1_label === "string" ? (payload as any).type1_label : "",
         t2: typeof (payload as any)?.type2_label === "string" ? (payload as any).type2_label : "",
@@ -1974,6 +2151,36 @@ export default function ProductionPage() {
     setVariantsError(null);
     try {
       const selected = Array.from(variantsSelectedIndexes).sort((a, b) => a - b);
+      const parseDraftPrice = (raw: string) => {
+        const text = String(raw || "").trim();
+        if (!text) return null;
+        const normalized = text.replace(/,/g, ".");
+        const n = Number(normalized);
+        return Number.isFinite(n) ? n : null;
+      };
+      const parseDraftWeight = (raw: string) => {
+        const text = String(raw || "").trim();
+        if (!text) return null;
+        const n = Number(text.replace(/,/g, "."));
+        return Number.isFinite(n) ? Math.round(n) : null;
+      };
+      const comboOverrides = variantsCombos
+        .map((combo) => {
+          const idx = typeof combo.index === "number" ? combo.index : -1;
+          const price = parseDraftPrice(variantPriceDraftByIndex[idx] ?? "");
+          const weight = parseDraftWeight(variantWeightDraftByIndex[idx] ?? "");
+          return {
+            index: idx,
+            price: price !== null && price > 0 ? price : null,
+            weight_grams: weight !== null && weight > 0 ? weight : null,
+          };
+        })
+        .filter(
+          (entry) =>
+            Number.isInteger(entry.index) &&
+            entry.index >= 0 &&
+            (entry.price !== null || entry.weight_grams !== null)
+        );
       const response = await fetch("/api/production/suppliers/variants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1982,6 +2189,7 @@ export default function ProductionPage() {
           product_id: variantsTarget.product_id,
           selected_combo_indexes: selected,
           packs_text: variantsPacksText,
+          combo_overrides: comboOverrides,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -2013,7 +2221,15 @@ export default function ProductionPage() {
     } finally {
       setVariantsSaving(false);
     }
-  }, [closeVariantsDialog, variantsPacksText, variantsSelectedIndexes, variantsTarget]);
+  }, [
+    closeVariantsDialog,
+    variantsCombos,
+    variantsPacksText,
+    variantPriceDraftByIndex,
+    variantWeightDraftByIndex,
+    variantsSelectedIndexes,
+    variantsTarget,
+  ]);
 
   const openJsonInspector = useCallback(
     async (item: ProductionItem, badge: string) => {
@@ -2202,8 +2418,20 @@ export default function ProductionPage() {
   const normalizeOfferPrice = useCallback((candidate: unknown): number | null => {
     if (candidate === null || candidate === undefined) return null;
     if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      if (Number.isInteger(candidate) && candidate >= 100 && candidate <= 100000) {
-        return candidate / 100;
+      if (Number.isInteger(candidate)) {
+        // 1688 sometimes returns "9.000" as an integer 9000 (thousandths), which would
+        // incorrectly show up as 90.00 if we always divide by 100. Use a narrow heuristic
+        // before applying the default /100 scaling.
+        if (candidate >= 1000 && candidate % 1000 === 0) {
+          const asCents = candidate / 100;
+          const asMillis = candidate / 1000;
+          if (asCents >= 60 && asMillis > 0 && asMillis <= 60) {
+            return asMillis;
+          }
+        }
+        if (candidate >= 100 && candidate <= 100000) {
+          return candidate / 100;
+        }
       }
       return candidate;
     }
@@ -2217,8 +2445,17 @@ export default function ProductionPage() {
       : text.replace(/,/g, "");
     const raw = Number(normalizedText);
     if (!Number.isFinite(raw)) return null;
-    if (!hasDecimalSeparator && Number.isInteger(raw) && raw >= 100 && raw <= 100000) {
-      return raw / 100;
+    if (!hasDecimalSeparator && Number.isInteger(raw)) {
+      if (raw >= 1000 && raw % 1000 === 0) {
+        const asCents = raw / 100;
+        const asMillis = raw / 1000;
+        if (asCents >= 60 && asMillis > 0 && asMillis <= 60) {
+          return asMillis;
+        }
+      }
+      if (raw >= 100 && raw <= 100000) {
+        return raw / 100;
+      }
     }
     return raw;
   }, []);
@@ -2532,7 +2769,8 @@ export default function ProductionPage() {
     setCropImageUrl(fallback);
     setCropDialogOpen(true);
     setCropNaturalSize(null);
-    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
     dragRef.current = null;
   }, [supplierSearchImageUrl, supplierTarget]);
 
@@ -2579,6 +2817,7 @@ export default function ProductionPage() {
       if (!box) return;
       ev.preventDefault();
       ev.stopPropagation();
+      cropTouchedRef.current = true;
       (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
       dragRef.current = {
         handle,
@@ -4090,7 +4329,13 @@ export default function ProductionPage() {
                               <path d="M12 3a9 9 0 1 0 9 9" />
                             </svg>
                           ) : null}
-                          <span>1688</span>
+                          <span>
+                            {supplierProcess1688State === "loading"
+                              ? "Fetching 1688 data"
+                              : supplierProcess1688State === "ready"
+                                ? "1688 data fetched"
+                                : "1688 data failed"}
+                          </span>
                           {supplierProcess1688State === "ready" ? (
                             <span className={styles.supplierMetaTightOk}>✓</span>
                           ) : supplierProcess1688State === "failed" ? (
@@ -4647,66 +4892,107 @@ export default function ProductionPage() {
             <DialogTitle>Pick Variants</DialogTitle>
             <DialogContent className={styles.commentSection}>
               <div className={styles.variantsHeaderRow}>
-                {variantsTarget ? (
-                  <div className={styles.variantsTitleStack}>
-                    <Text className={styles.variantsTitleText}>
-                      {variantsTarget.title ?? variantsTarget.product_id}
+                <div className={styles.variantsHeaderLeft}>
+                  {variantsHeroImageSrc ? (
+                    <div
+                      className={styles.variantsHeroThumbWrap}
+                      onMouseEnter={() => setVariantsHeroPreviewOpen(true)}
+                      onMouseLeave={() => setVariantsHeroPreviewOpen(false)}
+                    >
+                      <Popover
+                        open={variantsHeroPreviewOpen && variantsHeroZoomReady}
+                        positioning={{ position: "after", align: "start", offset: 10 }}
+                      >
+                        <PopoverTrigger disableButtonEnhancement>
+                          <div className={styles.variantsHeroThumbFrame}>
+                            <img
+                              src={variantsHeroImageSrc}
+                              alt="Product"
+                              className={styles.variantsHeroThumbImage}
+                              referrerPolicy="no-referrer"
+                              loading="eager"
+                              decoding="async"
+                            />
+                          </div>
+                        </PopoverTrigger>
+                        <PopoverSurface className={styles.variantsHeroPopoverSurface}>
+                          <img
+                            src={variantsHeroImageSrc}
+                            alt="Product zoom"
+                            className={styles.variantsHeroZoomImage}
+                            referrerPolicy="no-referrer"
+                            loading="eager"
+                            decoding="async"
+                          />
+                        </PopoverSurface>
+                      </Popover>
+                    </div>
+                  ) : null}
+                  {variantsTarget ? (
+                    <div className={styles.variantsTitleStack}>
+                      <Text className={styles.variantsTitleText}>
+                        {variantsTarget.title ?? variantsTarget.product_id}
+                      </Text>
+                      {(() => {
+                        const variantsProductUrl =
+                          (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
+                          variantsTarget.supplier_selected_offer_detail_url.trim()
+                            ? variantsTarget.supplier_selected_offer_detail_url.trim()
+                            : null) ||
+                          (typeof variantsTarget.supplier_1688_url === "string" &&
+                          variantsTarget.supplier_1688_url.trim()
+                            ? variantsTarget.supplier_1688_url.trim()
+                            : null) ||
+                          (typeof variantsTarget.product_url === "string" &&
+                          variantsTarget.product_url.trim()
+                            ? variantsTarget.product_url.trim()
+                            : null) ||
+                          (typeof variantsTarget.source_url === "string" &&
+                          variantsTarget.source_url.trim()
+                            ? variantsTarget.source_url.trim()
+                            : null);
+                        if (!variantsProductUrl) return null;
+                        return (
+                          <a
+                            href={variantsProductUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.variantsTitleLink}
+                            title={variantsProductUrl}
+                          >
+                            {variantsProductUrl}
+                          </a>
+                        );
+                      })()}
+                    </div>
+                  ) : null}
+                </div>
+                <div className={styles.variantsHeaderRight}>
+                  <div className={styles.variantsTopActions}>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      onClick={() =>
+                        setVariantsSelectedIndexes(
+                          new Set(variantsCombos.map((combo) => combo.index))
+                        )
+                      }
+                      disabled={variantsLoading || variantsCombos.length === 0}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      onClick={() => setVariantsSelectedIndexes(new Set())}
+                      disabled={variantsLoading || variantsCombos.length === 0}
+                    >
+                      Clear
+                    </Button>
+                    <Text size={200} className={styles.cardMeta}>
+                      {variantsSelectedIndexes.size} selected
                     </Text>
-                    {(() => {
-                      const variantsProductUrl =
-                        (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
-                        variantsTarget.supplier_selected_offer_detail_url.trim()
-                          ? variantsTarget.supplier_selected_offer_detail_url.trim()
-                          : null) ||
-                        (typeof variantsTarget.supplier_1688_url === "string" &&
-                        variantsTarget.supplier_1688_url.trim()
-                          ? variantsTarget.supplier_1688_url.trim()
-                          : null) ||
-                        (typeof variantsTarget.product_url === "string" &&
-                        variantsTarget.product_url.trim()
-                          ? variantsTarget.product_url.trim()
-                          : null) ||
-                        (typeof variantsTarget.source_url === "string" &&
-                        variantsTarget.source_url.trim()
-                          ? variantsTarget.source_url.trim()
-                          : null);
-                      if (!variantsProductUrl) return null;
-                      return (
-                        <a
-                          href={variantsProductUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={styles.variantsTitleLink}
-                          title={variantsProductUrl}
-                        >
-                          {variantsProductUrl}
-                        </a>
-                      );
-                    })()}
                   </div>
-                ) : <span />}
-                <div className={styles.variantsTopActions}>
-                  <Button
-                    appearance="outline"
-                    size="small"
-                    onClick={() =>
-                      setVariantsSelectedIndexes(new Set(variantsCombos.map((combo) => combo.index)))
-                    }
-                    disabled={variantsLoading || variantsCombos.length === 0}
-                  >
-                    Select all
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    size="small"
-                    onClick={() => setVariantsSelectedIndexes(new Set())}
-                    disabled={variantsLoading || variantsCombos.length === 0}
-                  >
-                    Clear
-                  </Button>
-                  <Text size={200} className={styles.cardMeta}>
-                    {variantsSelectedIndexes.size} selected
-                  </Text>
                 </div>
               </div>
               {variantsError ? <MessageBar intent="error">{variantsError}</MessageBar> : null}
@@ -4729,10 +5015,10 @@ export default function ProductionPage() {
                           <th className={styles.variantsListHeadCell}>
                             Variant
                           </th>
-                          <th className={styles.variantsListHeadCell} style={{ width: 140 }}>
+                          <th className={styles.variantsListHeadCell} style={{ width: 120 }}>
                             Price (RMB)
                           </th>
-                          <th className={styles.variantsListHeadCell} style={{ width: 110 }}>
+                          <th className={styles.variantsListHeadCell} style={{ width: 100 }}>
                             Weight (g)
                           </th>
                         </tr>
@@ -4823,15 +5109,38 @@ export default function ProductionPage() {
                                 </div>
                               </td>
                               <td className={styles.variantsListCell}>
-                                {typeof combo.price === "number"
-                                  ? `¥${combo.price.toFixed(2)}`
-                                  : combo.price_raw || "-"}
+                                <div onClick={(ev) => ev.stopPropagation()}>
+                                  <Input
+                                    className={styles.variantEditInput}
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={variantPriceDraftByIndex[combo.index] ?? ""}
+                                    onChange={(_, data) =>
+                                      setVariantPriceDraftByIndex((prev) => ({
+                                        ...prev,
+                                        [combo.index]: data.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
                               </td>
                               <td className={styles.variantsListCell}>
-                                {typeof combo.weight_grams === "number" &&
-                                Number.isFinite(combo.weight_grams)
-                                  ? `${Math.round(combo.weight_grams)}`
-                                  : combo.weight_raw || "-"}
+                                <div onClick={(ev) => ev.stopPropagation()}>
+                                  <Input
+                                    className={styles.variantEditInput}
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={variantWeightDraftByIndex[combo.index] ?? ""}
+                                    onChange={(_, data) =>
+                                      setVariantWeightDraftByIndex((prev) => ({
+                                        ...prev,
+                                        [combo.index]: data.value,
+                                      }))
+                                    }
+                                  />
+                                </div>
                               </td>
                             </tr>
                           );
@@ -5362,7 +5671,29 @@ export default function ProductionPage() {
                               onLoad={(ev) => {
                                 const img = ev.currentTarget;
                                 if (img?.naturalWidth && img?.naturalHeight) {
-                                  setCropNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+                                  const naturalW = img.naturalWidth;
+                                  const naturalH = img.naturalHeight;
+                                  setCropNaturalSize({ w: naturalW, h: naturalH });
+
+                                  // Default crop: full image minus 15px padding on each side.
+                                  if (!cropTouchedRef.current) {
+                                    const marginX = Math.min(
+                                      DEFAULT_CROP_MARGIN_PX,
+                                      Math.floor((naturalW - 1) / 2)
+                                    );
+                                    const marginY = Math.min(
+                                      DEFAULT_CROP_MARGIN_PX,
+                                      Math.floor((naturalH - 1) / 2)
+                                    );
+                                    setCropRect(
+                                      clampRect({
+                                        x: marginX / naturalW,
+                                        y: marginY / naturalH,
+                                        w: (naturalW - marginX * 2) / naturalW,
+                                        h: (naturalH - marginY * 2) / naturalH,
+                                      })
+                                    );
+                                  }
                                 }
                               }}
                             />

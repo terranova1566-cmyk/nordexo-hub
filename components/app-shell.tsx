@@ -151,6 +151,7 @@ const useStyles = makeStyles({
 });
 
 const navItems = [
+  { label: "nav.marketTrends", href: "/app/market-trends" },
   { label: "nav.trendResearch", href: "/app/trend-research" },
   { label: "nav.uiKit", href: "/app/ui-kit" },
 ];
@@ -170,6 +171,7 @@ const productMenuItems = [
 const discoveryMenuItems = [
   { label: "nav.productFinder", href: "/app/discovery" },
   { label: "nav.myLists", href: "/app/my-lists" },
+  { label: "nav.amazonScraper", href: "/app/discovery/amazon", adminOnly: true },
 ];
 
 const digidealMenuItems = [
@@ -419,7 +421,9 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                 </MenuTrigger>
                 <MenuPopover className={styles.menuPopover}>
                   <MenuList>
-                    {discoveryMenuItems.map((item) => (
+                    {discoveryMenuItems
+                      .filter((item) => (!item.adminOnly ? true : isAdmin))
+                      .map((item) => (
                       <MenuItem
                         key={item.href}
                         onClick={() => router.push(item.href)}

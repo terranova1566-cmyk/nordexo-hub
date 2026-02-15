@@ -23,6 +23,12 @@ type VariantCombo = {
   weight_grams?: number | null;
 };
 
+type ComboOverride = {
+  index: number;
+  price: number | null;
+  weight_grams: number | null;
+};
+
 const variantTranslationCache = new Map<string, string>();
 
 const asText = (value: unknown) =>
@@ -38,6 +44,15 @@ const asPriceNumber = (value: unknown) => {
   if (!text) return null;
   const n = Number(text);
   return Number.isFinite(n) ? n : null;
+};
+
+const asOptionalPrice = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, ".");
+  const direct = Number(normalized);
+  if (Number.isFinite(direct)) return direct;
+  return asPriceNumber(raw);
 };
 
 const asWeightGrams = (value: unknown) => {
@@ -81,6 +96,79 @@ const normalizeNameStrict = (value: unknown) =>
 
 const normalizeNameLoose = (value: unknown) =>
   normalizeNameStrict(value).replace(/[（(].*?[）)]/g, "");
+
+const pickFallbackWeightGrams = (candidates: unknown[]) => {
+  const values = candidates
+    .map((candidate) => asWeightGrams(candidate))
+    .filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry) && entry > 0);
+  if (values.length === 0) return null;
+  const plausible = values.filter((entry) => entry >= 20 && entry <= 200_000);
+  if (plausible.length > 0) return Math.max(...plausible);
+  return Math.max(...values);
+};
+
+const parseVariantWeightTableFromReadableText = (value: unknown) => {
+  const text = asText(value).replace(/\r/g, "\n");
+  const out = { weightByName: new Map<string, number>(), weights: [] as number[] };
+  if (!text) return out;
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return out;
+
+  let headerIndex = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.includes("\t")) continue;
+    const lower = line.toLowerCase();
+    const hasWeight = line.includes("重量") || lower.includes("weight");
+    if (!hasWeight) continue;
+    // Packaging/size tables typically include cm columns and volume.
+    const looksLikeSizeTable =
+      line.includes("体积") ||
+      line.includes("长(") ||
+      line.includes("宽(") ||
+      line.includes("高(") ||
+      lower.includes("cm");
+    if (!looksLikeSizeTable) continue;
+    headerIndex = i;
+    break;
+  }
+  if (headerIndex === -1) return out;
+
+  let started = false;
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line) continue;
+    if (/^【/.test(line)) break;
+
+    if (!line.includes("\t")) {
+      if (started) break;
+      continue;
+    }
+
+    const parts = line
+      .split(/\t+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length < 2) continue;
+
+    const name = parts[0];
+    const grams = asWeightGrams(parts[parts.length - 1]);
+    if (!grams) continue;
+
+    started = true;
+    out.weights.push(grams);
+    const strictName = normalizeNameStrict(name);
+    const looseName = normalizeNameLoose(name);
+    if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
+    if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
+  }
+
+  return out;
+};
 
 const pickText = (...values: unknown[]) => {
   for (const value of values) {
@@ -160,7 +248,8 @@ async function requireAdmin() {
 const normalizeCombos = (
   variations: unknown,
   variantImageByName: Map<string, string>,
-  fallbackWeightGrams: number | null
+  fallbackWeightGrams: number | null,
+  variantWeightByName: Map<string, number>
 ): VariantCombo[] => {
   const combos = Array.isArray((variations as any)?.combos)
     ? ((variations as any).combos as any[])
@@ -225,7 +314,18 @@ const normalizeCombos = (
       details["重量"],
       details.weight
     );
-    const weightGrams = asWeightGrams(weightRaw) ?? fallbackWeightGrams;
+    const tableWeight =
+      comboNamesStrict
+        .map((key) => variantWeightByName.get(key))
+        .find((entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0) ??
+      comboNamesLoose
+        .map((key) => variantWeightByName.get(key))
+        .find((entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0) ??
+      null;
+    const weightGrams =
+      tableWeight ?? asWeightGrams(weightRaw) ?? fallbackWeightGrams;
+    const effectiveWeightRaw =
+      weightRaw || (tableWeight ? `${tableWeight}g` : "");
 
     return {
       index,
@@ -264,7 +364,7 @@ const normalizeCombos = (
             row.price_text
           )
         ),
-      weight_raw: weightRaw || undefined,
+      weight_raw: effectiveWeightRaw || undefined,
       weight_grams: Number.isFinite(Number(weightGrams))
         ? Number(weightGrams)
         : null,
@@ -288,6 +388,66 @@ const normalizeSelectionIndexes = (raw: unknown, maxCount: number) => {
     .map((entry) => Number(entry))
     .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry < maxCount);
   return Array.from(new Set(out));
+};
+
+const normalizeComboOverrides = (raw: unknown, comboCount: number) => {
+  if (!Array.isArray(raw) || comboCount <= 0) return [] as ComboOverride[];
+  const seen = new Set<number>();
+  const out: ComboOverride[] = [];
+
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const idx = Number((entry as any).index);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= comboCount) return;
+    if (seen.has(idx)) return;
+
+    const priceRaw = (entry as any).price;
+    const weightRaw =
+      (entry as any).weight_grams ?? (entry as any).weightGrams ?? (entry as any).weight;
+    const price = asOptionalPrice(priceRaw);
+    const weightGrams = asWeightGrams(weightRaw);
+
+    const normalizedPrice =
+      typeof price === "number" && Number.isFinite(price) && price > 0
+        ? Number(price)
+        : null;
+    const normalizedWeight =
+      typeof weightGrams === "number" && Number.isFinite(weightGrams) && weightGrams > 0
+        ? Math.round(Number(weightGrams))
+        : null;
+
+    if (normalizedPrice === null && normalizedWeight === null) return;
+
+    out.push({ index: idx, price: normalizedPrice, weight_grams: normalizedWeight });
+    seen.add(idx);
+  });
+
+  return out;
+};
+
+const applyComboOverrides = (combos: VariantCombo[], overrides: ComboOverride[]) => {
+  if (!Array.isArray(overrides) || overrides.length === 0) return combos;
+  const map = new Map<number, ComboOverride>();
+  overrides.forEach((override) => {
+    if (!override || typeof override.index !== "number") return;
+    map.set(override.index, override);
+  });
+  return combos.map((combo) => {
+    const override = map.get(combo.index);
+    if (!override) return combo;
+    const next = { ...combo };
+    if (typeof override.price === "number" && Number.isFinite(override.price) && override.price > 0) {
+      next.price = override.price;
+    }
+    if (
+      typeof override.weight_grams === "number" &&
+      Number.isFinite(override.weight_grams) &&
+      override.weight_grams > 0
+    ) {
+      next.weight_grams = override.weight_grams;
+    }
+    return next;
+  });
 };
 
 async function loadSelection(adminClient: NonNullable<ReturnType<typeof getAdminClient>>, provider: string, productId: string) {
@@ -324,12 +484,15 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
         ? (payload as any).items[0]
         : payload;
   const variations = item && typeof item === "object" ? (item as any).variations : null;
+  const { weightByName: tableWeightByName, weights: tableWeights } =
+    parseVariantWeightTableFromReadableText((item as any)?.readable_1688);
   const fallbackWeightGrams = (() => {
     const weights = Array.isArray((item as any)?.product_weights_1688)
       ? ((item as any).product_weights_1688 as unknown[])
       : [];
     const candidates: unknown[] = [
       ...weights,
+      ...tableWeights,
       (item as any)?.weight_grams,
       (item as any)?.weight,
       (item as any)?.product_weight_1688,
@@ -337,13 +500,7 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
       (variations as any)?.weight_grams,
       (variations as any)?.defaultWeight,
     ];
-    for (const candidate of candidates) {
-      const grams = asWeightGrams(candidate);
-      if (Number.isFinite(Number(grams)) && Number(grams) > 0) {
-        return Number(grams);
-      }
-    }
-    return null;
+    return pickFallbackWeightGrams(candidates);
   })();
   const variantImages = Array.isArray((item as any)?.variant_images_1688)
     ? ((item as any).variant_images_1688 as Array<Record<string, unknown>>)
@@ -363,7 +520,12 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
   }
 
   return {
-    combos: normalizeCombos(variations, variantImageByName, fallbackWeightGrams),
+    combos: normalizeCombos(
+      variations,
+      variantImageByName,
+      fallbackWeightGrams,
+      tableWeightByName
+    ),
     type1Label: asText((variations as any)?.type1Label),
     type2Label: asText((variations as any)?.type2Label),
     type3Label: asText((variations as any)?.type3Label),
@@ -548,6 +710,11 @@ export async function GET(request: NextRequest) {
       saved && typeof saved === "object" ? (saved as any).selected_combo_indexes : [],
       combos.length
     );
+    const savedOverrides = normalizeComboOverrides(
+      saved && typeof saved === "object" ? (saved as any).combo_overrides : [],
+      combos.length
+    );
+    const decoratedCombos = applyComboOverrides(translatedCombos, savedOverrides);
     const savedPacksText =
       saved && typeof saved === "object" ? asText((saved as any).packs_text) : "";
     const packsText =
@@ -560,8 +727,8 @@ export async function GET(request: NextRequest) {
       type1_label: type1Label,
       type2_label: type2Label,
       type3_label: type3Label,
-      available_count: translatedCombos.length,
-      combos: translatedCombos,
+      available_count: decoratedCombos.length,
+      combos: decoratedCombos,
       selected_combo_indexes: savedIndexes,
       packs_text: packsText,
     });
@@ -613,6 +780,18 @@ export async function POST(request: NextRequest) {
     );
     const packsText = asText((body as any).packs_text);
     const packs = normalizePacks(packsText);
+    const overridesProvided = Object.prototype.hasOwnProperty.call(body as any, "combo_overrides");
+    const comboOverrides = overridesProvided
+      ? normalizeComboOverrides((body as any).combo_overrides, combos.length)
+      : normalizeComboOverrides(
+          (selectedOffer as any)?._production_variant_selection &&
+            typeof (selectedOffer as any)._production_variant_selection === "object"
+            ? (selectedOffer as any)._production_variant_selection.combo_overrides
+            : [],
+          combos.length
+        );
+    const overridesMap = new Map<number, ComboOverride>();
+    comboOverrides.forEach((override) => overridesMap.set(override.index, override));
 
     const selectionPayload = {
       selected_combo_indexes: selectedIndexes,
@@ -623,6 +802,7 @@ export async function POST(request: NextRequest) {
       type1_label: type1Label,
       type2_label: type2Label,
       type3_label: type3Label,
+      combo_overrides: comboOverrides,
       updated_at: new Date().toISOString(),
     };
 
@@ -645,6 +825,114 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // DigiDeal: when a variant is chosen, store purchase_price + weight on the deal so we can
+    // compute the estimated rerun price immediately (without locking the supplier URL).
+    let digidealUpdateError: string | null = null;
+    let digidealUpdated: { purchase_price: number | null; weight_grams: number | null } | null =
+      null;
+    if (provider === "digideal") {
+      const productIdValue: string | number = /^\d+$/.test(productId)
+        ? Number(productId)
+        : productId;
+      const { data: digidealRow, error: digidealRowError } = await adminClient
+        .from("digideal_products")
+        .select('product_id, "1688_URL", 1688_url')
+        .eq("product_id", productIdValue)
+        .maybeSingle();
+      if (digidealRowError) {
+        digidealUpdateError = digidealRowError.message;
+      } else {
+        const lockedUrl =
+          typeof (digidealRow as any)?.["1688_URL"] === "string"
+            ? String((digidealRow as any)["1688_URL"]).trim()
+            : typeof (digidealRow as any)?.["1688_url"] === "string"
+              ? String((digidealRow as any)["1688_url"]).trim()
+              : "";
+        const isLocked = Boolean(lockedUrl);
+        if (!isLocked) {
+          if (selectedIndexes.length === 0) {
+            const { data: updatedRow, error: updateRowError } = await adminClient
+              .from("digideal_products")
+              .update({ purchase_price: null, weight_grams: null, weight_kg: null })
+              .eq("product_id", productIdValue)
+              .select("product_id, purchase_price, weight_grams")
+              .maybeSingle();
+            if (updateRowError) {
+              digidealUpdateError = updateRowError.message;
+            } else if (updatedRow) {
+              digidealUpdated = {
+                purchase_price: typeof (updatedRow as any)?.purchase_price === "number"
+                  ? (updatedRow as any).purchase_price
+                  : null,
+                weight_grams: typeof (updatedRow as any)?.weight_grams === "number"
+                  ? (updatedRow as any).weight_grams
+                  : null,
+              };
+            }
+          } else {
+	            const chosenIndex = selectedIndexes[0];
+	            const chosen = combos[chosenIndex] ?? null;
+	            const override = overridesMap.get(chosenIndex);
+	            const overridePrice =
+	              override &&
+	              typeof override.price === "number" &&
+	              Number.isFinite(override.price) &&
+	              override.price > 0
+	                ? Number(override.price)
+	                : null;
+	            const basePrice =
+	              chosen &&
+	              typeof chosen.price === "number" &&
+	              Number.isFinite(chosen.price)
+	                ? Number(chosen.price)
+	                : asPriceNumber(chosen?.price_raw);
+	            const price = overridePrice ?? basePrice;
+
+	            const overrideWeight =
+	              override &&
+	              typeof override.weight_grams === "number" &&
+	              Number.isFinite(override.weight_grams) &&
+	              override.weight_grams > 0
+	                ? Number(override.weight_grams)
+	                : null;
+	            const baseWeight =
+	              chosen &&
+	              typeof chosen.weight_grams === "number" &&
+	              Number.isFinite(chosen.weight_grams)
+	                ? Number(chosen.weight_grams)
+	                : asWeightGrams(chosen?.weight_raw);
+	            const weightGramsRaw = overrideWeight ?? baseWeight;
+            if (price !== null && price > 0 && weightGramsRaw !== null && weightGramsRaw > 0) {
+              const weightGrams = Math.round(weightGramsRaw);
+              const weightKg = Number((weightGrams / 1000).toFixed(3));
+              const { data: updatedRow, error: updateRowError } = await adminClient
+                .from("digideal_products")
+                .update({
+                  purchase_price: price,
+                  weight_grams: weightGrams,
+                  weight_kg: weightKg,
+                })
+                .eq("product_id", productIdValue)
+                .select("product_id, purchase_price, weight_grams")
+                .maybeSingle();
+              if (updateRowError) {
+                digidealUpdateError = updateRowError.message;
+              } else if (updatedRow) {
+                digidealUpdated = {
+                  purchase_price: typeof (updatedRow as any)?.purchase_price === "number"
+                    ? (updatedRow as any).purchase_price
+                    : null,
+                  weight_grams: typeof (updatedRow as any)?.weight_grams === "number"
+                    ? (updatedRow as any).weight_grams
+                    : null,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       provider,
@@ -654,6 +942,8 @@ export async function POST(request: NextRequest) {
       selected_count: selectedIndexes.length,
       packs,
       packs_text: packsText,
+      digideal: digidealUpdated,
+      digideal_update_error: digidealUpdateError,
     });
   } catch (error) {
     return NextResponse.json(

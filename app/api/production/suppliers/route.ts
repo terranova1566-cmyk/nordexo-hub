@@ -797,6 +797,20 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
+
+    // This supplier is selected via image search (not manually locked). Clear any previously
+    // derived purchase/weight so the UI doesn't keep showing an old estimate after reselection.
+    try {
+      const productIdValue: string | number = /^\d+$/.test(productId)
+        ? Number(productId)
+        : productId;
+      await adminClient
+        .from("digideal_products")
+        .update({ purchase_price: null, weight_grams: null, weight_kg: null })
+        .eq("product_id", productIdValue);
+    } catch {
+      // ignore
+    }
   }
 
   const { data: searchRow, error: searchError } = await adminClient

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "amazon:test": "tsx tools/amazon-scrape-test.ts",
     "i18n:translate": "node scripts/translate-ui.mjs",
     "i18n:sync": "node scripts/sync-translations.mjs",
     "meili:index": "node scripts/index-products-meili.mjs",
@@ -34,6 +35,7 @@
     "eslint-config-next": "16.1.2",
     "playwright": "^1.57.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

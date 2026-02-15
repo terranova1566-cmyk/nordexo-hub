@@ -30,6 +30,11 @@ type VariantSelection = {
   selected_combo_indexes: number[];
   packs: number[];
   packs_text: string;
+  combo_overrides?: Array<{
+    index: number;
+    price: number | null;
+    weight_grams: number | null;
+  }>;
 };
 
 const asText = (value: unknown) =>
@@ -146,6 +151,37 @@ const normalizeVariantSelection = (
     selected_combo_indexes: Array.from(new Set(selected_combo_indexes)),
     packs: Array.from(new Set(packs)),
     packs_text,
+    combo_overrides: Array.isArray((selection as any).combo_overrides)
+      ? ((selection as any).combo_overrides as Array<{
+          index: unknown;
+          price?: unknown;
+          weight_grams?: unknown;
+          weightGrams?: unknown;
+        }>)
+          .map((row) => ({
+            index: Number((row as any)?.index),
+            price:
+              Number.isFinite(Number((row as any)?.price)) && Number((row as any).price) > 0
+                ? Number((row as any).price)
+                : null,
+            weight_grams:
+              Number.isFinite(
+                Number((row as any)?.weight_grams ?? (row as any)?.weightGrams)
+              ) &&
+              Number((row as any)?.weight_grams ?? (row as any)?.weightGrams) > 0
+                ? Math.round(
+                    Number((row as any)?.weight_grams ?? (row as any)?.weightGrams)
+                  )
+                : null,
+          }))
+          .filter(
+            (row) =>
+              Number.isInteger(row.index) &&
+              row.index >= 0 &&
+              (!comboCount || row.index < comboCount) &&
+              (row.price !== null || row.weight_grams !== null)
+          )
+      : undefined,
   };
 };
 
@@ -230,12 +266,52 @@ export async function POST(request: Request) {
         variationCombos.length
       );
 
-      if (variantSelection && variationCombos.length > 0) {
+      const decoratedCombos = (() => {
+        const base = variationCombos.map((combo) => ({ ...combo }));
+        const overrides = variantSelection?.combo_overrides;
+        if (!overrides || overrides.length === 0) return base;
+        const map = new Map<number, { price: number | null; weight_grams: number | null }>();
+        overrides.forEach((row) => {
+          if (!row || typeof row.index !== "number" || !Number.isInteger(row.index)) return;
+          map.set(row.index, {
+            price:
+              typeof row.price === "number" && Number.isFinite(row.price) && row.price > 0
+                ? Number(row.price)
+                : null,
+            weight_grams:
+              typeof row.weight_grams === "number" &&
+              Number.isFinite(row.weight_grams) &&
+              row.weight_grams > 0
+                ? Math.round(Number(row.weight_grams))
+                : null,
+          });
+        });
+        if (map.size === 0) return base;
+        return base.map((combo, idx) => {
+          const override = map.get(idx);
+          if (!override) return combo;
+          const next = { ...combo } as Record<string, unknown>;
+          if (override.price !== null) {
+            next.price = override.price;
+            next.priceRaw = `¥${override.price}`;
+            next.price_raw = `¥${override.price}`;
+          }
+          if (override.weight_grams !== null) {
+            next.weight_grams = override.weight_grams;
+            next.weightGrams = override.weight_grams;
+            next.weightRaw = `${override.weight_grams}g`;
+            next.weight_raw = `${override.weight_grams}g`;
+          }
+          return next;
+        });
+      })();
+
+      if (variantSelection && decoratedCombos.length > 0) {
         const selectedIndexes = variantSelection.selected_combo_indexes;
         const filteredCombos =
           selectedIndexes.length > 0
-            ? selectedIndexes.map((idx) => variationCombos[idx]).filter(Boolean)
-            : variationCombos;
+            ? selectedIndexes.map((idx) => decoratedCombos[idx]).filter(Boolean)
+            : decoratedCombos;
         if (
           (record as any).variations &&
           typeof (record as any).variations === "object"
@@ -255,10 +331,10 @@ export async function POST(request: Request) {
         }
 
         const filterTokens = buildVariantFilterTokens(
-          variationCombos,
+          decoratedCombos,
           selectedIndexes.length > 0
             ? selectedIndexes
-            : variationCombos.map((_, idx) => idx)
+            : decoratedCombos.map((_, idx) => idx)
         );
         (record as any).variation_filter_tokens = filterTokens;
         (record as any).variants_1688 = filterTokens.join("\n");

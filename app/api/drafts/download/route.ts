@@ -94,10 +94,27 @@ export async function GET(request: Request) {
   const asciiName = toAsciiFilename(fileName);
   const encodedName = encodeRFC5987ValueChars(fileName);
 
+  const cacheVersion = String(url.searchParams.get("v") || "").trim();
+  const inlineParam = String(url.searchParams.get("inline") || "").trim();
+  const wantsInline =
+    inlineParam === "1" || inlineParam.toLowerCase() === "true" || Boolean(cacheVersion);
+  const isRenderable =
+    contentType.startsWith("image/") || contentType.startsWith("video/");
+  const dispositionType = wantsInline && isRenderable ? "inline" : "attachment";
+
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Disposition": `${dispositionType}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
+  };
+
+  // When a stable cache-buster is provided, allow the browser to cache the response.
+  // This dramatically improves image viewer navigation, while keeping the download
+  // endpoints (no v param) non-cachey.
+  if (cacheVersion && isRenderable) {
+    headers["Cache-Control"] = "private, max-age=31536000, immutable";
+  }
+
   return new Response(stream as unknown as ReadableStream, {
-    headers: {
-      "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
-    },
+    headers,
   });
 }

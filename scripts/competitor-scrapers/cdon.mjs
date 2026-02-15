@@ -69,6 +69,7 @@ const normalizeDescriptionHtml = (value) => {
   for (const rawLine of text.split(/\n+/)) {
     const line = rawLine.trim();
     if (!line || line === "•") continue;
+    if (/^(produktbeskrivning|product description)$/i.test(line)) continue;
     if (!keepUsefulDescriptionLine(line)) continue;
     if (seen.has(line)) continue;
     seen.add(line);
@@ -76,6 +77,70 @@ const normalizeDescriptionHtml = (value) => {
   }
 
   return lines.join("\n").trim();
+};
+
+const extractBalancedInnerHtml = (html, openTagIndex, tagName) => {
+  const src = String(html || "");
+  const lower = src.toLowerCase();
+  const open = lower.indexOf(`<${tagName}`, openTagIndex);
+  if (open < 0) return "";
+  const openEnd = src.indexOf(">", open);
+  if (openEnd < 0) return "";
+
+  let depth = 1;
+  let cursor = openEnd + 1;
+  const openNeedle = `<${tagName}`;
+  const closeNeedle = `</${tagName}`;
+
+  while (cursor < src.length) {
+    const nextOpen = lower.indexOf(openNeedle, cursor);
+    const nextClose = lower.indexOf(closeNeedle, cursor);
+    if (nextClose < 0) break;
+
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth += 1;
+      cursor = nextOpen + openNeedle.length;
+      continue;
+    }
+
+    depth -= 1;
+    if (depth === 0) {
+      return src.slice(openEnd + 1, nextClose);
+    }
+    cursor = nextClose + closeNeedle.length;
+  }
+
+  return "";
+};
+
+const extractDescriptionFromHtmlSection = (html) => {
+  const src = String(html || "");
+
+  // CDON renders description in a product-description section, with a nested content div:
+  // - data-cy="product-description"
+  // - aria-label="Produktbeskrivning content" (sv-SE) / "Product description content" (en-*)
+  const sectionIdx = src.search(/data-cy=["']product-description["']/i);
+  if (sectionIdx < 0) return "";
+
+  const slice = src.slice(sectionIdx);
+  const contentRe =
+    /<div[^>]+aria-label=["'](?:produktbeskrivning|product description)\s+content["'][^>]*>/i;
+  const contentMatch = slice.match(contentRe);
+  if (contentMatch?.index !== undefined) {
+    const inner = extractBalancedInnerHtml(slice, contentMatch.index, "div");
+    const normalized = normalizeDescriptionHtml(inner);
+    if (normalized) return normalized;
+  }
+
+  const containerRe = /<div[^>]+data-cy=["']product-description["'][^>]*>/i;
+  const containerMatch = slice.match(containerRe);
+  if (containerMatch?.index !== undefined) {
+    const inner = extractBalancedInnerHtml(slice, containerMatch.index, "div");
+    const normalized = normalizeDescriptionHtml(inner);
+    if (normalized) return normalized;
+  }
+
+  return "";
 };
 
 const extractDescriptionFromNextData = (html) => {
@@ -109,6 +174,9 @@ const extractDescription = (html) => {
   const src = String(html || "");
   const nextDataDescription = extractDescriptionFromNextData(src);
   if (nextDataDescription) return nextDataDescription;
+
+  const sectionDescription = extractDescriptionFromHtmlSection(src);
+  if (sectionDescription) return sectionDescription;
 
   const startIdx = src.search(/data-cy=["']product-description["']/i);
   let slice = startIdx >= 0 ? src.slice(startIdx) : src;

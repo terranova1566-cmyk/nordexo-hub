@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { spawn } from "node:child_process";
 import { createServerSupabase } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
 
 // Keep this in sync with what the production UI needs.
 const PRODUCT_SELECT =
   "provider, product_id, title, product_url, image_url, image_local_path, image_local_url, source_url, taxonomy_l1, taxonomy_l2, taxonomy_l3, taxonomy_path, first_seen_at, last_seen_at, sold_today, sold_7d, sold_all_time, price, previous_price, last_price, last_previous_price, reviews, last_reviews, delivery_time, last_delivery_time, identical_spu";
+
+const SUPPLIER_PAYLOAD_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/production-supplier-fetch-worker.mjs";
 
 type ProductionItemInput = {
   provider: string;
@@ -27,6 +33,39 @@ type DigidealManualSupplierRow = {
   product_id: string;
   "1688_URL"?: string | null;
   "1688_url"?: string | null;
+};
+
+const canonical1688Url = (value: string | null) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return null;
+  const match = raw.match(
+    /(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i
+  );
+  if (match?.[1]) {
+    return `https://detail.1688.com/offer/${match[1]}.html`;
+  }
+  return raw;
+};
+
+const spawnSupplierPayloadWorkerBestEffort = (
+  provider: string,
+  productId: string
+) => {
+  try {
+    const child = spawn(
+      process.execPath,
+      [SUPPLIER_PAYLOAD_WORKER_PATH, "--provider", provider, "--product-id", productId],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env },
+      }
+    );
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const getAdminClient = () => {
@@ -157,6 +196,91 @@ export async function GET() {
           firstString((row as any)["1688_URL"]) || firstString((row as any)["1688_url"]);
         if (url) manualSupplierMap.set(String(row.product_id), url);
       });
+
+      // DigiDeal: if a supplier URL was manually set (EST rerun price), it should behave like a
+      // selected supplier in the production queue. Historically those items didn't create a
+      // selection row, which left the UI showing "Fetching 1688 data" forever.
+      if (isAdmin && adminClient && manualSupplierMap.size > 0) {
+        const manualIds = Array.from(manualSupplierMap.keys());
+        const { data: existingSelections, error: existingError } = await adminClient
+          .from("discovery_production_supplier_selection")
+          .select("product_id")
+          .eq("provider", "digideal")
+          .in("product_id", manualIds);
+        if (existingError) {
+          return NextResponse.json({ error: existingError.message }, { status: 500 });
+        }
+
+        const existingSet = new Set(
+          (existingSelections ?? []).map((row: any) => String(row.product_id))
+        );
+        const missing = manualIds.filter((id) => !existingSet.has(id));
+        if (missing.length > 0) {
+          const now = new Date().toISOString();
+          const rowsToUpsert = missing
+            .map((id) => {
+              const raw = manualSupplierMap.get(id) ?? null;
+              const url = canonical1688Url(raw);
+              if (!url) return null;
+              return {
+                provider: "digideal",
+                product_id: id,
+                selected_offer_id: null,
+                selected_detail_url: url,
+                selected_offer: {
+                  detailUrl: url,
+                  source: "digideal_manual",
+                  _production_payload_status: "fetching",
+                  _production_payload_source: "auto",
+                  _production_payload_error: null,
+                  _production_payload_file_name: null,
+                  _production_payload_file_path: null,
+                  _production_payload_updated_at: now,
+                  _production_payload_saved_at: null,
+                  _production_payload_competitor_error: null,
+                },
+                selected_at: now,
+                selected_by: user.id,
+                updated_at: now,
+              };
+            })
+            .filter(Boolean);
+
+          if (rowsToUpsert.length > 0) {
+            const { error: upsertError } = await adminClient
+              .from("discovery_production_supplier_selection")
+              .upsert(rowsToUpsert, { onConflict: "provider,product_id" });
+            if (upsertError) {
+              return NextResponse.json({ error: upsertError.message }, { status: 500 });
+            }
+
+            // Kick off the background payload fetch for each newly created selection.
+            for (const row of rowsToUpsert) {
+              const started = spawnSupplierPayloadWorkerBestEffort(
+                "digideal",
+                String((row as any).product_id)
+              );
+              if (!started) {
+                const failedAt = new Date().toISOString();
+                await adminClient
+                  .from("discovery_production_supplier_selection")
+                  .update({
+                    selected_offer: {
+                      ...(row as any).selected_offer,
+                      _production_payload_status: "failed",
+                      _production_payload_error:
+                        "Unable to start background 1688 fetch job.",
+                      _production_payload_updated_at: failedAt,
+                    },
+                    updated_at: failedAt,
+                  })
+                  .eq("provider", "digideal")
+                  .eq("product_id", String((row as any).product_id));
+              }
+            }
+          }
+        }
+      }
 
       const digidealItems = (rows ?? []).map((row) => {
         const listingTitle = firstString((row as any).listing_title);

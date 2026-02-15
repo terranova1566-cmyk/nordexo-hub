@@ -52,9 +52,169 @@
       "context": "Product discovery menu item"
     },
     {
+      "key": "nav.amazonScraper",
+      "text": "Amazon Scraper",
+      "context": "Product discovery menu item"
+    },
+    {
       "key": "nav.digideal",
       "text": "DigiDeal",
       "context": "Main navigation item"
+    },
+    {
+      "key": "amazonScraper.title",
+      "text": "Amazon Scraper",
+      "context": "Amazon scraper page title"
+    },
+    {
+      "key": "amazonScraper.subtitle",
+      "text": "Scrape full product pages into Full Scrapes and scrape listings into Product Card Scrapes. Recommended products are saved as related product ideas.",
+      "context": "Amazon scraper page subtitle"
+    },
+    {
+      "key": "amazonScraper.products.title",
+      "text": "Full Scrapes",
+      "context": "Amazon scraper page section title"
+    },
+    {
+      "key": "amazonScraper.products.urlsLabel",
+      "text": "Product URLs",
+      "context": "Amazon scraper product URLs label"
+    },
+    {
+      "key": "amazonScraper.products.urlsPlaceholder",
+      "text": "One Amazon product URL per line",
+      "context": "Amazon scraper product URLs placeholder"
+    },
+    {
+      "key": "amazonScraper.products.helper",
+      "text": "These will be fully scraped (variants + images + details).",
+      "context": "Amazon scraper product URLs helper"
+    },
+    {
+      "key": "amazonScraper.listings.title",
+      "text": "Product Card Scrapes",
+      "context": "Amazon scraper page section title"
+    },
+    {
+      "key": "amazonScraper.listings.urlsLabel",
+      "text": "Search/listing URLs",
+      "context": "Amazon scraper listing URLs label"
+    },
+    {
+      "key": "amazonScraper.listings.urlsPlaceholder",
+      "text": "One Amazon search/category/bestseller URL per line",
+      "context": "Amazon scraper listing URLs placeholder"
+    },
+    {
+      "key": "amazonScraper.listings.helper",
+      "text": "These pages are scraped into lightweight product cards (title, price, image, URL).",
+      "context": "Amazon scraper listing URLs helper"
+    },
+    {
+      "key": "amazonScraper.options.title",
+      "text": "Options",
+      "context": "Amazon scraper options title"
+    },
+    {
+      "key": "amazonScraper.options.provider",
+      "text": "Provider",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.options.providerOxylabs",
+      "text": "Oxylabs (paid, reliable)",
+      "context": "Amazon scraper provider option"
+    },
+    {
+      "key": "amazonScraper.options.providerDirect",
+      "text": "Direct (free, best-effort)",
+      "context": "Amazon scraper provider option"
+    },
+    {
+      "key": "amazonScraper.options.includeVariantImages",
+      "text": "Fetch variant images (may be slower)",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.options.includeRelated",
+      "text": "Capture recommended products from product pages",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.options.downloadImages",
+      "text": "Download images to server disk",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.options.maxRelated",
+      "text": "Max related",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.options.maxItems",
+      "text": "Max listing items",
+      "context": "Amazon scraper option label"
+    },
+    {
+      "key": "amazonScraper.actions.scrapeProducts",
+      "text": "Scrape products",
+      "context": "Amazon scraper action label"
+    },
+    {
+      "key": "amazonScraper.actions.scrapeListings",
+      "text": "Scrape listings",
+      "context": "Amazon scraper action label"
+    },
+    {
+      "key": "amazonScraper.status.scrapingProducts",
+      "text": "Scraping products...",
+      "context": "Amazon scraper status"
+    },
+    {
+      "key": "amazonScraper.status.scrapingListings",
+      "text": "Scraping listings...",
+      "context": "Amazon scraper status"
+    },
+    {
+      "key": "amazonScraper.status.idle",
+      "text": "Idle",
+      "context": "Amazon scraper status"
+    },
+    {
+      "key": "amazonScraper.validation.missingProductUrls",
+      "text": "Add at least one product URL.",
+      "context": "Amazon scraper validation message"
+    },
+    {
+      "key": "amazonScraper.validation.missingListingUrls",
+      "text": "Add at least one listing URL.",
+      "context": "Amazon scraper validation message"
+    },
+    {
+      "key": "amazonScraper.error.generic",
+      "text": "Request failed.",
+      "context": "Amazon scraper error message"
+    },
+    {
+      "key": "amazonScraper.error.someFailed",
+      "text": "Some scrapes failed. See errors below.",
+      "context": "Amazon scraper error message"
+    },
+    {
+      "key": "amazonScraper.errors.title",
+      "text": "Errors",
+      "context": "Amazon scraper errors table title"
+    },
+    {
+      "key": "amazonScraper.results.full.title",
+      "text": "Full scrapes",
+      "context": "Amazon scraper results table title"
+    },
+    {
+      "key": "amazonScraper.results.cards.title",
+      "text": "Product cards",
+      "context": "Amazon scraper results table title"
     },
     {
       "key": "nav.digidealDealsManager",
@@ -74,6 +234,11 @@
     {
       "key": "nav.digidealCampaigns",
       "text": "DigiDeal Deals",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.marketTrends",
+      "text": "Market Trends",
       "context": "Main navigation item"
     },
     {
@@ -2734,8 +2899,73 @@
     },
     {
       "key": "home.subtitle",
-      "text": "Welcome to Nodexo Hub!\n\nThis is our product and sales management platform, currently under development. You can start by exploring different tools and functions in the top menu.\n\nIf you find any bugs or issues, please contact admin support at partner@nordexo.se.\n\nEnjoy!",
+      "text": "Welcome to Nodexo Hub!\n\nMarket Trends Reports are generated daily from monitored commerce sites by extracting front-page visible text + OCR from promo images, then summarizing themes and featured products with AI. Browse daily and weekly reports in Market Trends.\n\nIf you find any bugs or issues, please contact admin support at partner@nordexo.se.",
       "context": "Landing page subtitle"
+    },
+    {
+      "key": "home.marketTrends.title",
+      "text": "Market Trends Report",
+      "context": "Landing page market trends card title"
+    },
+    {
+      "key": "home.marketTrends.loading",
+      "text": "Loading latest weekly report...",
+      "context": "Landing page market trends report loading label"
+    },
+    {
+      "key": "home.marketTrends.empty",
+      "text": "No report available yet.",
+      "context": "Landing page market trends empty state"
+    },
+    {
+      "key": "home.marketTrends.viewHint",
+      "text": "View all reports",
+      "context": "Landing page market trends link hint"
+    },
+    {
+      "key": "home.marketTrends.view",
+      "text": "Open Market Trends",
+      "context": "Landing page market trends button"
+    },
+    {
+      "key": "marketTrends.title",
+      "text": "Market Trends",
+      "context": "Market trends page title"
+    },
+    {
+      "key": "marketTrends.subtitle",
+      "text": "Daily and weekly AI reports generated from monitored front pages.",
+      "context": "Market trends page subtitle"
+    },
+    {
+      "key": "marketTrends.provider.label",
+      "text": "Website",
+      "context": "Market trends filter label"
+    },
+    {
+      "key": "marketTrends.period.label",
+      "text": "Period",
+      "context": "Market trends filter label"
+    },
+    {
+      "key": "marketTrends.report.label",
+      "text": "Report",
+      "context": "Market trends report selector label"
+    },
+    {
+      "key": "marketTrends.loading",
+      "text": "Loading market trends...",
+      "context": "Market trends loading label"
+    },
+    {
+      "key": "marketTrends.empty",
+      "text": "No reports found.",
+      "context": "Market trends empty state"
+    },
+    {
+      "key": "marketTrends.error",
+      "text": "Unable to load market trends report.",
+      "context": "Market trends error message"
     },
     {
       "key": "common.save",

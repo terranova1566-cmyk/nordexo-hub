@@ -126,6 +126,9 @@ type SupplierSelection = {
 
 type CropRectNorm = { x: number; y: number; w: number; h: number };
 
+const DEFAULT_CROP_MARGIN_PX = 15;
+const DEFAULT_CROP_RECT_FALLBACK: CropRectNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
+
 type VariantCombo = {
   index: number;
   t1: string;
@@ -163,6 +166,12 @@ type SellerOption = {
   seller_name: string;
   product_count: number;
 };
+
+type SupplierWorkflowFilter =
+  | "all"
+  | "no_supplier"
+  | "need_select_supplier"
+  | "need_pick_variants";
 
 type CategoryNode = {
   name: string;
@@ -250,6 +259,74 @@ const TrashIcon = ({ className }: { className?: string }) => (
     <path d="M14 11l0 6" />
     <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
     <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+  </svg>
+);
+
+const PhotoSearchIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width="16"
+    height="16"
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M15 8h.01" />
+    <path d="M11.5 21h-5.5a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5.5" />
+    <path d="M15 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+    <path d="M20.2 20.2l1.8 1.8" />
+    <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l2 2" />
+  </svg>
+);
+
+const FormsIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width="16"
+    height="16"
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M12 3a3 3 0 0 0 -3 3v12a3 3 0 0 0 3 3" />
+    <path d="M6 3a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3" />
+    <path d="M13 7h7a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-7" />
+    <path d="M5 7h-1a1 1 0 0 0 -1 1v8a1 1 0 0 0 1 1h1" />
+    <path d="M17 12h.01" />
+    <path d="M13 12h.01" />
+  </svg>
+);
+
+const ReplaceIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+    fill="currentColor"
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M8 2h-4a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2z" />
+    <path d="M20 14h-4a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2z" />
+    <path d="M16.707 2.293a1 1 0 0 1 .083 1.32l-.083 .094l-1.293 1.293h3.586a3 3 0 0 1 2.995 2.824l.005 .176v3a1 1 0 0 1 -1.993 .117l-.007 -.117v-3a1 1 0 0 0 -.883 -.993l-.117 -.007h-3.585l1.292 1.293a1 1 0 0 1 -1.32 1.497l-.094 -.083l-3 -3a.98 .98 0 0 1 -.28 -.872l.036 -.146l.04 -.104c.058 -.126 .14 -.24 .245 -.334l2.959 -2.958a1 1 0 0 1 1.414 0z" />
+    <path d="M3 12a1 1 0 0 1 .993 .883l.007 .117v3a1 1 0 0 0 .883 .993l.117 .007h3.585l-1.292 -1.293a1 1 0 0 1 -.083 -1.32l.083 -.094a1 1 0 0 1 1.32 -.083l.094 .083l3 3a.98 .98 0 0 1 .28 .872l-.036 .146l-.04 .104a1.02 1.02 0 0 1 -.245 .334l-2.959 2.958a1 1 0 0 1 -1.497 -1.32l.083 -.094l1.291 -1.293h-3.584a3 3 0 0 1 -2.995 -2.824l-.005 -.176v-3a1 1 0 0 1 1 -1z" />
   </svg>
 );
 
@@ -747,6 +824,37 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground2,
     },
   },
+  compactMenuPopover: {
+    fontSize: tokens.fontSizeBase200,
+    "& .fui-MenuItem": {
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase200,
+      minHeight: "28px",
+      paddingBlock: "4px",
+      display: "flex",
+      alignItems: "center",
+    },
+    "& .fui-MenuItem__content": {
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase200,
+      display: "flex",
+      alignItems: "center",
+    },
+  },
+  compactMenuList: {
+    paddingBlock: "4px",
+  },
+  menuItemContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  menuItemIcon: {
+    width: "16px",
+    height: "16px",
+    color: tokens.colorNeutralForeground3,
+    flexShrink: 0,
+  },
   supplierAddButton: {
     backgroundColor: "#ffe480",
     border: "1px solid #e0c666",
@@ -758,6 +866,37 @@ const useStyles = makeStyles({
       backgroundColor: "#edd36a",
       border: "1px solid #c8b255",
     },
+  },
+  supplierSelectButton: {
+    backgroundColor: "#e7f0ff",
+    border: "1px solid #b9d1ff",
+    color: tokens.colorBrandForeground1,
+    "&:hover": {
+      backgroundColor: "#dbe9ff",
+      border: "1px solid #a9c6ff",
+    },
+    "&:active": {
+      backgroundColor: "#d2e3ff",
+      border: "1px solid #9bbcff",
+    },
+  },
+  supplierSearchingButton: {
+    backgroundColor: tokens.colorNeutralBackground2,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground2,
+    "&:disabled": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      color: tokens.colorNeutralForeground2,
+      opacity: 1,
+      cursor: "not-allowed",
+    },
+  },
+  supplierSearchingContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    whiteSpace: "nowrap",
   },
   supplierSelectedButton: {
     backgroundColor: "#d6f5da",
@@ -951,6 +1090,37 @@ const useStyles = makeStyles({
     borderRadius: "8px",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground3,
+    display: "block",
+  },
+  supplierThumbWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "96px",
+    height: "96px",
+  },
+  supplierThumbPopoverSurface: {
+    padding: 0,
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    boxShadow: tokens.shadow16,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  supplierThumbZoomWrap: {
+    width: "350px",
+    height: "350px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  supplierThumbZoomImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   supplierMeta: {
     display: "flex",
@@ -1011,8 +1181,8 @@ const useStyles = makeStyles({
     padding: "16px",
   },
   cropModal: {
-    width: "min(520px, 92vw)",
-    aspectRatio: "1 / 1",
+    width: "min(980px, 100%)",
+    height: "min(640px, 100%)",
     borderRadius: "14px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
@@ -1049,20 +1219,67 @@ const useStyles = makeStyles({
   cropModalTitle: {
     fontWeight: tokens.fontWeightSemibold,
   },
-  cropStage: {
-    position: "absolute",
-    inset: 0,
-    backgroundColor: tokens.colorNeutralBackground3,
-  },
-  cropStageViewport: {
+  cropBodyRow: {
     position: "absolute",
     left: "12px",
     right: "12px",
     top: "52px",
     bottom: "58px",
+    display: "flex",
+    gap: "12px",
+    alignItems: "stretch",
+    justifyContent: "stretch",
+  },
+  cropGallery: {
+    width: "min(420px, 42vw)",
+    minWidth: "240px",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "auto",
+    padding: "10px",
+  },
+  cropGalleryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
+  },
+  cropGalleryButton: {
+    appearance: "none",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    padding: 0,
+    backgroundColor: tokens.colorNeutralBackground1,
+    cursor: "pointer",
+    overflow: "hidden",
+    transition: "border-color 120ms ease, box-shadow 120ms ease",
+    "&:hover": {
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+    },
+  },
+  cropGalleryButtonActive: {
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    boxShadow: "0 0 0 2px rgba(15,108,189,0.14)",
+  },
+  cropGalleryThumb: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  cropGalleryImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  cropStage: {
+    position: "relative",
+    flex: "1 1 auto",
+    minWidth: 0,
     borderRadius: "12px",
     overflow: "hidden",
     backgroundColor: tokens.colorNeutralBackground3,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
   },
   cropStagePadding: {
     position: "absolute",
@@ -1113,8 +1330,8 @@ const useStyles = makeStyles({
   cropHandleSW: { left: "-7px", bottom: "-7px", cursor: "nesw-resize" },
   cropHandleSE: { right: "-7px", bottom: "-7px", cursor: "nwse-resize" },
   variantsDialog: {
-    width: "min(1080px, 95vw)",
-    maxWidth: "min(1080px, 95vw)",
+    width: "min(810px, 95vw)",
+    maxWidth: "min(810px, 95vw)",
   },
   variantsDialogBody: {
     maxHeight: "86vh",
@@ -1124,18 +1341,32 @@ const useStyles = makeStyles({
   },
   variantsHeaderRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: "10px",
+    marginBottom: "12px",
+  },
+  variantsHeaderLeft: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "12px",
+    minWidth: 0,
+  },
+  variantsHeaderRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "12px",
+    flexShrink: 0,
   },
   variantsTitleStack: {
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: "2px",
   },
   variantsTitleText: {
-    fontSize: tokens.fontSizeBase300,
+    fontSize: tokens.fontSizeBase400,
+    lineHeight: tokens.lineHeightBase400,
     fontWeight: tokens.fontWeightSemibold,
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -1158,6 +1389,47 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexShrink: 0,
+  },
+  variantsHeroThumbWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantsHeroThumbFrame: {
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "zoom-in",
+  },
+  variantsHeroThumbImage: {
+    width: "auto",
+    height: "auto",
+    maxWidth: "150px",
+    maxHeight: "75px",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsHeroPopoverSurface: {
+    padding: 0,
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    boxShadow: tokens.shadow16,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsHeroZoomImage: {
+    width: "450px",
+    maxWidth: "70vw",
+    height: "auto",
+    maxHeight: "70vh",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   variantsListWrap: {
     overflow: "auto",
@@ -1188,6 +1460,17 @@ const useStyles = makeStyles({
     verticalAlign: "middle",
     fontSize: tokens.fontSizeBase200,
   },
+  variantEditInput: {
+    width: "84px",
+    maxWidth: "84px",
+    minWidth: 0,
+    "& input": {
+      fontSize: tokens.fontSizeBase200,
+      paddingBlock: "4px",
+      paddingInline: "6px",
+      fontVariantNumeric: "tabular-nums",
+    },
+  },
   variantsRowClickable: {
     cursor: "pointer",
     "&:hover": {
@@ -1195,18 +1478,22 @@ const useStyles = makeStyles({
     },
   },
   variantImageCellWrap: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    width: "100%",
+    height: "100%",
+    lineHeight: 0,
   },
   variantImageThumb: {
-    width: "44px",
-    height: "44px",
+    width: "49px",
+    height: "49px",
     objectFit: "cover",
     borderRadius: "6px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground3,
     display: "block",
+    flexShrink: 0,
   },
   variantImagePopoverSurface: {
     padding: "6px",
@@ -2172,6 +2459,8 @@ export default function DigidealCampaignsPage() {
   const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
   const [sellerDraft, setSellerDraft] = useState<Set<string>>(new Set());
   const [priceMatch, setPriceMatch] = useState("all");
+  const [supplierWorkflowFilter, setSupplierWorkflowFilter] =
+    useState<SupplierWorkflowFilter>("all");
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2186,6 +2475,12 @@ export default function DigidealCampaignsPage() {
   const [isRerunSaving, setIsRerunSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkFindingSuppliers, setBulkFindingSuppliers] = useState(false);
+  const [bulkFindingSupplierProgress, setBulkFindingSupplierProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const [supplierFindingIds, setSupplierFindingIds] = useState<Set<string>>(new Set());
   const [isOptimizeDialogOpen, setIsOptimizeDialogOpen] = useState(false);
   const [optimizeTargetTitle, setOptimizeTargetTitle] = useState<string | null>(
     null
@@ -2216,12 +2511,16 @@ export default function DigidealCampaignsPage() {
   const [supplierPriceSortDir, setSupplierPriceSortDir] = useState<"asc" | "desc" | null>(null);
   const [supplierSearchBusy, setSupplierSearchBusy] = useState(false);
   const [supplierSearchImageUrl, setSupplierSearchImageUrl] = useState<string | null>(null);
+  const [supplierThumbPreviewKey, setSupplierThumbPreviewKey] = useState<string | null>(null);
+  const [supplierSearchHeroPreviewOpen, setSupplierSearchHeroPreviewOpen] = useState(false);
+  const [supplierSearchHeroZoomReady, setSupplierSearchHeroZoomReady] = useState(false);
 
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
   const [cropNaturalSize, setCropNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const cropStageRef = useRef<HTMLDivElement | null>(null);
-  const [cropRect, setCropRect] = useState<CropRectNorm>({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+  const [cropRect, setCropRect] = useState<CropRectNorm>(DEFAULT_CROP_RECT_FALLBACK);
+  const cropTouchedRef = useRef(false);
   const dragRef = useRef<{
     handle: "nw" | "ne" | "sw" | "se" | "move";
     startX: number;
@@ -2233,6 +2532,12 @@ export default function DigidealCampaignsPage() {
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const [variantsTarget, setVariantsTarget] = useState<DigidealItem | null>(null);
   const [variantsCombos, setVariantsCombos] = useState<VariantCombo[]>([]);
+  const [variantPriceDraftByIndex, setVariantPriceDraftByIndex] = useState<Record<number, string>>(
+    {}
+  );
+  const [variantWeightDraftByIndex, setVariantWeightDraftByIndex] = useState<Record<number, string>>(
+    {}
+  );
   const [variantsSelectedIndexes, setVariantsSelectedIndexes] = useState<Set<number>>(
     () => new Set()
   );
@@ -2241,6 +2546,8 @@ export default function DigidealCampaignsPage() {
   const [variantsSaving, setVariantsSaving] = useState(false);
   const [variantsError, setVariantsError] = useState<string | null>(null);
   const [variantImagePreviewIndex, setVariantImagePreviewIndex] = useState<number | null>(null);
+  const [variantsHeroPreviewOpen, setVariantsHeroPreviewOpen] = useState(false);
+  const [variantsHeroZoomReady, setVariantsHeroZoomReady] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [linkedDialogOpen, setLinkedDialogOpen] = useState(false);
   const [linkedTarget, setLinkedTarget] = useState<DigidealItem | null>(null);
@@ -2250,6 +2557,260 @@ export default function DigidealCampaignsPage() {
   const [linkedLoading, setLinkedLoading] = useState(false);
   const [linkedSaving, setLinkedSaving] = useState(false);
   const [linkedError, setLinkedError] = useState<string | null>(null);
+
+  const variantsHeroImageSrc = useMemo(() => {
+    if (!variantsTarget) return null;
+    const imageUrls = normalizeImageUrls(variantsTarget.image_urls);
+    return variantsTarget.primary_image_url || imageUrls[0] || null;
+  }, [variantsTarget]);
+
+  const supplierSearchHeroImageSrc = useMemo(() => {
+    if (!supplierSearchTarget) return null;
+    const imageUrls = normalizeImageUrls(supplierSearchTarget.image_urls);
+    return supplierSearchTarget.primary_image_url || imageUrls[0] || null;
+  }, [supplierSearchTarget]);
+
+  const supplierSearchTargetTitle = useMemo(() => {
+    if (!supplierSearchTarget) return "";
+    return (
+      supplierSearchTarget.listing_title ||
+      supplierSearchTarget.title_h1 ||
+      supplierSearchTarget.product_slug ||
+      supplierSearchTarget.product_id ||
+      ""
+    );
+  }, [supplierSearchTarget]);
+
+  useEffect(() => {
+    if (!supplierSearchDialogOpen || !supplierSearchHeroImageSrc) {
+      setSupplierSearchHeroPreviewOpen(false);
+      setSupplierSearchHeroZoomReady(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let active = true;
+    setSupplierSearchHeroZoomReady(false);
+
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = supplierSearchHeroImageSrc;
+
+    const markReady = async () => {
+      try {
+        if (typeof img.decode === "function") {
+          await img.decode();
+        }
+      } catch {
+        // ignore decode failures
+      }
+      if (active) setSupplierSearchHeroZoomReady(true);
+    };
+
+    img.onload = () => {
+      void markReady();
+    };
+    img.onerror = () => {
+      // Don't block hover popover forever on transient image failures.
+      if (active) setSupplierSearchHeroZoomReady(true);
+    };
+
+    return () => {
+      active = false;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [supplierSearchDialogOpen, supplierSearchHeroImageSrc]);
+
+  useEffect(() => {
+    if (!variantsDialogOpen || !variantsHeroImageSrc) {
+      setVariantsHeroZoomReady(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let active = true;
+    setVariantsHeroZoomReady(false);
+
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = variantsHeroImageSrc;
+
+    const markReady = async () => {
+      try {
+        if (typeof img.decode === "function") {
+          await img.decode();
+        }
+      } catch {
+        // ignore decode failures
+      }
+      if (active) setVariantsHeroZoomReady(true);
+    };
+
+    img.onload = () => {
+      void markReady();
+    };
+    img.onerror = () => {
+      // Don't block hover popover forever on transient image failures.
+      if (active) setVariantsHeroZoomReady(true);
+    };
+
+    return () => {
+      active = false;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [variantsDialogOpen, variantsHeroImageSrc]);
+
+  type PricingMarket = {
+    market: string;
+    currency: string;
+    fx_rate_cny: number;
+    weight_threshold_g: number;
+    packing_fee: number;
+    markup_percent: number;
+    markup_fixed: number;
+  };
+
+  type PricingShippingClass = {
+    market: string;
+    shipping_class: string;
+    rate_low: number;
+    rate_high: number;
+    base_low: number;
+    base_high: number;
+    mult_low: number;
+    mult_high: number;
+  };
+
+  type PricingSeConfig = {
+    market: PricingMarket;
+    shippingClass: PricingShippingClass;
+  };
+
+  const pricingSeConfigRef = useRef<PricingSeConfig | null>(null);
+
+  const loadPricingSeConfig = useCallback(async (): Promise<PricingSeConfig | null> => {
+    if (pricingSeConfigRef.current) return pricingSeConfigRef.current;
+    try {
+      const response = await fetch("/api/pricing/config", { cache: "no-store" });
+      if (!response.ok) return null;
+      const payload = await response.json().catch(() => null);
+      const markets = Array.isArray((payload as any)?.markets) ? (payload as any).markets : [];
+      const shippingClasses = Array.isArray((payload as any)?.shippingClasses)
+        ? (payload as any).shippingClasses
+        : [];
+
+      const pickSeRow = (row: any) => String(row?.market ?? "").trim().toUpperCase() === "SE";
+      const marketRow = markets.find(pickSeRow) ?? null;
+      const shippingRow =
+        shippingClasses.find(
+          (row: any) =>
+            pickSeRow(row) &&
+            String(row?.shipping_class ?? "").trim().toUpperCase() === "NOR"
+        ) ??
+        shippingClasses.find(pickSeRow) ??
+        null;
+
+      const toNumber = (value: unknown, fallback = 0) => {
+        const n = typeof value === "string" ? Number(value) : (value as number);
+        return Number.isFinite(n) ? Number(n) : fallback;
+      };
+
+      if (!marketRow || !shippingRow) return null;
+
+      const config: PricingSeConfig = {
+        market: {
+          market: "SE",
+          currency: String(marketRow.currency ?? "SEK").trim().toUpperCase() || "SEK",
+          fx_rate_cny: toNumber(marketRow.fx_rate_cny),
+          weight_threshold_g: Math.round(toNumber(marketRow.weight_threshold_g, 300)),
+          packing_fee: toNumber(marketRow.packing_fee),
+          markup_percent: toNumber(marketRow.markup_percent),
+          markup_fixed: toNumber(marketRow.markup_fixed),
+        },
+        shippingClass: {
+          market: "SE",
+          shipping_class: String(shippingRow.shipping_class ?? "NOR").trim().toUpperCase() || "NOR",
+          rate_low: toNumber(shippingRow.rate_low),
+          rate_high: toNumber(shippingRow.rate_high),
+          base_low: toNumber(shippingRow.base_low),
+          base_high: toNumber(shippingRow.base_high),
+          mult_low: toNumber(shippingRow.mult_low, 1),
+          mult_high: toNumber(shippingRow.mult_high, 1),
+        },
+      };
+
+      pricingSeConfigRef.current = config;
+      return config;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const computeEstimatedPriceSe = useCallback(
+    (purchaseCny: number, weightKg: number, config: PricingSeConfig): number | null => {
+      if (!Number.isFinite(purchaseCny) || purchaseCny <= 0) return null;
+      if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
+
+      const weightG = weightKg * 1000;
+      const useLow = weightG <= config.market.weight_threshold_g;
+      const rate = useLow ? config.shippingClass.rate_low : config.shippingClass.rate_high;
+      const base = useLow ? config.shippingClass.base_low : config.shippingClass.base_high;
+      const mult = useLow ? config.shippingClass.mult_low : config.shippingClass.mult_high;
+      const shippingCny = weightG * mult * rate + base;
+      const shippingLocal = shippingCny * config.market.fx_rate_cny + config.market.packing_fee;
+      const stockLocal = purchaseCny * config.market.fx_rate_cny;
+      const totalCost = stockLocal + shippingLocal;
+      const rawPrice =
+        totalCost * (1 + config.market.markup_percent) + config.market.markup_fixed;
+
+      const price =
+        config.market.currency === "EUR"
+          ? Number(rawPrice.toFixed(2))
+          : Math.round(rawPrice);
+      return Number.isFinite(price) ? price : null;
+    },
+    []
+  );
+
+  const updateEstimatedPriceForRow = useCallback(
+    async (productId: string, purchaseCny: number | null, weightKg: number | null) => {
+      const safeProductId = String(productId || "").trim();
+      if (!safeProductId) return;
+      if (purchaseCny === null || weightKg === null) return;
+
+      const config = await loadPricingSeConfig();
+      if (!config) return;
+
+      const estimated = computeEstimatedPriceSe(purchaseCny, weightKg, config);
+      if (estimated === null) return;
+
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.product_id === safeProductId
+            ? { ...entry, estimated_rerun_price: estimated }
+            : entry
+        )
+      );
+    },
+    [computeEstimatedPriceSe, loadPricingSeConfig]
+  );
+
+  const supplierPayloadPollersRef = useRef<Map<string, { stop: () => void }>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      for (const poller of supplierPayloadPollersRef.current.values()) {
+        try {
+          poller.stop();
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      supplierPayloadPollersRef.current.clear();
+    };
+  }, []);
 
   const openRerunDialog = (title: string, productIds: string | string[]) => {
     const ids = Array.isArray(productIds) ? productIds : [productIds];
@@ -2313,14 +2874,149 @@ export default function DigidealCampaignsPage() {
     });
   }, []);
 
+  const startSupplierPayloadPoll = useCallback(
+    (productId: string, expectedOfferId: string | null) => {
+      const safeProductId = String(productId || "").trim();
+      if (!safeProductId) return;
+
+      const existing = supplierPayloadPollersRef.current.get(safeProductId);
+      if (existing) existing.stop();
+
+      let active = true;
+      let attempts = 0;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      let controller: AbortController | null = null;
+
+      const stop = () => {
+        active = false;
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = null;
+        if (controller) controller.abort();
+        controller = null;
+        supplierPayloadPollersRef.current.delete(safeProductId);
+      };
+
+      supplierPayloadPollersRef.current.set(safeProductId, { stop });
+
+      const tick = async () => {
+        if (!active) return;
+        attempts += 1;
+
+        controller = new AbortController();
+        try {
+          const params = new URLSearchParams({
+            provider: "digideal",
+            product_id: safeProductId,
+          });
+          const response = await fetch(
+            `/api/production/suppliers/selection?${params.toString()}`,
+            {
+              signal: controller.signal,
+              cache: "no-store",
+            }
+          );
+          const payload = await response.json().catch(() => ({} as any));
+          if (!active) return;
+
+          if (response.ok) {
+            const selectedOfferIdRaw = payload?.selected_offer_id;
+            const selectedOfferId =
+              selectedOfferIdRaw === null || selectedOfferIdRaw === undefined
+                ? null
+                : String(selectedOfferIdRaw).trim() || null;
+
+            if (expectedOfferId && selectedOfferId && selectedOfferId !== expectedOfferId) {
+              stop();
+              return;
+            }
+
+            const meta =
+              payload?.meta && typeof payload.meta === "object" ? payload.meta : null;
+            if (meta) {
+              const nextPayloadStatus =
+                typeof meta.payload_status === "string" ? meta.payload_status : null;
+              const nextPayloadSource =
+                typeof meta.payload_source === "string" ? meta.payload_source : null;
+              const nextPayloadError =
+                typeof meta.payload_error === "string" ? meta.payload_error : null;
+              const nextPayloadSavedAt =
+                typeof meta.payload_saved_at === "string" ? meta.payload_saved_at : null;
+              const nextPayloadFileName =
+                typeof meta.payload_file_name === "string" ? meta.payload_file_name : null;
+              const nextPayloadFilePath =
+                typeof meta.payload_file_path === "string" ? meta.payload_file_path : null;
+              const nextVariantAvailableCount =
+                typeof meta.variant_available_count === "number"
+                  ? meta.variant_available_count
+                  : null;
+              const nextVariantSelectedCount =
+                typeof meta.variant_selected_count === "number"
+                  ? meta.variant_selected_count
+                  : null;
+              const nextVariantPacksText =
+                typeof meta.variant_packs_text === "string" ? meta.variant_packs_text : null;
+
+              setItems((prev) =>
+                prev.map((entry) =>
+                  entry.product_id === safeProductId
+                    ? {
+                        ...entry,
+                        supplier_payload_status: nextPayloadStatus,
+                        supplier_payload_source: nextPayloadSource,
+                        supplier_payload_error: nextPayloadError,
+                        supplier_payload_saved_at: nextPayloadSavedAt,
+                        supplier_payload_file_name: nextPayloadFileName,
+                        supplier_payload_file_path: nextPayloadFilePath,
+                        supplier_variant_available_count: nextVariantAvailableCount,
+                        supplier_variant_selected_count: nextVariantSelectedCount,
+                        supplier_variant_packs_text: nextVariantPacksText,
+                      }
+                    : entry
+                )
+              );
+
+              const normalizedStatus = String(nextPayloadStatus ?? "")
+                .trim()
+                .toLowerCase();
+              const done =
+                (normalizedStatus === "ready" && Boolean(nextPayloadFilePath)) ||
+                normalizedStatus === "failed";
+              if (done) {
+                stop();
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          // ignore transient failures; we'll retry
+        } finally {
+          controller = null;
+        }
+
+        if (!active) return;
+        if (attempts >= 80) {
+          stop();
+          return;
+        }
+        timeoutId = setTimeout(tick, attempts < 6 ? 1500 : 2500);
+      };
+
+      void tick();
+    },
+    []
+  );
+
   const openSupplierDialog = (item: DigidealItem) => {
     const weightGrams =
       item.weight_grams ??
       (item.weight_kg !== null && item.weight_kg !== undefined
         ? Math.round(item.weight_kg * 1000)
         : null);
+    const supplierUrlFallback =
+      item.supplier_url || item.supplier_selected_offer_detail_url || "";
     setSupplierTarget(item);
-    setSupplierUrlDraft(item.supplier_url ?? "");
+    setSupplierUrlDraft(supplierUrlFallback);
     setSupplierWeightDraft(weightGrams !== null ? String(weightGrams) : "");
     setSupplierPriceDraft(
       item.purchase_price !== null && item.purchase_price !== undefined
@@ -2350,10 +3046,12 @@ export default function DigidealCampaignsPage() {
     setSupplierTranslating(false);
     setSupplierPriceSortDir(null);
     setSupplierSearchImageUrl(null);
+    setSupplierThumbPreviewKey(null);
     setCropDialogOpen(false);
     setCropImageUrl(null);
     setCropNaturalSize(null);
-    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
     dragRef.current = null;
     setRecropSearching(false);
   }, []);
@@ -2362,12 +3060,16 @@ export default function DigidealCampaignsPage() {
     setVariantsDialogOpen(false);
     setVariantsTarget(null);
     setVariantsCombos([]);
+    setVariantPriceDraftByIndex({});
+    setVariantWeightDraftByIndex({});
     setVariantsSelectedIndexes(new Set());
     setVariantsPacksText("");
     setVariantsLoading(false);
     setVariantsSaving(false);
     setVariantsError(null);
     setVariantImagePreviewIndex(null);
+    setVariantsHeroPreviewOpen(false);
+    setVariantsHeroZoomReady(false);
   }, []);
 
   const hasCjk = useCallback((value: string) => /[\u3400-\u9fff]/.test(value), []);
@@ -2411,8 +3113,20 @@ export default function DigidealCampaignsPage() {
   const normalizeOfferPrice = useCallback((value: unknown) => {
     if (value === null || value === undefined || value === "") return null;
     if (typeof value === "number" && Number.isFinite(value)) {
-      if (Number.isInteger(value) && value >= 100 && value <= 100000) {
-        return value / 100;
+      if (Number.isInteger(value)) {
+        // 1688 sometimes returns "9.000" as an integer 9000 (thousandths), which would
+        // incorrectly show up as 90.00 if we always divide by 100. Use a narrow heuristic
+        // before applying the default /100 scaling.
+        if (value >= 1000 && value % 1000 === 0) {
+          const asCents = value / 100;
+          const asMillis = value / 1000;
+          if (asCents >= 60 && asMillis > 0 && asMillis <= 60) {
+            return asMillis;
+          }
+        }
+        if (value >= 100 && value <= 100000) {
+          return value / 100;
+        }
       }
       return value;
     }
@@ -2426,8 +3140,17 @@ export default function DigidealCampaignsPage() {
       : text.replace(/,/g, "");
     const raw = Number(normalizedText);
     if (!Number.isFinite(raw)) return null;
-    if (!hasDecimalSeparator && Number.isInteger(raw) && raw >= 100 && raw <= 100000) {
-      return raw / 100;
+    if (!hasDecimalSeparator && Number.isInteger(raw)) {
+      if (raw >= 1000 && raw % 1000 === 0) {
+        const asCents = raw / 100;
+        const asMillis = raw / 1000;
+        if (asCents >= 60 && asMillis > 0 && asMillis <= 60) {
+          return asMillis;
+        }
+      }
+      if (raw >= 100 && raw <= 100000) {
+        return raw / 100;
+      }
     }
     return raw;
   }, []);
@@ -2531,7 +3254,8 @@ export default function DigidealCampaignsPage() {
       setCropDialogOpen(false);
       setCropImageUrl(null);
       setCropNaturalSize(null);
-      setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+      setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+      cropTouchedRef.current = false;
       dragRef.current = null;
       setRecropSearching(false);
       try {
@@ -2652,7 +3376,8 @@ export default function DigidealCampaignsPage() {
     setCropDialogOpen(false);
     setCropImageUrl(null);
     setCropNaturalSize(null);
-    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
     dragRef.current = null;
     setRecropSearching(false);
   }, []);
@@ -2668,9 +3393,44 @@ export default function DigidealCampaignsPage() {
     setCropImageUrl(fallback);
     setCropDialogOpen(true);
     setCropNaturalSize(null);
-    setCropRect({ x: 0.12, y: 0.12, w: 0.76, h: 0.76 });
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
     dragRef.current = null;
   }, [supplierSearchImageUrl, supplierSearchTarget]);
+
+  const cropGalleryUrls = useMemo(() => {
+    const item = supplierSearchTarget;
+    if (!item) return [];
+
+    const candidates = [
+      typeof item.primary_image_url === "string" ? item.primary_image_url : null,
+      ...normalizeImageUrls(item.image_urls),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    const seen = new Set<string>();
+    const urls: string[] = [];
+    for (const url of candidates) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      urls.push(url);
+    }
+
+    const current = String(cropImageUrl || "").trim();
+    if (current && !seen.has(current)) urls.unshift(current);
+    return urls;
+  }, [cropImageUrl, supplierSearchTarget]);
+
+  const handlePickCropImage = useCallback((url: string) => {
+    const nextUrl = String(url || "").trim();
+    if (!nextUrl) return;
+    setCropImageUrl(nextUrl);
+    setCropNaturalSize(null);
+    setCropRect(DEFAULT_CROP_RECT_FALLBACK);
+    cropTouchedRef.current = false;
+    dragRef.current = null;
+  }, []);
 
   const getCropImageBox = useCallback(() => {
     const stage = cropStageRef.current;
@@ -2715,6 +3475,7 @@ export default function DigidealCampaignsPage() {
       if (!box) return;
       ev.preventDefault();
       ev.stopPropagation();
+      cropTouchedRef.current = true;
       (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
       dragRef.current = {
         handle,
@@ -2956,6 +3717,14 @@ export default function DigidealCampaignsPage() {
             entry.product_id === supplierSearchTarget.product_id
               ? {
                   ...entry,
+                  // Reset any previously derived pricing so the user can pick a fresh variant
+                  // for the newly selected supplier.
+                  purchase_price: null,
+                  weight_kg: null,
+                  weight_grams: null,
+                  estimated_rerun_price: null,
+                  supplier_url: null,
+                  supplier_locked: false,
                   supplier_selected: true,
                   supplier_selected_offer_image_url: selectedImageUrl,
                   supplier_selected_offer_title: selectedTitle,
@@ -2973,7 +3742,7 @@ export default function DigidealCampaignsPage() {
         );
       }
       closeSupplierSearchDialog();
-      setRefreshToken((prev) => prev + 1);
+      startSupplierPayloadPoll(supplierSearchTarget.product_id, offerId);
     } catch (err) {
       setSupplierSearchError(
         err instanceof Error ? err.message : "Unable to save supplier selection."
@@ -2984,6 +3753,7 @@ export default function DigidealCampaignsPage() {
   }, [
     closeSupplierSearchDialog,
     normalizeSupplierImageUrl,
+    startSupplierPayloadPoll,
     supplierLockedUrl,
     supplierSearchTarget,
     supplierSelectedOfferId,
@@ -2993,12 +3763,16 @@ export default function DigidealCampaignsPage() {
     setVariantsDialogOpen(true);
     setVariantsTarget(item);
     setVariantsCombos([]);
+    setVariantPriceDraftByIndex({});
+    setVariantWeightDraftByIndex({});
     setVariantsSelectedIndexes(new Set());
     setVariantsPacksText("");
     setVariantsLoading(true);
     setVariantsSaving(false);
     setVariantsError(null);
     setVariantImagePreviewIndex(null);
+    setVariantsHeroPreviewOpen(false);
+    setVariantsHeroZoomReady(false);
     try {
       const params = new URLSearchParams({
         provider: "digideal",
@@ -3023,6 +3797,52 @@ export default function DigidealCampaignsPage() {
           ? (payload as any).packs_text
           : "";
       setVariantsCombos(combos);
+      const nextPriceDrafts: Record<number, string> = {};
+      const nextWeightDrafts: Record<number, string> = {};
+      combos.forEach((combo, idx) => {
+        const comboIndex =
+          typeof combo?.index === "number" && Number.isFinite(combo.index)
+            ? combo.index
+            : idx;
+        const priceDraft = (() => {
+          if (typeof combo.price === "number" && Number.isFinite(combo.price)) {
+            return combo.price.toFixed(2);
+          }
+          const raw = String(combo.price_raw || "").trim();
+          const match = raw.match(/-?\\d+(?:\\.\\d+)?/);
+          return match?.[0] ? match[0] : "";
+        })();
+        const weightDraft = (() => {
+          if (
+            typeof combo.weight_grams === "number" &&
+            Number.isFinite(combo.weight_grams) &&
+            combo.weight_grams > 0
+          ) {
+            return String(Math.round(combo.weight_grams));
+          }
+          const raw = String(combo.weight_raw || "").trim();
+          if (!raw) return "";
+          const normalized = raw.replace(/,/g, ".").trim().toLowerCase();
+          const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);
+          if (!match?.[0]) return "";
+          const num = Number(match[0]);
+          if (!Number.isFinite(num) || num <= 0) return "";
+          if (normalized.includes("kg") || normalized.includes("公斤") || normalized.includes("千克")) {
+            return String(Math.round(num * 1000));
+          }
+          if (normalized.includes("g") || normalized.includes("克")) {
+            return String(Math.round(num));
+          }
+          if (num <= 20 && normalized.includes(".")) {
+            return String(Math.round(num * 1000));
+          }
+          return String(Math.round(num));
+        })();
+        nextPriceDrafts[comboIndex] = priceDraft;
+        nextWeightDrafts[comboIndex] = weightDraft;
+      });
+      setVariantPriceDraftByIndex(nextPriceDrafts);
+      setVariantWeightDraftByIndex(nextWeightDrafts);
       setVariantsSelectedIndexes(safeSelected);
       setVariantsPacksText(packsText);
     } catch (err) {
@@ -3038,6 +3858,60 @@ export default function DigidealCampaignsPage() {
     setVariantsError(null);
     try {
       const selected = Array.from(variantsSelectedIndexes).sort((a, b) => a - b);
+      if (variantsCombos.length > 0 && selected.length === 0) {
+        setVariantsError("Pick a variant before saving.");
+        return;
+      }
+      if (selected.length > 1) {
+        setVariantsError("Pick only one variant for DigiDeal.");
+        return;
+      }
+
+      const parseDraftPrice = (raw: string) => {
+        const text = String(raw || "").trim();
+        if (!text) return null;
+        const normalized = text.replace(/,/g, ".");
+        const n = Number(normalized);
+        return Number.isFinite(n) ? n : null;
+      };
+      const parseDraftWeight = (raw: string) => {
+        const text = String(raw || "").trim();
+        if (!text) return null;
+        const n = Number(text.replace(/,/g, "."));
+        return Number.isFinite(n) ? Math.round(n) : null;
+      };
+
+      if (selected.length === 1) {
+        const chosenIndex = selected[0];
+        const price = parseDraftPrice(variantPriceDraftByIndex[chosenIndex] ?? "");
+        const weight = parseDraftWeight(variantWeightDraftByIndex[chosenIndex] ?? "");
+        if (price === null || price <= 0) {
+          setVariantsError("Enter a valid price (RMB) for the selected variant.");
+          return;
+        }
+        if (weight === null || weight <= 0) {
+          setVariantsError("Enter a valid weight (grams) for the selected variant.");
+          return;
+        }
+      }
+
+      const comboOverrides = variantsCombos
+        .map((combo) => {
+          const idx = typeof combo.index === "number" ? combo.index : -1;
+          const price = parseDraftPrice(variantPriceDraftByIndex[idx] ?? "");
+          const weight = parseDraftWeight(variantWeightDraftByIndex[idx] ?? "");
+          return {
+            index: idx,
+            price: price !== null && price > 0 ? price : null,
+            weight_grams: weight !== null && weight > 0 ? weight : null,
+          };
+        })
+        .filter(
+          (entry) =>
+            Number.isInteger(entry.index) &&
+            entry.index >= 0 &&
+            (entry.price !== null || entry.weight_grams !== null)
+        );
       const response = await fetch("/api/production/suppliers/variants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3046,17 +3920,42 @@ export default function DigidealCampaignsPage() {
           product_id: variantsTarget.product_id,
           selected_combo_indexes: selected,
           packs_text: variantsPacksText,
+          combo_overrides: comboOverrides,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(String((payload as any)?.error || "Unable to save variants."));
       }
+      if (typeof (payload as any)?.digideal_update_error === "string" && (payload as any).digideal_update_error.trim()) {
+        throw new Error(String((payload as any).digideal_update_error));
+      }
+
+      const digideal = (payload as any)?.digideal;
+      const nextPurchasePrice =
+        typeof digideal?.purchase_price === "number" && Number.isFinite(digideal.purchase_price)
+          ? Number(digideal.purchase_price)
+          : null;
+      const nextWeightGrams =
+        typeof digideal?.weight_grams === "number" && Number.isFinite(digideal.weight_grams)
+          ? Math.round(Number(digideal.weight_grams))
+          : null;
+      const nextWeightKg =
+        nextWeightGrams !== null ? Number((nextWeightGrams / 1000).toFixed(3)) : null;
+      if (selected.length > 0 && (nextPurchasePrice === null || nextWeightGrams === null)) {
+        throw new Error("Unable to resolve price/weight for the selected variant.");
+      }
+
       setItems((prev) =>
         prev.map((entry) =>
           entry.product_id === variantsTarget.product_id
             ? {
                 ...entry,
+                purchase_price:
+                  nextPurchasePrice !== null ? nextPurchasePrice : entry.purchase_price ?? null,
+                weight_grams: nextWeightGrams !== null ? nextWeightGrams : entry.weight_grams ?? null,
+                weight_kg: nextWeightKg !== null ? nextWeightKg : entry.weight_kg ?? null,
+                estimated_rerun_price: entry.estimated_rerun_price ?? null,
                 supplier_variant_selected_count:
                   Number.isFinite(Number((payload as any)?.selected_count))
                     ? Number((payload as any).selected_count)
@@ -3071,12 +3970,22 @@ export default function DigidealCampaignsPage() {
         )
       );
       closeVariantsDialog();
+      void updateEstimatedPriceForRow(variantsTarget.product_id, nextPurchasePrice, nextWeightKg);
     } catch (err) {
       setVariantsError(err instanceof Error ? err.message : "Unable to save variants.");
     } finally {
       setVariantsSaving(false);
     }
-  }, [closeVariantsDialog, variantsPacksText, variantsSelectedIndexes, variantsTarget]);
+  }, [
+    closeVariantsDialog,
+    variantsCombos.length,
+    variantsPacksText,
+    variantPriceDraftByIndex,
+    variantWeightDraftByIndex,
+    variantsSelectedIndexes,
+    variantsTarget,
+    updateEstimatedPriceForRow,
+  ]);
 
   const openLinkedDialog = (item: DigidealItem) => {
     setLinkedTarget(item);
@@ -3280,6 +4189,102 @@ export default function DigidealCampaignsPage() {
     const normalized = (rawStatus || (item.digideal_add_rerun ? "Queued" : "")).toLowerCase();
     return ["queued", "being produced", "done"].includes(normalized);
   };
+
+  const bulkFindSuppliers = useCallback(async () => {
+    if (!isAdmin || bulkFindingSuppliers) return;
+
+    const needsSupplier = items.filter((item) => {
+      if (!selectedIds.has(item.product_id)) return false;
+      const isNordexoSeller = String(item.seller_name ?? "")
+        .trim()
+        .toLowerCase()
+        .includes("nordexo");
+      if (isNordexoSeller) return false;
+
+      const hasManualData =
+        item.purchase_price !== null ||
+        item.weight_grams !== null ||
+        item.weight_kg !== null ||
+        (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
+      const locked = Boolean(item.supplier_locked);
+      const selected = Boolean(item.supplier_selected);
+      const supplierCount =
+        typeof item.supplier_count === "number" && Number.isFinite(item.supplier_count)
+          ? Number(item.supplier_count)
+          : null;
+      const hasSuggestions = supplierCount !== null && supplierCount > 0;
+
+      return !selected && !locked && !hasManualData && !hasSuggestions;
+    });
+
+    if (needsSupplier.length === 0) return;
+
+    setSupplierFindingIds((prev) => {
+      const next = new Set(prev);
+      for (const item of needsSupplier) {
+        if (item.product_id) next.add(item.product_id);
+      }
+      return next;
+    });
+
+    setBulkFindingSuppliers(true);
+    setBulkFindingSupplierProgress({ done: 0, total: needsSupplier.length });
+    setError(null);
+
+    const failed: string[] = [];
+
+    for (let idx = 0; idx < needsSupplier.length; idx += 1) {
+      const item = needsSupplier[idx];
+      try {
+        const params = new URLSearchParams({
+          provider: "digideal",
+          product_id: item.product_id,
+        });
+        const imageUrls = normalizeImageUrls(item.image_urls);
+        const imageUrl = item.primary_image_url || imageUrls[0] || null;
+        if (imageUrl) params.set("image_url", imageUrl);
+        const response = await fetch(`/api/production/suppliers?${params.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(String((payload as any)?.error || "Supplier search failed."));
+        }
+
+        const offerCountRaw = Number((payload as any)?.offer_count);
+        const offerCount = Number.isFinite(offerCountRaw)
+          ? offerCountRaw
+          : Array.isArray((payload as any)?.offers)
+            ? (payload as any).offers.length
+            : null;
+
+        if (typeof offerCount === "number") {
+          setItems((prev) =>
+            prev.map((row) =>
+              row.product_id === item.product_id ? { ...row, supplier_count: offerCount } : row
+            )
+          );
+        }
+      } catch {
+        failed.push(item.product_id);
+      } finally {
+        setSupplierFindingIds((prev) => {
+          if (!prev.has(item.product_id)) return prev;
+          const next = new Set(prev);
+          next.delete(item.product_id);
+          return next;
+        });
+        setBulkFindingSupplierProgress({ done: idx + 1, total: needsSupplier.length });
+        // Small throttle to avoid hammering the API/toolchain.
+        await new Promise((resolve) => window.setTimeout(resolve, 200));
+      }
+    }
+
+    setBulkFindingSuppliers(false);
+    setBulkFindingSupplierProgress(null);
+
+    if (failed.length > 0) {
+      setError(`Find Supplier failed for ${failed.length} item(s).`);
+    }
+  }, [bulkFindingSuppliers, isAdmin, items, selectedIds]);
 
   const bulkAddSelectedDirect = async () => {
     if (bulkAdding) return;
@@ -4207,6 +5212,38 @@ export default function DigidealCampaignsPage() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
+  const supplierWorkflowFilteredItems = useMemo(() => {
+    if (supplierWorkflowFilter === "all") return items;
+
+    return items.filter((item) => {
+      const supplierCount = typeof item.supplier_count === "number" ? item.supplier_count : 0;
+      const hasSuggestions = supplierCount > 0;
+      const supplierSelected = item.supplier_selected === true;
+      const supplierLocked = item.supplier_locked === true;
+
+      const packsText =
+        typeof item.supplier_variant_packs_text === "string"
+          ? item.supplier_variant_packs_text.trim()
+          : "";
+      const selectedVariantCount =
+        typeof item.supplier_variant_selected_count === "number"
+          ? item.supplier_variant_selected_count
+          : 0;
+      const hasPickedVariants = selectedVariantCount > 0 || packsText.length > 0;
+
+      switch (supplierWorkflowFilter) {
+        case "no_supplier":
+          return !supplierLocked && !supplierSelected && !hasSuggestions;
+        case "need_select_supplier":
+          return !supplierLocked && !supplierSelected && hasSuggestions;
+        case "need_pick_variants":
+          return !supplierLocked && supplierSelected && !hasPickedVariants;
+        default:
+          return true;
+      }
+    });
+  }, [items, supplierWorkflowFilter]);
+
   const analysisView = useMemo(() => {
     if (!analysisData) return null;
 
@@ -4550,7 +5587,7 @@ export default function DigidealCampaignsPage() {
 
   const rows = useMemo(
     () =>
-      items.map((item) => {
+      supplierWorkflowFilteredItems.map((item) => {
         const title =
           item.listing_title ||
           item.title_h1 ||
@@ -4675,9 +5712,15 @@ export default function DigidealCampaignsPage() {
           (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
         const supplierSelected = Boolean(item.supplier_selected);
         const supplierLocked = Boolean(item.supplier_locked);
-        const supplierPayloadStatus = String(item.supplier_payload_status ?? "")
-          .trim()
-          .toLowerCase();
+        const supplierCount =
+          typeof item.supplier_count === "number" && Number.isFinite(item.supplier_count)
+            ? Number(item.supplier_count)
+            : null;
+        const supplierHasSuggestions = supplierCount !== null && supplierCount > 0;
+        const supplierFinding = supplierFindingIds.has(item.product_id);
+        const supplierPayloadStatus = supplierLocked
+          ? ""
+          : String(item.supplier_payload_status ?? "").trim().toLowerCase();
         const supplierPayloadReady =
           supplierPayloadStatus === "ready" &&
           Boolean(item.supplier_payload_file_path);
@@ -4686,138 +5729,29 @@ export default function DigidealCampaignsPage() {
           supplierPayloadStatus === "fetching" ||
           supplierPayloadStatus === "queued" ||
           supplierPayloadStatus === "processing";
+        const supplierHasVariantSelection =
+          !supplierLocked &&
+          ((typeof item.supplier_variant_selected_count === "number" &&
+            item.supplier_variant_selected_count > 0) ||
+            (typeof item.supplier_variant_packs_text === "string" &&
+              Boolean(item.supplier_variant_packs_text.trim())));
         const supplierActionLabel = supplierPayloadReady
-          ? "Pick Variant"
+          ? supplierHasVariantSelection
+            ? t("digideal.supplier.edit")
+            : "Pick Variant"
           : supplierSelected && !supplierLocked
             ? "Supplier Selected"
             : hasManualSupplierData
               ? t("digideal.supplier.edit")
-              : t("digideal.supplier.add");
+              : supplierHasSuggestions
+                ? "Select Supplier"
+                : t("digideal.supplier.add");
         const highlightAddSupplier =
           canManageSupplier &&
           !supplierPayloadReady &&
           !hasManualSupplierData &&
-          !supplierSelected;
-        const rerunIcons = [
-          {
-            key: "full",
-            label: t("digideal.rerun.fullImageSet"),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className={styles.rerunIcon}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M18 4h-6a3 3 0 0 0 -3 3v10a3 3 0 0 0 3 3h6a3 3 0 0 0 3 -3v-10a3 3 0 0 0 -3 -3z" />
-                <path d="M7 6a1 1 0 0 1 .993 .883l.007 .117v10a1 1 0 0 1 -1.993 .117l-.007 -.117v-10a1 1 0 0 1 1 -1z" />
-                <path d="M4 7a1 1 0 0 1 .993 .883l.007 .117v8a1 1 0 0 1 -1.993 .117l-.007 -.117v-8a1 1 0 0 1 1 -1z" />
-              </svg>
-            ),
-          },
-          {
-            key: "localized",
-            label: t("digideal.rerun.localizedImages"),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.rerunIcon}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M15 8h.01" />
-                <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
-                <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
-                <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-                <path d="M14 19h4" />
-                <path d="M21 15v6" />
-              </svg>
-            ),
-          },
-          {
-            key: "text",
-            label: t("digideal.rerun.aiText"),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.rerunIcon}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                <path d="M10 21h-3a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v3.5" />
-                <path d="M9 9h1" />
-                <path d="M9 13h2.5" />
-                <path d="M9 17h1" />
-                <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-                <path d="M14 19h4" />
-                <path d="M21 15v6" />
-              </svg>
-            ),
-          },
-          {
-            key: "video",
-            label: t("digideal.rerun.aiVideo"),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.rerunIcon}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M10 20h-5a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v2" />
-                <path d="M14.362 11.15a3 3 0 1 0 -4.144 4.263" />
-                <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
-                <path d="M14 19h4" />
-                <path d="M21 15v6" />
-              </svg>
-            ),
-          },
-          {
-            key: "ready",
-            label: t("digideal.rerun.ready24h"),
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.rerunIcon}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M3 12a9 9 0 0 0 5.998 8.485m12.002 -8.485a9 9 0 1 0 -18 0" />
-                <path d="M12 7v5" />
-                <path d="M12 15h2a1 1 0 0 1 1 1v1a1 1 0 0 1 -1 1h-1a1 1 0 0 0 -1 1v1a1 1 0 0 0 1 1h2" />
-                <path d="M18 15v2a1 1 0 0 0 1 1h1" />
-                <path d="M21 15v6" />
-              </svg>
-            ),
-          },
-        ];
+          !supplierSelected &&
+          !supplierHasSuggestions;
 
         return (
           <TableRow
@@ -5133,33 +6067,54 @@ export default function DigidealCampaignsPage() {
 		                  )}
 	                  {canManageSupplier ? (
 		                    supplierPayloadReady ? (
-		                      <Menu>
-		                        <MenuTrigger disableButtonEnhancement>
-		                          <Button
-		                            appearance="outline"
-		                            size="small"
-		                            className={mergeClasses(
-		                              styles.linkButton,
-		                              styles.estimatedPriceEditButton,
-		                              supplierSelected && !supplierLocked
-		                                ? styles.supplierSelectedButton
-		                                : undefined
-		                            )}
-		                          >
-		                            {supplierActionLabel}
-		                          </Button>
-		                        </MenuTrigger>
-	                        <MenuPopover>
-	                          <MenuList>
-	                            <MenuItem onClick={() => openSupplierDialog(item)}>
-	                              {t("digideal.supplier.manualInput")}
-	                            </MenuItem>
-	                            <MenuItem onClick={() => void openVariantsDialog(item)}>
-	                              Pick Variant
-	                            </MenuItem>
-	                          </MenuList>
-	                        </MenuPopover>
-	                      </Menu>
+		                      supplierHasVariantSelection ? (
+		                        <Menu>
+		                          <MenuTrigger disableButtonEnhancement>
+		                            <Button
+		                              appearance="outline"
+		                              size="small"
+		                              className={mergeClasses(
+		                                styles.linkButton,
+		                                styles.estimatedPriceEditButton,
+		                                styles.supplierManualEditButton
+		                              )}
+		                            >
+		                              {t("digideal.supplier.edit")}
+		                            </Button>
+		                          </MenuTrigger>
+                              <MenuPopover className={styles.compactMenuPopover}>
+                                <MenuList className={styles.compactMenuList}>
+                                  <MenuItem onClick={() => void openVariantsDialog(item)}>
+                                    <span className={styles.menuItemContent}>
+                                      <ReplaceIcon className={styles.menuItemIcon} />
+                                      <span>Repick Variants</span>
+                                    </span>
+                                  </MenuItem>
+                                  <MenuItem onClick={() => openSupplierDialog(item)}>
+                                    <span className={styles.menuItemContent}>
+                                      <FormsIcon className={styles.menuItemIcon} />
+                                      <span>{t("digideal.supplier.manualInput")}</span>
+                                    </span>
+                                  </MenuItem>
+                                </MenuList>
+                              </MenuPopover>
+                            </Menu>
+		                      ) : (
+		                        <Button
+		                          appearance="outline"
+		                          size="small"
+		                          className={mergeClasses(
+		                            styles.linkButton,
+		                            styles.estimatedPriceEditButton,
+		                            supplierSelected && !supplierLocked
+		                              ? styles.supplierSelectedButton
+		                              : undefined
+		                          )}
+		                          onClick={() => void openVariantsDialog(item)}
+		                        >
+		                          Pick Variant
+		                        </Button>
+		                      )
 		                    ) : hasManualSupplierData ? (
 		                      <Button
 		                        appearance="outline"
@@ -5172,6 +6127,48 @@ export default function DigidealCampaignsPage() {
 		                        onClick={() => openSupplierDialog(item)}
 		                      >
 		                        {t("digideal.supplier.edit")}
+		                      </Button>
+		                    ) : supplierFinding ? (
+		                      <Button
+		                        appearance="outline"
+		                        size="small"
+		                        disabled
+		                        className={mergeClasses(
+		                          styles.linkButton,
+		                          styles.estimatedPriceEditButton,
+		                          styles.supplierSearchingButton
+		                        )}
+		                      >
+		                        <span className={styles.supplierSearchingContent}>
+		                          <svg
+		                            xmlns="http://www.w3.org/2000/svg"
+		                            viewBox="0 0 24 24"
+		                            fill="none"
+		                            stroke="currentColor"
+		                            strokeWidth="2"
+		                            strokeLinecap="round"
+		                            strokeLinejoin="round"
+		                            className={styles.supplierInlineLoaderIcon}
+		                            aria-hidden="true"
+		                          >
+		                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+		                            <path d="M12 3a9 9 0 1 0 9 9" />
+		                          </svg>
+		                          <span>Looking for supplier</span>
+		                        </span>
+		                      </Button>
+		                    ) : supplierHasSuggestions && !supplierSelected && !supplierLocked ? (
+		                      <Button
+		                        appearance="outline"
+		                        size="small"
+		                        className={mergeClasses(
+		                          styles.linkButton,
+		                          styles.estimatedPriceEditButton,
+		                          styles.supplierSelectButton
+		                        )}
+		                        onClick={() => void openSupplierSearchDialog(item)}
+		                      >
+		                        Select Supplier
 		                      </Button>
 		                    ) : (
 		                      <Menu>
@@ -5191,13 +6188,19 @@ export default function DigidealCampaignsPage() {
 		                            {supplierActionLabel}
 		                          </Button>
 		                        </MenuTrigger>
-	                        <MenuPopover>
-	                          <MenuList>
-	                            <MenuItem onClick={() => openSupplierDialog(item)}>
-	                              {t("digideal.supplier.manualInput")}
-	                            </MenuItem>
+	                        <MenuPopover className={styles.compactMenuPopover}>
+	                          <MenuList className={styles.compactMenuList}>
 	                            <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
-	                              {t("digideal.supplier.imageSearch")}
+	                              <span className={styles.menuItemContent}>
+	                                <PhotoSearchIcon className={styles.menuItemIcon} />
+	                                <span>{t("digideal.supplier.imageSearch")}</span>
+	                              </span>
+	                            </MenuItem>
+	                            <MenuItem onClick={() => openSupplierDialog(item)}>
+	                              <span className={styles.menuItemContent}>
+	                                <FormsIcon className={styles.menuItemIcon} />
+	                                <span>{t("digideal.supplier.manualInput")}</span>
+	                              </span>
 	                            </MenuItem>
 	                          </MenuList>
 	                        </MenuPopover>
@@ -5206,6 +6209,7 @@ export default function DigidealCampaignsPage() {
 	                  ) : null}
 	                </div>
 	                {canManageSupplier &&
+	                !supplierHasVariantSelection &&
 	                (supplierPayloadLoading || supplierPayloadReady || supplierPayloadFailed) ? (
 	                  <div className={styles.supplierStatusInline}>
 	                    <span className={styles.supplierStatusItem}>
@@ -5225,7 +6229,13 @@ export default function DigidealCampaignsPage() {
                           <path d="M12 3a9 9 0 1 0 9 9" />
                         </svg>
                       ) : null}
-                      <span>1688</span>
+                      <span>
+                        {supplierPayloadLoading
+                          ? "Fetching 1688 data"
+                          : supplierPayloadReady
+                            ? "1688 data fetched"
+                            : "1688 data failed"}
+                      </span>
                       {supplierPayloadReady ? (
                         <span className={styles.supplierStatusOk}>✓</span>
                       ) : supplierPayloadFailed ? (
@@ -5275,8 +6285,8 @@ export default function DigidealCampaignsPage() {
                             {t("digideal.rerun.add")}
                           </Button>
                         </MenuTrigger>
-	                        <MenuPopover>
-	                          <MenuList>
+	                        <MenuPopover className={styles.compactMenuPopover}>
+	                          <MenuList className={styles.compactMenuList}>
 	                            <MenuItem
 	                              onClick={() =>
 	                                addToProduction(item, {
@@ -5300,8 +6310,8 @@ export default function DigidealCampaignsPage() {
 	                                  {t("digideal.views.addToView")}
 	                                </MenuItem>
 	                              </MenuTrigger>
-	                              <MenuPopover>
-	                                <MenuList>
+	                              <MenuPopover className={styles.compactMenuPopover}>
+	                                <MenuList className={styles.compactMenuList}>
 	                                  <MenuItem
 	                                    onClick={() =>
 	                                      openCreateViewDialog([item.product_id])
@@ -5360,24 +6370,6 @@ export default function DigidealCampaignsPage() {
                       </div>
                     ) : null}
                   </div>
-                  <div className={styles.rerunIconRow}>
-                    {rerunIcons.map((icon) => (
-                      <Tooltip
-                        key={icon.key}
-                        content={icon.label}
-                        relationship="label"
-                        positioning="below"
-                      >
-                        <button
-                          type="button"
-                          className={styles.rerunIconButton}
-                          aria-label={icon.label}
-                        >
-                          {icon.icon}
-                        </button>
-                      </Tooltip>
-                    ))}
-                  </div>
                 </div>
               )}
             </TableCell>
@@ -5398,7 +6390,7 @@ export default function DigidealCampaignsPage() {
         );
       }),
     [
-      items,
+      supplierWorkflowFilteredItems,
       styles,
       t,
       addingIds,
@@ -5408,6 +6400,7 @@ export default function DigidealCampaignsPage() {
       removeFromProduction,
       openRerunDialog,
       openSupplierDialog,
+      openSupplierSearchDialog,
       openLinkedDialog,
       openCreateViewDialog,
       addProductsToView,
@@ -5416,6 +6409,7 @@ export default function DigidealCampaignsPage() {
       groupIdFilter,
       isAdmin,
       selectedIds,
+      supplierFindingIds,
       toggleRowSelected,
     ]
   );
@@ -5472,6 +6466,31 @@ export default function DigidealCampaignsPage() {
               <Option value="all">{t("digideal.priceMatch.all")}</Option>
               <Option value="have">{t("digideal.priceMatch.have")}</Option>
               <Option value="none">{t("digideal.priceMatch.none")}</Option>
+            </Dropdown>
+          </Field>
+          <Field label={<span className={styles.filterLabel}>Supplier</span>}>
+            <Dropdown
+              value={
+                supplierWorkflowFilter === "no_supplier"
+                  ? "Don't have a supplier"
+                  : supplierWorkflowFilter === "need_select_supplier"
+                    ? "Need to select a supplier"
+                    : supplierWorkflowFilter === "need_pick_variants"
+                      ? "Need to pick variants"
+                      : "All"
+              }
+              selectedOptions={[supplierWorkflowFilter]}
+              onOptionSelect={(_, data) =>
+                setSupplierWorkflowFilter(
+                  (String(data.optionValue) as SupplierWorkflowFilter) || "all"
+                )
+              }
+              className={mergeClasses(styles.dropdownCompact, styles.filterField)}
+            >
+              <Option value="all">All</Option>
+              <Option value="no_supplier">Don't have a supplier</Option>
+              <Option value="need_select_supplier">Need to select a supplier</Option>
+              <Option value="need_pick_variants">Need to pick variants</Option>
             </Dropdown>
           </Field>
           <Field
@@ -5741,6 +6760,20 @@ export default function DigidealCampaignsPage() {
 	            <Button appearance="outline" size="medium" onClick={resetAllFilters}>
 	              {t("digideal.filters.resetAll")}
 	            </Button>
+              {isAdmin ? (
+                <Button
+                  appearance="outline"
+                  size="medium"
+                  onClick={() => void bulkFindSuppliers()}
+                  disabled={bulkFindingSuppliers || selectedCount === 0}
+                >
+                  {bulkFindingSuppliers
+                    ? bulkFindingSupplierProgress
+                      ? `Finding suppliers (${bulkFindingSupplierProgress.done}/${bulkFindingSupplierProgress.total})`
+                      : "Finding suppliers..."
+                    : "Find Supplier"}
+                </Button>
+              ) : null}
             <Menu>
               <MenuTrigger disableButtonEnhancement>
                 <Button
@@ -5751,8 +6784,8 @@ export default function DigidealCampaignsPage() {
                   {t("digideal.rerun.add")}
                 </Button>
               </MenuTrigger>
-              <MenuPopover>
-	                <MenuList>
+              <MenuPopover className={styles.compactMenuPopover}>
+	                <MenuList className={styles.compactMenuList}>
 	                  <MenuItem
 	                    onClick={bulkAddSelectedDirect}
 	                    disabled={selectedCount === 0 || bulkAdding}
@@ -5771,8 +6804,8 @@ export default function DigidealCampaignsPage() {
 	                        {t("digideal.views.addToView")}
 	                      </MenuItem>
 	                    </MenuTrigger>
-	                    <MenuPopover>
-	                      <MenuList>
+	                    <MenuPopover className={styles.compactMenuPopover}>
+	                      <MenuList className={styles.compactMenuList}>
 	                        <MenuItem
 	                          onClick={() => openCreateViewDialog(Array.from(selectedIds))}
 	                          disabled={selectedCount === 0 || bulkAdding}
@@ -6566,14 +7599,48 @@ export default function DigidealCampaignsPage() {
 	                </div>
 	              ) : null}
 	              <div className={styles.supplierSearchHeaderRow}>
-	                <Text className={styles.supplierSearchTitle}>
-	                  {supplierSearchTarget
-	                    ? supplierSearchTarget.listing_title ||
-                      supplierSearchTarget.title_h1 ||
-                      supplierSearchTarget.product_slug ||
-                      supplierSearchTarget.product_id
-                    : ""}
-                </Text>
+	                <div className={styles.variantsHeaderLeft}>
+                    {supplierSearchHeroImageSrc ? (
+                      <div
+                        className={styles.variantsHeroThumbWrap}
+                        onMouseEnter={() => setSupplierSearchHeroPreviewOpen(true)}
+                        onMouseLeave={() => setSupplierSearchHeroPreviewOpen(false)}
+                      >
+                        <Popover
+                          open={supplierSearchHeroPreviewOpen && supplierSearchHeroZoomReady}
+                          positioning={{ position: "after", align: "start", offset: 10 }}
+                        >
+                          <PopoverTrigger disableButtonEnhancement>
+                            <div className={styles.variantsHeroThumbFrame}>
+                              <img
+                                src={supplierSearchHeroImageSrc}
+                                alt="DigiDeal product"
+                                className={styles.variantsHeroThumbImage}
+                                referrerPolicy="no-referrer"
+                                loading="eager"
+                                decoding="async"
+                              />
+                            </div>
+                          </PopoverTrigger>
+                          <PopoverSurface className={styles.variantsHeroPopoverSurface}>
+                            <img
+                              src={supplierSearchHeroImageSrc}
+                              alt="DigiDeal product zoom"
+                              className={styles.variantsHeroZoomImage}
+                              referrerPolicy="no-referrer"
+                              loading="eager"
+                              decoding="async"
+                            />
+                          </PopoverSurface>
+                        </Popover>
+                      </div>
+                    ) : null}
+                    <div className={styles.variantsTitleStack}>
+                      <Text className={styles.variantsTitleText} title={supplierSearchTargetTitle}>
+                        {supplierSearchTargetTitle}
+                      </Text>
+                    </div>
+                  </div>
                 <Button
                   appearance="outline"
                   size="small"
@@ -6607,6 +7674,8 @@ export default function DigidealCampaignsPage() {
                           offer?.offerId === null || offer?.offerId === undefined
                             ? ""
                             : String(offer.offerId);
+                        const isSelected = Boolean(offerId) && supplierSelectedOfferId === offerId;
+                        const isClickable = Boolean(offerId) && !supplierLockedUrl;
                         const url =
                           typeof offer?.detailUrl === "string" ? offer.detailUrl : "";
                         const title =
@@ -6619,18 +7688,66 @@ export default function DigidealCampaignsPage() {
                           typeof offer?.imageUrl === "string" ? offer.imageUrl : ""
                         );
                         const meta = buildOfferMeta(offer);
+                        const previewKey = `offer:${offerId || "selected"}`;
                         return (
-                          <div className={mergeClasses(styles.supplierRow, styles.supplierRowSelected)}>
+                          <div
+                            className={mergeClasses(
+                              styles.supplierRow,
+                              isClickable ? styles.supplierRowClickable : undefined,
+                              isSelected ? styles.supplierRowSelected : undefined
+                            )}
+                            onClick={() => {
+                              if (!isClickable) return;
+                              setSupplierSelectedOfferId(offerId);
+                            }}
+                            role={isClickable ? "button" : undefined}
+                            tabIndex={isClickable ? 0 : undefined}
+                            onKeyDown={(ev) => {
+                              if (!isClickable) return;
+                              if (ev.key !== "Enter" && ev.key !== " ") return;
+                              ev.preventDefault();
+                              setSupplierSelectedOfferId(offerId);
+                            }}
+                          >
                             <div>
                               {imageUrl ? (
-                                <img
-                                  src={imageUrl}
-                                  alt={title}
-                                  className={styles.supplierThumb}
-                                  referrerPolicy="no-referrer"
-                                  loading="lazy"
-                                  decoding="async"
-                                />
+                                <div
+                                  className={styles.supplierThumbWrap}
+                                  onMouseEnter={() => setSupplierThumbPreviewKey(previewKey)}
+                                  onMouseLeave={() =>
+                                    setSupplierThumbPreviewKey((prev) =>
+                                      prev === previewKey ? null : prev
+                                    )
+                                  }
+                                >
+                                  <Popover
+                                    open={supplierThumbPreviewKey === previewKey}
+                                    positioning={{ position: "after", align: "center", offset: 10 }}
+                                  >
+                                    <PopoverTrigger disableButtonEnhancement>
+                                      <img
+                                        src={imageUrl}
+                                        alt={title}
+                                        className={styles.supplierThumb}
+                                        referrerPolicy="no-referrer"
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    </PopoverTrigger>
+                                    <PopoverSurface className={styles.supplierThumbPopoverSurface}>
+                                      <div className={styles.supplierThumbZoomWrap}>
+                                        <img
+                                          src={imageUrl}
+                                          alt={`${title} zoom`}
+                                          className={styles.supplierThumbZoomImage}
+                                          referrerPolicy="no-referrer"
+                                          loading="lazy"
+                                          decoding="async"
+                                        />
+                                      </div>
+                                    </PopoverSurface>
+                                  </Popover>
+                                </div>
                               ) : null}
                             </div>
                             <div className={styles.supplierMeta}>
@@ -6657,14 +7774,15 @@ export default function DigidealCampaignsPage() {
                               {url ? (
                                 <div className={styles.supplierLinkRow}>
                                   <a
-                                    href={url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={styles.supplierMetaLink}
-                                  >
-                                    See on 1688.com
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={styles.supplierMetaLink}
+                                  onClick={(ev) => ev.stopPropagation()}
+                                >
+                                  See on 1688.com
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
                                       viewBox="0 0 24 24"
                                       fill="none"
                                       stroke="currentColor"
@@ -6737,6 +7855,7 @@ export default function DigidealCampaignsPage() {
                       const isSelected = offerId && supplierSelectedOfferId === offerId;
                       const meta = buildOfferMeta(offer);
                       const rowKey = `${offerId || idx}`;
+                      const previewKey = `offer:${rowKey}`;
                       return (
                         <div
                           key={rowKey}
@@ -6760,14 +7879,43 @@ export default function DigidealCampaignsPage() {
                         >
                           <div>
                             {imageUrl ? (
-                              <img
-                                src={imageUrl}
-                                alt={title}
-                                className={styles.supplierThumb}
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                                decoding="async"
-                              />
+                              <div
+                                className={styles.supplierThumbWrap}
+                                onMouseEnter={() => setSupplierThumbPreviewKey(previewKey)}
+                                onMouseLeave={() =>
+                                  setSupplierThumbPreviewKey((prev) =>
+                                    prev === previewKey ? null : prev
+                                  )
+                                }
+                              >
+                                <Popover
+                                  open={supplierThumbPreviewKey === previewKey}
+                                  positioning={{ position: "after", align: "center", offset: 10 }}
+                                >
+                                  <PopoverTrigger disableButtonEnhancement>
+                                    <img
+                                      src={imageUrl}
+                                      alt={title}
+                                      className={styles.supplierThumb}
+                                      referrerPolicy="no-referrer"
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  </PopoverTrigger>
+                                  <PopoverSurface className={styles.supplierThumbPopoverSurface}>
+                                    <div className={styles.supplierThumbZoomWrap}>
+                                      <img
+                                        src={imageUrl}
+                                        alt={`${title} zoom`}
+                                        className={styles.supplierThumbZoomImage}
+                                        referrerPolicy="no-referrer"
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    </div>
+                                  </PopoverSurface>
+                                </Popover>
+                              </div>
                             ) : null}
                           </div>
                           <div className={styles.supplierMeta}>
@@ -6845,70 +7993,120 @@ export default function DigidealCampaignsPage() {
 	                      <Text className={styles.cropModalTitle}>Recrop Image</Text>
 	                    </div>
 
-	                    {cropImageUrl ? (
-	                      <div className={styles.cropStage}>
-	                        <div className={styles.cropStageViewport}>
-	                          <div
-	                            className={styles.cropStagePadding}
-	                            ref={(el) => {
-	                              cropStageRef.current = el;
-	                            }}
-	                            onPointerMove={onDragMove}
-	                            onPointerUp={endDrag}
-	                            onPointerCancel={endDrag}
-	                            onPointerLeave={endDrag}
-	                          >
-	                            <img
-	                              src={cropImageUrl}
-	                              alt="Recrop Image"
-	                              className={styles.cropImage}
-	                              referrerPolicy="no-referrer"
-	                              onLoad={(ev) => {
-	                                const img = ev.currentTarget;
-	                                if (img?.naturalWidth && img?.naturalHeight) {
-	                                  setCropNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
-	                                }
-	                              }}
-	                            />
-	                            {(() => {
-	                              const box = getCropImageBox();
-	                              if (!box) return null;
-	                              const left = box.img.left + cropRect.x * box.img.width;
-	                              const top = box.img.top + cropRect.y * box.img.height;
-	                              const width = cropRect.w * box.img.width;
-	                              const height = cropRect.h * box.img.height;
-	                              return (
-	                                <div
-	                                  className={styles.cropRect}
-	                                  style={{ left, top, width, height }}
-	                                  onPointerDown={(ev) => beginDrag(ev, "move")}
-	                                >
-	                                  <div
-	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
-	                                    onPointerDown={(ev) => beginDrag(ev, "nw")}
-	                                  />
-	                                  <div
-	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
-	                                    onPointerDown={(ev) => beginDrag(ev, "ne")}
-	                                  />
-	                                  <div
-	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
-	                                    onPointerDown={(ev) => beginDrag(ev, "sw")}
-	                                  />
-	                                  <div
-	                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
-	                                    onPointerDown={(ev) => beginDrag(ev, "se")}
-	                                  />
-	                                </div>
-	                              );
-	                            })()}
-	                          </div>
-	                        </div>
-	                      </div>
-	                    ) : (
-	                      <div className={styles.cropMissing}>
-	                        <Text>No image available to crop.</Text>
-	                      </div>
+                    {cropImageUrl ? (
+                      <div className={styles.cropBodyRow}>
+                        <div className={styles.cropGallery} aria-label="DigiDeal images">
+                          <div className={styles.cropGalleryGrid}>
+                            {cropGalleryUrls.map((url) => (
+                              <button
+                                key={url}
+                                type="button"
+                                className={mergeClasses(
+                                  styles.cropGalleryButton,
+                                  url === cropImageUrl ? styles.cropGalleryButtonActive : undefined
+                                )}
+                                onClick={() => handlePickCropImage(url)}
+                                disabled={recropSearching}
+                              >
+                                <div className={styles.cropGalleryThumb}>
+                                  <img
+                                    src={url}
+                                    alt="DigiDeal image"
+                                    className={styles.cropGalleryImage}
+                                    referrerPolicy="no-referrer"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className={styles.cropStage}>
+                          <div
+                            className={styles.cropStagePadding}
+                            ref={(el) => {
+                              cropStageRef.current = el;
+                            }}
+                            onPointerMove={onDragMove}
+                            onPointerUp={endDrag}
+                            onPointerCancel={endDrag}
+                            onPointerLeave={endDrag}
+                          >
+                            <img
+                              src={cropImageUrl}
+                              alt="Recrop Image"
+                              className={styles.cropImage}
+                              referrerPolicy="no-referrer"
+                              onLoad={(ev) => {
+                                const img = ev.currentTarget;
+                                if (img?.naturalWidth && img?.naturalHeight) {
+                                  const naturalW = img.naturalWidth;
+                                  const naturalH = img.naturalHeight;
+                                  setCropNaturalSize({ w: naturalW, h: naturalH });
+
+                                  // Default crop: full image minus 15px padding on each side.
+                                  if (!cropTouchedRef.current) {
+                                    const marginX = Math.min(
+                                      DEFAULT_CROP_MARGIN_PX,
+                                      Math.floor((naturalW - 1) / 2)
+                                    );
+                                    const marginY = Math.min(
+                                      DEFAULT_CROP_MARGIN_PX,
+                                      Math.floor((naturalH - 1) / 2)
+                                    );
+                                    setCropRect(
+                                      clampRect({
+                                        x: marginX / naturalW,
+                                        y: marginY / naturalH,
+                                        w: (naturalW - marginX * 2) / naturalW,
+                                        h: (naturalH - marginY * 2) / naturalH,
+                                      })
+                                    );
+                                  }
+                                }
+                              }}
+                            />
+                            {(() => {
+                              const box = getCropImageBox();
+                              if (!box) return null;
+                              const left = box.img.left + cropRect.x * box.img.width;
+                              const top = box.img.top + cropRect.y * box.img.height;
+                              const width = cropRect.w * box.img.width;
+                              const height = cropRect.h * box.img.height;
+                              return (
+                                <div
+                                  className={styles.cropRect}
+                                  style={{ left, top, width, height }}
+                                  onPointerDown={(ev) => beginDrag(ev, "move")}
+                                >
+                                  <div
+                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
+                                    onPointerDown={(ev) => beginDrag(ev, "nw")}
+                                  />
+                                  <div
+                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
+                                    onPointerDown={(ev) => beginDrag(ev, "ne")}
+                                  />
+                                  <div
+                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
+                                    onPointerDown={(ev) => beginDrag(ev, "sw")}
+                                  />
+                                  <div
+                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
+                                    onPointerDown={(ev) => beginDrag(ev, "se")}
+                                  />
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={styles.cropMissing}>
+                        <Text>No image available to crop.</Text>
+                      </div>
 	                    )}
 
 	                    <div className={styles.cropModalActions}>
@@ -6966,72 +8164,99 @@ export default function DigidealCampaignsPage() {
       >
         <DialogSurface className={styles.variantsDialog}>
           <DialogBody className={styles.variantsDialogBody}>
-            <DialogTitle>Pick Variants</DialogTitle>
-            <DialogContent>
-              <div className={styles.variantsHeaderRow}>
-                {variantsTarget ? (
-                  <div className={styles.variantsTitleStack}>
-                    <Text className={styles.variantsTitleText}>
-                      {variantsTarget.listing_title ||
-                        variantsTarget.title_h1 ||
-                        variantsTarget.product_slug ||
-                        variantsTarget.product_id}
-                    </Text>
-                    {(() => {
-                      const variantsProductUrl =
-                        (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
-                        variantsTarget.supplier_selected_offer_detail_url.trim()
-                          ? variantsTarget.supplier_selected_offer_detail_url.trim()
-                          : null) ||
-                        (typeof variantsTarget.supplier_url === "string" &&
-                        variantsTarget.supplier_url.trim()
-                          ? variantsTarget.supplier_url.trim()
-                          : null) ||
-                        (typeof variantsTarget.product_url === "string" &&
-                        variantsTarget.product_url.trim()
-                          ? variantsTarget.product_url.trim()
-                          : null);
-                      if (!variantsProductUrl) return null;
-                      return (
-                        <a
-                          href={variantsProductUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={styles.variantsTitleLink}
-                          title={variantsProductUrl}
+	            <DialogTitle>Pick Variants</DialogTitle>
+		            <DialogContent>
+		              <div className={styles.variantsHeaderRow}>
+                    <div className={styles.variantsHeaderLeft}>
+                      {variantsHeroImageSrc ? (
+                        <div
+                          className={styles.variantsHeroThumbWrap}
+                          onMouseEnter={() => setVariantsHeroPreviewOpen(true)}
+                          onMouseLeave={() => setVariantsHeroPreviewOpen(false)}
                         >
-                          {variantsProductUrl}
-                        </a>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <span />
-                )}
-                <div className={styles.variantsTopActions}>
-                  <Button
-                    appearance="outline"
-                    size="small"
-                    onClick={() =>
-                      setVariantsSelectedIndexes(new Set(variantsCombos.map((combo) => combo.index)))
-                    }
-                    disabled={variantsLoading || variantsCombos.length === 0}
-                  >
-                    Select all
-                  </Button>
-                  <Button
-                    appearance="outline"
-                    size="small"
-                    onClick={() => setVariantsSelectedIndexes(new Set())}
-                    disabled={variantsLoading || variantsCombos.length === 0}
-                  >
-                    Clear
-                  </Button>
-                  <Text size={200} className={styles.supplierSearchTitle}>
-                    {variantsSelectedIndexes.size} selected
-                  </Text>
-                </div>
-              </div>
+                          <Popover
+                            open={variantsHeroPreviewOpen && variantsHeroZoomReady}
+                            positioning={{ position: "after", align: "start", offset: 10 }}
+                          >
+                            <PopoverTrigger disableButtonEnhancement>
+                              <div className={styles.variantsHeroThumbFrame}>
+                                <img
+                                  src={variantsHeroImageSrc}
+                                  alt="DigiDeal product"
+                                  className={styles.variantsHeroThumbImage}
+                                  referrerPolicy="no-referrer"
+                                  loading="eager"
+                                  decoding="async"
+                                />
+                              </div>
+                            </PopoverTrigger>
+                            <PopoverSurface className={styles.variantsHeroPopoverSurface}>
+                              <img
+                                src={variantsHeroImageSrc}
+                                alt="DigiDeal product zoom"
+                                className={styles.variantsHeroZoomImage}
+                                referrerPolicy="no-referrer"
+                                loading="eager"
+                                decoding="async"
+                              />
+                            </PopoverSurface>
+                          </Popover>
+                        </div>
+                      ) : null}
+                      {variantsTarget ? (
+                        <div className={styles.variantsTitleStack}>
+                          <Text className={styles.variantsTitleText}>
+                            {variantsTarget.listing_title ||
+                              variantsTarget.title_h1 ||
+                              variantsTarget.product_slug ||
+                              variantsTarget.product_id}
+                          </Text>
+                          {(() => {
+                            const variantsProductUrl =
+                              (typeof variantsTarget.supplier_selected_offer_detail_url === "string" &&
+                              variantsTarget.supplier_selected_offer_detail_url.trim()
+                                ? variantsTarget.supplier_selected_offer_detail_url.trim()
+                                : null) ||
+                              (typeof variantsTarget.supplier_url === "string" &&
+                              variantsTarget.supplier_url.trim()
+                                ? variantsTarget.supplier_url.trim()
+                                : null) ||
+                              (typeof variantsTarget.product_url === "string" &&
+                              variantsTarget.product_url.trim()
+                                ? variantsTarget.product_url.trim()
+                                : null);
+                            if (!variantsProductUrl) return null;
+                            return (
+                              <a
+                                href={variantsProductUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={styles.variantsTitleLink}
+                                title={variantsProductUrl}
+                              >
+                                {variantsProductUrl}
+                              </a>
+                            );
+                          })()}
+                        </div>
+                      ) : null}
+                    </div>
+		                <div className={styles.variantsHeaderRight}>
+		                  <div className={styles.variantsTopActions}>
+		                    <Button
+		                      appearance="outline"
+                      size="small"
+                      onClick={() => setVariantsSelectedIndexes(new Set())}
+                      disabled={variantsLoading || variantsCombos.length === 0}
+                    >
+                      Clear
+                    </Button>
+                    <Text size={200} className={styles.supplierSearchTitle}>
+	                      {variantsSelectedIndexes.size} selected
+	                    </Text>
+	                  </div>
+	                </div>
+	              </div>
               {variantsError ? <MessageBar intent="error">{variantsError}</MessageBar> : null}
               {variantsLoading ? (
                 <Spinner label="Loading variants..." />
@@ -7045,7 +8270,7 @@ export default function DigidealCampaignsPage() {
                         <th className={styles.variantsListHeadCell} style={{ width: 42 }}>
                           Pick
                         </th>
-                        <th className={styles.variantsListHeadCell} style={{ width: 56 }}>
+                        <th className={styles.variantsListHeadCell} style={{ width: 84 }}>
                           Image
                         </th>
                         <th className={styles.variantsListHeadCell}>Variant</th>
@@ -7073,10 +8298,8 @@ export default function DigidealCampaignsPage() {
                             className={styles.variantsRowClickable}
                             onClick={() => {
                               setVariantsSelectedIndexes((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(combo.index)) next.delete(combo.index);
-                                else next.add(combo.index);
-                                return next;
+                                if (prev.has(combo.index)) return prev;
+                                return new Set([combo.index]);
                               });
                             }}
                           >
@@ -7086,10 +8309,8 @@ export default function DigidealCampaignsPage() {
                                 onClick={(ev) => ev.stopPropagation()}
                                 onChange={(_, data) => {
                                   setVariantsSelectedIndexes((prev) => {
-                                    const next = new Set(prev);
-                                    if (data.checked) next.add(combo.index);
-                                    else next.delete(combo.index);
-                                    return next;
+                                    if (data.checked) return new Set([combo.index]);
+                                    return new Set();
                                   });
                                 }}
                                 aria-label={`Pick variant ${combo.index + 1}`}
@@ -7149,15 +8370,38 @@ export default function DigidealCampaignsPage() {
                               </div>
                             </td>
                             <td className={styles.variantsListCell}>
-                              {typeof combo.price === "number"
-                                ? `¥${combo.price.toFixed(2)}`
-                                : combo.price_raw || "-"}
+                              <div onClick={(ev) => ev.stopPropagation()}>
+                                <Input
+                                  className={styles.variantEditInput}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={variantPriceDraftByIndex[combo.index] ?? ""}
+                                  onChange={(_, data) =>
+                                    setVariantPriceDraftByIndex((prev) => ({
+                                      ...prev,
+                                      [combo.index]: data.value,
+                                    }))
+                                  }
+                                />
+                              </div>
                             </td>
                             <td className={styles.variantsListCell}>
-                              {typeof combo.weight_grams === "number" &&
-                              Number.isFinite(combo.weight_grams)
-                                ? `${Math.round(combo.weight_grams)}`
-                                : combo.weight_raw || "-"}
+                              <div onClick={(ev) => ev.stopPropagation()}>
+                                <Input
+                                  className={styles.variantEditInput}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={variantWeightDraftByIndex[combo.index] ?? ""}
+                                  onChange={(_, data) =>
+                                    setVariantWeightDraftByIndex((prev) => ({
+                                      ...prev,
+                                      [combo.index]: data.value,
+                                    }))
+                                  }
+                                />
+                              </div>
                             </td>
                           </tr>
                         );
@@ -7177,6 +8421,17 @@ export default function DigidealCampaignsPage() {
               </Field>
             </DialogContent>
             <DialogActions className={styles.variantsDialogActions}>
+              <Button
+                appearance="outline"
+                onClick={() => {
+                  const target = variantsTarget;
+                  closeVariantsDialog();
+                  if (target) void openSupplierSearchDialog(target);
+                }}
+                disabled={variantsSaving}
+              >
+                Find new supplier
+              </Button>
               <Button appearance="secondary" onClick={closeVariantsDialog}>
                 Close
               </Button>

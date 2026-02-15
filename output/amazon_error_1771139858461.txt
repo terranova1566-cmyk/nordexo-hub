@@ -1,0 +1,57 @@
+{
+  "type": "AmazonScrapeError",
+  "provider": "direct",
+  "code": "captcha",
+  "message": "Amazon returned a CAPTCHA/robot check page.",
+  "url": "https://www.amazon.com/errors/validateCaptcha",
+  "detail": {
+    "status": 200,
+    "contentType": "text/html",
+    "blocked": {
+      "code": "captcha",
+      "message": "Amazon returned a CAPTCHA/robot check page.",
+      "signals": {
+        "url_validatecaptcha": true,
+        "url_opfcaptcha": false,
+        "title_robot_check": false,
+        "has_captcha_input": false,
+        "has_validatecaptcha_path": true,
+        "has_sorry_not_a_robot": false,
+        "has_enter_chars": false,
+        "has_automated_access_notice": true,
+        "has_service_unavailable": false
+      }
+    },
+    "debug": {
+      "title": "Amazon.com",
+      "htmlSha1": "d3077e424d35ed204d2b43795ad438d1e6a40a15",
+      "htmlSnippet": "<!DOCTYPE html> <!--[if lt IE 7]> <html lang=\"en-us\" class=\"a-no-js a-lt-ie9 a-lt-ie8 a-lt-ie7\"> <![endif]--> <!--[if IE 7]> <html lang=\"en-us\" class=\"a-no-js a-lt-ie9 a-lt-ie8\"> <![endif]--> <!--[if IE 8]> <html lang=\"en-us\" class=\"a-no-js a-lt-ie9\"> <![endif]--> <!--[if gt IE 8]><!--> <html class=\"a-no-js\" lang=\"en-us\"><!--<![endif]--><head> <meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\"> <meta charset=\"utf-8\"> <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge,chrome=1\"> <title dir=\"ltr\">Amazon.com</title> <meta name=\"viewport\" content=\"width=device-width\"> <link rel=\"stylesheet\" href=\"https://images-na.ssl-images-amazon.com/images/G/01/AUIClients/AmazonUI-3c913031596ca78a3768f4e934b1cc02ce238101.secure.min._V1_.css\"> <script> if (true === true) { var ue_t0 = (+ new Date()), ue_csm = window, ue = { t0: ue_t0, d: function() { return (+new Date() - ue_t0); } }, ue_furl = \"fls-na.amazon.com\", ue_mid = \"ATVPDKIKX0DER\", ue_sid = (document.cookie.match(/session-id=([0-9-]+)/) || [])[1], ue_sn = \"opfcaptcha.amazon.com\", ue_id = '7HES181TV01Y9PH2P08H'; } </script> </head> <body> <!-- To discuss automated access to Amazon data please contact api-services-support@amazon.com. For information about migrating to our APIs refer to our Marketplace APIs at https://developer.amazonservices.com/ref=rm_c_sv, or our Product Advertising API at https://affiliate-program.amazon.com/gp/advertising/api/detail/main.html/ref=rm_c_ac for advertising use cases. --> <!-- Correios.DoNotSend --> <div class=\"a-container a-padding-double-large\" style=\"min-width:350px;padding:44px 0 !",
+      "textSnippet": "Amazon.com Click the button below to continue shopping Continue shopping Conditions of Use Privacy Policy &copy; 1996-2025, Amazon.com, Inc. or its affiliates"
+    }
+  },
+  "stack": "AmazonScrapeError: Amazon returned a CAPTCHA/robot check page.\n    at scrapeAmazonListingCardsDirect (/srv/nordexo-hub/lib/amazon/scrape.ts:507:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async scrapeAmazonListingCards (/srv/nordexo-hub/lib/amazon/scrape.ts:261:20)\n    at async main (/srv/nordexo-hub/tools/amazon-scrape-test.ts:148:21)",
+  "ai": {
+    "page_type": "captcha_or_robot_check",
+    "likely_issue": "Amazon is blocking automated access due to CAPTCHA verification.",
+    "confidence": 0.9,
+    "key_signals": [
+      "url_validatecaptcha: true",
+      "has_automated_access_notice: true",
+      "HTTP status: 200"
+    ],
+    "next_steps": [
+      "Implement CAPTCHA solving mechanism.",
+      "Reduce request frequency to avoid triggering CAPTCHA.",
+      "Use residential proxies to mimic human behavior.",
+      "Consider using Amazon's official APIs for data access.",
+      "Monitor for changes in Amazon's anti-bot measures."
+    ],
+    "hypotheses": [
+      "The scraping tool is being detected as a bot.",
+      "The IP address used is flagged by Amazon.",
+      "Request patterns are too aggressive.",
+      "User-agent string may need to be randomized.",
+      "Cookies or session management might be inadequate."
+    ]
+  }
+}
