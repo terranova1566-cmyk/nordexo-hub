@@ -1,0 +1,199 @@
+{
+  "asin": "B0DCKF98VB",
+  "domain": "com",
+  "productUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+  "title": "Valentines Day Gift for Him Kids Boyfriend, Gifts for Men Him Boys Husband, Easter Basket Stuffers for Teens",
+  "brand": "Brand: FUAOIS",
+  "price": {
+    "amount": null,
+    "currency": "SEK"
+  },
+  "description": "Buy FUAOIS Stocking Stuffers for Kids Teens Adults Men, Gifts for Men Him Boys Boyfriend Husband, Valentines Christmas Gift for Him Boyfriend Husband: Shop top fashion brands Novelties at Amazon.com ✓ FREE DELIVERY and Returns possible on eligible purchases",
+  "bulletPoints": [],
+  "images": [
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX466_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX385_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX569_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX425_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX342_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX522_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SX679_.jpg",
+    "https://m.media-amazon.com/images/I/71DXrp-tteL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71cuvoylmkL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71QTiEBleLL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71Wt-8qxNkL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71guk93a3rL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71++BhnsnkL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81UIODYX1LL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/612WPufNFIL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41ZHJxg7qWL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41kpEmKiOZL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41vhThrEDML._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41+IZ7REnwL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/413I7CCWvzL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41JKGuUgx2L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51j6SnxLnVL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41TkN8c9L-L._AC_.jpg"
+  ],
+  "variants": [],
+  "relatedProductAsins": [
+    "B0FRRBY7CS",
+    "B0CXDS93C4",
+    "B0BZ8MB4KM",
+    "B09995133G",
+    "B0F6XSWYZY",
+    "B092J1SPX5"
+  ],
+  "relatedProductCards": [
+    {
+      "asin": "B0FRRBY7CS",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FRRBY7CS",
+      "title": "Black",
+      "imageUrl": "https://m.media-amazon.com/images/I/41TkN8c9L-L._SS64_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FRRBY7CS",
+        "extracted_from": "html",
+        "extracted_url": "https://www.amazon.com/dp/B0FRRBY7CS/ref=twister_B0G6WMZ9YM?_encoding=UTF8&psc=1"
+      }
+    },
+    {
+      "asin": "B0CXDS93C4",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CXDS93C4",
+      "title": "UNGENT THEM Cross Bracelet Men Baptism Teen Boy Gifts Ideas 8 12 10 14 16 18 13 15 11 9 Year Old Birthday Christian Religious Valentines Day Gifts for Kids Teens Teenage Boys Easter Basket Stuffers",
+      "imageUrl": "https://m.media-amazon.com/images/I/51BUc+zjYgL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CXDS93C4",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JECOVCJFRB8pV5seeBRJ9fAAAAGcZGBXZgEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICDrgnxw/clv1c_ek-IxYHXLbbWDdHYVp8JHgIJ7TpWipMXE7ed-JLjHUsK8cmmtTQr3H9Ee-1KgHi5LFL-_2uCu4rUhO8BSok3vcxQ-wDqtpGAf2AUDqjjUh0Wuy3__nHQ2Oj498lEhzFAyCEUq9wiLly4rLOgfMJe3ZfdpYU8Flbwmsry919qbISV22k41JjzaHWqiv6tgi1Fg74OpsxBER2sPZC1N-uYeOjMXBt9xq2-l9cbWKOc6LLffOLZxHkSX7aWcll_MvtCE4ZAoXKEn-LwmvKITBqIsALBwZiSUQ8VkKKCY60PHlDOrt-FxSZ1l1LR27llf5Wtpk94IY4ioNkpxkCyUCff0hjIHO_le0f7Ll_nEDLwOeJplGGuqeN81g3wG0vsc6sOr5dDMf_iVbFavSAvUv7KTutViSL-EgilNfjYaG7cOLJ3Aeh1knzaFAQoR5fGXL9XF0lOqKlaC7ICj247Wu4wLoLEgtn5kg5Lq2e_LFRAhnL1Kg06jQRznPqsJ77Z63chlbFX_qfiwb3B4knegPOxN7iTdqXqC2Jdj7jqNGzg2ji7AjIDn0jbZQXY3OgJwNTUK0JxLo1GumGdrEH3yBKiQRGzOsFRe7FfryegDRupYequ2rR5pG5W3J0dleu4fIuA8zuAeFErnfW7-BggAmE2jQRNoysW29sS_fsaHaYmCWfn61Ws3IDCiUP1ZWdg1QRbWyooL91GPJFbhqLNugqOtZOGn3X42dTDvorN6gDIB8_DjbZr5Ty5SmzJF0NvZEy6z2NYWFG3bkAVObsr6ssErjUj1wJBc3Xg15TLhNZkXvUkS8nit3JivlWCAOOmsUS_7b1ePhpIBY1LJh2LQXH9RiokbXvAK0zvH5nDmc8ZuI89d3t97uoQkBQtNGPZC2rXSJ5EjXgah2c7VI9p86-QehrRI36EBZ0JJGmaSg_DLwOltFHuZZK9z6KVQH2AtJagTufmkr58nAJmEo-zy_ZzlxtKxQKeQYzbb_XmV-dxXJVMRsSxQWewOwPikSoTFaaF8Wf7utjbNDkpaLQCyaeb3ttxj8GEQCowKeKBVyAE8PWmJcia-nu33FH6H5jAZeGtZIdEg_peviLVfXBDWMTR54cQhDNu_CB5vhE4LrW799k8T6f52q7a9kNIsKBURrBpIX37NJPFgYvxz7LSURFR_HntAnps4Z8IVCP5-YZhDrOCudJTmyfodhVSuzOau6eaUbp-6pzpaj3lc4d0SEghyFFZzBMHOFcpGams4KJ9xmO15jzx1hTZlr7O3Lod6gu95CHyM0MZBU43lm64ZH1oGC_ywEUXjEzD0nkxG2C95IsZUpgGrfWziDm4JtakYlORrNZOKsI0TZC7PJISbDzagpGWBX9jVjK__ctw4w1xetWO-B9iQQcbwBR3pTkv71zyml1Hz7IsIh8DowRDhHhdMoaLf0AveS32SZmmTVmQu9J8zZaNhoOLDbokz0wfaXBWQZfDTwvjg146QoCCaJgnrFk5mKqxaOPVDQ6W51NXlOv1okBcnJAu529rSjCNFqzFGBCiW1n_TNfYtrfB2xVDkLRKpq2PFw/https://www.amazon.com/dp/B0CXDS93C4/?_encoding=UTF8&pd_rd_i=B0CXDS93C4&pd_rd_i=B0CXDS93C4&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=beff1&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_w=beff1&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812"
+      }
+    },
+    {
+      "asin": "B0BZ8MB4KM",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0BZ8MB4KM",
+      "title": "Boxbollen® Boxing Reflex Ball - Celebrity-Endorsed Home Workout Game - App-Connected Punch Counter - Hand Eye Coordination Training Ball - Christmas Gift for Boxers, All Ages - Stocking Stuffer - Red",
+      "imageUrl": "https://m.media-amazon.com/images/I/41ckrA33HgL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 268,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0BZ8MB4KM",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JBSVN_db9pWApCiYr3hSiH0AAAGcZGBXZwEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICAMz1mi/clv1c_ek-IxQfWLcTaTKXiZOfuuI-tDxJnsuDmakymw8Ty1emSd-EeRSD9TR2Bz3ryB5JQjAXda8aL9iLUiBs5KJUGW9cmNyFpzaO6Uzes_NXsn883RyHhwLKzvkw64uVYzqLs0Eefsy5NZn6EEOFBNPpi4ZPfteU8F1Ls2sLkvwcriYMTXG7n0byre1vCR5oKbqKXTfv56FyIHwDbzzzpHwhgqtg3N38eJeeOaMoQnqVZyxJKdSRjg5SDWL7lIgttOuteNcjhbC-fH6OiA63npioBw9EL0lwYaN_6_0r-sGMox2BeNd6RkFPrO35oGryzCZekO9v-xNZh5IB9c1ZUtSg5ehC6uwP7Qwje0etYy6-GbTUur4vs9piJg8FpfaICwwFkqOtQsWKrKJvcxGE_Vt_KDutXySJ60uIV---giJEnjNrhO9avxWm0LogQXgQhRpzI-RaPo_ocb-QPCmJW865CIBvJ1jtmx9veY_FmOUp6XIVFbEW2dcQQ5QyFAPyYYdEuLdmuWDE0FphqNzNCI61xio68o94rgdatd9QE04eDNWqmZINqFRlGik2C95TVZtsQE0K49IKCum4ZlEG3yJKysRaS9EJBe_GtczDLfodL3a77MUG0QFkjqnvjMHDHK9N1Wa_njNA1fXSlNptw5M3Jozb-0pLVSicDBF5G5YIgCG9k6_v41Ib6SX5lUiIa9Z5lQWeLkuvxgQNQ2dA4lBxyVZOGnxXo2ejDv5YO6uzpw35aPiAddK0eOqq41RzHOgFw4ps_80yuVXwdiaMv6oD6P_fZH7eER-P8s5fowqeTzGaNtXt06zu3EMQTsisIhrqmDuEBN9QlAKHGelT0xE5NGhhzCiwCh0l5QTz4T51KshjxkLsl7o7HO0NM1G2w62Td8Xkxc1rY9Z4J9E9w2s7wPvA8V3KJYWSLQ8txwxwX4kv8_OCcbH0vy2-ZPFG7V2sLQVHQkO8rZcYYjmku_oOdwb3l1r4Ybw-glDqsOFJBTIfF8Gxrwv1os03NVIFrTLb01P-30IThMD3tNlvKD6cELmgKcSUZnZG9E_Ix9no8DjF5xrmhge42c-_ZBobWDpoNZ2k-c-Z7-YmhCPR-hfszqjyXu6l9fDFDP8U2enLhsoNpPP4bUbx_Gty7854kWzkzw7U_QEIUamWeL6INubNBf-CJu21xTxjo9AabO07mMWXfJxVoI4FRsOfIRJ_vdvEKACxiwnhjqkAzyLp0yxmskuZXLizSGydXJH0rm_5FfO-KHV7xBykpm2w1T1M0R6Jl5iS3GaABFtrKFZkdmEACp2sPtaa9hpk3Cq-in9XoVWBaCxA6PaG0zVtMpqN7k_sKQ7xd8qggxfGRXqtiqxIrXNDtAoyJ-SLVEfgbeCVOOeZd5dZH5nCbRgeOrb698RxchbIvZCxTt9TkDckr8_e3f3itCVbpxOJFaz2FeOV7HcebSemi2b3orgE1D8XYdBy-MyEjCRmhLwTZHipE4wUv0i3dKtl57skpTdINMEgYKbvxv0KbwndmZslmQT2UvEXoJySA573lu2TpfclmjKJnAKDuIqA/https://www.amazon.com/dp/B0BZ8MB4KM/?_encoding=UTF8&pd_rd_i=B0BZ8MB4KM&pd_rd_i=B0BZ8MB4KM&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=beff1&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_w=beff1&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812"
+      }
+    },
+    {
+      "asin": "B09995133G",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B09995133G",
+      "title": "Magnetic Rings Fidget Toy Set, Idea ADHD Fidget Toys, Adult Fidget Magnets Spinner Rings for Anxiety Relief Therapy, Fidget Pack Great Gift for Adults Teens Kids Easter Basket Stuffers (3PCS)",
+      "imageUrl": "https://m.media-amazon.com/images/I/51AnxYdO-ZL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 89,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B09995133G",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JDxGgJTbxBqUBwXXdO07tsgAAAGcZGBXaQEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICCibLap/clv1c_ek-IxYHXLbbWDdHYVp8JHgIJ7TpWipMXE7edRefsj6dx68vjJG3Y04Rx5WuF7QSUtnA3Xy7Q3kWHAl3g-31v5xTwSSArelCjOrlxCTndPNQ7iQqta_Xi1kAIsvhztUAlIImQP0e85ncE77WXDYnmnmD_8F2fjC2KEqCxyzynlNLfCTu93lejo-7wFFgdlE5wgsVLM0lGNV-gRUUul0lBkKMpt9-3gOpUnZ0fcUklYLGCesuPLPnq90PS2ZYk4g65kPej1k1rjecgYWneW5trKBJhMH_IZbFRIpB95iw5r5r_2PE766QCOHy3MJBguEmwDJ8CEDMKLnfZmT-c-d_xvkUziNkymZx48_3gIItwIIOYccXYkXhsR7iZSHV5ZWrVF2nl8rgh9-7__5qvCphi8Ex9hDU9KO-NlWgr7Bo8RcEkzxqNzSyS-Rwq2kJeNznbNr0xzuXdOM-Zs-J6PoHVhE6S6j8DOcllC0z3mV6ipYdmix8c9wEIBhn1QeIS0NOI8lY6cOSXIu2z5ghq2iDozOYq_2X1wkVmhSKzL9BrRn1ZzAjhZrWds-vH0mrRx6cPpwEgvx6TDFKwYixphGMGGN97OqRa3eHL_qmb96pbsBCu-NktlB22LBouNZKLYW_qpDHATO9N61PO9l1Fn01yVDYDtjfepq27_HMTeepHmRrWH_xtEtDyezH-img5AfX3s1EqZFY5ccYG0w1ClIHajw8jif0M0ICl_Kxj-xFZYp-XtGNoX9Pa6COzcToEPZOs-8puNqtihtUSPui_s5p41SN10WPeAwHKi04JHN5xh-CI0oGV9r1zqdSUPCmGRoU3UsZrZQbqna5QUBoU6fZG8Ed5O4yvrj6utqOmGAxoYWYSJuAcXf_pkBYtNHs6cikesHQvmynGjVSCDiZLxsq8xN_xmh1naartD9ZaWRqLQsMwdVKE5UJLx7fpwizt-GrRG_8R1MYkg5RTosHAfT1PveZ6wfQp686LMa_Cl_clCWSIvZ6RlUd8Xhx7NuhxFhVLKf73YEAzYAATBOpyek7ckXY0aVX0SBhuj7RaTWZZOm_woZclCliz3PK2ce04cawOmKlF7qWhMmC0-G0SD8mFNNHBJxw5C6M5NCv5gV84shUUYpk97meJubrH-sayDRw9zN9qgGZCBsqodfqjwk7XxX8zQElaP_rHRgRwhlAjyKDGhH4kQmI4Tfd46xmYQp-ziO3Bs9b3mm9lyDV-flEdMyxPaTkFXLL7PP5zn3Dd-gWX34YBEBXBIoFyQKJr-QpT6SWKwwvs6ljBg-ZXUEizFZ1DHKbUATy3EqUDEkvUnwa_Kfk7MaVwZreILC_VVTophd-ZypgyHEjYochrevjju5R29Tye-NxnmSVhBGXoz6FNSX_u-7L7px1LcJo00XT1sNgKVzuLAajoQM3sFikuIEo3oSb0lqeRVFoPTSwMWc0DPSvnf7oybEtjI247h6N5B2IbiGJ2YQ7AYv7baJ1Cb9N5m8bI_HH3PcAxaobXee6-I4nAzXa0psP8UcZIDblPLA5o0tGhkvb9qiIKF6V8beqcUA/https://www.amazon.com/dp/B09995133G/?_encoding=UTF8&pd_rd_i=B09995133G&pd_rd_i=B09995133G&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=beff1&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_w=beff1&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812"
+      }
+    },
+    {
+      "asin": "B0F6XSWYZY",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0F6XSWYZY",
+      "title": "YZPPDHFC Custom Socks with Photo, Socks with Faces on Them Custom, Gifts for Men, Personalized Gifts for Him on Valentines Day Christmas Birthday Anniversary, Gift for Men",
+      "imageUrl": "https://m.media-amazon.com/images/I/51s8eY+hJuL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0F6XSWYZY",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JHF03DyPdz9pfXeVBPqWfsAAAAGcZGBXagEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICAn4imD/clv1c_ek-IxfHXLcTWDaXjaOcTiFwLMKlTuYrnB4lVdF3w3cJhyQS32eKbvxl7F-NeQ7SI1pG_cGsonNa6qfipyC7mf0ztcpFJP-yc_0kUKnZnvvg-o0eDghuCxmX5yBkU5_RT6JzfTHFu-6jgEw3xyNUHYrzS9D0ckEvysh3gDnat2pMvMbu90iPjNlLpICdExYsiOMJnvOkIGgDV5zyJ_wiAwQ4Cvd-7iAJ2h4nMGtnrCMoce0uPMPlo62OJdHWtC62GE2vY-Whc-Lq1Uh6n0MeplEu9hSdDM4_e4Un4LiD5uhcjwNojEBUxoKOJu0SO1z4Ulg7VsSHbNpC01G8ocSBVdpSC2k2kIecfRWBW6DUnvYl1zLZlrHxd7hVE_bAbBigLtJiQ_D7tVN7GjsZkwYjZ4NW1-tGmW2p0ytZ3XYDzUdw3gfTpwnlrC6NBHiZIitSRa_uaP2nrq_Y3znPZE3bNVivSZ81xC2yf2StJ_Surnu-wJnG-qS6QJxMydAaVgxW14zmXPdQdAHHhzybmMLrzE4_VHAVi9bg1GLjTcROtToyoIs3nMwmuzlzMiQJfSTkHjIIyBs1UtHmyOU4PV6KdtCxM7739CkGPDN6y4aD3UmBr38kCauQIhXvb6C7_SPtRhawxO4qaaGvEhVhj169tXgqe1iAlTt_-qvKVgpAlHRnmHadZwySC3Rd4vpBisMqRMk3J0YETwmF2xx1c2FNxxM5ehHgAVIKfaM8lGovAYSVKIuF6urV7nSniqVc8qEhkoGDy1INajxzqqyTMxIE3nQHWfa-ET2Lzqpga_ikGbBnEJG5VjgTZNe_bqkBtYgOHlhiqpZ2ragxWX_ox-GLxzA8c9POR5VTnHx5Cls8ZuIkNf3t1LtIgt90FjZ3qP06BNNZIfqXbfIYMXuEE4Il1J20tZvspiUZ-LiDpKt8HCBG97nUyhJQWZe1tStc_uT-DnfTxNEMF4HPbrw3cS5_rLX9GJmsu_6MDygNLknrG_avBK2vJqdadCR0H4RO1pV1YxQsh2kXSR6zzud8l53pww_yMqMvBj2Q7oM-a8oHbsDmQ3PNt91z23FqAHsa7wPMJCxK2HEdpOF7lS_OrVzY77av1mUztnxyxWT-0venibIhRDRfNaODNFAQpV18EZbz75VQEZX0bKXjgTonBCbjaviG0hep8SSqlHsNJZ3_32EwZy_uIx-D57uf-a5703NiplmjAM9a35IEtWlFPYg1fCts-ekb6NZiTO7jidkQ4rQPUvX5HS4j5kSvhlJgtgDZTaSeo1eLjv73ZVkQc81UPjH4qrT4zCdAycqVsJRKwzAQyj2oIatu6W8Ak66_T41Zz7CSn6jkhYxDm1p4ACnEhxygxy4WEA58Ck5dPn1lxr78fDWh_9nCKmYZKUWoOKYOcJAvh0QyNR7mt1xza1hk-PIgHmSH3hqdXaFrPfCAMec0DP0-q8GPAM40TEZq-CVMe09C82IwvK7dfNb71CkOODIst3mtzsCd6zSYCELbNYsmLo_7Yz9Ilm-ede-6e-Jf0_lEKAfrgE5eCCP-i6LE58bwX/https://www.amazon.com/dp/B0F6XSWYZY/?_encoding=UTF8&pd_rd_i=B0F6XSWYZY&pd_rd_i=B0F6XSWYZY&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=beff1&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_w=beff1&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812"
+      }
+    },
+    {
+      "asin": "B092J1SPX5",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B092J1SPX5",
+      "title": "Kelool Do Not Disturb I'm Gaming Socks,Valentines Day Socks Gifts for Him Teens,Mens Teen Boys Gift Ideas,Boys Valentine Gifts for Men Him Teens Gamer,Easter Basket Stuffers",
+      "imageUrl": "https://m.media-amazon.com/images/I/41RjDMzIw9L._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "sourceType": "recommended",
+      "sourceAsin": "B0DCKF98VB",
+      "provider": "direct",
+      "raw": {
+        "asin": "B092J1SPX5",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JHNeZ0aqUfMO6bcwPpS8nDMAAAGcZGBXawEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICBPc7qX/clv1c_ek-IxQfWLcTaTBVEai7o5V7vtDDDGxixBjFJJhWgtwJCwnTY48BXqQPUwKpxL8CtoyyXm-HqcQ0a9GMxGREe9dsda30xpyKLb6YBd9djfU027QnuX6WNvky45-UYbiItQIQckz7l4V8WC0i0MMfwOkKbo9P0dtTrAMH_wS0aZAa--StEE5Omj5pr3gE_M0Kk73QPcwMb3kZL2Xn7vkDUofzOGDsbIFv5DEaMLurTCslQ65TM-vECIbHsBo7XVWTa5o65PKPBjedwi61Ai3yiv4lHslijobJvddMgQqrS9xI8lZaB2aCjhKPZEP9l0lj85Mb-9d5h5IB9MkqstjjB-TCyOwPzgShWoOEjQJpAbTUuX57VWK7Ly0oEf1MCy5hVkhlXSZhbRltszLZRus8Y_Ihd3Or2lRaU4IFLVIe10zBfhCPjSC2POZ1KKbmC0XYlr2XEFtTYdLrkRdFvI761EoKkhRbFIc9a21rtjpRsFlKMmiab4ynQZlTEmQCTBfnwDnpyCbey6L4ku7VtKLT2AuIOHDxqLLkCtirxH5eVWtfAATYnAvS_AUtZWmVJOUn0Bpzj4-wfvSf53oNZ4i0BhGXG03RcduRgrJDCaPqt4z4zuuHR2MBRgapsiGsKy5Cj5wN_Iu9Nq1PKGuGbNJX1uzB9UpXUauH6DNhH5b5_XOxLBVYozGC7-X_9ZHlnlq5lQX8P0d7ymQdwASyoxhFnxM5e9fQCbHSvbMwx2TNHcaVrMuQ4mqudenSD2kRIRqXrkCYOzygBu0XrufyxIkuqS_6tbzHvJT4PPymbd3LzXS2M39APPLN2NJNlK0ybJDh3StbR9uD3DdVzttQ1-Y49acD60-I_DKkR4agwrZdwdGPhBdAVWzvs64qreX7gipeKlpLKH_LKGhtpfbSqJAs0SGR2QHYs0XRUyqcsiTqkKlEyepdYEWH3nhIjiKrWHxXqdoG19ApoXe3To8HAZYHrLflYKmsu_6sDeQPNy008aTgQqmp6WlvnNDXimbjSLAiGaFlkTFVHA9A0slHbAb-fcGbZ_q5RF3cW_UFW7u9223cjwMaLnwFO-lxZjL7sDppNCyITkz6dKNkT9aVVuB1csi8QG9Wr4jAMS7ZWWM3lyfRnFwZKbL0UIiep4saqDRw9zN_qgGZCfsqodXmDbjUck7ax3HdHDfbERgRwhlAjyKBGhTZphoH39pgoJadlQi04QK5YOMAcFvabV8FI5CxZStPde176NeRVWGhP5qCoOcLewtjYqsZg0vcA6sF5ID5eDwc2jHoM6i1DiEaqUx2bV-evwGd9PzDW1Zd5TRlWpfT6UBe7fb6eJpR_Egc7kNgKnCokrTiwO1ysjYLJmygVv0bV-TY9hlmLcT2sHapnKjoqcqDDJh_9HWLzgtBZ7T6jg4szgYMIwAkvra5bGGnguaJUnuNVEnw1vj-GBLBOIPpaTmiC533vrxE1D8UZdBy6NWEDBxmBLzw5PnpeseLDlLNa8LC1YmGG3J3TSEXSkKgmHSRRnv9iFw1KCS2LNuS_7A4m9_Fh3r5rm05Bxqa1JK3_Ew/https://www.amazon.com/dp/B092J1SPX5/?_encoding=UTF8&pd_rd_i=B092J1SPX5&pd_rd_i=B092J1SPX5&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=beff1&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=64PBHHG47SD5CGMP8A5V&pd_rd_wg=rCsNx&pd_rd_w=beff1&pd_rd_r=1c4764f7-3c9b-444f-9ec9-7e61b3a2c812"
+      }
+    }
+  ],
+  "provider": "direct",
+  "raw": {
+    "fetched": {
+      "url": "https://www.amazon.com/dp/B0DCKF98VB",
+      "finalUrl": "https://www.amazon.com/dp/B0DCKF98VB",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    "parsed": {
+      "canonicalUrl": "https://www.amazon.com/FUAOIS-Valentines-Boyfriend-Husband-Stuffers/dp/B0G6WMZ9YM",
+      "priceText": null,
+      "details": {
+        "Date First Available ‏ : ‎": "December 11, 2025",
+        "Manufacturer ‏ : ‎": "FUAOIS",
+        "ASIN ‏ : ‎": "B0G6WMZ9YM",
+        "Best Sellers Rank": "#2,825 in Clothing, Shoes & Jewelry (See Top 100 in Clothing, Shoes & Jewelry) #12 in Men's Novelty Socks #729 in Men's Fashion",
+        "Customer Reviews": "4.8 4.8 out of 5 stars (784) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); });"
+      },
+      "rating": 4.8,
+      "reviewCount": 784,
+      "details_raw": {
+        "Date First Available ‏ : ‎": "December 11, 2025",
+        "Manufacturer ‏ : ‎": "FUAOIS",
+        "ASIN ‏ : ‎": "B0G6WMZ9YM",
+        "Best Sellers Rank": "#2,825 in Clothing, Shoes & Jewelry (See Top 100 in Clothing, Shoes & Jewelry) #12 in Men's Novelty Socks #729 in Men's Fashion",
+        "Customer Reviews": "4.8 4.8 out of 5 stars (784) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); });"
+      }
+    },
+    "variantImageErrors": []
+  }
+}

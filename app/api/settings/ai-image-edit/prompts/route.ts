@@ -64,7 +64,7 @@ export async function GET() {
   const { data, error } = await auth.supabase
     .from(TABLE)
     .select(
-      "prompt_id,name,usage,description,template_text,created_at,updated_at"
+      "prompt_id,name,usage,description,address,template_text,created_at,updated_at"
     )
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
@@ -95,9 +95,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name is too long." }, { status: 400 });
   }
 
-  const usage = typeof payload.usage === "string" ? payload.usage.trim() : null;
-  const description =
-    typeof payload.description === "string" ? payload.description.trim() : null;
+  const usageRaw = typeof payload.usage === "string" ? payload.usage.trim() : "";
+  const usage = usageRaw ? usageRaw : null;
+  const descriptionRaw =
+    typeof payload.description === "string" ? payload.description.trim() : "";
+  const description = descriptionRaw ? descriptionRaw : null;
+  const addressRaw =
+    typeof payload.address === "string" ? payload.address.trim() : "";
+  const address = addressRaw ? addressRaw : null;
   const templateText =
     typeof payload.template_text === "string" ? payload.template_text : "";
 
@@ -111,10 +116,11 @@ export async function POST(request: Request) {
         name,
         usage,
         description,
+        address,
         template_text: templateText,
       })
       .select(
-        "prompt_id,name,usage,description,template_text,created_at,updated_at"
+        "prompt_id,name,usage,description,address,template_text,created_at,updated_at"
       )
       .single();
 

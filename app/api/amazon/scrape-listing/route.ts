@@ -7,9 +7,31 @@ import { AmazonScrapeError } from "@/lib/amazon/errors";
 
 export const runtime = "nodejs";
 
+const isTruthy = (value: unknown) => {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(normalized);
+};
+
 const parseNumber = (value: unknown, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const serializeSupabaseError = (err: any) => ({
+  message: String(err?.message ?? ""),
+  details: err?.details ?? null,
+  hint: err?.hint ?? null,
+  code: typeof err?.code === "string" ? err.code : null,
+});
+
+const isMissingTableError = (err: any, table?: string) => {
+  const code = typeof err?.code === "string" ? err.code : "";
+  const message = String(err?.message ?? "");
+  if (code !== "PGRST205") return false;
+  if (!message.toLowerCase().includes("could not find the table")) return false;
+  if (!table) return true;
+  return message.includes(`public.${table}`) || message.includes(table);
 };
 
 async function requireAdmin() {
@@ -99,6 +121,12 @@ export async function POST(request: Request) {
     );
   }
 
+  const persistToDb =
+    payload.persist_to_db === undefined && payload.save_to_db === undefined
+      ? true
+      : isTruthy(payload.persist_to_db ?? payload.save_to_db);
+  const returnCards = payload.return_cards === undefined ? false : isTruthy(payload.return_cards);
+
   const results: any[] = [];
   const errors: Array<{
     url: string;
@@ -128,11 +156,41 @@ export async function POST(request: Request) {
         last_seen_at: nowIso,
       }));
 
-      if (rows.length > 0) {
-        const upsert = await auth.supabase.from("amazon_product_cards").upsert(rows, {
-          onConflict: "user_id,source_type,source_url,product_url",
-        });
-        if (upsert.error) throw new Error(upsert.error.message);
+      let persisted = false;
+      let dbError: ReturnType<typeof serializeSupabaseError> | null = null;
+
+      if (persistToDb) {
+        if (rows.length > 0) {
+          const upsert = await auth.supabase.from("amazon_product_cards").upsert(rows, {
+            onConflict: "user_id,source_type,source_url,product_url",
+          });
+          if (upsert.error) {
+            dbError = serializeSupabaseError(upsert.error);
+            const missingTables = isMissingTableError(dbError, "amazon_product_cards")
+              ? ["amazon_product_cards"]
+              : [];
+            errors.push({
+              url,
+              error: dbError.message || "Database write failed.",
+              code: dbError.code ?? undefined,
+              provider: "supabase",
+              detail: {
+                table: "amazon_product_cards",
+                dbError,
+                missingTables,
+                hint:
+                  missingTables.length > 0
+                    ? "Missing Supabase tables for Amazon scrapes. Apply migration supabase/migrations/0043_amazon_scrapes.sql and then reload the PostgREST schema cache."
+                    : null,
+              },
+            });
+          } else {
+            persisted = true;
+          }
+        } else {
+          // Nothing to persist, but the scrape itself succeeded.
+          persisted = true;
+        }
       }
 
       results.push({
@@ -140,6 +198,8 @@ export async function POST(request: Request) {
         domain: scraped.domain,
         asinCount: scraped.asins.length,
         cardCount: scraped.cards.length,
+        persisted,
+        cards: returnCards || !persistToDb || Boolean(dbError) ? scraped.cards : undefined,
       });
     } catch (err) {
       if (err instanceof OxylabsError) {

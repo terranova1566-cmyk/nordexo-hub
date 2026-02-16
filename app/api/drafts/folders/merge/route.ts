@@ -197,8 +197,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const totalSbus = Array.from(allSpus).length;
-  const mergedRunName = `Draft Products-${totalSbus}-SBU-merged-${formatTimestamp(
+  const totalSpus = Array.from(allSpus).length;
+  const mergedRunName = `Draft Products-${totalSpus}-SPU-merged-${formatTimestamp(
     new Date()
   )}`;
 
@@ -327,8 +327,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     merged_run: mergedRunName,
-    total_sbus: totalSbus,
+    total_spus: totalSpus,
+    total_sbus: totalSpus,
     updated_rows: updatedRows,
   });
 }
-

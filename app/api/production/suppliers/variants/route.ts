@@ -690,6 +690,7 @@ export async function GET(request: NextRequest) {
 
   const provider = asText(request.nextUrl.searchParams.get("provider"));
   const productId = asText(request.nextUrl.searchParams.get("product_id"));
+  const skipTranslation = asText(request.nextUrl.searchParams.get("skipTranslation")) === "1";
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
@@ -704,7 +705,9 @@ export async function GET(request: NextRequest) {
         ? selection.selected_offer
         : {};
     const { combos, type1Label, type2Label, type3Label } = await loadPayloadCombos(selection);
-    const translatedCombos = await translateVariantCombosBestEffort(combos);
+    const translatedCombos = skipTranslation
+      ? combos
+      : await translateVariantCombosBestEffort(combos);
     const saved = (selectedOffer as any)?._production_variant_selection;
     const savedIndexes = normalizeSelectionIndexes(
       saved && typeof saved === "object" ? (saved as any).selected_combo_indexes : [],

@@ -1,0 +1,208 @@
+{
+  "asin": "B0FM43SS47",
+  "domain": "com",
+  "productUrl": "https://www.amazon.com/dp/B0FM43SS47",
+  "title": "Valentines Day Gifts for kids Classroom, 16 Pcs Rainbow Colored Pencils, art supplies, Easter Basket Stuffers for Teens 5-12 Year Old, Galentines gifts",
+  "brand": "Brand: FUAOIS",
+  "price": {
+    "amount": 54,
+    "currency": "SEK"
+  },
+  "description": "Buy FUAOIS Valentines Day Gifts for kids Classroom, 16 Pcs Rainbow Colored Pencils, art supplies, Easter Basket Stuffers for Teens 5-12 Year Old, Galentines gifts: Colored Pencils - Amazon.com ✓ FREE DELIVERY possible on eligible purchases",
+  "bulletPoints": [
+    "🎁 【Valentines day gifts for kids 】 - 16 Rainbow Pencils are The Best Gifts for Kids, Stocking Stuffers for Kids Teens, Ideal gift selection for Christmas Valentines Day Gifts for Kids, Easter Basket Stuffers for Teens, They always create amazing works of art with colored pencils.",
+    "🎁 【Ideal Gift for Kids and Adults 】- Rainbow Pencils is Great for Beginners of All Ages or Experienced Artists, Including Adults, Children, and Artists. It Can be Used to Stimulate Imagination and Creativity, and Every Colorful Painting is a Work of Art Created.",
+    "🎁 【easter basket stuffers for teens 】- Trendy things are the best choice for teenage girls, such as birthday gifts for them, easter basket,Christmas stocking stuffers, and presents at art parties. The cute pencil and cool pencil design make it very popular among teenage girls and teenagers.",
+    "🎁 【Versatile Art Supplies】- These coloring pens can be used for coloring your books, design work, color sketching, doodling, creative painting, marking on books and many other purposes. We can use it to draw anything we want.",
+    "🎁 【High Quality and Durability 】- Rainbow colored pens are made of high-quality black wood and premium pigments. They are not easy to break and are extremely durable! The black wooden texture of these pencils feels extremely smooth when held in hand, and the pre-sharpened nibs ensure they can be taken directly out of the box for use."
+  ],
+  "images": [
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SX466_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SX425_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SX679_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SX522_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SX569_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SY450_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SY355_.jpg",
+    "https://m.media-amazon.com/images/I/71xNUdQabUL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81Hj-+L9KEL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81M1uc3Re0L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81zGszCg2DL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71cYv1uU15L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71Xr8EPK5HL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81TsE8YIZBL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/51RmY65mn+L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51PBQTgNLuL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51sNJ4V4wWL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51r50HrZHVL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41Ld9aHCeIL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51PWFYtLllL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51IAYRHayOL._AC_.jpg"
+  ],
+  "variants": [],
+  "relatedProductAsins": [
+    "B0FW5QLCRM",
+    "B0FRS85F5G",
+    "B0FX2GVF34",
+    "B0DM5DVD9J",
+    "B0FS23DKDC"
+  ],
+  "relatedProductCards": [
+    {
+      "asin": "B0FW5QLCRM",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FW5QLCRM",
+      "title": "Ximoeo Valentines Day Gifts for Kids 24 Scratch Paper With Scratch Art Notebook Valentines Classroom School Exchange Prizes For Girls Boy Students Toddlers Party Favor Goodie Bags Bulk Toys",
+      "imageUrl": "https://m.media-amazon.com/images/I/611LnCkaxRL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 206,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FM43SS47",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FW5QLCRM",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JDtl-xsJAIRT0ZiGg8UHgUEAAAGcZGBL6gEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICB2ySqI/clv1c_ek-YBQf2FbbWzjI3k_cWe2v7kgw6AAjLuBRKswT2KefUwsAi9A14H4U9ojM90QvqwxupbEZCHMnOxrDq80osi39_tRkxAM8ReTRLTrkexO-ymgupaDb8XiGw0vhzvUg9ysYqfDcfMgGQUpNAM5-kh1h7odqwZhXpW0by0SGaBAY-eKo9i9vH5KFchYuC_NnuMTQvY2oH77doFkK-tEoJMouTF5dTMk_5ILbMpZaF8Tr4NAmB6mpPMWS5XniOB9eG9pr8wRqJZE1te5Wk2HVRSYC_at2erbIvVbiXZgC5yyVvGZcBmHuPC3fpW6_fwZ2u-D1qdf9PgKk8JIT_pjeSARrRl92pcJJ5a1ni-KBiyuVArU2rvtBsgf1zMSg0JF6EC4gg8Bc3EZjizNsiPQAwHnLfw5NxyvO-WlhQu_PagfknCZPmJGmpK6UjDqZ4ClVJHhNDekMP4izojyxDdCgzRHGo7jhBZiXPinWOwVD41xch0jt9DdoKBu0e15Rt1ZbYj4TVq4DCSGBdxC9g_mVY65gxUGnhibRGrZZOLk_NtCitg9SzX95KRYsoTWT7qOAdQa3d2tgE7elPuGYfEn2CudPP9hztK0cqeTZozoRdF3m9jlCCpBQo4pf6p8uAQlxxuKWGntHKy9uIr4uKdKNBC2hB1lLEJ7jQRlsgLius3scR13vz495LfyUmjF-ixZeuEUgGqAV-hLqct9bQTjpPHNe8wpjtMLKmH2ncGnNh4iHsz_7maLKY6lRy-1X9qcFApW9dCgk02XFUtqceWNGV-9jdeRJLMiltUPOotZdiMjSvPSvmWeF2GSZuIxQSz5gKo7uWVoQGpe8V2dh0bc3rVR8WcZ5mg2KIMxOy_fOL2otePUlxS2l7WvUkyRE18eVW2YLPAVSq5QrGaVlJLOrk6tNCYZxnxnI_SwddnufgMRv71zEvSMrUT0Z4r9WtRLbfvPa2CWv_huthDYc9t6nUTNtrlb9YYapRJXdnpRdwTWGy6TtejBBI3fU948OcbaWSDss0FtwNNy6aDFQ9XtMkwHj-bDlEh7gjPVCdb7YMSXjCKvlV12Jjj3OkgBXWcnFqx0_l1YmC5YFfR_qD2d8fL7mpZWAVRC0fJvJonJ4Ty0ZRdg_KSmUsMo7TFw2TpXJj1TMSLlNzLShakyxyVdi5Meb42gZCV7WgkMIKoWb-gyR2k63tKEdOdG_a_QttQOgoKlEPbJG3sMVGOVEdSAFgEE2WJPGzdp2kN-tCVk89TMN5F5-vaypu_uMkiy-xxW_2yME59SsEeHhXm_j-vp1Po7fWdBvlRu5A72oEaHum8H5FAfExnO_bkiCRZuGLK0b36QpEHj6DrgZiTGQqzPHY06LfdzdpT24TkfVWuN4lHPbxDfN5EcTaCzGLArFHDJJuWJrWoSit3ub1RNoWzwF5PoUWAAAMUaVAGNrR45zi0QMBchO73Z0sYMKsjfOCVIiX2VUd1NPbPn4ND2ctp3F-xhqoC8vprOGgTTnnQ9bx-fKs7ToGZGRpsfA0O1Mz1jeur4zcFspn/https://www.amazon.com/dp/B0FW5QLCRM/?_encoding=UTF8&pd_rd_i=B0FW5QLCRM&pd_rd_i=B0FW5QLCRM&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=hWPEB&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_w=hWPEB&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc"
+      }
+    },
+    {
+      "asin": "B0FRS85F5G",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FRS85F5G",
+      "title": "ROCOD Rainbow Pencils, 12 Rainbow Colored Pencils, Fun Pencil, Art Supplies for Kids, Birthday Christmas Gifts for Kid 8-12 Stocking Stuffers Easter Basket",
+      "imageUrl": "https://m.media-amazon.com/images/I/41i-peMHI-L._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 89,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FM43SS47",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FRS85F5G",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JLWkbelET2p3Aeffn6fgrnYAAAGcZGBL6wEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICCYKN9t/clv1c_ek-wxQf2bcbWDfVOQJooHgAJ7b6aDJiUYX_i6knLFbt7GE_1wuOoFKdLP0WSiJW8JKBQWi6SvIjUhK2O7Sqytl-aeQR90ZURzRF3FHeEGtSwk3Lz4sOB5mnp2NkU5veXRjQoog5tTr97USVTFIemPaD7o9CIphXqVEL00RE6BIbc2WpQrMIkh8TIi22v7X31tlCyiIkKGAjb_3z4owih6vjfjR5_QGpWHZ0Pdh16Uf0xtCW2zbxvFmo51OO_OWMRoXoOyUn4sAjQY4KYrjrxwyEMsHwcSMN1pVEzSlJ8UQH6w9VcrwViO77aEP9FAh0NARriNPePIF4ET5TfLrayCVrxzyqyu_8SV7BTh9PSAD2FSSyrujQAhG2Dd5OvAhDF9_VlMcyxmrUtmLxdDrfjmA9K90TkxYraObLUY3Pu3TjY_9RM0SxSPtxKLamKM1alLhNjsP7egTTqGRS1MoLvGCaUZ6WSp09EjEO1LVdwZWXVN_gi8dgWJuUONJShwA4FNJiakFv2QGAJX1kS2Y5Sl1bqjloUPc797Js3v0h_TkDPKXTJm-BhELUDyMlyzxJd8QxweYBf1ulHu52jaM3Q2Y2B7DmF0uJea9E9kbwDnYrP-b0Jii9LfCrM9G5GQ7OH2n-aricNG3csyzpIiT-lDpn25etKCHOHavNRb10cEqyKmoirjY-FdCS5W4OfZ74J2_tXzeQXxH5Hx8B6T4Tpe7AfOe70Fweq616iZZEWS3jrY3XgOaVWHMDRJQwjHBRyB0IE_HzYIgZ-W-Gt1gxa0A-vHa1yRiWeRvD2nvClyW9RQywhOS0PBhiytTrGIMa8oEeA68vixQXResjRYvDFphwWXADKN_kzy8dxSaagSrqi07ZJ1vzbkBbtdBEbC2m0SJx9fZFsgcaiKEpFBJ9wt0hB380PsQGumnf4cBDv0NOFFlgPtJRMLERWRsPNPjyD3W-2-Mhoj8OZzKg_dWwldemLc7Eo7973QVzz0_a9d2RY4a8qzQ6r0kA1wpJUwXiMWsQWdS2nbxZEshPLwToV9ylMKD-JpS3Vbuox9jssbrC7zg05fftsIF8bX1wWHCBnE_4kDecb-UF51c0_hOB1oXXsE-EYif6FUHQaKsOv6Tva9BQMn06utoZpXmsH6i2uiipMzsHxlo2nFA2gRD0srRILStdOYVtZCd2GxpjFAZdVu_cMDqJit0vxbOiw7Od2q-TrSoD6qcEvXdIt3-C5jYxCZ-lAtjSUyoWNJjB1e-yKFVohoChnJYH1vpya5gNpU-iHh4m_iixlI-1sh63Tysa1nkKzwZyGmDmt1YR7YD-ejwnnUInquFOaywi8BKr9ZrulAZkIS-AuA6fKHAkOxEsgQSSLqFkUR-Dpx8cUjwJ6ZsTpUJjtRauxsN-G_WK2UslCh8GLmGE_Xda9arG1sfKog_t4kghoZ54dNDLaWRNk3SbLT__5GRmN7Gj7B4MQ0R-w4bxgLOqzetwnlk5yDI9_mT4En8skcFJF017oDL_PAbdaA9sMo6lx66-R3G_x8YeKExaSfJXrTCEIWKprB-t-/https://www.amazon.com/dp/B0FRS85F5G/?_encoding=UTF8&pd_rd_i=B0FRS85F5G&pd_rd_i=B0FRS85F5G&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=hWPEB&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_w=hWPEB&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc"
+      }
+    },
+    {
+      "asin": "B0FX2GVF34",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FX2GVF34",
+      "title": "28 Pack Valentines Day Gifts for Kids, Kids Valentines Day Cards with Stress Ball, Valentine Gift Exchange Squeeze Relief Balls Fidget Stretchy Toys for Boys Girl Valentines Day Party Favors Supplies",
+      "imageUrl": "https://m.media-amazon.com/images/I/51psaD-ibvL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 268,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FM43SS47",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FX2GVF34",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JJRbDBcR7lSq74UYMpzFGk8AAAGcZGBL6wEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICBDMT66/clv1c_ek-wBYHXLbbWzlYLEhcvOigzZQt_qgBupqfcdlSj_0C7jLGOIiJ4HwNfUX0Ppc3wt3KmXC6SvIjUhK3q-2Y_mA-Jy8gVNyA_wykkELVqzIpegxSeXMTSLKz4_tUcdnWNvP3KtRDJEitMeugijLsWW9LcjC3clQyrlMPj12NqnNa_rkS6QeBM4O4UcISe3g5LSaQP50VtK7ehhWW9hm2JYyvZXw3PAFXv4m4T_63a5XRIOmo0O9d4gj_k2Nl5tiYbFIFZwfX_Dq5CdlyxoUmy0DqxPMN8okstfgM8dLWX3sm4eTUsPOLsV1vGi9zXHbSLoeovR9sIsyLHaTzlraanCrDXhjTVdf3HJYzFoxUEpXr2ZPwsuPEdiYQETtmAvHldJ9lWSPfjdih9AJuwITqDFdBCmU1sMwVVN2a-XimP6BJkvGoJ0i6WVoAb9uk_HG6c8mNBJ9jDrsvjclGdG4eKVEuo0TvwvtT-Y-hmy75tXJNKU7W1A4QB5YAGJ7gOPXqipbDdWNUd2E3-U2x7Yfr00KwZmxWQr_xQ27GeTR1xZxwXvsySNbWNMG6sOtVRff9MH2TLoY-IwjGcbo_kNJCs87qukNEKDFUR4V9BwSpBQxouTZQe_K6zOCgx6-thol5vVDYjN93kFHBIaiIK5iEzztPBJ12g-GiDWF3zQBpsdT20cANOdsCn7BW5a1aMZsgvkIS6Idhw-YLbBsZsf3BEwlL8cvJx_xqB7qu9W1QJGC2MB_CVfp6hv49es_R5i1Po3oUte1xrYCPwTfU4rY93rMRMxeqBAwhqT8twyWqn1K4s8Z9eBA03XmFHx9DvZUfgEV0aYAtYZRiPCBzja5nOkx1iefxCTxnqpQ_WoFc5CBGHqeDDOg6_aCRhcXxY8065uoIgnqtkNSmNliFpVDzsKg6J_1_9SLxWsFwD6d885UWeuBtZObwTQ3_xZjW5ZMRZ3DzzNjFnwVPLrR0l2J35ar8nEBNAMT7k68Ar8SWlkI_AN2NyEwbx9QqnFlrZAIY95_MTDLMfIt1iJsdrWSmQN5pYKwWBZT857tZKITWxylqFsD877TdiAqYJ6tMEO-FbwsvaY5N6CbnzGPccUNAqWQyJiihSD6WaMH0Aknsc6Ncl6XUVPY2PXtu19uI2RUIC2UGuvG22kXAYhWAj3FCNDrLyU8lmMbCNq89UZwp9tDl8HSOhsot3SWsu5HGXr_8pfV9cDsQ5H7baAOdb5R0d8i9hOY1gXrrV11skxw5Hx1-O22daFXFdU-PJ4Qq3g1hia8XDjFY-t7tnZkixX6zH2rkzYGf2nng6qS-m-tc7kU5wuAgtjLk4oA86xKA7A9U0DUpVKdoWAHpnuhxQPNT-C9TVjpGJJvAasGCqLy5lIpowSXj9OuMZFhjBOynq_xxchbIvRCRTt9RkSNS6WSkPSyFpd8yojEUIJFY_6MV4bol5fv_8MTn82scOjDDP8Nmrqg3J87NbeW-329bbeJ1Cb9t5m4b4QWYBkZnj8AUYetGlefqZi90j6z1Be--YF5QHWACnwNtdcHg_21U8_QDVQtZx9g/https://www.amazon.com/dp/B0FX2GVF34/?_encoding=UTF8&pd_rd_i=B0FX2GVF34&pd_rd_i=B0FX2GVF34&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=hWPEB&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_w=hWPEB&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc"
+      }
+    },
+    {
+      "asin": "B0DM5DVD9J",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0DM5DVD9J",
+      "title": "Ctosree 50 Packs Mini Pastel Colored Pencils Bulk 3.5'' Coloring Drawing Pencil in Boxes Easter Basket Essentials Gifts for Kids Adult Classroom 100th Day of School Painting Party Favor, 6 Per Pack",
+      "imageUrl": "https://m.media-amazon.com/images/I/41w6o6mWtLL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 286,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FM43SS47",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0DM5DVD9J",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JBKH1fuVjTa1FXngeVoph9MAAAGcZGBL7AEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICB206Mh/clv1c_ek-wxQf2FbbWDfHXj6d3rleKjFOCmHGySRvEBuyiznNeNPqcCGt135IfYt0PPv2wt3J2zRfrTmwbuqdG4eL-_V_a-gLYIRWzSTUlHnaFrNTsu10P8xgkiWT7ssnV56X5cYnj9IOl1eMl8YT0H3d3_4BbocfEtlQN0sL3xB_OjObd3fUP11c2Uz3YaD1ywE3EMXGZ6jv7v8aulOHxEWYL9m_fWRs9mnYmAMsQ5XDu-1KqVq5OMLmfGp-2qRSFUdR6Celzf79UOkc1cpMe8ELdIReuj8Yvj_9otX9U4gtMeCf-mFO7ZccMwzu1XNnWnbaL4OrHs8NKAyW30JHSSePmDrz0VvA1ZD3Er-PqnmVKGjuZ0-lU5gbGjyGfD0IKB0hW9mkmWokaDp6TgrC00NZTHdmW5YSbWHzc3zhYhJIsuVnjaAV5S3R6FX9VL_ln3eA4vhKrORyyoEr5AMm7gaxAJihCV2rByinBGXsOy1sCFySbGT3aGIT-Mksb7Nv7S6C310EFlif7Q5yuxcY7eb-mCECe117mDyGLSnl98CQbcRmMGofmpIs-Do_C0UQzqeBS6y8ZFzmrRh9o_4mKdjYUB-IqgNdDjimwHvJkx3SrLvgrHdxKkt_sXH6vs1Mo7nohmt5-uLRDYc9UQKVe-7bFPcSqheBYsusz-adPtA39IqK_XWmWlmrjLsNc-1Crvay8vdsqkWvDu3LKARZjCkep7wOiTMh-1_4re-f_HSCtF4eHzAuM6uToMAZheLyyH-VaHF7YiwOftkvxHL8Qhi29pJnu3ykLhrUAVG1_21PIhDmCD4afk1T4Gzi0Z7rZLpA5loMgBNbzajnqiKdDn7Ac0s-F4kTg8u5VdIjTfKHySSxuDHv3JuO4kacEoyUPS7K8wovSV7wyWy3hFHrvAuf3TU4Qbu8mpjY8noiZ_Q0A0V-0SomNZrKtPZnWqiCW5jol-VGqdjA-7bsN7PexRptH7rJco3LJCHDCp9br_BvHa3mMecgAb1n4BSHbdcIbbQZBUrOVADbhLXzusEbN5jLh0D58-zo9XovsGBE6HO1aiXZIKXO2Iuh4rY6AXZ08ju3dJmZ0EMyy09-D91ienpE-pKde4PpoCSuOu5ZJRtaD6_r5XG6wvSAy46khoGdOwoHPs3Zumq16artfecOGflCOz_8Mq4UtSnHMjzTdIaWdkBXzF-L69TEG7voyKJSiuGWyzXrozB2icXG-g6zS5Y2IkUb6Cp1UihAA3wL5W_X7okOT2e_QMSHxl_FiMJ4vdXPvZBeuNv4EtxThg6gmajigQwTyPEmdH4ZjzFlXfmjMXAvmEJxEST53zFg33Nn9vA-Wjzyqq6vXffuki6M1VLIp914TpqmGlSM0FSxLu4PexnZ8Z2SrvZ-MPS1SmPS8aiaco_jMUH18DMB5dbS3Uy1eXbrIFdEIu81yH23LXFeO9YJc0QnV6O1FHLEqno0kQY-RRMqeAvHccZiW5IJtV053xudud77w4ycWboMBmAIU_Ny5HVaZjVg6rLkxS9HH-6xxJXOq4Hi4kEpnJRh8CrTdDA/https://www.amazon.com/dp/B0DM5DVD9J/?_encoding=UTF8&pd_rd_i=B0DM5DVD9J&pd_rd_i=B0DM5DVD9J&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=hWPEB&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_w=hWPEB&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc"
+      }
+    },
+    {
+      "asin": "B0FS23DKDC",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FS23DKDC",
+      "title": "TINNIVI Rainbow Pencils for Kids Adults, 12 Pack Rainbow Colored Pencil Art Supplies for Girls Boys, Wooden Multi Colored Pencils Bulk for Coloring Drawing Sketching, Pre-sharpened, 12 Colors",
+      "imageUrl": "https://m.media-amazon.com/images/I/51iEVSPpTEL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 63,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FM43SS47",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FS23DKDC",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JMomuNfcjg1dq9dNMbMipowAAAGcZGBL7QEAAAH2AQBvbm9fdHhuX2JpZDIgICBvbm9fdHhuX2ltcDEgICBgJBM2/clv1c_ek-wxQf2FbbWDfHXj6ervz5wuDZWsFzr-SbVFF_2GrRZ-dXjOYAmvOCcu4M9kQuqwhnBCInaLap97b2O_Spipp_jjexp0fmPYidFXgYX7EqX6p1rkpJHV3yZ4PNS0moLHiooUGj7X5BbDEKUWM_1u9DeuH0dk0eanNCAf7foyIIeWO0lMrZo3Imy9erUHK3qhZZYf3uK3oXGTu3wh0yDo5qxlQMRGgkuqPvVnHLpFiYyaBGY5KbXylfnU30fyQcxn4GI8iaav_avyj2g6rCacia7NLpwImmJlGdU3AcOWCv_mBK37f6Mgvc0RBHRFXeL4vsLVNsI7xS32FHSQSOGBhROAMzdJfnFju-bpqEFTjb6qvEs5QO7EepG-F0qSfFJNLieiMsBVK6aJNrKBZJSOa78jzz5YnVmkacZzKSl7fOWE_f73Wlv3MwIviQpxV5aYXz6LtOxBFvmG7Pi-1UM-UsiH8-qYy7KQhHixZ1n3bmn4cVWiq0Rot32Z-tRpLSt49ljC6dUwxH9rCa2gg9OlIXHcK6wtmXcRSbQcdMMLZd96V8N0x3SKEiwzUsKW-mV5bTfJP5gqSueDFV58_Gg20cGUQtnJXmXoKpf1_IDeMf7QmzDdaCSplG1IgTNnWWLzHss_oJTHC8vkSf16ZBChjURyUWlAT-_0yKjv_QTbhNT-2y9yNqWHd9kwek94AV84X1voAfevK31odLgTpqTKvcGgtXhxpQAJyH02rPWU7tuObrhb7UjdnmbPsKbhyDnYs-RXp5uQM0C3ixiLPjverDMWoidUBpLC70dnv95_-Dw-tIHl0NBt0Zuj-Z7iltPJc4gE-DCdQ7ZoimJ9CzZMXpWOaDtKsT5BRDcc0dUJIOSfZNPPkBvQ5E8nj2N1nNpdFN6PWZz7lBQIiJKdf3jEs4nSRgHQAeUKV3MYFWuzke24ZocVRzSE5NzVLg5umqaNvbfJr-vEn5_Bt-fLlANxBF1dPuAji_clhRQlk4ZAn7LT5I902oFd5_PaEAYBMRRUD4t7yDHQmxz_Fs_85pn02ygyoQTNWUaL_KrU0iBnIZ-Tww07lMIXQGM3U0JhHxiJAkgGW_UZ4Qvlyfl9_KEMWO7qTzzpjlO8XfqX8KPTMgnPEIWDmocVghGuBwIfI6uPw1nHt8hJcX3rnC6C0J9iHEgTGwj4JGbO2CnupRjErQM8tcQLD8pPCBeMuLJTRKQwfs0P6cTz7mvIZGcPR1W6nTH5kyCHGsOzCFvG4ymoKBUWYGZklnl0H82ZArbLrD3XAcXH4JEvJRbtb99-CPzut13SO9PtekLUuoMSRhn9I_GGqNjwaKS9aKnFV1cYHNXrdQv6V8xG_T9XekHcmDjrhgt9IiiwpLBX4WrEmeDNCPUwZ3mAiSffq6ackNTWGj3_ExG2E48Ih0Ds4QeDn3esmycqsXjcO3x9WeCaqPOEFjz9fsMnT8CQCXfVtajt10keRJn55o40Tslmjifah7dB0CiXon4H27wuPEZMcueqYyuYY5gT9M0tsEZw57Yi0nl-CWAEpu6ZcEri9M1H1E8OlUeXsw/https://www.amazon.com/dp/B0FS23DKDC/?_encoding=UTF8&pd_rd_i=B0FS23DKDC&pd_rd_i=B0FS23DKDC&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=hWPEB&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=A3VDYBXZ79VG4ZZKAS5G&pd_rd_wg=g0YZY&pd_rd_w=hWPEB&pd_rd_r=201ce4d4-a9e2-4f91-aaaf-36f42adb2abc"
+      }
+    }
+  ],
+  "provider": "direct",
+  "raw": {
+    "fetched": {
+      "url": "https://www.amazon.com/dp/B0FM43SS47",
+      "finalUrl": "https://www.amazon.com/dp/B0FM43SS47",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    "parsed": {
+      "canonicalUrl": "https://www.amazon.com/s?k=colored+pencils&rh=n%3A283155",
+      "priceText": "EUR5.04",
+      "details": {
+        "Manufacturer": "‎FUAOIS",
+        "Brand": "‎FUAOIS",
+        "Item Weight": "‎100 g",
+        "Product Dimensions": "‎18.3 x 11.9 x 1.2 cm",
+        "Item model number": "‎HB-001",
+        "Color": "‎Multicolored",
+        "Grip Type": "‎Smooth",
+        "Material Type": "‎Wood",
+        "Number of Items": "‎16",
+        "Size": "‎1 Count (Pack of 16)",
+        "Point Type": "‎Fine",
+        "Line Size": "‎0.0 cm",
+        "Ink Color": "‎Rainbow",
+        "Manufacturer Part Number": "‎HB-001",
+        "ASIN": "B0FM43SS47",
+        "Customer Reviews": "4.8 4.8 out of 5 stars (236) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.8 out of 5 stars",
+        "Best Sellers Rank": "#612 in Toys & Games (See Top 100 in Toys & Games) #3 in Kids' Colored Pencils",
+        "Date First Available": "August 29, 2025"
+      },
+      "rating": 4.8,
+      "reviewCount": 236,
+      "details_raw": {
+        "Manufacturer": "‎FUAOIS",
+        "Brand": "‎FUAOIS",
+        "Item Weight": "‎3.52 ounces",
+        "Product Dimensions": "‎7.2 x 4.7 x 0.47 inches",
+        "Item model number": "‎HB-001",
+        "Color": "‎Multicolored",
+        "Grip Type": "‎Smooth",
+        "Material Type": "‎Wood",
+        "Number of Items": "‎16",
+        "Size": "‎1 Count (Pack of 16)",
+        "Point Type": "‎Fine",
+        "Line Size": "‎0.3mm",
+        "Ink Color": "‎Rainbow",
+        "Manufacturer Part Number": "‎HB-001",
+        "ASIN": "B0FM43SS47",
+        "Customer Reviews": "4.8 4.8 out of 5 stars (236) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.8 out of 5 stars",
+        "Best Sellers Rank": "#612 in Toys & Games (See Top 100 in Toys & Games) #3 in Kids' Colored Pencils",
+        "Date First Available": "August 29, 2025"
+      }
+    },
+    "variantImageErrors": []
+  }
+}

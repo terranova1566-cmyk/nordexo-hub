@@ -1,0 +1,294 @@
+{
+  "asin": "B0D9HLY7Y5",
+  "domain": "com",
+  "productUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+  "title": "Stocking Stuffers for Adults Men, Christmas Gifts for Men, Mens Gifts for Dad Him Boyfriend Husband, Multifunction Writing Instruments",
+  "brand": "Brand: FUAOIS",
+  "price": {
+    "amount": 72,
+    "currency": "SEK"
+  },
+  "description": "Amazon.com : FUAOIS Stocking Stuffers for Adults Men, Christmas Gifts for Men, Mens Gifts for Dad Him Boyfriend Husband, Multifunction Writing Instruments : Office Products",
+  "bulletPoints": [
+    "🎁【Stocking Stuffers for Adults Men】— As a cool Christmas gift, the multitool pens pen is small in size and easy to carry and use. It is a cool gadget for your pocket, office, home, outdoor or daily DIY. Give a surprise to men who like DIY home improvement. It is the best gift for men, fathers, boyfriends, and husbands.",
+    "🎁【Awesome Gifts For Men】— The multi-tool pen with personalized gift box is a unique gift for dad, man, husband, boyfriend, or grandpa on Thanksgiving, Christmas, Valentine's Day, anniversary, birthday, and other memorable days.",
+    "🎁【Birthday Gifts for Men】—This multi-tool pen uses gift packaging, which is perfect for giving as a gift to your loved one on anniversaries and birthdays. Three extra black ink refills have also been delivered to ensure the reusability of this pen. Easy to install, the material is aluminum, strong enough for long-term use.",
+    "🎁【Personalized Gift for Him】—The multi-function pen can be used as a ballpoint pen, stylus pen, small screwdriver set, bubble level and 4-scale ruler. The multi-function pen is the perfect tool for engineers, woodworkers, carpenters, mechanics, handymen, craft lovers, etc.",
+    "❤️【Satisfactory Service】— How to open the stylus and screwdriver inside the tool pen accurately? It must be twisted, not pulled. Twist the pen to the left to take out the stylus, and twist the stylus to the left to take out the screwdriver. If there is any problem with the product within 12 months, you can contact us and replace it with a new one for free. If you have any questions, please feel free to contact us."
+  ],
+  "images": [
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SX569_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SX425_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SY355_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SY450_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SX466_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SX522_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SX679_.jpg",
+    "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/81LC98HAZdL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71jDmpJPqYL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71F1xZDhq0L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71dlh+rgW+L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71Tox1DiGYL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71+H8kJRpRL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/51bvCTfXZpL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51Ig5txNu3L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51ZcmCi69QL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41xanPta28L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41rBK4j5f9L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51zWmtFZciL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/4146sb4Vw0L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51Wj3oHRcWL._AC_.jpg"
+  ],
+  "variants": [
+    {
+      "asin": "B0DH37GFM6",
+      "url": "https://www.amazon.com/dp/B0DH37GFM6",
+      "selected": false,
+      "dimensions": null,
+      "tooltipImage": "https://m.media-amazon.com/images/I/51Wj3oHRcWL._SS64_.jpg",
+      "title": "Stocking Stuffers for Adults Men, Gifts for Dad Husband Grandpa Boyfriend, Fathers Day Dad Gifts for husband, Multitool Pen",
+      "price": {
+        "amount": 89,
+        "currency": "SEK"
+      },
+      "images": [
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SX466_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SY450_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SX679_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SX522_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SY355_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SX425_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SX569_.jpg",
+        "https://m.media-amazon.com/images/I/71LSJO1IZtL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/81UlXcs5C3L._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/711XmyDf5oL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/71orCJEP0WL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/71r+SaSZ7mL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/71+bjRD5mzL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/714lwYULl1L._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/715pw2GsSFL._AC_SL1500_.jpg",
+        "https://m.media-amazon.com/images/I/51Wj3oHRcWL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51Q5e2LIfVL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51XTT3ueygL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51dvp-cnxpL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51NDRJtI8YL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/5106k-EbVlL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51hmX67ELyL._AC_.jpg",
+        "https://m.media-amazon.com/images/I/51bvCTfXZpL._AC_.jpg"
+      ],
+      "raw": {
+        "details": {
+          "Manufacturer": "‎FUAOIS",
+          "Brand": "‎FUAOIS",
+          "Item Weight": "‎32 g",
+          "Product Dimensions": "‎17.9 x 6.3 x 1.8 cm",
+          "Item model number": "‎GJB-02",
+          "Color": "‎Black",
+          "Grip Type": "‎Grip zone",
+          "Material Type": "‎Aluminum",
+          "Number of Items": "‎1",
+          "Size": "‎1 Count (Pack of 1)",
+          "Point Type": "‎Medium",
+          "Line Size": "‎0.1 cm",
+          "Ink Color": "‎Black",
+          "Manufacturer Part Number": "‎GJB-02",
+          "ASIN": "B0DH37GFM6",
+          "Customer Reviews": "4.7 4.7 out of 5 stars (727) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.7 out of 5 stars",
+          "Best Sellers Rank": "#22,291 in Office Products (See Top 100 in Office Products) #5 in Multifunction Writing Instruments",
+          "Date First Available": "September 15, 2024"
+        },
+        "rating": 4.7,
+        "reviewCount": 727,
+        "details_raw": {
+          "Manufacturer": "‎FUAOIS",
+          "Brand": "‎FUAOIS",
+          "Item Weight": "‎1.13 ounces",
+          "Product Dimensions": "‎7.04 x 2.5 x 0.7 inches",
+          "Item model number": "‎GJB-02",
+          "Color": "‎Black",
+          "Grip Type": "‎Grip zone",
+          "Material Type": "‎Aluminum",
+          "Number of Items": "‎1",
+          "Size": "‎1 Count (Pack of 1)",
+          "Point Type": "‎Medium",
+          "Line Size": "‎0.7mm",
+          "Ink Color": "‎Black",
+          "Manufacturer Part Number": "‎GJB-02",
+          "ASIN": "B0DH37GFM6",
+          "Customer Reviews": "4.7 4.7 out of 5 stars (727) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.7 out of 5 stars",
+          "Best Sellers Rank": "#22,291 in Office Products (See Top 100 in Office Products) #5 in Multifunction Writing Instruments",
+          "Date First Available": "September 15, 2024"
+        }
+      }
+    }
+  ],
+  "relatedProductAsins": [
+    "B0D4J44QHR",
+    "B0CHLQLMQB",
+    "B07Z7ZPFFM",
+    "B0B8V9NK9Z",
+    "B08QVQG819"
+  ],
+  "relatedProductCards": [
+    {
+      "asin": "B0D4J44QHR",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0D4J44QHR",
+      "title": "Magnetic Pickup Tool Gifts for Men, Stocking Stuffers for Men Adults, Telescoping Magnet Flashlight Christmas Birthday Gift for Dad, Mens, Him, Husband, Grandpa, Handyman",
+      "imageUrl": "https://m.media-amazon.com/images/I/518IbcyCNwL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 89,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "sourceType": "recommended",
+      "sourceAsin": "B0D9HLY7Y5",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0D4J44QHR",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JLUTzwYBc1eOoFnf7pUgXHEAAAGcZGBhBQEAAAH2AQBvbm9fdHhuX2JpZDQgICBvbm9fdHhuX2ltcDEgICB7pqi_/clv1c_ek-wBYHXErbWDn2nI-MgDzrZjBAPnk4EVUw1clDqnQZbPEp3qDOuARYF4eyZ6v2at6kVO9KKYWOOLEyAmAJeiJ8Dz2dpwrmjVQclni6OH7wCh93SmmVlCXHoMlg25ZAs1J0B6RAmX5qyO_G6NE7688I74N2fgjW-hjTAT_Gu1IUcw_89PFKM8ORo5Y3GyyHQUACytaOrfkdNjKX8o4tU1i-dA0JihYltoFcH-GTu1XE6onI_Uak1nuqarpFG4-WcM_PU7wjHjaspnxRcju1DPxEIsC234TCpZNcty5qEGqWI2MFMrMeshXWBIOpT_bOKlr8N2YznCY4eTzjnvqSm3VgfozMiEptzab5qt4mmQt25Ypc3dnhSCEZjP3LVsLzbixZGnvn5k-ldij6UOOEm-Pg23A6G1cVaKdnYsvFR7PhFG8PYxGxtFLI8gH6avFodL3c2EFfGWC-xGbaMRjkORO5lk-MHR6z2fs0quZJuycyJ-jLKEBxdX0ZgZ1CqVGXz34WysspE6vqfHpsW0b2tGkKDtCNgZDJKfe2kMyQRniR0DdDWFoqb6_-EN9FrxkPnqYDSHF_i0CUiMMp3_LJ89YK5rwLp8mPHLip9EFLbv_1X0sy4yKwbjzQAaxjVwMMfIwnm3MzFqqO0mE1FXvWuIjNdr4m1Pe0q4qsIll0mGcMxB6ZA7tH38VdgIaUnNvOXx_mnxacxTuse4xpAgiQsUGhW4P1UCMwQh2a4wKDJd_PK_RBT2Jrjyw6dnJLT9gF6Z-58GEpZUzfeBQFT4NrB7yadg_dT5mf7gLMqVrTPAic6ygzZCoDoj09vC_2w_AQjCKdct6x5xqLjqjZnJz-LKmrZ-KobVl7pJnYnr3GK28h1gPwNY9Oe4Ez76XrmUaUDIl5c7iWV6INq4_WPWuwyI3Ggv1Ut7ib4DJNH8HLPA4NSsK4dQI-pAgvNKGtkkGd-ftjmXC9uwPXNVUhOtXopKDwkUJxm6RQ4m9bID_jwCaATRxtsS5CoEaER6paOJu0KhRyQl_tQKRr_VGig4CfaCY9rXeTS8y215ov3jXoyRFN9yTWnSyJ7mfkSkl_WI67uSFBmSK8lNq-pUcedG5c4wBAWQOTsz54sR4k9wAIPtZ-fkPIOw-k8riRCvO9V_DD1K0hZTEO21mDQPb58B6zVO9YeHAtg7iso7w-Aqt1reL0ouh20Fb8fFprjkS6JQOo857yrBWLWwrQl-tig3myLou1j7kYXAOl1yEm5ICcE0eQ0H3_Gee9zw9pPA-PfEFk9ORnMrXxECWL7c2pjKFLNjjn2iEruWwSb7V8XGErhjJaLoMUBGqL3YwNTknfGjUU24eUKx1wkR9CEHVjVH5Ts97oKE2tKYuzPYljIYfWHQEx8h77_uTF_VNsVpydVzCuo8Y8T0rtofZ8RYYjEBrdVA6DEe7CgpWYKaqfx6dkcWlFVq82QqUdeMxB-UcI2GCez-OEHwd0lYGpXTSSUWv8FWc5acaGJ5EJf64dWfwb6f4UHPIAxC8knwwmBrb0/https://www.amazon.com/dp/B0D4J44QHR/?_encoding=UTF8&pd_rd_i=B0D4J44QHR&pd_rd_i=B0D4J44QHR&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=3KFQ9&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_w=3KFQ9&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6"
+      }
+    },
+    {
+      "asin": "B0CHLQLMQB",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0CHLQLMQB",
+      "title": "Multi-Tool Gifts for Men, Christmas Stocking Stuffers for Dad from Daughter Son, Multitool Knife 17 in 1 EDC Gear Cool Father Unique Birthday Gifts for Him Husband Boyfriend Grandpa Camping Essentials",
+      "imageUrl": "https://m.media-amazon.com/images/I/511RDQi3lqL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "sourceType": "recommended",
+      "sourceAsin": "B0D9HLY7Y5",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0CHLQLMQB",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JHOafRiHGi30vCoXyK8iVJQAAAGcZGBhCwEAAAH2AQBvbm9fdHhuX2JpZDQgICBvbm9fdHhuX2ltcDEgICBx389A/clv1c_ek-wBfHXUsbWHn2mJvYgzqs9vV33EhnDXRUOoUnLFeOHSv70efEuwJ4G-EMWyFPG2rSgbBliYYo3JsitmALeoV8advLxQrGiJXVsz_gw7dAfx-U6G2VhCW_o0lg14ZJsxJEN6dBHQZmyI_G5VKZf6sQbId2avpWC2tSQzrqk_MqHiSywTolUPtoglxoOsBp5ZdNn80dDr6cJe0T_vZtS1i-dDEpqxa-roFdjAKeXiOxRBIrH0RJFpZZdS3Ap8D2HpjkJcvP-ToWRnTxdrg2jdaZsW1UIz89OOysrPtOAVOmiuLvNv_NsuVQiy6hCp6TOShuGoaKFxSDBfK4Poj8NgiAYTVl7NwSUluOrYhMEq7dVZIA8fmir_13SlT8g9ULTg9Dnx-v6UdFdij4I0KsKHLxB7p_H-2tIU99ex-PVPBTkB569l2W6sr5_kf-XjFqdLnc2MVdGYC9xObJMEIcOBO5lc_z3hyWA7Vk2TQyl0zxCej_KUDUKFAcM6donw-yON_MO9-WElp1OsMbPgzBLaH_uJZG1-CcjOTd4ybGFhAtVvH34od0MEMiW7ODHhnvrtZFecGbziahXTvSxupnJQ6KLtlTh8mPDrlzzXgrG51rvVXNwnPVKyQbeK0L6P6G7McqB-xZldZxCxLM3A7tAZwA5mJiWstoYW1AHtL4ikAJitQ4twF5KcvUh73yw8ASil90MK8GQ5xxGsaopqdhPfX6alfYf9aDv6-y52oOCGK82R1l5ZkgfdiMZBoTvgaLMUZkQSnE_pI3TjH_gjgSTMn_r2OnH6bReo5dIfmFI74zm4F-nlDP9c5Hl333x-shvHWrSrF6S4s0LHmsvh2CcJWpZeTmksBqyzKtHL3GU2bP2Kfl10Xxz8k7L4XrpU4UbIWZcreWW6AMr0_UPWmwyLHEgx1Ut7iZ4TdPUkjkUQSy_QkrczSc0LrdmvQx7BbkUNxw2P3JMN-93763AxO1tMCBjHsW6ITnFtGLAz2Hp1ZBg2Nv6B95L5h7iupLjvyYfpRyQk_pQqRU_RAhE_6otkUvNtE9N2vw6y9Qu4TcxrqXb2isRmVaLIb0Qs-1QUCqNY-5-9q5OtLUnYL6iK3RWllASiqUegNVCuMjK326HVmQzEwh48FeGmpXiYZOjHVRJT2HObmuanRL6DyG6-kUJ1d7tUJGriOYYCt66GtxvMo4YIaB0OBjY5-e3pFdZNUc0yoPe4ApRK59LJt1LFCQBpvw1MQrmoWuWoODu1IoOj3XAU1rxCR6g82vuKZau76fdGfY_7VFjM14b1t_Glb9ZlYncsyWIKVSQbKFt4bx7YsWwrjlshuhrp1FGEyHNaChisFB43JohZ9TpBlDVH1Ts974qE1kw6ePcGVbP_SBkGDt7Q1N_tT-PFNsdpnCsoxa4cbJzUttwfd91C0taMDazx_jcyMBacd7YBJhEzkeJLln1rs3-VmRbLCCI07t9PrmWQA9xM8w_O39BK0Ojjy-Pu4gf5aIbuMNbY9ZWsezTMlbNgpyl7zIIczHa7JI/https://www.amazon.com/dp/B0CHLQLMQB/?_encoding=UTF8&pd_rd_i=B0CHLQLMQB&pd_rd_i=B0CHLQLMQB&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=3KFQ9&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_w=3KFQ9&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6"
+      }
+    },
+    {
+      "asin": "B07Z7ZPFFM",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B07Z7ZPFFM",
+      "title": "Zhanmai 16 Pcs Multitool Pens 6 in 1 Multi-tool Pen Set with Refills for Men's Birthday Gifts, Christmas Stocking Stuffers for Men Dad Husband (Multi-color)",
+      "imageUrl": "https://m.media-amazon.com/images/I/61ZiwgsjZTL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 152,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "sourceType": "recommended",
+      "sourceAsin": "B0D9HLY7Y5",
+      "provider": "direct",
+      "raw": {
+        "asin": "B07Z7ZPFFM",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JH3Ep7k6EHbJ5wIp5CUkvbQAAAGcZGBhDQEAAAH2AQBvbm9fdHhuX2JpZDQgICBvbm9fdHhuX2ltcDEgICBbgsCr/clv1c_ek-wBfHXUsbWHn2mJkKPYYizA5Pba0Rg3yqs5W6wi_7O9FBjfVODNfgL5718pBx_bq5NDwB_QeSSoNvl-2DPlg8pOl54GYBc8ALwhIpqGtQVLwlzQch6CH3Cwlk3I_T5DAuCuQT7LyLHuGSSBv5itdTS0P0cl1_aiPaI13fJzgqeWOatPNW6LNlj8F208o6l0bAC5FZ3E6_4_LT9cnjku_saWhxs5L-gLuJV_H4rJiLkMjRDY2hMa_xOPaasBrb5aJ5W1o0ws4xDsOJ5LbyIaWdrD95AndiqBdctyxqEGiWo2PFMrN-sBXaJwOtT_byKllkN2Y3nsVBnebQm4DYrp3sYe1mvPnr9YyQcrmqdEE7gCwQzpNVerJzLjG14PW7P1BYoMbDUh8ESORuL0K9T_6Px2nI9KKRVc-wJpow9PfnzWBlY7KkS5uGsRNwFNJ6rmVYmOLVzgiv8UcUDXU2NjFPdAS38ByUDGRa-IzOZbjRXfxnl2Izx9CKPXoeeTpVq3wl_Jr-F5THlebXE-G8olR4nA_UZ4yTxt2PxOZqskHU_llZlRHLCImcaDYtCx2DzcNR2Gs11lOvG2JIcGDxiI_mZQsSOAoTSIfUPa1t8vQv86vap2yRsGHkV9AT8d2XyGCw1T9dhhWpLotTYeqzyS7EmBEYJxvnuX10tpVVGB8MxJ65AFtL391Zgo5onNPMX-KlkYgEorSlYXddJwV90WOgGgL3reDWjZsdZC70q24NsSfKZcMwmWtv5klP1bLSWhgpPapAH0wxJG0Jf8uffM3vrWPTDKXRA44hIdmHIuOP2HnqHh9AUtm_FWPwE9xdZFd_NHjaAWKyKPYSZ4rP2dMm5PQkhsakHXkQAzn2WSKUezzJLL4qyTTCKnDW1zdFHcVOB79Xdxlxi1Q0bPc3VKOgmWionaYqswikCU8mbHgUVJ9AKZYdYwjRQqEMU-0CX2qzGmTu_NY_9qn2OjZuHae02_6wRHk_Xgg_jNbuepf5TZAr-2nmJueONcsJZdWO40ahGor88gSnnAH27HhQ1YJnod4mgU0snqi2USeuP8tEpYSHIToxaKtbCnbugC9J8wlFKfIPc8xWLSP2CYNv6J7OKqHhgsJsSGA33RbhqUT-wDpPy5FdN-VA-Bz7mQYvyYEad8CzHCcuB9anRsAsJ5vT3ezKMXBdTjkyT5zpT_hs665pra4MUglw-36dCPvtnmHho9zpxmzxy7p78BiVseW8p0wptR26Utf-0YcU2pNB37Dd3Q3xZREuSUwfxPgUiJf3xSJYC32EA78Qe4zQ7zzGmAv0geD1u_beik70SAgiC0uUZG9CW1lCXZGrRKyQtjPeuh5oVu9Tv6CRfNnJ9sO-Mf9hSWr3FXGzqiTxA8aJyD2v-ACyf1anGYgJWfGyOUZEXg5IjrISIfKu33LPPEN8esHJJtodAsVoluaNKiHDX-R0MIPeYrdklsY7i6tKhttvG2DftMal1Puij-bQvlxh7AmUhwWXl8PlXUKBydmTAXuo51mzHBZJhAQA/https://www.amazon.com/dp/B07Z7ZPFFM/?_encoding=UTF8&pd_rd_i=B07Z7ZPFFM&pd_rd_i=B07Z7ZPFFM&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=3KFQ9&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_w=3KFQ9&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6"
+      }
+    },
+    {
+      "asin": "B0B8V9NK9Z",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0B8V9NK9Z",
+      "title": "Gifts for Boyfriend Husband Him, Multitool Knife“I LOVE YOU”, Valentines Day Unique Gifts, Tools Gadgets Gifts for Him, Christmas Stocking Stuffers, Anniversary, Birthday Gift Ideas, Husband Gifts",
+      "imageUrl": "https://m.media-amazon.com/images/I/51bTCNhKDUL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 179,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "sourceType": "recommended",
+      "sourceAsin": "B0D9HLY7Y5",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0B8V9NK9Z",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JIwK9z_pkubWQoJXTw4BClsAAAGcZGBhDgEAAAH2AQBvbm9fdHhuX2JpZDQgICBvbm9fdHhuX2ltcDEgICDt5Y3N/clv1c_ek-wxfHXFbbWDbHXL5scrhfcOWxCnjqP721TA9jpiw5xKUVvaqKKByw74wBhsMBI4ovlkBPP2fqOFPeIsoUdmyH5SRTujO4RWaJmBsuWUMq3atCrtaW2QSQo4_95jEYbaCIJZPZLSbX2b02mB77uo8GfYN2bnF2qy4wQrzUjwo4TQbvJkgDvrp2_j2VkYg2uxmyCNhzPEQnugTTOn6ihmvjfid58QWuk3I0L9sk1YlK6ekwPl4ebn73UAosNRvdW9UoPwcs4sRTX48K0vj5y0ikI8Hz7cMOVHTVHBELw3MH2btdlunfBov68B1kTpQxG9JhN13SODZApj5xN_twhuUBilrjil0JDXdsYn2cdl9aFZcG90AMTBq0PWG3Kq-cV6VdCW2cHRQb32q5dDYfnBB459kRixWI8o3i6vU-YP9QAWdBMVk8Ckk-oulg6Jx-0hgJA-BzH4SLqWjwoacxzhuGLm4aWI13zaERbB14gNQbTp40sxV815qn81JoD2wSso4KfAMutCDix2wd_3Jm-3rcXLCdpUENqplFjw9Osly4IvrLuEWZkAg8GSo1rMLXeeBtEcnvaiIQIwgn-GDV--4mWers0BrgMnpQyLYPdduRYGtLaFMErcDi51pZ-UGhPNfJACIlTg8eTi34EjAnxvq2irZz7-jh_ijPRrCkcI9oEqPC6zPucbBO7xCDjWio026ZL9QuzOT0yuVHQyIrxqhaRPe4RKokYgBDo0vD-12N1GKom7vU35eXcsx_bLYkY0WFEYnMZzrflexkt1AzyMXzOZBkALl-ZxN7um_OtK29RW47H4C9bEoSpI4si_al3OUpYHSLSOrtQN-Rc1fzsNlzY4u0oE8YGQCgopz5ojIQLzWkZbU_tB-t-lgMr26ac-XkvfVbfV3nIPP5sO87y8q80RXSJYeIoOPZcD3VO6EGupXj8Tzg967bce-HkGWsLSVzQnnEst0b9jhg-hLMUy3S2xr4Y7w-gkro0Pnx1loFmriRtBZuChuhZN6D3aXD9d1_aggdGNPEAU9wPT6cEuQFdlad6fbmLawkWgX-WUpbkbobm5vnnYPF8Y0hQ49r8o9dEapo7zLnhQodxWv1ujGpCiF41iL7LdNUFVR11EjJxW_1XHJon7rneIECZDbac5ro6EQUVDmGc0gWF8bS78fWbfwX2p_2jtzmwOthPseuvknoqILcqYnZCX00cnVHJynOCchlX2z8EXC6a_n_1bJHhxfx_VUgfLd0GCrqLu9A2cznw9PHy-eEMJ3wagelOOj7CfzANPx1gZP47P9cv_Uw2kPOcBxkQCkdYwGUsuHxmb0CVw_15PGnYsmEgA3iIK5mDDf5bfnjfQjq6HXQDKVKtWe7SrxLdFANS6JmBWUc0czrsjUy9GDIU5QxttLGCBupzasYna5KCyRHFoY8562_ovhoEO3onikYG_XDq8d91-weLov770SXP5Pex7ZluJEzhYzlgu8nBW7FbJb55xpxTipdg1V4FpUpLgJWQ6DgSg-QsOiGHjd2-Cio/https://www.amazon.com/dp/B0B8V9NK9Z/?_encoding=UTF8&pd_rd_i=B0B8V9NK9Z&pd_rd_i=B0B8V9NK9Z&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=3KFQ9&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_w=3KFQ9&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6"
+      }
+    },
+    {
+      "asin": "B08QVQG819",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B08QVQG819",
+      "title": "Gifts for Men Him Dad, Pocket Multitool Knife, Christmas Stocking Stuffers for Men, Anniversary Birthday Gifts for Husband, Boyfriend, Guy, Groomsmen, Fathers Day, Gadget for Hiking, Camping, Outdoor",
+      "imageUrl": "https://m.media-amazon.com/images/I/51djc1VB0uL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "sourceType": "recommended",
+      "sourceAsin": "B0D9HLY7Y5",
+      "provider": "direct",
+      "raw": {
+        "asin": "B08QVQG819",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JD9ko9pK1q87PMqtYWsZ3NoAAAGcZGBhDwEAAAH2AQBvbm9fdHhuX2JpZDQgICBvbm9fdHhuX2ltcDEgICDVkubb/clv1c_ek-wxfHXFbbWDfHXL5v2ofBwCvCxcgP4sbZxUtjpiwpwOUXP6qOKByw74wBhsNBIsovlmkeLuaxr7SQZJ5cUEqC3Gp58YpWzyRHlTtQhtNwulRsBwHCLTO720lEkB-P06ghDMQ8DOHjQ-b-e7eZsydhbodOIhtVYggQxzyW_3JILMRt4flSXMCsts0l6HAnT3b-uoqOrf0dNnGP_qY2U5uiRMcRyxF2R01P2MhQUac9VkRGQ56bTS1fnM4B3HqujFNdDOs0wYpJCV-MGcIthmqh1XrqwSiWPATUKuEBfAA2m45u69sj6AIaf9JuSw-aho0BNAstQS2dq_m5r50gGGwXG4Ep9DmrLlRJ4aLe9bnetb3-4PWBe3WvyzWz642Re8RhmZDXJGAYTqjjWMCMy19TvXJLtz2AIyQjd6rIZw-n_ecEYPH8fJKHT7U4DTUQkkAqDyhZfT1mvvlZmyTUVRW_q5QQp-q3fPrfMTpzCuxJJeXamVQLDOcO3oTnfBoflYdLsAN5IKog0fErYQqJxIjqS8YSvOQ8N25zkACVnUhATI79nyqi-MD0vOmErRnMYGqKAut8kbhCqwofy8Kc6dAPGrw-weiTxe2IawG-i7u1o2irG5HkLeq9PP_qGio4KWMY3KAj795ZQdCpFOa5Ltqi0DuaiyGgPWYXzzrZs8Tysdxcu4XK5uYvd9ALxcyG6muBSAiUPCJIAO5DKE0iHCM9Fw0et1wKeO4fjBDWJv7lxVD2wBLSN4w8VbaKJ1PR4IF6mAfrapVc9k0vwLOW0CywHxlgA7xqeAGG44lNIV-dMfwYPQcn15zzldTMVLVCTFevESd7wZXUrfjinAd-5eFlnKOjtwBwB6k9ZvExJCYQBU6uU8FaY4KVq3_FI3mDmrtc20SNsOmhGFEBgmZLjjAPhQO5epDuRgNAYww9IwWUXx1pKo4mlWUBxVOKWIc8dg9bXbr_5zKwwtxcFwA1PSxLbQ-V3ttZ78mNerO60HqL-EhXlUQ6gHqrjue-Jx-e15HRbL9Cejn9nxw0EzpKOADTJKnQZJMFCztyBE2XW6kDdjztLCYAZTJLf4kFNjGeTIVxcIJo6cAxk8knTBhMl8b6XphUIlN40JTngn6eLNBHJlF3Ea-TByB9fhLn0J4YeXmkOLnfOQX8sOf3cfmRdIlKMKjV5vsUSAV8MR3VSWGLKEiQA3oWv5wDIAWfs7hTpBZ19OeP75Wl0NEy1wyhVk6yHCl_KBtrUqOihnAcSr64H-zqAYkILhEByjRYvT3nsOnTf2s3UoJE_DkpvZ0e44Fn76_SNShok6to-g7wDX9aJDaEylYOugQVMJ3xakXE5fFQbrLPIdh77mBppe2HK02Jwo0OwxejfTNUCBBmrpt6rEUolIiF4gKUs1Vv1c_1XhuecUIzeXKT3hlkDHXnYp4NeDZneQq1MN5WV5-laKWyr-NR5eOjQQIy7Mw5ATEVlimi0L-_gJKk2RFD7If8nXslpLiffeTVXqnx7wOeipv5rmxBz5_Ci7Ys/https://www.amazon.com/dp/B08QVQG819/?_encoding=UTF8&pd_rd_i=B08QVQG819&pd_rd_i=B08QVQG819&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=3KFQ9&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=YX9JRBTHDWFGDAS1ZAGB&pd_rd_wg=7Z2SC&pd_rd_w=3KFQ9&pd_rd_r=9b9905b2-e61c-4bbd-bc81-91169d433ea6"
+      }
+    }
+  ],
+  "provider": "direct",
+  "raw": {
+    "fetched": {
+      "url": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "finalUrl": "https://www.amazon.com/dp/B0D9HLY7Y5",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    "parsed": {
+      "canonicalUrl": "https://www.amazon.com/s?k=stocking+stuffers+for+men&rh=n%3A553990",
+      "priceText": "EUR6.73",
+      "details": {
+        "Manufacturer": "‎FUAOIS",
+        "Brand": "‎FUAOIS",
+        "Item Weight": "‎32 g",
+        "Product Dimensions": "‎17.9 x 6.3 x 1.8 cm",
+        "Item model number": "‎GJB-01",
+        "Color": "‎Yellow",
+        "Closure": "‎Click-Off Cap or Twist",
+        "Grip Type": "‎Smooth",
+        "Material Type": "‎Aluminum",
+        "Number of Items": "‎1",
+        "Size": "‎1 Count (Pack of 1)",
+        "Point Type": "‎Medium",
+        "Line Size": "‎0_0.5 cm",
+        "Ink Color": "‎Black",
+        "Manufacturer Part Number": "‎GJB-01",
+        "ASIN": "B0D9HLY7Y5",
+        "Customer Reviews": "4.7 4.7 out of 5 stars (727) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.7 out of 5 stars",
+        "Best Sellers Rank": "#22,291 in Office Products (See Top 100 in Office Products) #5 in Multifunction Writing Instruments",
+        "Date First Available": "July 15, 2024"
+      },
+      "rating": 4.7,
+      "reviewCount": 727,
+      "details_raw": {
+        "Manufacturer": "‎FUAOIS",
+        "Brand": "‎FUAOIS",
+        "Item Weight": "‎1.13 ounces",
+        "Product Dimensions": "‎7.04 x 2.5 x 0.7 inches",
+        "Item model number": "‎GJB-01",
+        "Color": "‎Yellow",
+        "Closure": "‎Click-Off Cap or Twist",
+        "Grip Type": "‎Smooth",
+        "Material Type": "‎Aluminum",
+        "Number of Items": "‎1",
+        "Size": "‎1 Count (Pack of 1)",
+        "Point Type": "‎Medium",
+        "Line Size": "‎0_5mm",
+        "Ink Color": "‎Black",
+        "Manufacturer Part Number": "‎GJB-01",
+        "ASIN": "B0D9HLY7Y5",
+        "Customer Reviews": "4.7 4.7 out of 5 stars (727) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.7 out of 5 stars",
+        "Best Sellers Rank": "#22,291 in Office Products (See Top 100 in Office Products) #5 in Multifunction Writing Instruments",
+        "Date First Available": "July 15, 2024"
+      }
+    },
+    "variantImageErrors": []
+  }
+}

@@ -67,6 +67,8 @@ type DraftRunPreviewItem = {
   draft_spu: string;
   title: string;
   draft_main_image_url: string | null;
+  preview_image_path?: string | null;
+  preview_image_modified_at?: string | null;
 };
 
 type DraftFolderTreeNode = {
@@ -323,10 +325,10 @@ const useStyles = makeStyles({
   explorerWhiteButton: {
     backgroundColor: "#ffffff",
     ":hover": {
-      backgroundColor: "#ffffff",
+      backgroundColor: tokens.colorNeutralBackground2,
     },
     ":active": {
-      backgroundColor: "#ffffff",
+      backgroundColor: tokens.colorNeutralBackground3,
     },
     ":disabled": {
       backgroundColor: tokens.colorNeutralBackground3,
@@ -369,7 +371,7 @@ const useStyles = makeStyles({
     opacity: 0.8,
   },
   batchPickerSurface: {
-    padding: "8px",
+    padding: "6px",
     borderRadius: "12px",
     minWidth: "560px",
     maxWidth: "720px",
@@ -379,9 +381,9 @@ const useStyles = makeStyles({
   batchPickerRow: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto auto",
-    gap: "8px",
+    gap: "6px",
     alignItems: "center",
-    padding: "6px 6px",
+    padding: "4px 6px",
     borderRadius: "8px",
     cursor: "pointer",
     ":hover": {
@@ -395,17 +397,31 @@ const useStyles = makeStyles({
     overflow: "hidden",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
   },
   batchPickerViewButton: {
-    minWidth: "52px",
-    height: "28px",
-    padding: "0 10px",
+    minWidth: "48px",
+    height: "26px",
+    padding: "0 9px",
+  },
+  whiteActionButton: {
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+    ":disabled": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
   },
   batchPickerActions: {
     display: "flex",
-    gap: "8px",
-    paddingTop: "8px",
-    marginTop: "8px",
+    gap: "6px",
+    paddingTop: "6px",
+    marginTop: "6px",
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
     flexWrap: "wrap",
   },
@@ -425,6 +441,73 @@ const useStyles = makeStyles({
     overflow: "auto",
     maxHeight: "62vh",
   },
+  runPreviewTable: {
+    width: "100%",
+    tableLayout: "fixed",
+  },
+  runPreviewHeaderRow: {
+    backgroundColor: "#fafafa",
+  },
+  runPreviewImageHeaderCell: {
+    width: "69px",
+    paddingLeft: 0,
+    paddingRight: 0,
+    textAlign: "center",
+  },
+  runPreviewSpuHeaderCell: {
+    width: "180px",
+  },
+  runPreviewImageCell: {
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  runPreviewCellCenter: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  runPreviewSelectHeaderCell: {
+    width: "54px",
+    textAlign: "center",
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  // Backwards-compatible aliases (older code referenced these names).
+  runPreviewActionHeaderCell: {
+    width: "54px",
+    textAlign: "center",
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  runPreviewActionHeaderInner: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  runPreviewSelectCell: {
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  runPreviewDeleteHeaderCell: {
+    width: "130px",
+    textAlign: "center",
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  runPreviewDeleteCell: {
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
+  runPreviewTitleCell: {
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+  },
+  runPreviewTitleText: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase200,
+  },
   runPreviewThumb: {
     width: "46px",
     height: "46px",
@@ -438,6 +521,12 @@ const useStyles = makeStyles({
     height: "30px",
   },
   runPreviewActions: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "8px",
+    alignItems: "center",
+  },
+  runPreviewActionsRight: {
     display: "flex",
     justifyContent: "flex-end",
     gap: "8px",
@@ -855,6 +944,36 @@ const useStyles = makeStyles({
   },
   textViewerActions: {
     justifyContent: "flex-end",
+  },
+  photopeaSurface: {
+    width: "min(1500px, 94vw)",
+    height: "92vh",
+    maxWidth: "94vw",
+    maxHeight: "92vh",
+    padding: "12px",
+    overflow: "hidden",
+  },
+  photopeaBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    height: "100%",
+    minHeight: 0,
+  },
+  photopeaFrameWrap: {
+    position: "relative",
+    flex: 1,
+    minHeight: 0,
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  photopeaFrame: {
+    width: "100%",
+    height: "100%",
+    border: "none",
+    display: "block",
   },
   filesSection: {
     borderRadius: "12px",
@@ -1459,9 +1578,15 @@ const useStyles = makeStyles({
     verticalAlign: "middle",
   },
   tableActionButton: {
-    backgroundColor: "transparent",
+    backgroundColor: "#ffffff",
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+    ":disabled": {
+      backgroundColor: tokens.colorNeutralBackground3,
     },
   },
   selectionCol: {
@@ -2087,12 +2212,15 @@ export default function DraftExplorerPage() {
   const [runPreviewOpen, setRunPreviewOpen] = useState(false);
   const [runPreviewRun, setRunPreviewRun] = useState<string>("");
   const [runPreviewLoading, setRunPreviewLoading] = useState(false);
-  const [runPreviewItems, setRunPreviewItems] = useState<DraftRunPreviewItem[]>(
-    []
-  );
-  const [runPreviewDeletedSpus, setRunPreviewDeletedSpus] = useState<Set<string>>(
-    new Set()
-  );
+	  const [runPreviewItems, setRunPreviewItems] = useState<DraftRunPreviewItem[]>(
+	    []
+	  );
+	  const [runPreviewSelectedSpus, setRunPreviewSelectedSpus] = useState<
+	    Set<string>
+	  >(new Set());
+	  const [runPreviewDeletedSpus, setRunPreviewDeletedSpus] = useState<Set<string>>(
+	    new Set()
+	  );
   const [runPreviewSaving, setRunPreviewSaving] = useState(false);
   const [entries, setEntries] = useState<DraftEntry[]>([]);
   const [mainViewVariantImageEntries, setMainViewVariantImageEntries] = useState<
@@ -2175,6 +2303,20 @@ export default function DraftExplorerPage() {
     new Set()
   );
   const [previewDeletePending, setPreviewDeletePending] = useState(false);
+  const [photopeaOpen, setPhotopeaOpen] = useState(false);
+  const [photopeaEntry, setPhotopeaEntry] = useState<DraftEntry | null>(null);
+  const [photopeaReady, setPhotopeaReady] = useState(false);
+  const [photopeaLoading, setPhotopeaLoading] = useState(false);
+  const [photopeaExporting, setPhotopeaExporting] = useState(false);
+  const [photopeaPersisting, setPhotopeaPersisting] = useState(false);
+  const [photopeaError, setPhotopeaError] = useState<string | null>(null);
+  const [photopeaSessionKey, setPhotopeaSessionKey] = useState(0);
+  const photopeaIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const photopeaFileBufferRef = useRef<ArrayBuffer | null>(null);
+  const photopeaExportBufferRef = useRef<ArrayBuffer | null>(null);
+  const photopeaPersistingRef = useRef(false);
+  const photopeaReadyRef = useRef(false);
+  const photopeaFileSentRef = useRef(false);
   const [variantsImagePreview, setVariantsImagePreview] = useState<{
     src: string;
     label: string;
@@ -2290,6 +2432,18 @@ export default function DraftExplorerPage() {
     },
     []
   );
+
+  const buildPhotopeaUrl = useCallback(() => {
+    const config = {
+      environment: {
+        // Make Photopea "File -> Save" return a JPG ArrayBuffer to the parent window.
+        customIO: {
+          save: "app.activeDocument.saveToOE('jpg:0.92');",
+        },
+      },
+    };
+    return `https://www.photopea.com/#${encodeURIComponent(JSON.stringify(config))}`;
+  }, []);
 
   const buildDraggedPathsForEntry = useCallback(
     (entry: DraftEntry) => {
@@ -3842,12 +3996,13 @@ export default function DraftExplorerPage() {
     });
   }, []);
 
-  const openRunPreview = useCallback(async (run: string) => {
-    setRunPreviewRun(run);
-    setRunPreviewDeletedSpus(new Set());
-    setRunPreviewItems([]);
-    setRunPreviewOpen(true);
-    setRunPreviewLoading(true);
+	  const openRunPreview = useCallback(async (run: string) => {
+	    setRunPreviewRun(run);
+	    setRunPreviewSelectedSpus(new Set());
+	    setRunPreviewDeletedSpus(new Set());
+	    setRunPreviewItems([]);
+	    setRunPreviewOpen(true);
+	    setRunPreviewLoading(true);
     try {
       const response = await fetch(
         `/api/drafts/folders/${encodeURIComponent(run)}/preview`
@@ -3868,13 +4023,63 @@ export default function DraftExplorerPage() {
     }
   }, []);
 
-  const handleRunPreviewDelete = useCallback((spu: string) => {
-    setRunPreviewDeletedSpus((prev) => {
-      const next = new Set(prev);
-      next.add(spu);
-      return next;
-    });
-  }, []);
+	  const handleRunPreviewDelete = useCallback((spu: string) => {
+	    setRunPreviewDeletedSpus((prev) => {
+	      const next = new Set(prev);
+	      next.add(spu);
+	      return next;
+	    });
+	    setRunPreviewSelectedSpus((prev) => {
+	      if (!prev.has(spu)) return prev;
+	      const next = new Set(prev);
+	      next.delete(spu);
+	      return next;
+	    });
+	  }, []);
+
+	  const visibleRunPreviewItems = useMemo(
+	    () => runPreviewItems.filter((item) => !runPreviewDeletedSpus.has(item.draft_spu)),
+	    [runPreviewItems, runPreviewDeletedSpus]
+	  );
+
+	  const allRunPreviewSelected = useMemo(
+	    () =>
+	      visibleRunPreviewItems.length > 0 &&
+	      visibleRunPreviewItems.every((item) => runPreviewSelectedSpus.has(item.draft_spu)),
+	    [visibleRunPreviewItems, runPreviewSelectedSpus]
+	  );
+
+	  const someRunPreviewSelected = useMemo(
+	    () => visibleRunPreviewItems.some((item) => runPreviewSelectedSpus.has(item.draft_spu)),
+	    [visibleRunPreviewItems, runPreviewSelectedSpus]
+	  );
+
+	  const toggleSelectAllRunPreview = useCallback(() => {
+	    if (allRunPreviewSelected) {
+	      setRunPreviewSelectedSpus(new Set());
+	      return;
+	    }
+	    setRunPreviewSelectedSpus(new Set(visibleRunPreviewItems.map((item) => item.draft_spu)));
+	  }, [allRunPreviewSelected, visibleRunPreviewItems]);
+
+	  const toggleSelectRunPreviewSpu = useCallback((spu: string) => {
+	    setRunPreviewSelectedSpus((prev) => {
+	      const next = new Set(prev);
+	      if (next.has(spu)) next.delete(spu);
+	      else next.add(spu);
+	      return next;
+	    });
+	  }, []);
+
+	  const handleRunPreviewDeleteSelected = useCallback(() => {
+	    if (runPreviewSelectedSpus.size === 0) return;
+	    setRunPreviewDeletedSpus((prev) => {
+	      const next = new Set(prev);
+	      runPreviewSelectedSpus.forEach((spu) => next.add(spu));
+	      return next;
+	    });
+	    setRunPreviewSelectedSpus(new Set());
+	  }, [runPreviewSelectedSpus]);
 
   const handleRunPreviewSave = useCallback(async () => {
     if (!runPreviewRun || runPreviewDeletedSpus.size === 0) {
@@ -5838,6 +6043,211 @@ export default function DraftExplorerPage() {
     selectedFolder,
   ]);
 
+  const trySendPhotopeaFile = useCallback(() => {
+    const targetWindow = photopeaIframeRef.current?.contentWindow;
+    if (!targetWindow) return;
+    if (!photopeaReadyRef.current) return;
+    if (photopeaFileSentRef.current) return;
+    const buffer = photopeaFileBufferRef.current;
+    if (!buffer) return;
+    photopeaFileSentRef.current = true;
+    photopeaFileBufferRef.current = null;
+    targetWindow.postMessage(buffer, "https://www.photopea.com", [buffer]);
+  }, []);
+
+  const closePhotopea = useCallback(() => {
+    setPhotopeaOpen(false);
+    setPhotopeaEntry(null);
+    setPhotopeaReady(false);
+    setPhotopeaLoading(false);
+    setPhotopeaExporting(false);
+    setPhotopeaPersisting(false);
+    photopeaPersistingRef.current = false;
+    setPhotopeaError(null);
+    photopeaReadyRef.current = false;
+    photopeaFileSentRef.current = false;
+    photopeaFileBufferRef.current = null;
+    photopeaExportBufferRef.current = null;
+  }, []);
+
+  const openPhotopeaEditor = useCallback(
+    async (entry: DraftEntry) => {
+      if (entry.type !== "file" || !isImage(entry.name)) return;
+      setPhotopeaOpen(true);
+      setPhotopeaEntry(entry);
+      setPhotopeaReady(false);
+      setPhotopeaError(null);
+      setPhotopeaLoading(true);
+      setPhotopeaExporting(false);
+      setPhotopeaPersisting(false);
+      photopeaPersistingRef.current = false;
+      setPhotopeaSessionKey((prev) => prev + 1);
+      photopeaReadyRef.current = false;
+      photopeaFileSentRef.current = false;
+      photopeaExportBufferRef.current = null;
+      photopeaFileBufferRef.current = null;
+      try {
+        const response = await fetch(buildDraftDownloadUrl(entry.path, entry.modifiedAt));
+        if (!response.ok) {
+          const message = await response.text().catch(() => "");
+          throw new Error(message || "Unable to load image.");
+        }
+        const buffer = await response.arrayBuffer();
+        photopeaFileBufferRef.current = buffer;
+        trySendPhotopeaFile();
+      } catch (err) {
+        setPhotopeaError((err as Error).message);
+      } finally {
+        setPhotopeaLoading(false);
+      }
+    },
+    [buildDraftDownloadUrl, isImage, trySendPhotopeaFile]
+  );
+
+  const requestPhotopeaExport = useCallback(() => {
+    const win = photopeaIframeRef.current?.contentWindow;
+    if (!win) return;
+    setPhotopeaError(null);
+    setPhotopeaExporting(true);
+    photopeaExportBufferRef.current = null;
+    win.postMessage("app.activeDocument.saveToOE('jpg:0.92');", "https://www.photopea.com");
+  }, []);
+
+  const savePhotopeaResult = useCallback(async () => {
+    const buffer = photopeaExportBufferRef.current;
+    const activeEntry = photopeaEntry;
+    if (!buffer || !activeEntry || photopeaPersistingRef.current) return;
+    photopeaExportBufferRef.current = null;
+    setPhotopeaExporting(false);
+    setPhotopeaPersisting(true);
+    photopeaPersistingRef.current = true;
+    setPhotopeaError(null);
+
+    const oldPath = activeEntry.path;
+    setReloadingImagePaths((prev) => new Set(prev).add(oldPath));
+    try {
+      const formData = new FormData();
+      formData.append("path", oldPath);
+      formData.append(
+        "file",
+        new Blob([buffer], { type: "image/jpeg" }),
+        "photopea.jpg"
+      );
+      const response = await fetch("/api/drafts/images/replace", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Save failed.");
+      }
+
+      const newPath = String(payload?.path || oldPath);
+      const newName = String(payload?.name || activeEntry.name);
+      const newModifiedAt = String(payload?.modifiedAt || new Date().toISOString());
+      const newSize = Number(payload?.size ?? activeEntry.size ?? 0);
+
+      setEntries((prev) => {
+        let hadNew = false;
+        let hadOld = false;
+        const next = prev
+          .map((item) => {
+            if (item.path === newPath) {
+              hadNew = true;
+              return {
+                ...item,
+                name: newName,
+                path: newPath,
+                modifiedAt: newModifiedAt,
+                size: newSize,
+              };
+            }
+            if (item.path === oldPath) {
+              hadOld = true;
+              // If we changed extension, drop the old entry and keep/patch the newPath entry above.
+              return null;
+            }
+            return item;
+          })
+          .filter(Boolean) as DraftEntry[];
+
+        if (!hadNew) {
+          if (hadOld) {
+            next.push({
+              ...activeEntry,
+              name: newName,
+              path: newPath,
+              modifiedAt: newModifiedAt,
+              size: newSize,
+            });
+          }
+        }
+        return next;
+      });
+      setSelectedFiles((prev) => {
+        if (!prev.has(oldPath)) return prev;
+        const next = new Set(prev);
+        next.delete(oldPath);
+        next.add(newPath);
+        return next;
+      });
+      setPreviewPath((prev) => (prev === oldPath ? newPath : prev));
+      setImageDimensions((prev) => {
+        const next: Record<string, { width: number; height: number }> = { ...prev };
+        if (oldPath !== newPath) {
+          delete next[oldPath];
+        }
+        return next;
+      });
+      setReloadingImagePaths((prev) => {
+        const next = new Set(prev);
+        if (oldPath !== newPath) {
+          next.delete(oldPath);
+        }
+        next.add(newPath);
+        return next;
+      });
+      setPhotopeaEntry((prev) =>
+        prev ? { ...prev, path: newPath, name: newName, modifiedAt: newModifiedAt, size: newSize } : prev
+      );
+      if (selectedFolder) {
+        fetchFolderTree(selectedFolder);
+      }
+    } catch (err) {
+      setPhotopeaError((err as Error).message);
+    } finally {
+      setPhotopeaPersisting(false);
+      photopeaPersistingRef.current = false;
+    }
+  }, [fetchFolderTree, photopeaEntry, selectedFolder]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://www.photopea.com") return;
+      const data = event.data as unknown;
+      if (typeof data === "string") {
+        if (data === "__hub_photopea_ready__") {
+          photopeaReadyRef.current = true;
+          setPhotopeaReady(true);
+          trySendPhotopeaFile();
+          return;
+        }
+        if (data === "done") {
+          // Photopea sends "done" after each script finishes. If we just received an
+          // exported buffer (via saveToOE), finalize by writing it to the draft path.
+          return;
+        }
+        return;
+      }
+      if (data instanceof ArrayBuffer) {
+        photopeaExportBufferRef.current = data;
+        void savePhotopeaResult();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [savePhotopeaResult, trySendPhotopeaFile]);
+
   const handleToggleTreeFolder = (pathValue: string) => {
     setSelectedTreeFolders((prev) => {
       const next = new Set(prev);
@@ -7385,6 +7795,10 @@ export default function DraftExplorerPage() {
       handleCreateCopy(entry);
       return;
     }
+    if (action === "photopea") {
+      void openPhotopeaEditor(entry);
+      return;
+    }
     if (action === "ai-auto-center-white") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
@@ -8009,6 +8423,7 @@ export default function DraftExplorerPage() {
       | "duplicate"
       | "tag"
       | "ai"
+      | "photopea"
       | "focuscenter"
       | "background"
       | "eraser"
@@ -8074,6 +8489,25 @@ export default function DraftExplorerPage() {
           <path stroke="none" d="M0 0h24v24H0z" fill="none" />
           <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
           <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+        </svg>
+      );
+    }
+    if (type === "photopea") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3l-11 11l-4 1l1 -4l11 -11z" />
         </svg>
       );
     }
@@ -9567,88 +10001,149 @@ export default function DraftExplorerPage() {
         </DialogSurface>
       </Dialog>
 
-      <Dialog
-        open={runPreviewOpen}
-        onOpenChange={(_, data) => {
-          if (!data.open) {
-            setRunPreviewOpen(false);
-            setRunPreviewRun("");
-            setRunPreviewItems([]);
-            setRunPreviewDeletedSpus(new Set());
-          }
-        }}
-      >
-        <DialogSurface className={styles.runPreviewSurface}>
-          <DialogBody className={styles.runPreviewBody}>
+	      <Dialog
+	        open={runPreviewOpen}
+	        onOpenChange={(_, data) => {
+	          if (!data.open) {
+	            setRunPreviewOpen(false);
+	            setRunPreviewRun("");
+	            setRunPreviewItems([]);
+	            setRunPreviewSelectedSpus(new Set());
+	            setRunPreviewDeletedSpus(new Set());
+	          }
+	        }}
+	      >
+	        <DialogSurface className={styles.runPreviewSurface}>
+	          <DialogBody className={styles.runPreviewBody}>
             <DialogTitle>
               Batch Preview{runPreviewRun ? ` - ${runPreviewRun}` : ""}
             </DialogTitle>
             {runPreviewLoading ? <Spinner size="small" /> : null}
-            <div className={styles.runPreviewTableWrap}>
-              <Table size="small" aria-label="Batch preview">
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>Action</TableHeaderCell>
-                    <TableHeaderCell>Image</TableHeaderCell>
-                    <TableHeaderCell>SPU</TableHeaderCell>
-                    <TableHeaderCell>Title</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {runPreviewItems
-                    .filter((item) => !runPreviewDeletedSpus.has(item.draft_spu))
-                    .map((item) => (
-                      <TableRow key={item.draft_spu}>
-                        <TableCell>
-                          <Button
-                            appearance="outline"
-                            size="small"
-                            className={styles.runPreviewDeleteButton}
-                            onClick={() => handleRunPreviewDelete(item.draft_spu)}
-                          >
-                            Delete
-                          </Button>
-                        </TableCell>
-                        <TableCell>
-                          {item.draft_main_image_url ? (
-                            <img
-                              src={item.draft_main_image_url}
-                              alt={item.draft_spu}
-                              className={styles.runPreviewThumb}
-                            />
-                          ) : (
-                            <div
-                              className={styles.runPreviewThumb}
-                              style={{ display: "inline-block" }}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>{item.draft_spu}</TableCell>
-                        <TableCell>{item.title}</TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className={styles.runPreviewActions}>
-              <Button
-                appearance="outline"
-                onClick={() => setRunPreviewOpen(false)}
-                disabled={runPreviewSaving}
-              >
-                Cancel
-              </Button>
-              <Button
-                appearance="primary"
-                onClick={() => void handleRunPreviewSave()}
-                disabled={runPreviewSaving}
-              >
-                {runPreviewSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
+	            <div className={styles.runPreviewTableWrap}>
+	              <Table
+	                size="small"
+	                aria-label="Batch preview"
+	                className={styles.runPreviewTable}
+	              >
+		                <TableHeader>
+		                  <TableRow className={styles.runPreviewHeaderRow}>
+		                    <TableHeaderCell className={styles.runPreviewImageHeaderCell}>
+		                      Image
+		                    </TableHeaderCell>
+		                    <TableHeaderCell className={styles.runPreviewSpuHeaderCell}>
+		                      SPU
+		                    </TableHeaderCell>
+		                    <TableHeaderCell>Title</TableHeaderCell>
+		                    <TableHeaderCell className={styles.runPreviewSelectHeaderCell}>
+		                      <div className={styles.runPreviewCellCenter}>
+		                        <Checkbox
+		                          checked={
+		                            allRunPreviewSelected
+		                              ? true
+		                              : someRunPreviewSelected
+		                                ? "mixed"
+		                                : false
+		                          }
+		                          onChange={toggleSelectAllRunPreview}
+		                          aria-label={t("common.selectAll")}
+		                        />
+		                      </div>
+		                    </TableHeaderCell>
+		                    <TableHeaderCell className={styles.runPreviewDeleteHeaderCell} />
+		                  </TableRow>
+		                </TableHeader>
+		                <TableBody>
+		                  {visibleRunPreviewItems.map((item) => (
+		                      <TableRow key={item.draft_spu}>
+		                        <TableCell className={styles.runPreviewImageCell}>
+		                          <div className={styles.runPreviewCellCenter}>
+		                            {item.preview_image_path ? (
+		                              <img
+		                                src={buildDraftDownloadUrl(
+		                                  item.preview_image_path,
+		                                  item.preview_image_modified_at ?? undefined
+		                                )}
+		                                alt={item.draft_spu}
+		                                className={styles.runPreviewThumb}
+		                                loading="lazy"
+		                              />
+		                            ) : item.draft_main_image_url ? (
+		                              <img
+		                                src={item.draft_main_image_url}
+		                                alt={item.draft_spu}
+		                                className={styles.runPreviewThumb}
+		                                loading="lazy"
+		                              />
+		                            ) : (
+		                              <div
+		                                className={styles.runPreviewThumb}
+		                                style={{ display: "inline-block" }}
+		                              />
+		                            )}
+		                          </div>
+		                        </TableCell>
+		                        <TableCell>{item.draft_spu}</TableCell>
+		                        <TableCell className={styles.runPreviewTitleCell}>
+		                          <span className={styles.runPreviewTitleText}>{item.title}</span>
+		                        </TableCell>
+		                        <TableCell className={styles.runPreviewSelectCell}>
+		                          <div className={styles.runPreviewCellCenter}>
+		                            <Checkbox
+		                              checked={runPreviewSelectedSpus.has(item.draft_spu)}
+		                              onChange={() => toggleSelectRunPreviewSpu(item.draft_spu)}
+		                              aria-label={`Select ${item.draft_spu}`}
+		                            />
+		                          </div>
+		                        </TableCell>
+		                        <TableCell className={styles.runPreviewDeleteCell}>
+		                          <div className={styles.runPreviewCellCenter}>
+		                            <Button
+		                              appearance="outline"
+		                              size="small"
+		                              className={mergeClasses(
+		                                styles.runPreviewDeleteButton,
+		                                styles.whiteActionButton
+		                              )}
+		                              onClick={() => handleRunPreviewDelete(item.draft_spu)}
+		                            >
+		                              Delete
+		                            </Button>
+		                          </div>
+		                        </TableCell>
+		                      </TableRow>
+		                    ))}
+		                </TableBody>
+		              </Table>
+	            </div>
+	            <div className={styles.runPreviewActions}>
+	              <Button
+	                appearance="outline"
+	                className={styles.whiteActionButton}
+	                onClick={handleRunPreviewDeleteSelected}
+	                disabled={runPreviewSelectedSpus.size === 0 || runPreviewSaving}
+	              >
+	                Delete selected
+	              </Button>
+	              <div className={styles.runPreviewActionsRight}>
+	                <Button
+	                  appearance="outline"
+	                  onClick={() => setRunPreviewOpen(false)}
+	                  disabled={runPreviewSaving}
+	                >
+	                  Cancel
+	                </Button>
+	                <Button
+	                  appearance="primary"
+	                  onClick={() => void handleRunPreviewSave()}
+	                  disabled={runPreviewSaving}
+	                >
+	                  {runPreviewSaving ? "Saving..." : "Save"}
+	                </Button>
+	              </div>
+	            </div>
+	          </DialogBody>
+	        </DialogSurface>
+	      </Dialog>
 
       <Card className={styles.logCard}>
         <div className={styles.explorerHeader}>
@@ -10303,14 +10798,17 @@ export default function DraftExplorerPage() {
                       <Button
                         size="small"
                         appearance="outline"
-                        className={styles.batchPickerViewButton}
+                        className={mergeClasses(
+                          styles.batchPickerViewButton,
+                          styles.whiteActionButton
+                        )}
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
                           void openRunPreview(folder.path);
                         }}
                       >
-                        View
+                        Preview
                       </Button>
                       <span
                         onClick={(event) => {
@@ -10339,6 +10837,7 @@ export default function DraftExplorerPage() {
                   <Button
                     appearance="outline"
                     onClick={handleUnselectRunsForMerge}
+                    disabled={selectedRunsForMerge.size === 0}
                   >
                     Unselect
                   </Button>
@@ -10596,7 +11095,10 @@ export default function DraftExplorerPage() {
                       <Button
                         appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
                         disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        className={styles.imageToolbarActions}
+                        className={mergeClasses(
+                          styles.imageToolbarActions,
+                          selectedImageEntries.length > 1 ? undefined : styles.explorerWhiteButton
+                        )}
                       >
                         {bulkImageActionPending ? "Working..." : "Actions"}
                       </Button>
@@ -12000,20 +12502,31 @@ export default function DraftExplorerPage() {
                 <span>View</span>
               </button>
             ) : null}
-	            <button
-	              type="button"
-	              className={styles.contextMenuButton}
-	              onMouseEnter={() => setContextMenuSubmenu(null)}
-	              onClick={() => handleContextMenuAction("create-copy")}
-	            >
-              {renderContextMenuIcon("duplicate")}
-              <span>Duplicate</span>
-            </button>
-            {contextMenu.image ? (
-              <>
-		                <button
-		                  type="button"
-		                  className={styles.contextMenuButton}
+		            <button
+		              type="button"
+		              className={styles.contextMenuButton}
+		              onMouseEnter={() => setContextMenuSubmenu(null)}
+		              onClick={() => handleContextMenuAction("create-copy")}
+		            >
+	              {renderContextMenuIcon("duplicate")}
+	              <span>Duplicate</span>
+	            </button>
+	            {contextMenu.image ? (
+	              <button
+	                type="button"
+	                className={styles.contextMenuButton}
+	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onClick={() => handleContextMenuAction("photopea")}
+	              >
+	                {renderContextMenuIcon("photopea")}
+	                <span>Edit with Photopea</span>
+	              </button>
+	            ) : null}
+	            {contextMenu.image ? (
+	              <>
+			                <button
+			                  type="button"
+			                  className={styles.contextMenuButton}
 		                  onMouseEnter={() => setContextMenuSubmenu(null)}
 		                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
 		                >
@@ -12385,13 +12898,84 @@ export default function DraftExplorerPage() {
                 </button>
               </>
             ) : null}
-          </div>
-        ) : null}
+	          </div>
+	        ) : null}
 
-        <Dialog
-          open={aiEditTargets.length > 0}
-          onOpenChange={(_, data) => {
-            if (!data.open) {
+	        <Dialog
+	          open={photopeaOpen}
+	          onOpenChange={(_, data) => {
+	            if (!data.open) {
+	              if (photopeaExporting || photopeaPersisting) return;
+	              closePhotopea();
+	            }
+	          }}
+	        >
+	          <DialogSurface className={styles.photopeaSurface}>
+	            <DialogBody className={styles.photopeaBody}>
+	              <DialogTitle>
+	                {`Photopea - ${photopeaEntry?.name ?? ""}`}
+	              </DialogTitle>
+	              {photopeaError ? (
+	                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+	                  {photopeaError}
+	                </Text>
+	              ) : (
+	                <Text size={100} className={styles.filesInfo}>
+	                  Click Save below to export a JPG from Photopea and replace the draft file.
+	                </Text>
+	              )}
+	              <div className={styles.photopeaFrameWrap}>
+	                <iframe
+	                  key={`photopea-${photopeaSessionKey}`}
+	                  ref={photopeaIframeRef}
+	                  className={styles.photopeaFrame}
+	                  src={buildPhotopeaUrl()}
+	                  title="Photopea"
+	                  allow="clipboard-read; clipboard-write"
+	                  onLoad={() => {
+	                    const win = photopeaIframeRef.current?.contentWindow;
+	                    if (!win) return;
+	                    // Ping Photopea so it echoes a ready marker back to us (and then "done").
+	                    win.postMessage(
+	                      'app.echoToOE("__hub_photopea_ready__");',
+	                      "https://www.photopea.com"
+	                    );
+	                  }}
+	                />
+	                {photopeaLoading || photopeaExporting || photopeaPersisting ? (
+	                  <div className={styles.entriesContentOverlay}>
+	                    <Spinner size="tiny" />
+	                  </div>
+	                ) : null}
+	              </div>
+	              <DialogActions>
+	                <Button
+	                  appearance="outline"
+	                  onClick={requestPhotopeaExport}
+	                  disabled={!photopeaReady || photopeaLoading || photopeaExporting || photopeaPersisting}
+	                >
+	                  {photopeaExporting
+	                    ? "Exporting..."
+	                    : photopeaPersisting
+	                      ? "Saving..."
+	                      : "Save"}
+	                </Button>
+	                <Button
+	                  appearance="primary"
+	                  onClick={closePhotopea}
+	                  disabled={photopeaExporting || photopeaPersisting}
+	                >
+	                  {t("common.close")}
+	                </Button>
+	              </DialogActions>
+	            </DialogBody>
+	          </DialogSurface>
+	        </Dialog>
+
+	        <Dialog
+	          open={aiEditTargets.length > 0}
+	          onOpenChange={(_, data) => {
+	            if (!data.open) {
               cancelAiEdit();
             }
           }}

@@ -147,6 +147,48 @@ type VariantCombo = {
   weight_grams?: number | null;
 };
 
+const resolveVariantComboPriceRmb = (combo: VariantCombo) => {
+  if (typeof combo?.price === "number" && Number.isFinite(combo.price) && combo.price > 0) {
+    return combo.price;
+  }
+  const raw = String(combo?.price_raw || "").trim();
+  if (!raw) return null;
+  const match = raw.replace(/,/g, ".").match(/-?\\d+(?:\\.\\d+)?/);
+  if (!match?.[0]) return null;
+  const n = Number(match[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const resolveVariantComboWeightGrams = (combo: VariantCombo) => {
+  if (
+    typeof combo?.weight_grams === "number" &&
+    Number.isFinite(combo.weight_grams) &&
+    combo.weight_grams > 0
+  ) {
+    return Math.round(combo.weight_grams);
+  }
+  const raw = String(combo?.weight_raw || "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, ".").trim().toLowerCase();
+  const match = normalized.match(/-?\\d+(?:\\.\\d+)?/);
+  if (!match?.[0]) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  if (normalized.includes("kg") || normalized.includes("公斤") || normalized.includes("千克")) {
+    return Math.round(num * 1000);
+  }
+  if (normalized.includes("g") || normalized.includes("克")) {
+    return Math.round(num);
+  }
+  if (num <= 20 && normalized.includes(".")) {
+    return Math.round(num * 1000);
+  }
+  return Math.round(num);
+};
+
+const formatPriceWeightKey = (priceRmb: number, weightGrams: number) =>
+  `${priceRmb.toFixed(2)}|${Math.round(weightGrams)}`;
+
 type DigidealResponse = {
   items: DigidealItem[];
   page: number;
@@ -1018,6 +1060,7 @@ const useStyles = makeStyles({
   supplierSearchDialog: {
     width: "min(980px, 94vw)",
     maxWidth: "min(980px, 94vw)",
+    position: "relative",
   },
   supplierSearchContent: {
     position: "relative",
@@ -1075,6 +1118,8 @@ const useStyles = makeStyles({
   supplierRowClickable: {
     cursor: "pointer",
     transition: "background-color 120ms ease, border-color 120ms ease",
+  },
+  supplierRowHoverable: {
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
       border: `1px solid ${tokens.colorNeutralStroke1}`,
@@ -1083,6 +1128,10 @@ const useStyles = makeStyles({
   supplierRowSelected: {
     backgroundColor: "#eaf4ff",
     border: "1px solid #0f6cbd",
+    "&:hover": {
+      backgroundColor: "#eaf4ff",
+      border: "1px solid #0f6cbd",
+    },
   },
   supplierThumb: {
     width: "96px",
@@ -1231,18 +1280,18 @@ const useStyles = makeStyles({
     justifyContent: "stretch",
   },
   cropGallery: {
-    width: "min(420px, 42vw)",
-    minWidth: "240px",
+    width: "min(300px, 32vw)",
+    minWidth: "200px",
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "auto",
-    padding: "10px",
+    padding: "8px",
   },
   cropGalleryGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "10px",
+    gap: "8px",
   },
   cropGalleryButton: {
     appearance: "none",
@@ -1265,11 +1314,14 @@ const useStyles = makeStyles({
     width: "100%",
     aspectRatio: "1 / 1",
     backgroundColor: tokens.colorNeutralBackground3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   cropGalleryImage: {
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit: "contain",
     display: "block",
   },
   cropStage: {
@@ -1473,8 +1525,16 @@ const useStyles = makeStyles({
   },
   variantsRowClickable: {
     cursor: "pointer",
+  },
+  variantsRowHoverable: {
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  variantsRowSelected: {
+    backgroundColor: "#eaf4ff",
+    "&:hover": {
+      backgroundColor: "#eaf4ff",
     },
   },
   variantImageCellWrap: {
@@ -2796,6 +2856,158 @@ export default function DigidealCampaignsPage() {
     },
     [computeEstimatedPriceSe, loadPricingSeConfig]
   );
+
+  const autoVariantPickAttemptsRef = useRef<Set<string>>(new Set());
+
+  const attemptAutoPickDigidealVariant = useCallback(
+    async (item: DigidealItem) => {
+      const productId = String(item?.product_id ?? "").trim();
+      if (!productId) return;
+
+      try {
+        const params = new URLSearchParams({
+          provider: "digideal",
+          product_id: productId,
+        });
+        params.set("skipTranslation", "1");
+        const response = await fetch(
+          `/api/production/suppliers/variants?${params.toString()}`,
+          { cache: "no-store" }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+
+        const combos = Array.isArray((payload as any)?.combos)
+          ? ((payload as any).combos as VariantCombo[])
+          : [];
+        if (combos.length === 0) return;
+
+        const resolved = combos.map((combo) => ({
+          price: resolveVariantComboPriceRmb(combo),
+          weight: resolveVariantComboWeightGrams(combo),
+        }));
+
+        const shouldAutoPick = (() => {
+          if (combos.length === 1) {
+            const first = resolved[0];
+            return Boolean(first?.price && first.price > 0 && first?.weight && first.weight > 0);
+          }
+
+          // Only auto pick when *all* variants have both price and weight and they match exactly.
+          if (resolved.some((entry) => !entry.price || entry.price <= 0 || !entry.weight || entry.weight <= 0)) {
+            return false;
+          }
+          const keys = new Set(
+            resolved.map((entry) => formatPriceWeightKey(entry.price as number, entry.weight as number))
+          );
+          return keys.size === 1;
+        })();
+
+        if (!shouldAutoPick) return;
+
+        const postResponse = await fetch("/api/production/suppliers/variants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "digideal",
+            product_id: productId,
+            selected_combo_indexes: [0],
+            packs_text: typeof (payload as any)?.packs_text === "string" ? (payload as any).packs_text : "",
+          }),
+        });
+        const postPayload = await postResponse.json().catch(() => ({}));
+        if (!postResponse.ok) return;
+        if (
+          typeof (postPayload as any)?.digideal_update_error === "string" &&
+          (postPayload as any).digideal_update_error.trim()
+        ) {
+          return;
+        }
+
+        const digideal = (postPayload as any)?.digideal;
+        const nextPurchasePrice =
+          typeof digideal?.purchase_price === "number" && Number.isFinite(digideal.purchase_price)
+            ? Number(digideal.purchase_price)
+            : null;
+        const nextWeightGrams =
+          typeof digideal?.weight_grams === "number" && Number.isFinite(digideal.weight_grams)
+            ? Math.round(Number(digideal.weight_grams))
+            : null;
+        const nextWeightKg =
+          nextWeightGrams !== null ? Number((nextWeightGrams / 1000).toFixed(3)) : null;
+
+        // If we auto-picked but still cannot resolve price/weight, leave it for manual selection.
+        if (nextPurchasePrice === null || nextWeightGrams === null || nextWeightKg === null) return;
+
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.product_id === productId
+              ? {
+                  ...entry,
+                  purchase_price: nextPurchasePrice,
+                  weight_grams: nextWeightGrams,
+                  weight_kg: nextWeightKg,
+                  supplier_variant_selected_count:
+                    Number.isFinite(Number((postPayload as any)?.selected_count))
+                      ? Number((postPayload as any).selected_count)
+                      : entry.supplier_variant_selected_count ?? null,
+                  supplier_variant_available_count:
+                    Number.isFinite(Number((postPayload as any)?.available_count))
+                      ? Number((postPayload as any).available_count)
+                      : entry.supplier_variant_available_count ?? null,
+                  supplier_variant_packs_text:
+                    typeof (postPayload as any)?.packs_text === "string" &&
+                    (postPayload as any).packs_text.trim()
+                      ? (postPayload as any).packs_text.trim()
+                      : null,
+                }
+              : entry
+          )
+        );
+
+        void updateEstimatedPriceForRow(productId, nextPurchasePrice, nextWeightKg);
+      } catch {
+        // Best-effort only; user can always pick manually.
+      }
+    },
+    [updateEstimatedPriceForRow]
+  );
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (variantsDialogOpen && variantsTarget) return;
+
+    const candidates = items.filter((item) => {
+      const productId = String(item?.product_id ?? "").trim();
+      if (!productId) return false;
+      if (autoVariantPickAttemptsRef.current.has(productId)) return false;
+
+      const status = String(item?.supplier_payload_status ?? "").trim().toLowerCase();
+      const ready = status === "ready" && Boolean(item?.supplier_payload_file_path);
+      if (!ready) return false;
+
+      // Don't override manual supplier/pricing, locked suppliers, or already-picked variants.
+      const hasManualSupplierData =
+        item.purchase_price !== null ||
+        item.weight_grams !== null ||
+        item.weight_kg !== null ||
+        (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
+      if (hasManualSupplierData) return false;
+      if (Boolean(item.supplier_locked)) return false;
+      if (typeof item.supplier_variant_selected_count === "number" && item.supplier_variant_selected_count > 0) {
+        return false;
+      }
+
+      return true;
+    });
+
+    candidates.forEach((item) => {
+      const productId = String(item?.product_id ?? "").trim();
+      if (!productId) return;
+      autoVariantPickAttemptsRef.current.add(productId);
+      void attemptAutoPickDigidealVariant(item);
+    });
+  }, [attemptAutoPickDigidealVariant, isAdmin, items, variantsDialogOpen, variantsTarget]);
 
   const supplierPayloadPollersRef = useRef<Map<string, { stop: () => void }>>(new Map());
 
@@ -4449,6 +4661,7 @@ export default function DigidealCampaignsPage() {
     setFirstSeenTo("");
     setStatus("all");
     setPriceMatch("all");
+    setSupplierWorkflowFilter("all");
     setGroupIdFilter(null);
     setSellerFilters([]);
     setSellerPopoverOpen(false);
@@ -5139,6 +5352,9 @@ export default function DigidealCampaignsPage() {
         if (priceMatch && priceMatch !== "all") {
           params.set("priceMatch", priceMatch);
         }
+        if (supplierWorkflowFilter && supplierWorkflowFilter !== "all") {
+          params.set("supplierWorkflow", supplierWorkflowFilter);
+        }
         if (status) params.set("status", status);
         if (sort) params.set("sort", sort);
         params.set("page", String(page));
@@ -5204,6 +5420,7 @@ export default function DigidealCampaignsPage() {
     viewIdFilter,
     sellerFilters,
     priceMatch,
+    supplierWorkflowFilter,
     page,
     pageSize,
     refreshToken,
@@ -5211,38 +5428,6 @@ export default function DigidealCampaignsPage() {
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
-
-  const supplierWorkflowFilteredItems = useMemo(() => {
-    if (supplierWorkflowFilter === "all") return items;
-
-    return items.filter((item) => {
-      const supplierCount = typeof item.supplier_count === "number" ? item.supplier_count : 0;
-      const hasSuggestions = supplierCount > 0;
-      const supplierSelected = item.supplier_selected === true;
-      const supplierLocked = item.supplier_locked === true;
-
-      const packsText =
-        typeof item.supplier_variant_packs_text === "string"
-          ? item.supplier_variant_packs_text.trim()
-          : "";
-      const selectedVariantCount =
-        typeof item.supplier_variant_selected_count === "number"
-          ? item.supplier_variant_selected_count
-          : 0;
-      const hasPickedVariants = selectedVariantCount > 0 || packsText.length > 0;
-
-      switch (supplierWorkflowFilter) {
-        case "no_supplier":
-          return !supplierLocked && !supplierSelected && !hasSuggestions;
-        case "need_select_supplier":
-          return !supplierLocked && !supplierSelected && hasSuggestions;
-        case "need_pick_variants":
-          return !supplierLocked && supplierSelected && !hasPickedVariants;
-        default:
-          return true;
-      }
-    });
-  }, [items, supplierWorkflowFilter]);
 
   const analysisView = useMemo(() => {
     if (!analysisData) return null;
@@ -5587,7 +5772,7 @@ export default function DigidealCampaignsPage() {
 
   const rows = useMemo(
     () =>
-      supplierWorkflowFilteredItems.map((item) => {
+      items.map((item) => {
         const title =
           item.listing_title ||
           item.title_h1 ||
@@ -6390,7 +6575,7 @@ export default function DigidealCampaignsPage() {
         );
       }),
     [
-      supplierWorkflowFilteredItems,
+      items,
       styles,
       t,
       addingIds,
@@ -6480,11 +6665,12 @@ export default function DigidealCampaignsPage() {
                       : "All"
               }
               selectedOptions={[supplierWorkflowFilter]}
-              onOptionSelect={(_, data) =>
+              onOptionSelect={(_, data) => {
                 setSupplierWorkflowFilter(
                   (String(data.optionValue) as SupplierWorkflowFilter) || "all"
-                )
-              }
+                );
+                setPage(1);
+              }}
               className={mergeClasses(styles.dropdownCompact, styles.filterField)}
             >
               <Option value="all">All</Option>
@@ -7694,6 +7880,7 @@ export default function DigidealCampaignsPage() {
                             className={mergeClasses(
                               styles.supplierRow,
                               isClickable ? styles.supplierRowClickable : undefined,
+                              isClickable && !isSelected ? styles.supplierRowHoverable : undefined,
                               isSelected ? styles.supplierRowSelected : undefined
                             )}
                             onClick={() => {
@@ -7862,6 +8049,7 @@ export default function DigidealCampaignsPage() {
                           className={mergeClasses(
                             styles.supplierRow,
                             styles.supplierRowClickable,
+                            !isSelected ? styles.supplierRowHoverable : undefined,
                             isSelected ? styles.supplierRowSelected : undefined
                           )}
                           onClick={() => {
@@ -7979,155 +8167,6 @@ export default function DigidealCampaignsPage() {
 	                </div>
 	              )}
 
-	              {cropDialogOpen ? (
-	                <div
-	                  className={styles.cropOverlay}
-	                  role="dialog"
-	                  aria-modal="true"
-	                  onClick={(ev) => {
-	                    ev.stopPropagation();
-	                  }}
-	                >
-	                  <div className={styles.cropModal} onClick={(ev) => ev.stopPropagation()}>
-	                    <div className={styles.cropModalHeader}>
-	                      <Text className={styles.cropModalTitle}>Recrop Image</Text>
-	                    </div>
-
-                    {cropImageUrl ? (
-                      <div className={styles.cropBodyRow}>
-                        <div className={styles.cropGallery} aria-label="DigiDeal images">
-                          <div className={styles.cropGalleryGrid}>
-                            {cropGalleryUrls.map((url) => (
-                              <button
-                                key={url}
-                                type="button"
-                                className={mergeClasses(
-                                  styles.cropGalleryButton,
-                                  url === cropImageUrl ? styles.cropGalleryButtonActive : undefined
-                                )}
-                                onClick={() => handlePickCropImage(url)}
-                                disabled={recropSearching}
-                              >
-                                <div className={styles.cropGalleryThumb}>
-                                  <img
-                                    src={url}
-                                    alt="DigiDeal image"
-                                    className={styles.cropGalleryImage}
-                                    referrerPolicy="no-referrer"
-                                    loading="lazy"
-                                    decoding="async"
-                                  />
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className={styles.cropStage}>
-                          <div
-                            className={styles.cropStagePadding}
-                            ref={(el) => {
-                              cropStageRef.current = el;
-                            }}
-                            onPointerMove={onDragMove}
-                            onPointerUp={endDrag}
-                            onPointerCancel={endDrag}
-                            onPointerLeave={endDrag}
-                          >
-                            <img
-                              src={cropImageUrl}
-                              alt="Recrop Image"
-                              className={styles.cropImage}
-                              referrerPolicy="no-referrer"
-                              onLoad={(ev) => {
-                                const img = ev.currentTarget;
-                                if (img?.naturalWidth && img?.naturalHeight) {
-                                  const naturalW = img.naturalWidth;
-                                  const naturalH = img.naturalHeight;
-                                  setCropNaturalSize({ w: naturalW, h: naturalH });
-
-                                  // Default crop: full image minus 15px padding on each side.
-                                  if (!cropTouchedRef.current) {
-                                    const marginX = Math.min(
-                                      DEFAULT_CROP_MARGIN_PX,
-                                      Math.floor((naturalW - 1) / 2)
-                                    );
-                                    const marginY = Math.min(
-                                      DEFAULT_CROP_MARGIN_PX,
-                                      Math.floor((naturalH - 1) / 2)
-                                    );
-                                    setCropRect(
-                                      clampRect({
-                                        x: marginX / naturalW,
-                                        y: marginY / naturalH,
-                                        w: (naturalW - marginX * 2) / naturalW,
-                                        h: (naturalH - marginY * 2) / naturalH,
-                                      })
-                                    );
-                                  }
-                                }
-                              }}
-                            />
-                            {(() => {
-                              const box = getCropImageBox();
-                              if (!box) return null;
-                              const left = box.img.left + cropRect.x * box.img.width;
-                              const top = box.img.top + cropRect.y * box.img.height;
-                              const width = cropRect.w * box.img.width;
-                              const height = cropRect.h * box.img.height;
-                              return (
-                                <div
-                                  className={styles.cropRect}
-                                  style={{ left, top, width, height }}
-                                  onPointerDown={(ev) => beginDrag(ev, "move")}
-                                >
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
-                                    onPointerDown={(ev) => beginDrag(ev, "nw")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
-                                    onPointerDown={(ev) => beginDrag(ev, "ne")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
-                                    onPointerDown={(ev) => beginDrag(ev, "sw")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
-                                    onPointerDown={(ev) => beginDrag(ev, "se")}
-                                  />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={styles.cropMissing}>
-                        <Text>No image available to crop.</Text>
-                      </div>
-	                    )}
-
-	                    <div className={styles.cropModalActions}>
-	                      <Button
-	                        appearance="secondary"
-	                        onClick={closeCropDialog}
-	                        disabled={recropSearching}
-	                      >
-	                        Close
-	                      </Button>
-	                      <Button
-	                        appearance="primary"
-	                        onClick={handleRecropSearch}
-	                        disabled={recropSearching || !cropImageUrl || !cropNaturalSize}
-	                      >
-	                        Search
-	                      </Button>
-	                    </div>
-	                  </div>
-	                </div>
-	              ) : null}
 	            </DialogContent>
 	            <DialogActions>
 	              <Button
@@ -8153,6 +8192,155 @@ export default function DigidealCampaignsPage() {
                 Save
               </Button>
             </DialogActions>
+            {cropDialogOpen ? (
+              <div
+                className={styles.cropOverlay}
+                role="dialog"
+                aria-modal="true"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                }}
+              >
+                <div className={styles.cropModal} onClick={(ev) => ev.stopPropagation()}>
+                  <div className={styles.cropModalHeader}>
+                    <Text className={styles.cropModalTitle}>Recrop Image</Text>
+                  </div>
+
+                  {cropImageUrl ? (
+                    <div className={styles.cropBodyRow}>
+                      <div className={styles.cropGallery} aria-label="DigiDeal images">
+                        <div className={styles.cropGalleryGrid}>
+                          {cropGalleryUrls.map((url) => (
+                            <button
+                              key={url}
+                              type="button"
+                              className={mergeClasses(
+                                styles.cropGalleryButton,
+                                url === cropImageUrl ? styles.cropGalleryButtonActive : undefined
+                              )}
+                              onClick={() => handlePickCropImage(url)}
+                              disabled={recropSearching}
+                            >
+                              <div className={styles.cropGalleryThumb}>
+                                <img
+                                  src={url}
+                                  alt="DigiDeal image"
+                                  className={styles.cropGalleryImage}
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className={styles.cropStage}>
+                        <div
+                          className={styles.cropStagePadding}
+                          ref={(el) => {
+                            cropStageRef.current = el;
+                          }}
+                          onPointerMove={onDragMove}
+                          onPointerUp={endDrag}
+                          onPointerCancel={endDrag}
+                          onPointerLeave={endDrag}
+                        >
+                          <img
+                            src={cropImageUrl}
+                            alt="Recrop Image"
+                            className={styles.cropImage}
+                            referrerPolicy="no-referrer"
+                            onLoad={(ev) => {
+                              const img = ev.currentTarget;
+                              if (img?.naturalWidth && img?.naturalHeight) {
+                                const naturalW = img.naturalWidth;
+                                const naturalH = img.naturalHeight;
+                                setCropNaturalSize({ w: naturalW, h: naturalH });
+
+                                // Default crop: full image minus 15px padding on each side.
+                                if (!cropTouchedRef.current) {
+                                  const marginX = Math.min(
+                                    DEFAULT_CROP_MARGIN_PX,
+                                    Math.floor((naturalW - 1) / 2)
+                                  );
+                                  const marginY = Math.min(
+                                    DEFAULT_CROP_MARGIN_PX,
+                                    Math.floor((naturalH - 1) / 2)
+                                  );
+                                  setCropRect(
+                                    clampRect({
+                                      x: marginX / naturalW,
+                                      y: marginY / naturalH,
+                                      w: (naturalW - marginX * 2) / naturalW,
+                                      h: (naturalH - marginY * 2) / naturalH,
+                                    })
+                                  );
+                                }
+                              }
+                            }}
+                          />
+                          {(() => {
+                            const box = getCropImageBox();
+                            if (!box) return null;
+                            const left = box.img.left + cropRect.x * box.img.width;
+                            const top = box.img.top + cropRect.y * box.img.height;
+                            const width = cropRect.w * box.img.width;
+                            const height = cropRect.h * box.img.height;
+                            return (
+                              <div
+                                className={styles.cropRect}
+                                style={{ left, top, width, height }}
+                                onPointerDown={(ev) => beginDrag(ev, "move")}
+                              >
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
+                                  onPointerDown={(ev) => beginDrag(ev, "nw")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
+                                  onPointerDown={(ev) => beginDrag(ev, "ne")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
+                                  onPointerDown={(ev) => beginDrag(ev, "sw")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
+                                  onPointerDown={(ev) => beginDrag(ev, "se")}
+                                />
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.cropMissing}>
+                      <Text>No image available to crop.</Text>
+                    </div>
+                  )}
+
+                  <div className={styles.cropModalActions}>
+                    <Button
+                      appearance="secondary"
+                      onClick={closeCropDialog}
+                      disabled={recropSearching}
+                    >
+                      Close
+                    </Button>
+                    <Button
+                      appearance="primary"
+                      onClick={handleRecropSearch}
+                      disabled={recropSearching || !cropImageUrl || !cropNaturalSize}
+                    >
+                      Search
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </DialogBody>
         </DialogSurface>
       </Dialog>
@@ -8292,15 +8480,19 @@ export default function DigidealCampaignsPage() {
                         const enParts = [t1Value.enText, t2Value.enText, t3Value.enText]
                           .filter(Boolean)
                           .filter((v, i, arr) => arr.indexOf(v) === i);
-                        return (
-                          <tr
-                            key={combo.index}
-                            className={styles.variantsRowClickable}
-                            onClick={() => {
-                              setVariantsSelectedIndexes((prev) => {
-                                if (prev.has(combo.index)) return prev;
-                                return new Set([combo.index]);
-                              });
+                          return (
+                            <tr
+                              key={combo.index}
+                              className={mergeClasses(
+                                styles.variantsRowClickable,
+                                !checked ? styles.variantsRowHoverable : undefined,
+                                checked ? styles.variantsRowSelected : undefined
+                              )}
+                              onClick={() => {
+                                setVariantsSelectedIndexes((prev) => {
+                                  if (prev.has(combo.index)) return prev;
+                                  return new Set([combo.index]);
+                                });
                             }}
                           >
                             <td className={styles.variantsListCell}>

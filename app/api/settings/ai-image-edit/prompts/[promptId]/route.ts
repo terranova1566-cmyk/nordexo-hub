@@ -61,7 +61,7 @@ export async function GET(_: Request, context: RouteContext) {
   const { data, error } = await auth.supabase
     .from(TABLE)
     .select(
-      "prompt_id,name,usage,description,template_text,created_at,updated_at"
+      "prompt_id,name,usage,description,address,template_text,created_at,updated_at"
     )
     .eq("prompt_id", id)
     .maybeSingle();
@@ -104,10 +104,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.name = name;
   }
   if (typeof payload.usage === "string") {
-    updates.usage = payload.usage.trim();
+    const usage = payload.usage.trim();
+    updates.usage = usage || null;
   }
   if (typeof payload.description === "string") {
-    updates.description = payload.description.trim();
+    const description = payload.description.trim();
+    updates.description = description || null;
+  }
+  if (typeof payload.address === "string") {
+    const address = payload.address.trim();
+    updates.address = address || null;
   }
   if (typeof payload.template_text === "string") {
     updates.template_text = payload.template_text;
@@ -122,7 +128,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .update(updates)
     .eq("prompt_id", id)
     .select(
-      "prompt_id,name,usage,description,template_text,created_at,updated_at"
+      "prompt_id,name,usage,description,address,template_text,created_at,updated_at"
     )
     .maybeSingle();
 

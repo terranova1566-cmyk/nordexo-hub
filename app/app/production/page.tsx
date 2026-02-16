@@ -166,6 +166,7 @@ type CatalogProduct = {
 
 const QUEUE_PRODUCTION_STATUS_OPTIONS = [
   { value: "none", label: "No status" },
+  { value: "queued_for_production", label: "Queued for Production" },
   { value: "spu_assigned", label: "SPU Assigned" },
   { value: "production_started", label: "Production Started" },
   { value: "production_done", label: "Production Done" },
@@ -747,6 +748,7 @@ const useStyles = makeStyles({
     minWidth: "680px",
     maxWidth: "980px",
     maxHeight: "min(84vh, 820px)",
+    position: "relative",
   },
   supplierHeaderRow: {
     display: "flex",
@@ -826,6 +828,8 @@ const useStyles = makeStyles({
   supplierRowClickable: {
     cursor: "pointer",
     transition: "background-color 0.12s ease, border-color 0.12s ease",
+  },
+  supplierRowHoverable: {
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
     },
@@ -833,6 +837,10 @@ const useStyles = makeStyles({
   supplierRowSelected: {
     border: "1px solid #0f6cbd",
     backgroundColor: "#e6f2fb",
+    "&:hover": {
+      border: "1px solid #0f6cbd",
+      backgroundColor: "#e6f2fb",
+    },
   },
   supplierThumb: {
     width: "110px",
@@ -1308,8 +1316,16 @@ const useStyles = makeStyles({
   },
   variantsRowClickable: {
     cursor: "pointer",
+  },
+  variantsRowHoverable: {
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  variantsRowSelected: {
+    backgroundColor: "#e6f2fb",
+    "&:hover": {
+      backgroundColor: "#e6f2fb",
     },
   },
   variantsPacksField: {
@@ -1485,6 +1501,11 @@ const useStyles = makeStyles({
   rowStatusInProgress: {
     "& .fui-TableCell": {
       backgroundColor: "#fff8df",
+    },
+  },
+  rowStatusQueued: {
+    "& .fui-TableCell": {
+      backgroundColor: "#eaf4ff",
     },
   },
   rowStatusDone: {
@@ -1670,6 +1691,8 @@ export default function ProductionPage() {
   const [supplierPriceSortDir, setSupplierPriceSortDir] = useState<
     "asc" | "desc" | null
   >(null);
+  const [supplierHeroPreviewOpen, setSupplierHeroPreviewOpen] = useState(false);
+  const [supplierHeroZoomReady, setSupplierHeroZoomReady] = useState(false);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [queueSearch, setQueueSearch] = useState("");
@@ -1775,6 +1798,57 @@ export default function ProductionPage() {
           : null;
     return local || variantsTarget.image_url || null;
   }, [variantsTarget]);
+
+  const supplierHeroImageSrc = useMemo(() => {
+    if (!supplierTarget) return null;
+    const local =
+      typeof supplierTarget.image_local_url === "string" && supplierTarget.image_local_url.trim()
+        ? supplierTarget.image_local_url.trim()
+        : typeof supplierTarget.image_local_path === "string" && supplierTarget.image_local_path.trim()
+          ? `/api/discovery/local-image?path=${encodeURIComponent(supplierTarget.image_local_path)}`
+          : null;
+    return local || supplierTarget.image_url || supplierSearchImageUrl || null;
+  }, [supplierTarget, supplierSearchImageUrl]);
+
+  useEffect(() => {
+    if (!supplierDialogOpen || !supplierHeroImageSrc) {
+      setSupplierHeroZoomReady(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let active = true;
+    setSupplierHeroZoomReady(false);
+
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = supplierHeroImageSrc;
+
+    const markReady = async () => {
+      try {
+        if (typeof img.decode === "function") {
+          await img.decode();
+        }
+      } catch {
+        // ignore decode failures
+      }
+      if (active) setSupplierHeroZoomReady(true);
+    };
+
+    img.onload = () => {
+      void markReady();
+    };
+    img.onerror = () => {
+      // Don't block hover popover forever on transient image failures.
+      if (active) setSupplierHeroZoomReady(true);
+    };
+
+    return () => {
+      active = false;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [supplierDialogOpen, supplierHeroImageSrc]);
 
   useEffect(() => {
     if (!variantsDialogOpen || !variantsHeroImageSrc) {
@@ -1919,6 +1993,8 @@ export default function ProductionPage() {
     setSupplierBusy(false);
     setSupplierSearchImageUrl(null);
     setSupplierPriceSortDir(null);
+    setSupplierHeroPreviewOpen(false);
+    setSupplierHeroZoomReady(false);
   }, []);
 
   const closeCropDialog = useCallback(() => {
@@ -3098,6 +3174,8 @@ export default function ProductionPage() {
             typeof it.production_status === "string"
               ? it.production_status.trim().toLowerCase()
               : "";
+          const isQueued =
+            queueStatus === "queued_for_production" || queueStatus === "queued";
           const isDone =
             (typeof it.production_status_done_at === "string" &&
               it.production_status_done_at.trim().length > 0) ||
@@ -3105,7 +3183,7 @@ export default function ProductionPage() {
           const hasSpu =
             typeof it.production_assigned_spu === "string" &&
             it.production_assigned_spu.trim().length > 0;
-          return !(isDone && hasSpu);
+          return !(isDone && hasSpu) && !isQueued;
         })
         .map((it) => `${it.provider}:${it.product_id}`)
     );
@@ -3498,6 +3576,7 @@ export default function ProductionPage() {
     async (targetItems: ProductionItem[], options?: { bulk?: boolean }) => {
       if (!targetItems.length) return;
       const targetKeys = targetItems.map((item) => `${item.provider}:${item.product_id}`);
+      const targetKeySet = new Set(targetKeys);
       const isBulk = Boolean(options?.bulk);
       setSendingQueueRowKeys((prev) => {
         const next = new Set(prev);
@@ -3522,14 +3601,18 @@ export default function ProductionPage() {
           throw new Error(payload?.error || t("production.action.sendError"));
         }
         if (isBulk) setSelectedKeys(new Set());
-
-        const refresh = await fetch("/api/discovery/production");
-        if (refresh.ok) {
-          const refreshPayload = await refresh.json();
-          if (Array.isArray(refreshPayload?.items)) {
-            setItems(refreshPayload.items);
-          }
-        }
+        const nowIso = new Date().toISOString();
+        setItems((prev) =>
+          prev.map((entry) => {
+            const key = `${entry.provider}:${entry.product_id}`;
+            if (!targetKeySet.has(key)) return entry;
+            return {
+              ...entry,
+              production_status: "queued_for_production",
+              production_status_updated_at: nowIso,
+            };
+          })
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : t("production.action.sendError"));
       } finally {
@@ -3620,8 +3703,16 @@ export default function ProductionPage() {
         queueStatus === "spu_assigned"
     );
     if (hasSpuAssigned) return "spu_assigned" as const;
+    if (queueStatus === "queued_for_production" || queueStatus === "queued") {
+      return "queued_for_production" as const;
+    }
     return "none" as const;
   }, []);
+
+  const isItemQueuedForProduction = useCallback(
+    (item: ProductionItem) => getLatestProductionStatusKey(item) === "queued_for_production",
+    [getLatestProductionStatusKey]
+  );
 
   const isItemLockedForProduction = useCallback(
     (item: ProductionItem) => {
@@ -3727,11 +3818,13 @@ export default function ProductionPage() {
 	    }
       const selectedRows = items.filter((it) => {
         if (!selectedKeys.has(`${it.provider}:${it.product_id}`)) return false;
-        return !isItemLockedForProduction(it);
+        return !isItemLockedForProduction(it) && !isItemQueuedForProduction(it);
       });
 	    const selectedCount = selectedRows.length;
 	    const selectableVisibleRowKeys = filteredItems
-        .filter((it) => !isItemLockedForProduction(it))
+        .filter(
+          (it) => !isItemLockedForProduction(it) && !isItemQueuedForProduction(it)
+        )
         .map((it) => `${it.provider}:${it.product_id}`);
 	    const visibleSelectedCount = selectableVisibleRowKeys.filter((k) => selectedKeys.has(k)).length;
 	    const allSelected =
@@ -4005,6 +4098,8 @@ export default function ProductionPage() {
               typeof item.production_status === "string"
                 ? item.production_status.trim().toLowerCase()
                 : "";
+            const isQueuedForProductionStatus =
+              queueStatus === "queued_for_production" || queueStatus === "queued";
             const spuAssignedAt =
               typeof item.production_status_spu_assigned_at === "string"
                 ? item.production_status_spu_assigned_at
@@ -4033,6 +4128,8 @@ export default function ProductionPage() {
                       ? t("production.status.productionStarted")
                       : queueStatus === "spu_assigned"
                         ? t("production.status.spuAssigned")
+                        : isQueuedForProductionStatus
+                          ? t("production.status.queuedForProduction")
                         : null;
             const latestStatusAt =
               productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt;
@@ -4052,8 +4149,11 @@ export default function ProductionPage() {
                 ? item.production_assigned_spu.trim()
                 : "";
             const isProductionLocked = isItemLockedForProduction(item);
-            const rowStatusClass = productionDoneAt
+            const isQueuedForProduction = isItemQueuedForProduction(item);
+            const rowStatusClass = productionDoneAt || queueStatus === "production_done"
               ? styles.rowStatusDone
+              : isQueuedForProduction
+                ? styles.rowStatusQueued
               : productionStartedAt || spuAssignedAt || queueStatus === "spu_assigned" || queueStatus === "production_started"
                 ? styles.rowStatusInProgress
                 : undefined;
@@ -4575,6 +4675,7 @@ export default function ProductionPage() {
                           onClick={() => void sendQueueItems([item])}
                           disabled={
                             isProductionLocked ||
+                            isQueuedForProduction ||
                             sendingQueueRowKeys.has(rowKey) ||
                             !item.supplier_payload_file_path
                           }
@@ -4616,7 +4717,7 @@ export default function ProductionPage() {
 	                  <Checkbox
                         className={styles.tableSelectCheckbox}
 	                    checked={selectedKeys.has(rowKey)}
-                      disabled={isProductionLocked}
+                      disabled={isProductionLocked || isQueuedForProduction}
 	                    onChange={(_, data) => {
 	                      const checked = data.checked === true;
 	                      setSelectedKeys((prev) => {
@@ -4660,10 +4761,11 @@ export default function ProductionPage() {
     resolveVariantTexts,
 	    removingKey,
       sendQueueItems,
-      sendingQueue,
-      sendingQueueRowKeys,
-      isItemLockedForProduction,
-	    selectedKeys,
+	      sendingQueue,
+	      sendingQueueRowKeys,
+	      isItemLockedForProduction,
+      isItemQueuedForProduction,
+		    selectedKeys,
     supplierBgStatus,
     styles,
     t,
@@ -5036,7 +5138,11 @@ export default function ProductionPage() {
                           return (
                             <tr
                               key={combo.index}
-                              className={styles.variantsRowClickable}
+                              className={mergeClasses(
+                                styles.variantsRowClickable,
+                                !checked ? styles.variantsRowHoverable : undefined,
+                                checked ? styles.variantsRowSelected : undefined
+                              )}
                               onClick={() => {
                                 setVariantsSelectedIndexes((prev) => {
                                   const next = new Set(prev);
@@ -5191,11 +5297,50 @@ export default function ProductionPage() {
                 </div>
               ) : null}
               {supplierTarget ? (
-                <div className={styles.supplierHeaderRow}>
-                  <Text size={200} className={styles.supplierHeaderTitle}>
-                    {supplierTarget.title ?? supplierTarget.product_id}
-                  </Text>
-                  <div className={styles.supplierHeaderActions}>
+                <div className={styles.variantsHeaderRow}>
+                  <div className={styles.variantsHeaderLeft}>
+                    {supplierHeroImageSrc ? (
+                      <div
+                        className={styles.variantsHeroThumbWrap}
+                        onMouseEnter={() => setSupplierHeroPreviewOpen(true)}
+                        onMouseLeave={() => setSupplierHeroPreviewOpen(false)}
+                      >
+                        <Popover
+                          open={supplierHeroPreviewOpen && supplierHeroZoomReady}
+                          positioning={{ position: "after", align: "start", offset: 10 }}
+                        >
+                          <PopoverTrigger disableButtonEnhancement>
+                            <div className={styles.variantsHeroThumbFrame}>
+                              <img
+                                src={supplierHeroImageSrc}
+                                alt="Product"
+                                className={styles.variantsHeroThumbImage}
+                                referrerPolicy="no-referrer"
+                                loading="eager"
+                                decoding="async"
+                              />
+                            </div>
+                          </PopoverTrigger>
+                          <PopoverSurface className={styles.variantsHeroPopoverSurface}>
+                            <img
+                              src={supplierHeroImageSrc}
+                              alt="Product zoom"
+                              className={styles.variantsHeroZoomImage}
+                              referrerPolicy="no-referrer"
+                              loading="eager"
+                              decoding="async"
+                            />
+                          </PopoverSurface>
+                        </Popover>
+                      </div>
+                    ) : null}
+                    <div className={styles.variantsTitleStack}>
+                      <Text className={styles.variantsTitleText}>
+                        {supplierTarget.title ?? supplierTarget.product_id}
+                      </Text>
+                    </div>
+                  </div>
+                  <div className={styles.variantsHeaderRight}>
                     <Button
                       appearance="primary"
                       size="small"
@@ -5514,6 +5659,7 @@ export default function ProductionPage() {
                         className={mergeClasses(
                           styles.supplierRow,
                           styles.supplierRowClickable,
+                          !isSelected ? styles.supplierRowHoverable : undefined,
                           isSelected ? styles.supplierRowSelected : undefined
                         )}
                         onClick={() => {
@@ -5630,133 +5776,6 @@ export default function ProductionPage() {
                 })()
               ) : null}
 
-              {cropDialogOpen ? (
-                <div
-                  className={styles.cropOverlay}
-                  role="dialog"
-                  aria-modal="true"
-                  onClick={(ev) => {
-                    // Keep clicks inside the recrop overlay from interacting with supplier rows.
-                    ev.stopPropagation();
-                  }}
-                >
-                  <div
-                    className={styles.cropModal}
-                    onClick={(ev) => ev.stopPropagation()}
-                  >
-                    <div className={styles.cropModalHeader}>
-                      <Text className={styles.cropModalTitle}>
-                        {t("production.suppliers.recropTitle")}
-                      </Text>
-                    </div>
-
-                    {cropImageUrl ? (
-                      <div className={styles.cropStage}>
-                        <div className={styles.cropStageViewport}>
-                          <div
-                            className={styles.cropStagePadding}
-                            ref={(el) => {
-                              cropStageRef.current = el;
-                            }}
-                            onPointerMove={onDragMove}
-                            onPointerUp={endDrag}
-                            onPointerCancel={endDrag}
-                            onPointerLeave={endDrag}
-                          >
-                            <img
-                              src={cropImageUrl}
-                              alt={t("production.suppliers.recropTitle")}
-                              className={styles.cropImage}
-                              referrerPolicy="no-referrer"
-                              onLoad={(ev) => {
-                                const img = ev.currentTarget;
-                                if (img?.naturalWidth && img?.naturalHeight) {
-                                  const naturalW = img.naturalWidth;
-                                  const naturalH = img.naturalHeight;
-                                  setCropNaturalSize({ w: naturalW, h: naturalH });
-
-                                  // Default crop: full image minus 15px padding on each side.
-                                  if (!cropTouchedRef.current) {
-                                    const marginX = Math.min(
-                                      DEFAULT_CROP_MARGIN_PX,
-                                      Math.floor((naturalW - 1) / 2)
-                                    );
-                                    const marginY = Math.min(
-                                      DEFAULT_CROP_MARGIN_PX,
-                                      Math.floor((naturalH - 1) / 2)
-                                    );
-                                    setCropRect(
-                                      clampRect({
-                                        x: marginX / naturalW,
-                                        y: marginY / naturalH,
-                                        w: (naturalW - marginX * 2) / naturalW,
-                                        h: (naturalH - marginY * 2) / naturalH,
-                                      })
-                                    );
-                                  }
-                                }
-                              }}
-                            />
-                            {(() => {
-                              const box = getCropImageBox();
-                              if (!box) return null;
-                              const left = box.img.left + cropRect.x * box.img.width;
-                              const top = box.img.top + cropRect.y * box.img.height;
-                              const width = cropRect.w * box.img.width;
-                              const height = cropRect.h * box.img.height;
-                              return (
-                                <div
-                                  className={styles.cropRect}
-                                  style={{ left, top, width, height }}
-                                  onPointerDown={(ev) => beginDrag(ev, "move")}
-                                >
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
-                                    onPointerDown={(ev) => beginDrag(ev, "nw")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
-                                    onPointerDown={(ev) => beginDrag(ev, "ne")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
-                                    onPointerDown={(ev) => beginDrag(ev, "sw")}
-                                  />
-                                  <div
-                                    className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
-                                    onPointerDown={(ev) => beginDrag(ev, "se")}
-                                  />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={styles.cropMissing}>
-                        <Text>{t("production.suppliers.recropMissingImage")}</Text>
-                      </div>
-                    )}
-
-                    <div className={styles.cropModalActions}>
-                      <Button
-                        appearance="secondary"
-                        onClick={closeCropDialog}
-                        disabled={recropSearching}
-                      >
-                        {t("production.suppliers.close")}
-                      </Button>
-                      <Button
-                        appearance="primary"
-                        onClick={handleRecropSearch}
-                        disabled={recropSearching || !cropImageUrl || !cropNaturalSize}
-                      >
-                        {t("production.suppliers.recropSearch")}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
             </DialogContent>
             <DialogActions>
               <Button
@@ -5781,6 +5800,133 @@ export default function ProductionPage() {
                 {t("production.suppliers.save")}
               </Button>
             </DialogActions>
+            {cropDialogOpen ? (
+              <div
+                className={styles.cropOverlay}
+                role="dialog"
+                aria-modal="true"
+                onClick={(ev) => {
+                  // Keep clicks inside the recrop overlay from interacting with supplier rows.
+                  ev.stopPropagation();
+                }}
+              >
+                <div
+                  className={styles.cropModal}
+                  onClick={(ev) => ev.stopPropagation()}
+                >
+                  <div className={styles.cropModalHeader}>
+                    <Text className={styles.cropModalTitle}>
+                      {t("production.suppliers.recropTitle")}
+                    </Text>
+                  </div>
+
+                  {cropImageUrl ? (
+                    <div className={styles.cropStage}>
+                      <div className={styles.cropStageViewport}>
+                        <div
+                          className={styles.cropStagePadding}
+                          ref={(el) => {
+                            cropStageRef.current = el;
+                          }}
+                          onPointerMove={onDragMove}
+                          onPointerUp={endDrag}
+                          onPointerCancel={endDrag}
+                          onPointerLeave={endDrag}
+                        >
+                          <img
+                            src={cropImageUrl}
+                            alt={t("production.suppliers.recropTitle")}
+                            className={styles.cropImage}
+                            referrerPolicy="no-referrer"
+                            onLoad={(ev) => {
+                              const img = ev.currentTarget;
+                              if (img?.naturalWidth && img?.naturalHeight) {
+                                const naturalW = img.naturalWidth;
+                                const naturalH = img.naturalHeight;
+                                setCropNaturalSize({ w: naturalW, h: naturalH });
+
+                                // Default crop: full image minus 15px padding on each side.
+                                if (!cropTouchedRef.current) {
+                                  const marginX = Math.min(
+                                    DEFAULT_CROP_MARGIN_PX,
+                                    Math.floor((naturalW - 1) / 2)
+                                  );
+                                  const marginY = Math.min(
+                                    DEFAULT_CROP_MARGIN_PX,
+                                    Math.floor((naturalH - 1) / 2)
+                                  );
+                                  setCropRect(
+                                    clampRect({
+                                      x: marginX / naturalW,
+                                      y: marginY / naturalH,
+                                      w: (naturalW - marginX * 2) / naturalW,
+                                      h: (naturalH - marginY * 2) / naturalH,
+                                    })
+                                  );
+                                }
+                              }
+                            }}
+                          />
+                          {(() => {
+                            const box = getCropImageBox();
+                            if (!box) return null;
+                            const left = box.img.left + cropRect.x * box.img.width;
+                            const top = box.img.top + cropRect.y * box.img.height;
+                            const width = cropRect.w * box.img.width;
+                            const height = cropRect.h * box.img.height;
+                            return (
+                              <div
+                                className={styles.cropRect}
+                                style={{ left, top, width, height }}
+                                onPointerDown={(ev) => beginDrag(ev, "move")}
+                              >
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleNW)}
+                                  onPointerDown={(ev) => beginDrag(ev, "nw")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleNE)}
+                                  onPointerDown={(ev) => beginDrag(ev, "ne")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleSW)}
+                                  onPointerDown={(ev) => beginDrag(ev, "sw")}
+                                />
+                                <div
+                                  className={mergeClasses(styles.cropHandle, styles.cropHandleSE)}
+                                  onPointerDown={(ev) => beginDrag(ev, "se")}
+                                />
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.cropMissing}>
+                      <Text>{t("production.suppliers.recropMissingImage")}</Text>
+                    </div>
+                  )}
+
+                  <div className={styles.cropModalActions}>
+                    <Button
+                      appearance="secondary"
+                      onClick={closeCropDialog}
+                      disabled={recropSearching}
+                    >
+                      {t("production.suppliers.close")}
+                    </Button>
+                    <Button
+                      appearance="primary"
+                      onClick={handleRecropSearch}
+                      disabled={recropSearching || !cropImageUrl || !cropNaturalSize}
+                    >
+                      {t("production.suppliers.recropSearch")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </DialogBody>
         </DialogSurface>
       </Dialog>

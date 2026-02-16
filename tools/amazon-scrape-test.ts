@@ -4,8 +4,63 @@ import { scrapeAmazonListingCards, scrapeAmazonProductFull } from "@/lib/amazon/
 import type { AmazonProvider } from "@/lib/amazon/types";
 import { AmazonScrapeError } from "@/lib/amazon/errors";
 import { OxylabsError } from "@/lib/amazon/oxylabs";
+import {
+  DEFAULT_AMAZON_DEBUG_PROMPT_TEMPLATE,
+  DEFAULT_AMAZON_DEBUG_PROMPT_ID,
+  renderPromptTemplate,
+} from "@/lib/amazon/debug-ai-prompt";
+import { createClient } from "@supabase/supabase-js";
 
 type Mode = "product" | "listing";
+
+let cachedDebugPrompt: { promptId: string; template: string } | null = null;
+
+const createServiceSupabase = () => {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    "";
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
+};
+
+const loadPromptTemplateById = async (promptId: string): Promise<string | null> => {
+  const id = String(promptId || "").trim();
+  if (!id) return null;
+
+  if (cachedDebugPrompt?.promptId === id) {
+    return cachedDebugPrompt.template;
+  }
+
+  const supabase = createServiceSupabase();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("ai_image_edit_prompts")
+    .select("template_text,updated_at")
+    .eq("prompt_id", id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return null;
+  const template = typeof data?.template_text === "string" ? data.template_text : "";
+  const normalized = template.trim();
+  if (!normalized) return null;
+
+  cachedDebugPrompt = { promptId: id, template: normalized };
+  return normalized;
+};
+
+const getAmazonDebugPromptTemplate = async () => {
+  const promptId =
+    String(process.env.AMAZON_DEBUG_PROMPT_ID || "").trim() ||
+    DEFAULT_AMAZON_DEBUG_PROMPT_ID;
+  const fromDb = await loadPromptTemplateById(promptId);
+  return fromDb ?? DEFAULT_AMAZON_DEBUG_PROMPT_TEMPLATE;
+};
 
 const loadEnvFile = async (filePath: string) => {
   try {
@@ -57,29 +112,21 @@ const maybeDiagnoseWithOpenAi = async (payload: any) => {
   const debug = detail?.debug ?? null;
   if (!debug?.textSnippet && !debug?.htmlSnippet) return null;
 
-  const prompt = [
-    "You are debugging an Amazon scraping failure.",
-    "Analyze the provided metadata and page snippets.",
-    "Important: Do NOT suggest CAPTCHA bypassing/solving, fingerprinting, proxy/residential IP tactics, user-agent spoofing, or any other evasion methods.",
-    "Only suggest compliant next steps (e.g. use official APIs, obtain permission, reduce/stop scraping when blocked, or use an authorized scraping provider).",
-    "Return JSON only with keys:",
-    'page_type (one of: "product_page","captcha_or_robot_check","blocked_or_rate_limited","blank_or_error_page","unknown"),',
-    "likely_issue, confidence (0-1), key_signals (array), next_steps (array), hypotheses (array of 5 short items).",
-    "",
-    `Error type: ${String(payload?.type || "")}`,
-    `Provider: ${String(payload?.provider || payload?.code || "")}`,
-    `Code: ${String(payload?.code || "")}`,
-    `Message: ${String(payload?.message || "")}`,
-    `URL: ${String(payload?.url || "")}`,
-    "",
-    `HTTP status: ${String(detail?.status ?? "")}`,
-    `Final URL: ${String(detail?.finalUrl ?? payload?.url ?? "")}`,
-    `Content-Type: ${String(detail?.contentType ?? "")}`,
-    `Detected block: ${detail?.blocked ? JSON.stringify(detail.blocked) : "null"}`,
-    `Title: ${String(debug?.title ?? "")}`,
-    `Text snippet: ${String(debug?.textSnippet ?? "")}`,
-    `HTML snippet: ${String(debug?.htmlSnippet ?? "")}`,
-  ].join("\n");
+  const template = await getAmazonDebugPromptTemplate();
+  const prompt = renderPromptTemplate(template, {
+    error_type: String(payload?.type || ""),
+    provider: String(payload?.provider || payload?.code || ""),
+    code: String(payload?.code || ""),
+    message: String(payload?.message || ""),
+    url: String(payload?.url || ""),
+    http_status: String(detail?.status ?? ""),
+    final_url: String(detail?.finalUrl ?? payload?.url ?? ""),
+    content_type: String(detail?.contentType ?? ""),
+    blocked: detail?.blocked ? JSON.stringify(detail.blocked) : "null",
+    title: String(debug?.title ?? ""),
+    text_snippet: String(debug?.textSnippet ?? ""),
+    html_snippet: String(debug?.htmlSnippet ?? ""),
+  });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);

@@ -19,6 +19,22 @@ const parseNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const serializeSupabaseError = (err: any) => ({
+  message: String(err?.message ?? ""),
+  details: err?.details ?? null,
+  hint: err?.hint ?? null,
+  code: typeof err?.code === "string" ? err.code : null,
+});
+
+const isMissingTableError = (err: any, table?: string) => {
+  const code = typeof err?.code === "string" ? err.code : "";
+  const message = String(err?.message ?? "");
+  if (code !== "PGRST205") return false;
+  if (!message.toLowerCase().includes("could not find the table")) return false;
+  if (!table) return true;
+  return message.includes(`public.${table}`) || message.includes(table);
+};
+
 async function requireAdmin() {
   const supabase = await createServerSupabase();
   const {
@@ -101,6 +117,12 @@ export async function POST(request: Request) {
   const maxRelated = parseNumber(payload.max_related, 24);
   const downloadImages =
     payload.download_images === undefined ? false : isTruthy(payload.download_images);
+  const persistToDb =
+    payload.persist_to_db === undefined && payload.save_to_db === undefined
+      ? true
+      : isTruthy(payload.persist_to_db ?? payload.save_to_db);
+  const returnScraped =
+    payload.return_scraped === undefined ? false : isTruthy(payload.return_scraped);
 
   const providerRaw = typeof payload.provider === "string" ? payload.provider.trim() : "";
   const provider =
@@ -143,64 +165,100 @@ export async function POST(request: Request) {
           })
         : null;
 
-      const upsertFull = await auth.supabase
-        .from("amazon_full_scrapes")
-        .upsert(
-          {
-            user_id: auth.user.id,
-            asin: scraped.asin,
-            domain: scraped.domain,
-            product_url: scraped.productUrl,
-            title: scraped.title,
-            brand: scraped.brand,
-            price: scraped.price.amount,
-            currency: scraped.price.currency,
-            description: scraped.description,
-            bullet_points: scraped.bulletPoints,
-            images: scraped.images,
-            variants: scraped.variants,
-            related_product_asins: scraped.relatedProductAsins,
-            related_product_cards: scraped.relatedProductCards,
-            provider: scraped.provider,
-            raw: { product: scraped.raw ?? null, downloaded_images: downloaded },
-            scraped_at: nowIso,
-            updated_at: nowIso,
-          },
-          { onConflict: "user_id,asin" }
-        )
-        .select("id, asin, product_url, scraped_at")
-        .maybeSingle();
+      let fullRow: any = null;
+      const dbErrors: Array<{
+        table: string;
+        error: ReturnType<typeof serializeSupabaseError>;
+      }> = [];
 
-      if (upsertFull.error) {
-        throw new Error(upsertFull.error.message);
+      if (persistToDb) {
+        const upsertFull = await auth.supabase
+          .from("amazon_full_scrapes")
+          .upsert(
+            {
+              user_id: auth.user.id,
+              asin: scraped.asin,
+              domain: scraped.domain,
+              product_url: scraped.productUrl,
+              title: scraped.title,
+              brand: scraped.brand,
+              price: scraped.price.amount,
+              currency: scraped.price.currency,
+              description: scraped.description,
+              bullet_points: scraped.bulletPoints,
+              images: scraped.images,
+              variants: scraped.variants,
+              related_product_asins: scraped.relatedProductAsins,
+              related_product_cards: scraped.relatedProductCards,
+              provider: scraped.provider,
+              raw: { product: scraped.raw ?? null, downloaded_images: downloaded },
+              scraped_at: nowIso,
+              updated_at: nowIso,
+            },
+            { onConflict: "user_id,asin" }
+          )
+          .select("id, asin, product_url, scraped_at")
+          .maybeSingle();
+
+        if (upsertFull.error) {
+          dbErrors.push({
+            table: "amazon_full_scrapes",
+            error: serializeSupabaseError(upsertFull.error),
+          });
+        } else {
+          fullRow = upsertFull.data ?? null;
+        }
+
+        if (scraped.relatedProductCards.length > 0) {
+          const cardRows = scraped.relatedProductCards.map((card) => ({
+            user_id: auth.user.id,
+            asin: card.asin,
+            domain: card.domain,
+            product_url: card.productUrl,
+            title: card.title,
+            image_url: card.imageUrl,
+            price: card.price.amount,
+            currency: card.price.currency,
+            source_url: card.sourceUrl,
+            source_type: card.sourceType,
+            source_asin: card.sourceAsin,
+            provider: card.provider,
+            raw: card.raw ?? null,
+            last_seen_at: nowIso,
+          }));
+
+          const upsertCards = await auth.supabase
+            .from("amazon_product_cards")
+            .upsert(cardRows, {
+              onConflict: "user_id,source_type,source_url,product_url",
+            });
+          if (upsertCards.error) {
+            dbErrors.push({
+              table: "amazon_product_cards",
+              error: serializeSupabaseError(upsertCards.error),
+            });
+          }
+        }
       }
 
-      if (scraped.relatedProductCards.length > 0) {
-        const cardRows = scraped.relatedProductCards.map((card) => ({
-          user_id: auth.user.id,
-          asin: card.asin,
-          domain: card.domain,
-          product_url: card.productUrl,
-          title: card.title,
-          image_url: card.imageUrl,
-          price: card.price.amount,
-          currency: card.price.currency,
-          source_url: card.sourceUrl,
-          source_type: card.sourceType,
-          source_asin: card.sourceAsin,
-          provider: card.provider,
-          raw: card.raw ?? null,
-          last_seen_at: nowIso,
-        }));
-
-        const upsertCards = await auth.supabase
-          .from("amazon_product_cards")
-          .upsert(cardRows, {
-            onConflict: "user_id,source_type,source_url,product_url",
-          });
-        if (upsertCards.error) {
-          throw new Error(upsertCards.error.message);
-        }
+      if (dbErrors.length > 0) {
+        const missingTables = dbErrors
+          .filter((entry) => isMissingTableError(entry.error, entry.table))
+          .map((entry) => entry.table);
+        errors.push({
+          url,
+          error: dbErrors[0]?.error?.message || "Database write failed.",
+          code: dbErrors[0]?.error?.code ?? undefined,
+          provider: "supabase",
+          detail: {
+            dbErrors,
+            missingTables,
+            hint:
+              missingTables.length > 0
+                ? "Missing Supabase tables for Amazon scrapes. Apply migration supabase/migrations/0043_amazon_scrapes.sql and then reload the PostgREST schema cache."
+                : null,
+          },
+        });
       }
 
       results.push({
@@ -208,10 +266,12 @@ export async function POST(request: Request) {
         asin: scraped.asin,
         title: scraped.title,
         productUrl: scraped.productUrl,
-        full: upsertFull.data,
+        persisted: persistToDb && dbErrors.length === 0,
+        full: fullRow,
         relatedCount: scraped.relatedProductCards.length,
         variantCount: scraped.variants.length,
         downloadedImages: downloadImages ? (downloaded?.main?.length ?? 0) : 0,
+        scraped: returnScraped || !persistToDb || dbErrors.length > 0 ? scraped : undefined,
       });
     } catch (err) {
       if (err instanceof OxylabsError) {

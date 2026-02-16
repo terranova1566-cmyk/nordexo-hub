@@ -1,0 +1,210 @@
+{
+  "asin": "B0FQ4TT48X",
+  "domain": "com",
+  "productUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+  "title": "Valentines Day Gift for Him Husband Boyfriend, 6-in-1 Keychain Screwdriver Bit with Phillips,Slotted and Hex Wrench, Gifts for Men Husband Dad Boyfriend",
+  "brand": "Brand: FUAOIS",
+  "price": {
+    "amount": 36,
+    "currency": "SEK"
+  },
+  "description": "Valentines Day Gift for Him Husband Boyfriend, 6-in-1 Keychain Screwdriver Bit with Phillips,Slotted and Hex Wrench, Gifts for Men Husband Dad Boyfriend - Amazon.com",
+  "bulletPoints": [
+    "🎁 【Valentines Day Gift for Him Husband Boyfriend】 - This multi-key chain screwdriver is definitely a perfect gift. It combines the most commonly used screwdriver and nut shapes and can be given as a gift to your father, husband, boyfriend, relatives, friends, classmates, teachers, students, DIY enthusiasts, etc. Christmas, Valentine's Day, Father's Day, graduation, wedding anniversaries, birthdays, retirement, etc.",
+    "🎁 【6-in-1 Design】- Our multi-functional screwdriver set includes 1 slotted drill bit, 1 cross drill bit, 0.7 cm Allen wrench and 0.9 cm Allen wrench, and a beer bottle opener. The 6-in-1 design meets your various needs and helps you solve all kinds of emergency repairs and other maintenance in daily life.",
+    "🎁 【Lightweight and Practical】- The compact size and light weight make this pocket screwdriver very easy to carry. There is a round metal ring for you to string the screwdriver and the key together. Then you can use it anytime and anywhere, especially outdoors where it can help you solve urgent problems.",
+    "🎁 【High Quality and Durability 】- The screwdriver is made of precision cast steel and has undergone heat treatment, making it stronger and more resistant to bending. The surface is treated with high-chromium, effectively preventing rust and corrosion, and greatly extending the service life.",
+    "🎁 【Wide Range of Uses】- 6 different types of tools can easily handle most repair or disassembly work. It is highly suitable for the maintenance work of furniture, electrical appliances, machines, equipment parts, wood products, game consoles, laptops, electrical equipment, etc. and is also applicable to some outdoor scenarios."
+  ],
+  "images": [
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SY450_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SX425_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SY355_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SX569_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SX466_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SX679_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SX522_.jpg",
+    "https://m.media-amazon.com/images/I/71QJrTzlk5L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/712kHhVsWfL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/61mZwW8bzWL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/619vbdTA0EL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/61FZfzNyZ+L._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71uNGsHvTqL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/71Hvk-8qnXL._AC_SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41XlbkQ0p1L._AC_.jpg",
+    "https://m.media-amazon.com/images/I/512aooVB+XL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/414gVOyQnaL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/416l-Nr1xTL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/41IT9sVuXxL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51pvRpZPKBL._AC_.jpg",
+    "https://m.media-amazon.com/images/I/51m9Op8qTrL._AC_.jpg"
+  ],
+  "variants": [],
+  "relatedProductAsins": [
+    "B087G6TGJL",
+    "B0C3XGDHRX",
+    "B0BMKMPMDV",
+    "B0FD3RNDQK",
+    "B0C9SHDDC3"
+  ],
+  "relatedProductCards": [
+    {
+      "asin": "B087G6TGJL",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B087G6TGJL",
+      "title": "Valentines Day Gifts for Him Husband Her Boyfriend Super Universal Socket Tools Gifts for Men, Grip Set with Power Drill Adapter Cool Stuff Gadgets Ideas Gifts for Dad Valentines Day Gifts Basket",
+      "imageUrl": "https://m.media-amazon.com/images/I/51mBoAiS5XL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 85,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FQ4TT48X",
+      "provider": "direct",
+      "raw": {
+        "asin": "B087G6TGJL",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JDKAxpTbO6IZSHG_Ax3MMboAAAGcZGBA0AEAAAH2AQBvbm9fdHhuX2JpZDUgICBvbm9fdHhuX2ltcDIgICBcq0zc/clv1c_ek-wBYHXFcbWDn2nI-MgDzrZjBAPnkYZjh21kUTmjdQ_EUNf0wbRocgkJ2czx03_vSLwx2Oauy03JsM1SyfpKrA5__1w_7aMY-V5klr2mkQnmeNxssagjWLQCqnVU_6UMyC374INuq_OxZlRPNTo-cILQByfn23ngJzojxapTgIbdK2KxzyfqnYRdW09jHL1gFT7NoqJnw1b1-HNkxtS5nPjJwL-5WMw-E3tJhF0D0EOFmL70ecFnFRQMaE3xmDKFIlLciTKC75l1bihVPPnaqAyz6-zLQ4I4nt0pcNfBK8-iyc6I4FqDA6JpOpT_bfSzR-KDvnGTddtxvLsXBAJWvc3vzbVFXXFVEzEgxIYqatdlYAsJqsiz5FWGxJVI1LvtdmRQ0muT8Qg_gURpVYwdWGNGWJe92slXN1zeYPRmR_e_jPzxwk-xw0H4QlMMH3a5gZg6siwRHumgownuZqHpEyCjUlu2NqDy8yX7TGKaMK5Uayl76sXdng-j-fITD8BZBRaB2X47o7SIpaGZBrs9_Z8SNBI0y_dODhF91yVUL0QidhAby0CnKf_FNH058RQFVy3Sb_UrNdzqJbxaKz9tFgL46MOcIc4O46mw8haom--tF3IX8ojjZwtlF72dqGIYhCWMDbZa6MEGujX3K2IEvdNsGu-rDU5Ndz35LTBcIoUG8bWZvHr7bd5Ex4a956iYeeIku-zgQdOmRB7zGp5A8hetfjDTPLf5885GRMrS_kKgqX6-ji5SAxVO4KFCh3phP8qFv4rA1QR-xBJYMjnMLNM7qa1Aw8k6vBza5ioZlt-E5PU8rW2dmrArlS18U5ncb0qFpB76C043__pVwCF4mugDl08iD6S7n-UBzsYq-Q9KZDwkxcrgsWmbnNqGCD5NwJIsnzD33xxT8lb9XeQ-ooB09xSGu6x3157UiTtmDksVP3umQ0257GviJQo26RZlcsVLg9i2a1P6ovBSDS25SigzmrrUi3rbYfnW07JPpwWZNCzronQ6SY8nDkSWdpwgeCQ-SjkPDvAiJtGPCprLSeTyiuBxl4XWk2gECtc8opso2Ikilel4lbGLpgTiEjPFl1wQslK9UiISsaBG7_ZBdy8u1ZS53QIPXxAGSHLy5o76XUefZ2MPuMQPZnp9-4XoB6E3XJt9wAW5JwteVbUHxOy-nc40VLlUL4AJTUTjDm9z1_x-MxqYl9lPTmBqox08JNbCsZLOIC_IsM_F7mZGaaQbuYdIbx94hFMEctywCiHgxlzHeTtjVf9Uk2tT-4vR7X_JwcjontcLQll7OThr26dUTTjmos52ztkJsvz0FVXWuF4hSuCel-Oy907XCC0lvYd9q6Dg6aaoyjbpXbREhgmGP1ckqQZEjoS_diHNg6Yk-Z53jh51jawTBqi7qdaB4r1Y9aEc2srq69ZWQGAnwRU2L9pKXmxzzeKFKxJUfPbuFjflBEROXLKT475hcV7ynWxkmOpxY6RSgHPgULCpAJWivlx7PHhVgItMAqY2bQRfgK5oPem5s5uRy3MlETq8mOOziqRHR9GC6vT5nH9dvlb51I/https://www.amazon.com/dp/B087G6TGJL/?_encoding=UTF8&pd_rd_i=B087G6TGJL&pd_rd_i=B087G6TGJL&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=h0Dun&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_w=h0Dun&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098"
+      }
+    },
+    {
+      "asin": "B0C3XGDHRX",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0C3XGDHRX",
+      "title": "ENGZHI Grandpa Birthday Gifts Grandpa Christmas Keychain - Drive Safe I Love You Gifts from Grandkids - Grandfather Fathers Day Keepsake",
+      "imageUrl": "https://m.media-amazon.com/images/I/41kB9yGfmAL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FQ4TT48X",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0C3XGDHRX",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JFsf5xJ6KgdHm2pQSFdltSYAAAGcZGBA0QEAAAH2AQBvbm9fdHhuX2JpZDUgICBvbm9fdHhuX2ltcDIgICDTbZmA/clv1c_ek-wxfHXFbbWDfHXL5v2ofBwSshWq3AWp9sWod3piw4wOUVvaoJt2YTB92uFRXd4A5jhwSVQLLDIqBIvKJcUEqC3Gp58QszKH1hlj9NoDewGtwU_8xk0iWTl8qnlB6etnuBjM4RkgwbwxJj5RZ5jNNDa6C18l1Jmn938wxf6zcNe2B05kIZ-RtrAE7Xi6HTR7U4P4lZHE2NQ2Uyd5mSF08JbP34u9Ip3xZnaTvEVic2fvZtIna7Ti1fnU3qfyQc3CiSawvHPBv9lETvByhDq7MSSUkOPCBwM22tE4gEOeC0-GRK3Zf-Mwje1RN7WHXeLIuvLs9sIs-BHsTOXKPFp7xxOHFZ6J8_Er--bimAKyuaxFegiUvjS7-1W4fkY0m2Noy7Zo39sj_hPJfFW8nsSg5SeQVnhcsQJ92AUTBeeRAspReQKXiwlHUFj7WRTDo7IIA3Gdyy4fLwkzXPbQ8tWgEMi2VX-brLTL-mIejossSexNglz5DGQ_lc1LqvHnmFGB-MU8A7zKL6q2l2QhJ5uJ3PsdN7-HRE7I8MoOx-VrcZTk3U5y9L4MIe6OvnEwzdHYahkitbd63ep8RuxmgPW4rITL5JrVOkVL9U1k424sA3jjOGY6RqQEvxBDoZDbBU4Abe8QAUDwGMPX9hb_ZZ2cjOHQlG1auMBGF5G5YKmCGcnaxq71ITCfyV7JWfolq7iff_ommuJicNAushCmz1yVJOGn3f42dXDvmUanTM0sQATs486QR2VSmzJFwNv5My1z2NYWFG3bAAVOLsrKsI28_TQfr-ET1L7iniZwiWryGZ1y_cxBEHAL2Im3Jo0dMhhmgTn6Zns37WfFQNLSAygeSAJkxWB5XsTGmPN3hhhUDYAWZf3PqRjFKPaT6co7RYq7ZvK2JxzagA55aWhOIHhkxaF223F7GOzdy5LDCCRkEtC5M70rYTQeTBdWLJBDW_ehFutMobtw1b1rmY3l7qwYPhDw3JoF8oLCAcOe9wNLq9J316NkQYOx8B3JrLvSmVQOXkXaMDoWuw0IHSwB6-v7QYEunNcWxfjT7ktZOd6ltCffJjxGdJtnxrLNKebbdMyaqlCifFB3mO-MviYPfo0a7GlPxiREJNfe5wT22nqxEQz_C0nALISZ3wdHq3WegnCmzb5m2g_ptwc3VqwTgJR92LnHTAZjh0-EAmMMHt_XSOnSGtOg402YGYgX0fohVHJEqOqHF7FOviLlBPntcuzgFv3g3V-Xp4O9T091lv1X9UmoZvsQzcoIXWzyadAVaPZ_I2J7zJf0aO-uUkjVhd14TgDj50U8QRHqCy0zFrWplh16lMiS7OQiXw-g4BmEK_DOdA2RSovNgE3HMrx2ztAuU2pLgQH5eDaRRX36XEUC2YtmqlCcOeQklS7UVtiIBHDQU4sjKE5M8NNGEvorCC6UQW7wGGAjkDefvha-TeDZOS7_o3WY_iEsCcdfptrsqyXXxMXvgvnSliZq-8UAztA1XjzwidiUUKXFYtAU1tkyp2UmkB_MdGGgQIunu2atLo/https://www.amazon.com/dp/B0C3XGDHRX/?_encoding=UTF8&pd_rd_i=B0C3XGDHRX&pd_rd_i=B0C3XGDHRX&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=h0Dun&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_w=h0Dun&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098"
+      }
+    },
+    {
+      "asin": "B0BMKMPMDV",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0BMKMPMDV",
+      "title": "MOQIYXL Stepmom Valentines Gifts Card - Thank You for Loving Me As Your Own - Stepmom Keychain, Christmas Card, Birthday Gifts for Stepmom",
+      "imageUrl": "https://m.media-amazon.com/images/I/41bRjJMTgWL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FQ4TT48X",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0BMKMPMDV",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JMGQXQ5JrAeS9ax7pAmpRFoAAAGcZGBA0gEAAAH2AQBvbm9fdHhuX2JpZDUgICBvbm9fdHhuX2ltcDIgICA4o123/clv1c_ek-wxfHXFbbWDfHXL5v2ofBwCvCxcgP44W0D0rbg2ur2xlbQYcIcxxIZ0eA1qRGFWqS4BjeLvMZObYeK_Wjsb1mA8UKAogBTmSln-8pFnaxOw9mASjLkDFbYQrvxcMCnTfurjZnDTJ67p-Q1zw5e0dibItqTrjWm2qSQz7am5JQNbYJNeGnaS4gPkzBM8JQixdizDisrX4KBUObrftqlp2uNDA765Wn9TX7cixC1GEF4B9whLKlZGJ-0uRVHUUK2qHn_zDHv4_yT3W59tWJw5Vo9X0x1rS1BlaaGQy7E6Z8PLdOMtwjKk-FWrhrK5WTXbjWyFvqafE7-v5T_BuRS1zqeYu8Pas0TDl1p56DqxELGw8H0LOR28UjQPZuzY52cwi0Gzf-ocXPPetnNmAsvRLbmCGQ-xvw6NAZFjkbBtcOEew5-y0aTMsQsBmvF0pY0oSiQTypnHXWQYqdA4L2VRKGSEWX_5qgKa567YjMhqL7vyw99WGbqLeDaOkUyXRc6vwvgI97k9YHl-dXz7vCYF8h3FpUspAyrOufvE2dZJqduvAxi7-VBF_hpLKGnx5S6AQKXGEU6QEgpaeWdeAZc15L1qFHmfXUToYAuKGWI7VV11PeJBLVOWf4ypYCnrMERHwiWgjbjAbC8RaP49mlJ3Jks3PPAQGWy64hfZTGb4NRGfUKtPE73v3FvI7q_H3G3eliTTQahjTT6cxhB-aY8sAlcIM1ReLkK-YYzXCR2O9xVeRIcVHdjYnq6_7wYZzSrUUkTX89vywk_zpYjqg_dc3v0CDp7UpAz33A8DMqHxk4eJUfHOWhwt7mF-_dMN767f0d942uTEM_8tOf3rmZ3iemXA6m2jVPz_lF6NiOELrs1FtBED8uwkeKp7BQDx5G8IIPQdkYS1zEmgRDHOh0ybTdzAf861_9k3YDk6S_jApOHfFFTqbUebaXXKNWFYtT5ilPriyvqA0cTj2Y3kbtwsPszw3JoF1pywd1Qj_XHkqEUyvigNW1P6RctKLLtKmq2KXYVaPyVwStKgEMcUF6Thk4p1muu-Q76y_UkRAnOzyxpugG6uQ_tB6jI8Ax-rYu-sbZBCj9qnDz9t9CW1T0kkj8LE-51tls924NEAruZzeY-2Zo1sb0AdvxtQLgjIJNy7DiBiM8wzsV8spUuSM6cR64eHrliWPnPlgqOR_pKwMCSjpZXN676NJX0X5KQ3C4qzkyGIiqeQXtVdssTMOtFpYjB_YfzuWQNTasj6XNX5Fh8E1D4HIRUz2Y-iBsqGQhmJriif380JCOApO9o1IE8cTF9zIl0CpTJ0cMjJ3BkrvnFx4bdMb34vQoj2v4_gw1l5bLaPWRY8JFWha55ZEvfwIwRPeGHWxHF2OTDu_tj5Xjcdv-ZHAVEHA06U7QwIvSSny9-wczPY5FD-4PoIsRV9Ntc5ZdQbR-CYwjJMbDWF0LO01i_zAzP92uGTKbiJDVHcqCkHrSqNT5TlSJbkDj4u1kaYyAt1yc9WfRicrMA68ui6_YSDX6KstX-hWTlTA/https://www.amazon.com/dp/B0BMKMPMDV/?_encoding=UTF8&pd_rd_i=B0BMKMPMDV&pd_rd_i=B0BMKMPMDV&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=h0Dun&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_w=h0Dun&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098"
+      }
+    },
+    {
+      "asin": "B0FD3RNDQK",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0FD3RNDQK",
+      "title": "Valentines Gifts for her Him Boyfriend I Love You Birthday Anniversary Small Gifts for Men Women Wife Husband Easter Basket Stuffers Valentines Day Decoration Wedding Gift Ideas for Couples Girlfriend",
+      "imageUrl": "https://m.media-amazon.com/images/I/51I1z3vyOYL._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": 134,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FQ4TT48X",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0FD3RNDQK",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JBaa_ilYFJSrcrtUy7585ncAAAGcZGBA0wEAAAH2AQBvbm9fdHhuX2JpZDUgICBvbm9fdHhuX2ltcDIgICD7SVuf/clv1c_ek-wBYHXFcbWDn2nI-MgDzoJYAkrcvtwwx21l0TmjaJPBMjlj6oDCQg9dJXJl9--q4ovwBLG5l5H7VRYViX_0ChZWd3PdzB5ear8jVr3HsQHyVC2OXPMBbz55ept_L1pnZncpqSLpFZvfBG8Au2HUnDbq8OgRhXcAgUyzzG__JILMe6feYLXvjSsgvnGiHt-Pjg7o6MrficLcab4tY1U1i-dDFZ2xV3aEmKGA5eXiNRRoCUPnETUSHt750QU_wUAimwRkVsW-JzhLRC8vjLAfREIsD23YbCu-yUvPlOBk27TuPsNeJilJhy1XAb4z9Tg8pchy5rOPXR9xCgW1HxH3AAan3mkChWQ7mgpqV2b6f8fTWWP3fS2PmOC0b-0bZt_A8saHHWZubE86t5F-IfND-vXiTx-ksItDhpePUIhO1CJ0XwWW_wMMhsWIy5ytThs7EqKv2hshWua4QG3WUwfSDaW33aKZZwQd--20dT4pwELaJSi43ktpiGgb24ncSsNN6eaaREenBfNU1KNwwgQPL3qga8IkY7tnrC8DfnSZsa_qXe1m-Jx-EHGOcsqq1dZ-QqP5KPTgEtQWvG00V0vHVvTLG8wABTOQqd1wQyEhuLyP4ovrNxYfY-hwU1tKijeEgg2ETinGFZ8s5BAb5j2v-0aG3wtQEGzqBYOnxmVIIgxgyzWFibe-QVnqvA-An17nRhsDPt1A2t7FIat1j2GFbTMHcw8ABjSoFro67ClEWevROLsdwt4iOk73A5dACQu2xwf9uhyhsWy3vu7uFr4aX537W_PaBI6Sz-mjk3it96XfEEgOgh0VvnoSm4osxCPUasWDfaxNrt_CfXmW2kn61au-DCoCue1CiTG7TtFgVLkTFMODnngQr2T1NfINkLaUBtpWrr4q1TipggUNZ_3z_v4RQ5cIIFp4sGs5uQh0GKFr1VE3539s1G9IsViKJqjOs6cRfWVoWUUijqOo978IaoP9qvRjOxEsOS_TYkEPpwCTG9drK6FPMFj8I2z4isHWtPmCaXCf8LPmoxJhh_r4I9R_MwW7F_gz1mF6xqksZ2hYKILBX5UFiBHfwWB5VInufkKGFfWxXu3Y_IeXNMqqxCs1_nPvdbgisXh6R-IlfbGGggBfFmg6jc3TRX4hNeslsrlV6h9DLeIbtibWi1huF1WA_tSU0HmhOMmUJcJNpn4TwDmzUxftUrL0WmHz5hVkWdu5CywCv419cQhfSevywfpEMsltTJmuaQvCRSeWkz09jsKAJmTwupP_UZsHa89zyELhhKAIMyU3GRhxOO8L71ugiTNdj1WXmtzfTZJMzqlHsLVLgxXPrSKrlMT1UyuQKVZWmmeTmTH2OOXDiKKThhwXDRDdVo4KvkhP7XDYqGttHPRoIyR1JW_SxQLujoKbUnmKEa-h5qlY-o9kYSl9Kdpe4NWFfWhxxIjuiU8payCa7XSs_m8iVA4AA9TWwP-dJGz5Lc3hwIgMQhz0BZAH7TKXFKnnD3tL262evS0r2Onn0baicZ5F0yrTi2EJkjFeOudZR40XX4qLhqr43AffAIlLVc0Y0Q/https://www.amazon.com/dp/B0FD3RNDQK/?_encoding=UTF8&pd_rd_i=B0FD3RNDQK&pd_rd_i=B0FD3RNDQK&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=h0Dun&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_w=h0Dun&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098"
+      }
+    },
+    {
+      "asin": "B0C9SHDDC3",
+      "domain": "com",
+      "productUrl": "https://www.amazon.com/dp/B0C9SHDDC3",
+      "title": "HAPPY NUTS Anti-Chafe Comfort Stick for Men: Ultimate Friction Defense & Chafing Prevention for Active Lifestyles - Perfect for Runners, Cyclists, & Active Men (1 Pack)",
+      "imageUrl": "https://m.media-amazon.com/images/I/312S-V7t6+L._AC_SR100,100_QL65_.jpg",
+      "price": {
+        "amount": null,
+        "currency": "SEK"
+      },
+      "sourceUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "sourceType": "recommended",
+      "sourceAsin": "B0FQ4TT48X",
+      "provider": "direct",
+      "raw": {
+        "asin": "B0C9SHDDC3",
+        "extracted_from": "html",
+        "extracted_url": "https://aax-us-east-retail-direct.amazon.com/x/c/JNeHSz1JfdP1C57tFPHAv8IAAAGcZGBA1AEAAAH2AQBvbm9fdHhuX2JpZDUgICBvbm9fdHhuX2ltcDIgICA-JAD7/clv1c_ek-wBXfWVcba3TO2Z2JsQWs_gJ85b12r0oe2MX-3ik0DuzsAfVw8Weuf8mYzx8HGg_49DQtiR6C8JGgzEhfd0IjfBEwg03CHJSCkrU5hHe1wyozo9-apPWz57-OAaejrFHo_nVC25KQf0hUTGapj2YDLgd-djkbrrojQnjbsjQfBe9I51hHNspxsdDlB5KOb32IM51VtK9fjfWRfb8JiW6q6PjRnmIXkqTKoY5N1FaU0pGfDAeyCxCycpLxyN3__TY8L7bDIc_Da8_0ji0D0p_KlSkRwEQyYrzDfpaOLh36jmRD-u9FNMWnGOT9CdXa3fQ0k5EdS2HfEJz_FkkeA27_FiiBRohoCN_yB-PJWRCWH420qEM8Mg2JP7EiJzSXfkLRKdnd2x6v5krSehqCAl7T_XrLXE2xcY9Tmnr_3B_xb8Qk8ouy-d1K1AtB2l1a702mSW5k-RulwDGYP6AWdRq-y2CAuD6JbPpzqYkHBbyUMCDdUVyTUHgMkwpX4oKotuYpfPrbHNhYTNw9WJkH0PyGQV15CCuavAtQCYFhoV0cD6o-pKREllEEuEocmKJmKTZoJmsqG4ZHTQrSChRm699zd4woVP4vXss0Emni2GyKqo-jakRNBfVZd8gKhvHMMwNa4cEV2mNcpc_L4JWJ9qsehESaljG4ym0ybqCXYTkUbNKdklS2v6SSfsx2gmH2qc5IEzaPs1zNgEoVbxl_YLKUoDpMRm7c2vb6M_ueA0ikxT5Hssdh4v23eCMlWshj272cosCgrj7ATtxFLwOwgxPuYwUfmY3TtXV7eIZ9YcNkfG9npW2zlx3_cqAmQoz-u3x0Z5Ubo364D2e_c_etikr8tTmry6vxLDIoLhgAHR8VBzUu7m-3vzQXRw6PcV9hpEm8AHhRF9aveF4y21qM3C_i0wsxkD4FJogQSgXpOY3YbmZb6EYAoQTfgOHbIDj44nDV1k_Rzvt5aTUWtAtvXrU_xAStJwdVnd42WFSfSPtq81KrUKbvoTj6T46lipH3r72kyEIdWmNhSu3YLtYXHvNGH9ulehPVGT1v6caMDe60YFT12ulMC0me29fWmys7nVcwjWyk66qD1E1nb6BXEJSCip5A9v9lYcCmu8DOEJXkm3hLw1b_F43cUvc1uVUOPmwT2nlLlbKFZm8CWD3eC-kWB6LrZMW70X8fEOL5-u1pw4otCR3_xSGn3Ny8RXkNf_2G5bXQvp32sOV9ZE5Bz6v8hMRqHZ8X05cKrIffCONgvjnSfaJ7uujGYWakxFnzMxAAwpp7aK0evfiyGZavhY7jF_mozN5gxW5H4GmUtaQw9_mmPoeHHSGfB6Qoq9WBjbfPcSDPW2KKXNE28PMiZjNhRWgp1VFs9pZ1CKRlHI4QjsSnP_2WQOtjMDiNl0JOX3TKlopNArbGoOqheAL4w1Q-l8FfuuRrVPiDiMggMgxJ-8SNrb0faBX5XMt_B7dW5bu3K_0F-bt-8C4naaHf3avBMEvNx9eNnXQ7L07iKdBHRSkXN5WCE5NWAvBuFhf5Lew/https://www.amazon.com/dp/B0C9SHDDC3/?_encoding=UTF8&pd_rd_i=B0C9SHDDC3&pd_rd_i=B0C9SHDDC3&ref_=sbx_be_s_sparkle_ssd_img&pd_rd_w=h0Dun&content-id=amzn1.sym.ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098&pf_rd_p=ccb770a9-35d1-4af6-8af2-bcbd12656fbb&pf_rd_r=AP6ZM99B9XW2X951E5NA&pd_rd_wg=Pvtse&pd_rd_w=h0Dun&pd_rd_r=77eac9df-a995-471e-869b-6f044fff4098"
+      }
+    }
+  ],
+  "provider": "direct",
+  "raw": {
+    "fetched": {
+      "url": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "finalUrl": "https://www.amazon.com/dp/B0FQ4TT48X",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    "parsed": {
+      "canonicalUrl": "https://www.amazon.com/Valentines-Boyfriend-Keychain-Screwdriver-Phillips/dp/B0FQ4TT48X",
+      "priceText": "EUR3.36",
+      "details": {
+        "Brand": "‎FUAOIS",
+        "Number of Items": "‎1",
+        "Head Style": "‎Phillips",
+        "Material": "‎Metal",
+        "Color": "‎Black",
+        "Recommended Uses For Product": "‎keychain",
+        "Item Weight": "‎0.03 Kilograms",
+        "Model Name": "‎LSD-01",
+        "UPC": "‎762849751368",
+        "Manufacturer": "‎FUAOIS",
+        "Package Dimensions": "‎8.3 x 5.1 x 1.2 cm",
+        "Item model number": "‎LSD-01",
+        "Power Source": "‎hand_powered",
+        "Included Components": "‎3",
+        "Batteries Required?": "‎No",
+        "ASIN": "B0FQ4TT48X",
+        "Customer Reviews": "4.6 4.6 out of 5 stars (162) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.6 out of 5 stars",
+        "Best Sellers Rank": "#21,408 in Tools & Home Improvement (See Top 100 in Tools & Home Improvement) #79 in Multitools",
+        "Date First Available": "September 8, 2025"
+      },
+      "rating": 4.6,
+      "reviewCount": 162,
+      "details_raw": {
+        "Brand": "‎FUAOIS",
+        "Number of Items": "‎1",
+        "Head Style": "‎Phillips",
+        "Material": "‎Metal",
+        "Color": "‎Black",
+        "Recommended Uses For Product": "‎keychain",
+        "Item Weight": "‎0.03 Kilograms",
+        "Model Name": "‎LSD-01",
+        "UPC": "‎762849751368",
+        "Manufacturer": "‎FUAOIS",
+        "Package Dimensions": "‎3.27 x 2.01 x 0.47 inches",
+        "Item model number": "‎LSD-01",
+        "Power Source": "‎hand_powered",
+        "Included Components": "‎3",
+        "Batteries Required?": "‎No",
+        "ASIN": "B0FQ4TT48X",
+        "Customer Reviews": "4.6 4.6 out of 5 stars (162) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClickAction = true; A.declarative( 'acrLink-click-metrics', 'click', { \"allowLinkDefault\": true }, function (event) { if (window.ue) { ue.count(\"acrLinkClickCount\", (ue.count(\"acrLinkClickCount\") || 0) + 1); } } ); } }); P.when('A', 'cf').execute(function(A) { A.declarative('acrStarsLink-click-metrics', 'click', { \"allowLinkDefault\" : true }, function(event){ if(window.ue) { ue.count(\"acrStarsLinkWithPopoverClickCount\", (ue.count(\"acrStarsLinkWithPopoverClickCount\") || 0) + 1); } }); }); 4.6 out of 5 stars",
+        "Best Sellers Rank": "#21,408 in Tools & Home Improvement (See Top 100 in Tools & Home Improvement) #79 in Multitools",
+        "Date First Available": "September 8, 2025"
+      }
+    },
+    "variantImageErrors": []
+  }
+}

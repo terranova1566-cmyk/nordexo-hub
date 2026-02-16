@@ -4,6 +4,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
+const SUPABASE_RANGE_PAGE_SIZE = 1000;
 const PRODUCT_SELECT =
   "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, google_taxonomy_id, google_taxonomy_path, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr, identical_spu, digideal_group_id, digideal_group_count";
 
@@ -140,14 +141,123 @@ type DigidealDetailRow = {
   "1688_url"?: string | null;
 };
 
+type ManualSupplierUrlRow = {
+  product_id: string | null;
+  "1688_URL"?: string | null;
+  "1688_url"?: string | null;
+};
+
 type SupplierSearchRow = {
   provider: string;
   product_id: string;
   offers: unknown;
 };
 
+type SupplierSelectionRow = {
+  provider: string;
+  product_id: string;
+  selected_offer: unknown;
+};
+
 const toText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
+
+const loadAllRows = async <T,>(
+  fetchPage: (
+    from: number,
+    to: number
+  ) => PromiseLike<{ data: T[] | null; error: any }>
+) => {
+  const rows: T[] = [];
+  let from = 0;
+
+  // Safety guard: avoid infinite loops if paging behaves unexpectedly.
+  for (let page = 0; page < 250; page += 1) {
+    const to = from + SUPABASE_RANGE_PAGE_SIZE - 1;
+    const { data, error } = await fetchPage(from, to);
+    if (error) return { data: null as T[] | null, error };
+
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < SUPABASE_RANGE_PAGE_SIZE) break;
+    from += SUPABASE_RANGE_PAGE_SIZE;
+  }
+
+  return { data: rows, error: null as any };
+};
+
+const loadPricedProductIds = async (supabase: any) => {
+  const { data, error } = await loadAllRows<{ product_id?: string | null }>((from, to) =>
+    supabase
+      .from("digideal_products")
+      .select("product_id")
+      .gt("purchase_price", 0)
+      .order("product_id", { ascending: true })
+      .range(from, to)
+  );
+
+  if (error) return { ids: [] as string[], error };
+
+  const ids = new Set<string>();
+  (data ?? []).forEach((row) => {
+    const id = String(row?.product_id ?? "").trim();
+    if (!id) return;
+    ids.add(id);
+  });
+
+  return { ids: Array.from(ids), error: null as any };
+};
+
+const loadManualSupplierProductIds = async (
+  supabase: any,
+  productIds: string[] | null
+) => {
+  if (productIds && productIds.length === 0) return { ids: [] as string[], error: null as any };
+
+  const primarySelect = 'product_id, "1688_URL"';
+  const fallbackSelect = "product_id, 1688_url";
+
+  const loadPrimary = () =>
+    loadAllRows<ManualSupplierUrlRow>((from, to) => {
+      let query = supabase.from("digideal_products").select(primarySelect);
+      if (productIds) {
+        query = query.in("product_id", productIds).not("1688_URL", "is", null);
+      } else {
+        query = query.not("1688_URL", "is", null);
+      }
+      return query.order("product_id", { ascending: true }).range(from, to);
+    });
+
+  const loadFallback = () =>
+    loadAllRows<ManualSupplierUrlRow>((from, to) => {
+      let query = supabase.from("digideal_products").select(fallbackSelect);
+      if (productIds) {
+        query = query.in("product_id", productIds).not("1688_url", "is", null);
+      } else {
+        query = query.not("1688_url", "is", null);
+      }
+      return query.order("product_id", { ascending: true }).range(from, to);
+    });
+
+  let { data, error } = await loadPrimary();
+
+  if (error?.message && String(error.message).toLowerCase().includes("1688")) {
+    ({ data, error } = await loadFallback());
+  }
+
+  if (error) return { ids: [] as string[], error };
+
+  const ids = new Set<string>();
+  (data ?? []).forEach((row) => {
+    const id = String(row?.product_id ?? "").trim();
+    if (!id) return;
+    const url = toText((row as any)["1688_URL"] ?? (row as any)["1688_url"]);
+    if (!url) return;
+    ids.add(id);
+  });
+
+  return { ids: Array.from(ids), error: null as any };
+};
 
 const resolveClassConfig = (
   classMap: Map<string, ShippingConfig>,
@@ -430,6 +540,10 @@ export async function GET(request: NextRequest) {
     const status = (searchParams.get("status") ?? "online").toLowerCase();
     const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
     const priceMatch = searchParams.get("priceMatch")?.trim().toLowerCase();
+    const supplierWorkflow = searchParams
+      .get("supplierWorkflow")
+      ?.trim()
+      .toLowerCase();
     const groupId = searchParams.get("groupId")?.trim();
     const viewId = searchParams.get("viewId")?.trim();
     const minSoldMetric = (
@@ -580,6 +694,186 @@ export async function GET(request: NextRequest) {
         query = query.in("product_id", ids);
       } else if (ids.length > 0) {
         query = query.not("product_id", "in", toPgInList(ids));
+      }
+    }
+
+    const supplierWorkflowMode =
+      supplierWorkflow === "no_supplier" ||
+      supplierWorkflow === "need_select_supplier" ||
+      supplierWorkflow === "need_pick_variants"
+        ? supplierWorkflow
+        : null;
+
+    if (supplierWorkflowMode) {
+      const [searchRowsResponse, selectionRowsResponse, pricedIdsResponse] = await Promise.all([
+        loadAllRows<SupplierSearchRow>((from, to) =>
+          supabase
+            .from("discovery_production_supplier_searches")
+            .select("provider, product_id, offers")
+            .eq("provider", "digideal")
+            .order("product_id", { ascending: true })
+            .range(from, to)
+        ),
+        loadAllRows<SupplierSelectionRow>((from, to) =>
+          supabase
+            .from("discovery_production_supplier_selection")
+            .select("provider, product_id, selected_offer")
+            .eq("provider", "digideal")
+            .order("product_id", { ascending: true })
+            .range(from, to)
+        ),
+        loadPricedProductIds(supabase),
+      ]);
+
+      if (searchRowsResponse.error) {
+        console.error("digideal supplier workflow filter search error", {
+          message: searchRowsResponse.error.message,
+          details: searchRowsResponse.error.details,
+          hint: searchRowsResponse.error.hint,
+          code: searchRowsResponse.error.code,
+        });
+        return NextResponse.json(
+          { error: "Failed to load supplier search state." },
+          { status: 500 }
+        );
+      }
+
+      if (selectionRowsResponse.error) {
+        console.error("digideal supplier workflow filter selection error", {
+          message: selectionRowsResponse.error.message,
+          details: selectionRowsResponse.error.details,
+          hint: selectionRowsResponse.error.hint,
+          code: selectionRowsResponse.error.code,
+        });
+        return NextResponse.json(
+          { error: "Failed to load supplier selection state." },
+          { status: 500 }
+        );
+      }
+
+      if (pricedIdsResponse.error) {
+        console.error("digideal supplier workflow filter priced ids error", {
+          message: pricedIdsResponse.error.message,
+          details: pricedIdsResponse.error.details,
+          hint: pricedIdsResponse.error.hint,
+          code: pricedIdsResponse.error.code,
+        });
+        return NextResponse.json(
+          { error: "Failed to load supplier pricing state." },
+          { status: 500 }
+        );
+      }
+
+      const pricedProductIds = new Set<string>(pricedIdsResponse.ids ?? []);
+
+      const supplierSuggestionsIds = new Set<string>();
+      (searchRowsResponse.data ?? []).forEach((row) => {
+        const productId = String(row?.product_id ?? "").trim();
+        if (!productId) return;
+        const offers = Array.isArray(row.offers) ? row.offers : [];
+        if (offers.length > 0) supplierSuggestionsIds.add(productId);
+      });
+
+      const supplierSelectedIds = new Set<string>();
+      const supplierPickedVariantsIds = new Set<string>();
+      (selectionRowsResponse.data ?? []).forEach((row) => {
+        const productId = String(row?.product_id ?? "").trim();
+        if (!productId) return;
+        const offer =
+          row?.selected_offer && typeof row.selected_offer === "object"
+            ? (row.selected_offer as Record<string, unknown>)
+            : null;
+        if (!offer) return;
+
+        supplierSelectedIds.add(productId);
+
+        const selectedCountRaw = Number((offer as any)._production_variant_selected_count);
+        const packsText = toText((offer as any)._production_variant_packs_text);
+        if (
+          (Number.isFinite(selectedCountRaw) && selectedCountRaw > 0) ||
+          Boolean(packsText)
+        ) {
+          supplierPickedVariantsIds.add(productId);
+        }
+      });
+
+      if (supplierWorkflowMode === "need_select_supplier") {
+        const candidates = Array.from(supplierSuggestionsIds).filter(
+          (productId) => !supplierSelectedIds.has(productId)
+        );
+        const { ids: manualIds, error: manualError } =
+          await loadManualSupplierProductIds(supabase, candidates);
+        if (manualError) {
+          console.error("digideal supplier workflow manual supplier error", {
+            message: manualError.message,
+            details: manualError.details,
+            hint: manualError.hint,
+            code: manualError.code,
+          });
+          return NextResponse.json(
+            { error: "Failed to load manual supplier state." },
+            { status: 500 }
+          );
+        }
+        const manualSet = new Set(manualIds);
+        const ids = candidates.filter(
+          (productId) => !manualSet.has(productId) && !pricedProductIds.has(productId)
+        );
+        if (ids.length === 0) {
+          return NextResponse.json({ items: [], page, pageSize, total: 0 });
+        }
+        query = query.in("product_id", ids);
+      } else if (supplierWorkflowMode === "need_pick_variants") {
+        const candidates = Array.from(supplierSelectedIds).filter(
+          (productId) => !supplierPickedVariantsIds.has(productId)
+        );
+        const { ids: manualIds, error: manualError } =
+          await loadManualSupplierProductIds(supabase, candidates);
+        if (manualError) {
+          console.error("digideal supplier workflow manual supplier error", {
+            message: manualError.message,
+            details: manualError.details,
+            hint: manualError.hint,
+            code: manualError.code,
+          });
+          return NextResponse.json(
+            { error: "Failed to load manual supplier state." },
+            { status: 500 }
+          );
+        }
+        const manualSet = new Set(manualIds);
+        const ids = candidates.filter(
+          (productId) => !manualSet.has(productId) && !pricedProductIds.has(productId)
+        );
+        if (ids.length === 0) {
+          return NextResponse.json({ items: [], page, pageSize, total: 0 });
+        }
+        query = query.in("product_id", ids);
+      } else if (supplierWorkflowMode === "no_supplier") {
+        const { ids: manualIds, error: manualError } =
+          await loadManualSupplierProductIds(supabase, null);
+        if (manualError) {
+          console.error("digideal supplier workflow manual supplier error", {
+            message: manualError.message,
+            details: manualError.details,
+            hint: manualError.hint,
+            code: manualError.code,
+          });
+          return NextResponse.json(
+            { error: "Failed to load manual supplier state." },
+            { status: 500 }
+          );
+        }
+
+        const exclude = new Set<string>(manualIds);
+        supplierSuggestionsIds.forEach((id) => exclude.add(id));
+        supplierSelectedIds.forEach((id) => exclude.add(id));
+        pricedProductIds.forEach((id) => exclude.add(id));
+
+        const excludeIds = Array.from(exclude);
+        if (excludeIds.length > 0) {
+          query = query.not("product_id", "in", toPgInList(excludeIds));
+        }
       }
     }
 

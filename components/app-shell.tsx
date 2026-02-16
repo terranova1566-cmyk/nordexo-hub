@@ -200,6 +200,13 @@ const productionMenuItems = [
   { label: "nav.draftExplorer", href: "/app/production/draft-explorer" },
 ];
 
+const b2bMenuItems = [
+  { label: "nav.b2bCustomers", href: "/app/b2b/customers" },
+  { label: "nav.b2bProjects", href: "/app/b2b/projects" },
+  { label: "nav.b2bTasks", href: "/app/b2b/tasks" },
+  { label: "nav.b2bImports", href: "/app/b2b/imports" },
+];
+
 const shopifyMenuItems = [
   { label: "nav.shopifyStoreSettings", href: "/app/shopify/store-settings" },
   { label: "nav.shopifyWebshopTexts", href: "/app/shopify/webshop-texts" },
@@ -283,6 +290,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const { locale, setLocale, t } = useI18n();
   const supabase = useMemo(() => createClient(), []);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isB2BInternal, setIsB2BInternal] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const isProductsActive = useMemo(
     () =>
@@ -307,6 +315,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     () => pathname.startsWith("/app/email"),
     [pathname]
   );
+  const isB2bActive = useMemo(() => pathname.startsWith("/app/b2b"), [pathname]);
   const isShopifyActive = useMemo(
     () => pathname.startsWith("/app/shopify"),
     [pathname]
@@ -319,16 +328,28 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       if (!user) {
-        if (isActive) setIsAdmin(false);
+        if (isActive) {
+          setIsAdmin(false);
+          setIsB2BInternal(false);
+          setUserId(null);
+        }
         return;
       }
-      const { data: settings } = await supabase
-        .from("partner_user_settings")
-        .select("is_admin, preferred_locale")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data: settings }, { data: b2bRole, error: b2bRoleError }] = await Promise.all([
+        supabase
+          .from("partner_user_settings")
+          .select("is_admin, preferred_locale")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("b2b_user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
       if (isActive) {
         setIsAdmin(Boolean(settings?.is_admin));
+        setIsB2BInternal(!b2bRoleError && Boolean(b2bRole?.role));
         if (settings?.preferred_locale) {
           setLocale(settings.preferred_locale);
         }
@@ -347,6 +368,8 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     () => navItems.filter((item) => (item.href === "/app/ui-kit" ? isAdmin : true)),
     [isAdmin]
   );
+
+  const canAccessB2B = Boolean(userId) || isAdmin || isB2BInternal;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -495,6 +518,32 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   <MenuPopover className={styles.menuPopover}>
                     <MenuList>
                       {productionMenuItems.map((item) => (
+                        <MenuItem
+                          key={item.href}
+                          onClick={() => router.push(item.href)}
+                        >
+                          <span className={styles.navMenuItem}>
+                            {t(item.label)}
+                          </span>
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
+              ) : null}
+              {canAccessB2B ? (
+                <Menu openOnHover hoverDelay={0}>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance={isB2bActive ? "primary" : "subtle"}
+                      className={styles.navButton}
+                    >
+                      {t("nav.b2bSourcing")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover className={styles.menuPopover}>
+                    <MenuList>
+                      {b2bMenuItems.map((item) => (
                         <MenuItem
                           key={item.href}
                           onClick={() => router.push(item.href)}

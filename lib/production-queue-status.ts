@@ -13,6 +13,7 @@ export type ProductionQueueRefWithSpu = ProductionQueueRef & {
 };
 
 export type ProductionQueueStatusValue =
+  | "queued_for_production"
   | "spu_assigned"
   | "production_started"
   | "production_done";
@@ -184,7 +185,9 @@ export const upsertProductionStatuses = async (
       row.last_job_id = options.jobId || null;
     }
 
-    if (options.status === "spu_assigned") {
+    if (options.status === "queued_for_production") {
+      row.status = "queued_for_production";
+    } else if (options.status === "spu_assigned") {
       row.status = "spu_assigned";
       row.spu_assigned_at = now;
     } else if (options.status === "production_started") {

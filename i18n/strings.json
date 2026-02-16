@@ -1138,7 +1138,7 @@
     },
     {
       "key": "orders.import.instructions1",
-      "text": "First row must match the required headers exactly and in order.",
+      "text": "First row must include the required headers exactly (spelling/case).",
       "context": "Orders import instructions"
     },
     {
@@ -1150,8 +1150,12 @@
       "key": "orders.import.instructions3",
       "text": "Tracking numbers are collected per order; duplicate numbers are ignored.",
       "context": "Orders import instructions"
-    }
-    ,
+    },
+    {
+      "key": "orders.import.template",
+      "text": "Download import template here.",
+      "context": "Orders import template download"
+    },
     {
       "key": "orders.import.historyTitle",
       "text": "Import history",
@@ -2466,6 +2470,36 @@
       "key": "settings.aiImage.prompts.descriptionPlaceholder",
       "text": "Optional: add a short description",
       "context": "AI image edit prompt create dialog placeholder"
+    },
+    {
+      "key": "settings.aiImage.prompts.categoryLabel",
+      "text": "Category",
+      "context": "AI prompts category label"
+    },
+    {
+      "key": "settings.aiImage.prompts.categoryPlaceholder",
+      "text": "e.g. Product Discovery / Similar Search",
+      "context": "AI prompts category placeholder"
+    },
+    {
+      "key": "settings.aiImage.prompts.addressLabel",
+      "text": "Address",
+      "context": "AI prompts address label"
+    },
+    {
+      "key": "settings.aiImage.prompts.addressPlaceholder",
+      "text": "e.g. app/api/... or node-tools/...",
+      "context": "AI prompts address placeholder"
+    },
+    {
+      "key": "settings.aiImage.prompts.guideButton",
+      "text": "Guide",
+      "context": "AI prompts guide button label"
+    },
+    {
+      "key": "settings.aiImage.prompts.guideTitle",
+      "text": "AI prompt organization guide",
+      "context": "AI prompts guide dialog title"
     },
     {
       "key": "common.revert",
@@ -5264,6 +5298,11 @@
       "context": "Production status line label"
     },
     {
+      "key": "production.status.queuedForProduction",
+      "text": "Queued for Production",
+      "context": "Production status line label"
+    },
+    {
       "key": "production.status.productionStarted",
       "text": "Production Started",
       "context": "Production status line label"
@@ -7052,6 +7091,36 @@
       "key": "pricing.overviewEmpty",
       "text": "No SKUs found for this search.",
       "context": "Pricing overview empty state"
+    },
+    {
+      "key": "nav.b2bSourcing",
+      "text": "B2B Sourcing",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.b2bCustomers",
+      "text": "Customers",
+      "context": "B2B sourcing menu item"
+    },
+    {
+      "key": "nav.b2bProjects",
+      "text": "Projects",
+      "context": "B2B sourcing menu item"
+    },
+    {
+      "key": "nav.b2bLookbooks",
+      "text": "Supplier Lookbooks",
+      "context": "B2B sourcing menu item"
+    },
+    {
+      "key": "nav.b2bTasks",
+      "text": "Tasks",
+      "context": "B2B sourcing menu item"
+    },
+    {
+      "key": "nav.b2bImports",
+      "text": "Imports",
+      "context": "B2B sourcing menu item"
     }
   ]
 }

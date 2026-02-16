@@ -407,6 +407,7 @@ export async function POST(request: Request) {
         adminClient,
         refs.map((entry) => ({ provider: entry.provider, product_id: entry.product_id })),
         {
+          status: "queued_for_production",
           fileName,
           jobId,
         }

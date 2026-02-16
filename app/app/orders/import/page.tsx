@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Field,
+  Link,
   Spinner,
   Table,
   TableBody,
@@ -66,6 +67,11 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground2,
     fontSize: tokens.fontSizeBase200,
     lineHeight: tokens.lineHeightBase300,
+  },
+  instructionsStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
   },
   tableWrapper: {
     borderRadius: "12px",
@@ -177,15 +183,20 @@ export default function OrdersImportPage() {
 
         <Card className={styles.card}>
           <Text weight="semibold">{t("orders.import.instructionsTitle")}</Text>
-          <Text className={styles.instructions}>
-            {t("orders.import.instructions1")}
-          </Text>
-          <Text className={styles.instructions}>
-            {t("orders.import.instructions2")}
-          </Text>
-          <Text className={styles.instructions}>
-            {t("orders.import.instructions3")}
-          </Text>
+          <div className={styles.instructionsStack}>
+            <Text className={styles.instructions}>
+              {t("orders.import.instructions1")}
+            </Text>
+            <Text className={styles.instructions}>
+              {t("orders.import.instructions2")}
+            </Text>
+            <Text className={styles.instructions}>
+              {t("orders.import.instructions3")}
+            </Text>
+            <Link href="/api/orders/import/template">
+              {t("orders.import.template")}
+            </Link>
+          </div>
         </Card>
       </div>
 
