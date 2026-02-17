@@ -2285,6 +2285,9 @@ export default function DraftExplorerPage() {
   const [aiEditTargets, setAiEditTargets] = useState<DraftEntry[]>([]);
   const [aiEditProvider, setAiEditProvider] = useState<AiEditProvider>("chatgpt");
   const [aiEditMode, setAiEditMode] = useState<AiPromptMode>("template");
+  const [aiEditTemplatePreset, setAiEditTemplatePreset] =
+    useState<AiTemplatePreset>("standard");
+  const [aiEditOutputCount, setAiEditOutputCount] = useState(1);
   const [aiEditPrompt, setAiEditPrompt] = useState("");
   const [aiEditSubmitting, setAiEditSubmitting] = useState(false);
   const [aiEditError, setAiEditError] = useState<string | null>(null);
@@ -2331,7 +2334,6 @@ export default function DraftExplorerPage() {
   const [renamePending, setRenamePending] = useState(false);
   const [bulkImageActionPending, setBulkImageActionPending] = useState(false);
   const [deleteFolderPending, setDeleteFolderPending] = useState(false);
-  const [deleteProductPending, setDeleteProductPending] = useState(false);
   const [deleteRunsPending, setDeleteRunsPending] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
@@ -2402,6 +2404,7 @@ export default function DraftExplorerPage() {
     direction: "asc",
   });
   const pendingFolderOpenPathRef = useRef<string | null>(null);
+  const selectionAnchorImagePathRef = useRef<string | null>(null);
 
   const imageExtensions = useMemo(
     () => [".png", ".jpg", ".jpeg", ".webp", ".gif"],
@@ -3996,6 +3999,74 @@ export default function DraftExplorerPage() {
     });
   }, []);
 
+  const handleDeleteRuns = useCallback(async () => {
+    const runs = Array.from(selectedRunsForMerge);
+    if (runs.length === 0 || deleteRunsPending) return;
+    const confirmed = window.confirm(
+      `Delete ${runs.length} selected batch folder${
+        runs.length === 1 ? "" : "s"
+      }? This will also delete linked SPU and SKU draft data.`
+    );
+    if (!confirmed) return;
+
+    setDeleteRunsPending(true);
+    setError(null);
+
+    const failedRuns: string[] = [];
+    const failureMessages: string[] = [];
+    let deletedRuns = 0;
+
+    for (const run of runs) {
+      try {
+        const response = await fetch(
+          `/api/drafts/folders/${encodeURIComponent(run)}`,
+          { method: "DELETE" }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            payload?.error || `Delete failed (HTTP ${response.status}).`
+          );
+        }
+        deletedRuns += 1;
+      } catch (err) {
+        failedRuns.push(run);
+        failureMessages.push(
+          `${run}: ${err instanceof Error ? err.message : "Delete failed."}`
+        );
+      }
+    }
+
+    setSelectedRunsForMerge(new Set(failedRuns));
+    if (failedRuns.length === 0) {
+      setBatchPickerOpen(false);
+    }
+
+    await fetchFolders();
+    if (draftTab === "spu") {
+      await fetchSpuRows();
+    } else {
+      await fetchSkuRows();
+    }
+
+    if (failureMessages.length > 0) {
+      setError(
+        `Deleted ${deletedRuns}/${runs.length} batch folder${
+          runs.length === 1 ? "" : "s"
+        }. Errors: ${failureMessages.join(" | ")}`
+      );
+    }
+
+    setDeleteRunsPending(false);
+  }, [
+    selectedRunsForMerge,
+    deleteRunsPending,
+    fetchFolders,
+    draftTab,
+    fetchSpuRows,
+    fetchSkuRows,
+  ]);
+
 	  const openRunPreview = useCallback(async (run: string) => {
 	    setRunPreviewRun(run);
 	    setRunPreviewSelectedSpus(new Set());
@@ -4284,1080 +4355,47 @@ export default function DraftExplorerPage() {
     setContextMenuNestedSubmenu(null);
   }, [contextMenuSubmenu]);
 
-  const handleToggleFile = (pathValue: string) => {
-    setSelectedFiles((prev) => {
-      const next = new Set(prev);
-      const nonImageFilePaths = entries
-        .filter((entry) => entry.type === "file" && !isImage(entry.name))
-        .map((entry) => entry.path);
-      const allSelected =
-        nonImageFilePaths.length > 0 && nonImageFilePaths.every((p) => next.has(p));
-      nonImageFilePaths.forEach((p) => {
-        if (allSelected) next.delete(p);
-        else next.add(p);
-      });
-      return next;
-    });
-  }, [entries, isImage]);
-
-  const clearSelectedFilesForImageActions = useCallback(() => {
-    selectionAnchorImagePathRef.current = null;
-    setSelectedFiles(new Set());
-  }, []);
-
-  const isTextFileEditable = useCallback((entry: DraftEntry) => {
-    if (entry.type !== "file") return false;
-    const name = entry.name.toLowerCase();
-    return name.endsWith(".txt") || name.endsWith(".json");
-  }, []);
-
-  const formatSizeKb = useCallback((bytes: number) => {
-    const kb = bytes / 1024;
-    if (kb >= 100) {
-      return `${Math.round(kb)} KB`;
-    }
-    return `${Math.round(kb * 10) / 10} KB`;
-  }, []);
-
-  const resolveSpuImageExplorerPath = useCallback((row: DraftSpuRow) => {
-    const candidates: string[] = [];
-    if (row.draft_image_folder) candidates.push(row.draft_image_folder);
-    if (row.draft_main_image_url) candidates.push(row.draft_main_image_url);
-    if (Array.isArray(row.draft_image_urls)) {
-      row.draft_image_urls.forEach((value) => {
-        if (value) candidates.push(String(value));
-      });
-    }
-    for (const candidate of candidates) {
-      const relative = tryExtractDraftRelativePath(candidate);
-      if (!relative) continue;
-      const parts = relative.split("/").filter(Boolean);
-      if (parts.length >= 2) {
-        return parts.join("/");
-      }
-    }
-    if (row.draft_spu) {
-      const currentRun =
-        selectedFolder ||
-        folders.find((folder) => folder.path)?.path ||
-        "";
-      if (currentRun) {
-        return `${currentRun}/${row.draft_spu}`;
-      }
-    }
-    return null;
-  }, [folders, selectedFolder]);
-
-  const resolveSpuMainFolderPath = useCallback(
-    (row: DraftSpuRow) => {
-      const targetPath = resolveSpuImageExplorerPath(row);
-      const targetParts = targetPath?.split("/").filter(Boolean) ?? [];
-      if (targetParts.length >= 2) {
-        return `${targetParts[0]}/${targetParts[1]}`;
-      }
-
-      const run = String(selectedFolder || "").trim();
-      const spu = String(row.draft_spu || "").trim();
-      if (run && spu) {
-        return `${run}/${spu}`;
-      }
-      return null;
-    },
-    [resolveSpuImageExplorerPath, selectedFolder]
-  );
-  const completedSpuByCode = useMemo(() => {
-    const next: Record<string, boolean> = {};
-    spuRows.forEach((row) => {
-      const spu = String(row.draft_spu || "").trim();
-      if (!spu) return;
-      const spuMainFolderPath = resolveSpuMainFolderPath(row);
-      next[spu.toUpperCase()] = Boolean(
-        spuMainFolderPath && completedSpuFolders.has(spuMainFolderPath)
-      );
-    });
-    return next;
-  }, [completedSpuFolders, resolveSpuMainFolderPath, spuRows]);
-  const isSpuImagesMarkedCompleted = useCallback(
-    (spuValue: string | null | undefined) => {
-      const spu = String(spuValue || "").trim();
-      if (!spu) return false;
-      const normalizedSpu = spu.toUpperCase();
-      if (Object.prototype.hasOwnProperty.call(completedSpuByCode, normalizedSpu)) {
-        return Boolean(completedSpuByCode[normalizedSpu]);
-      }
-      const run = String(selectedFolder || "").trim();
-      return Boolean(run && completedSpuFolders.has(`${run}/${spu}`));
-    },
-    [completedSpuByCode, completedSpuFolders, selectedFolder]
-  );
-
-  const openSpuImagesInExplorer = useCallback(
-    (row: DraftSpuRow) => {
-      const targetPath = resolveSpuImageExplorerPath(row);
-      if (!targetPath) {
-        setError(`Unable to resolve image folder for ${row.draft_spu}.`);
-        return;
-      }
-      const parts = targetPath.split("/").filter(Boolean);
-      if (parts.length === 0) {
-        setError(`Unable to resolve image folder for ${row.draft_spu}.`);
-        return;
-      }
-      const run = parts[0];
-      pendingFolderOpenPathRef.current = targetPath;
-      setSelectedFolder(run);
-      setCurrentPath(targetPath);
-    },
-    [resolveSpuImageExplorerPath]
-  );
-
-  useEffect(() => {
-    if (initialOpenSpuHandledRef.current) return;
-    const requestedSpu = String(initialOpenSpu || "").trim().toUpperCase();
-    if (!requestedSpu) return;
-    if (draftLoading) return;
-
-    const targetRow = spuRows.find(
-      (row) => String(row.draft_spu || "").trim().toUpperCase() === requestedSpu
-    );
-
-    if (!targetRow) {
-      initialOpenSpuHandledRef.current = true;
-      setError(`SPU ${requestedSpu} was not found in Draft Explorer.`);
-      return;
-    }
-
-    openSpuImagesInExplorer(targetRow);
-    initialOpenSpuHandledRef.current = true;
-  }, [draftLoading, initialOpenSpu, openSpuImagesInExplorer, spuRows]);
-
-  const fetchVariantEditorThumbs = useCallback(
-    async (spu: string) => {
-      const targetSpu = String(spu || "").trim();
-      if (!targetSpu) {
-        setVariantsEditorThumbs([]);
-        return;
-      }
-      const spuRow = spuRows.find((row) => row.draft_spu === targetSpu) ?? null;
-      let rootPath = spuRow ? resolveSpuImageExplorerPath(spuRow) : null;
-      if (!rootPath && selectedFolder) {
-        rootPath = `${selectedFolder}/${targetSpu}`;
-      }
-      if (!rootPath) {
-        setVariantsEditorThumbs([]);
-        return;
-      }
-      setVariantsEditorThumbsLoading(true);
-      try {
-        const rootEntries = await listPathEntries(rootPath);
-        const normalizeToken = (value: string) =>
-          value.toLowerCase().replace(/[\s_-]+/g, "");
-        const variantDirs = rootEntries
-          .filter((entry) => entry.type === "dir")
-          .map((entry) => {
-            const normalized = normalizeToken(entry.name);
-            if (!normalized.includes("variant")) {
-              return { entry, score: -1 };
-            }
-            if (normalized.includes("reject") || normalized.includes("mismatch")) {
-              return { entry, score: -1 };
-            }
-            if (normalized === "variantimages" || normalized === "variantimage") {
-              return { entry, score: 4 };
-            }
-            if (normalized.includes("variant") && normalized.includes("image")) {
-              return { entry, score: 3 };
-            }
-            return { entry, score: 1 };
-          })
-          .filter((row) => row.score > 0)
-          .sort((left, right) => {
-            if (right.score !== left.score) return right.score - left.score;
-            return left.entry.name.localeCompare(right.entry.name);
-          });
-        if (variantDirs.length === 0) {
-          setVariantsEditorThumbs([]);
-          return;
-        }
-        const primaryVariantDir = variantDirs[0].entry;
-        const variantEntries = await listPathEntries(primaryVariantDir.path);
-        const directVariantImages = variantEntries
-          .filter((entry) => entry.type === "file" && isImage(entry.name))
-          .sort((left, right) => left.name.localeCompare(right.name));
-        setVariantsEditorThumbs(directVariantImages);
-      } catch {
-        setVariantsEditorThumbs([]);
-      } finally {
-        setVariantsEditorThumbsLoading(false);
-      }
-    },
-    [
-      isImage,
-      listPathEntries,
-      resolveSpuImageExplorerPath,
-      selectedFolder,
-      spuRows,
-    ]
-  );
-
-  const mapDraftSkuToVariantEditorRow = useCallback(
-    (row: DraftSkuRow): DraftVariantEditorRow => {
-      const raw = parseDraftRawRow(row.draft_raw_row);
-      const variationColor = toText(raw.variation_color_se).trim();
-      const variationSize = toText(raw.variation_size_se).trim();
-      const variationOther = toText(raw.variation_other_se).trim();
-      const variationAmount = toText(raw.variation_amount_se).trim();
-      const optionColorZh = toText(row.draft_option1).trim();
-      const optionSizeZh = toText(row.draft_option2).trim();
-      const optionOtherZh = toText(row.draft_option3).trim();
-      const optionAmountZh = toText(row.draft_option4).trim();
-      const combined =
-        buildVariantCombinedZhValue({
-          draft_option1: optionColorZh,
-          draft_option2: optionSizeZh,
-          draft_option3: optionOtherZh,
-          draft_option4: optionAmountZh,
-          fallback: toText(row.draft_option_combined_zh).trim(),
-        });
-      return {
-        key: createVariantEditorKey(),
-        id: String(row.id || "").trim() || null,
-        draft_spu: row.draft_spu ?? "",
-        draft_sku: row.draft_sku ?? "",
-        draft_option1: optionColorZh,
-        draft_option2: optionSizeZh,
-        draft_option3: optionOtherZh,
-        draft_option4: optionAmountZh,
-        draft_option_combined_zh: combined,
-        draft_price: row.draft_price == null ? "" : String(row.draft_price),
-        draft_weight: row.draft_weight == null ? "" : String(row.draft_weight),
-        draft_weight_unit: row.draft_weight_unit ?? "",
-        draft_variant_image_url: row.draft_variant_image_url ?? "",
-        variation_color_se: variationColor,
-        variation_size_se: variationSize,
-        variation_other_se: variationOther,
-        variation_amount_se: variationAmount,
-        draft_raw_row: raw,
-      };
-    },
-    []
-  );
-
-  const buildVariantRowsPayload = useCallback((rows: DraftVariantEditorRow[]) => {
-    const parseOptionalNumber = (value: string) => {
-      const text = String(value || "").trim();
-      if (!text) return null;
-      const normalized = text.replace(/\s+/g, "").replace(",", ".");
-      const numeric = Number(normalized);
-      return Number.isFinite(numeric) ? numeric : null;
-    };
-    return rows.map((row) => {
-      const raw = {
-        ...(row.draft_raw_row ?? {}),
-        draft_option1: row.draft_option1.trim(),
-        draft_option2: row.draft_option2.trim(),
-        draft_option3: row.draft_option3.trim(),
-        draft_option4: row.draft_option4.trim(),
-        variation_color_se: row.variation_color_se.trim(),
-        variation_size_se: row.variation_size_se.trim(),
-        variation_other_se: row.variation_other_se.trim(),
-        variation_amount_se: row.variation_amount_se.trim(),
-      };
-      const combined =
-        buildVariantCombinedZhValue({
-          draft_option1: row.draft_option1,
-          draft_option2: row.draft_option2,
-          draft_option3: row.draft_option3,
-          draft_option4: row.draft_option4,
-          fallback: row.draft_option_combined_zh,
-        });
-      return {
-        id: row.id,
-        draft_sku: row.draft_sku.trim() || null,
-        draft_option1: row.draft_option1.trim() || null,
-        draft_option2: row.draft_option2.trim() || null,
-        draft_option3: row.draft_option3.trim() || null,
-        draft_option4: row.draft_option4.trim() || null,
-        draft_option_combined_zh: combined || null,
-        draft_price: parseOptionalNumber(row.draft_price),
-        draft_weight: parseOptionalNumber(row.draft_weight),
-        draft_weight_unit: row.draft_weight_unit.trim() || null,
-        draft_variant_image_url: row.draft_variant_image_url.trim() || null,
-        variation_color_se: row.variation_color_se.trim(),
-        variation_size_se: row.variation_size_se.trim(),
-        variation_other_se: row.variation_other_se.trim(),
-        variation_amount_se: row.variation_amount_se.trim(),
-        draft_raw_row: raw,
-      };
-    });
-  }, []);
-
-  const closeVariantsEditor = useCallback((force = false) => {
-    if (!force && (variantsEditorSaving || variantsEditorAiRunning)) return;
-    setVariantsEditorOpen(false);
-    setVariantsEditorSpu("");
-    setVariantsEditorRows([]);
-    setVariantsEditorThumbs([]);
-    setVariantsEditorError(null);
-    setVariantsEditorSelectedRows(new Set());
-    setVariantsEditorPacksText("");
-    setVariantsEditorAiPrompt("");
-    setVariantsEditorSort({ key: null, direction: "asc" });
-  }, [variantsEditorAiRunning, variantsEditorSaving]);
-
-  const openVariantsEditor = useCallback(
-    async (spu: string | null | undefined) => {
-      const targetSpu = String(spu || "").trim();
-      if (!targetSpu) return;
-      setVariantsEditorOpen(true);
-      setVariantsEditorSpu(targetSpu);
-      setVariantsEditorRows([]);
-      setVariantsEditorThumbs([]);
-      setVariantsEditorSelectedRows(new Set());
-      setVariantsEditorSort({ key: null, direction: "asc" });
-      setVariantsEditorError(null);
-      setVariantsEditorLoading(true);
-      void fetchVariantEditorThumbs(targetSpu);
-      try {
-        const url = new URL("/api/drafts/variants", window.location.origin);
-        url.searchParams.set("spu", targetSpu);
-        const response = await fetch(url.toString());
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to load variants.");
-        }
-        const rows = Array.isArray(payload?.items)
-          ? (payload.items as DraftSkuRow[]).map(mapDraftSkuToVariantEditorRow)
-          : [];
-        setVariantsEditorRows(rows);
-      } catch (err) {
-        setVariantsEditorError((err as Error).message);
-      } finally {
-        setVariantsEditorLoading(false);
-      }
-    },
-    [fetchVariantEditorThumbs, mapDraftSkuToVariantEditorRow]
-  );
-
-  const handleVariantEditorCellChange = useCallback(
-    (rowKey: string, field: keyof DraftVariantEditorRow, value: string) => {
-      setVariantsEditorRows((prev) =>
-        prev.map((row) => {
-          if (row.key !== rowKey) return row;
-          const nextRow = { ...row, [field]: value } as DraftVariantEditorRow;
-          return nextRow;
-        })
-      );
-    },
-    []
-  );
-
-  const handleVariantEditorToggleRow = useCallback((rowKey: string) => {
-    setVariantsEditorSelectedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowKey)) {
-        next.delete(rowKey);
-      } else {
-        next.add(rowKey);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleVariantEditorToggleAll = useCallback(() => {
-    setVariantsEditorSelectedRows((prev) => {
-      if (variantsEditorRows.length > 0 && prev.size === variantsEditorRows.length) {
-        return new Set();
-      }
-      return new Set(variantsEditorRows.map((row) => row.key));
-    });
-  }, [variantsEditorRows]);
-
-  const handleVariantEditorSort = useCallback((key: VariantEditorSortKey) => {
-    setVariantsEditorSort((prev) => {
-      if (prev.key === key) {
-        return {
-          key,
-          direction: prev.direction === "asc" ? "desc" : "asc",
-        };
-      }
-      return {
-        key,
-        direction: "asc",
-      };
-    });
-  }, []);
-
-  const variantsEditorSortedRows = useMemo(() => {
-    const sortKey = variantsEditorSort.key;
-    if (!sortKey) {
-      return variantsEditorRows;
-    }
-    const getValue = (row: DraftVariantEditorRow, key: VariantEditorSortKey) => {
-      if (key === "sku") return row.draft_sku;
-      if (key === "color") return row.variation_color_se || row.draft_option1;
-      if (key === "size") return row.variation_size_se || row.draft_option2;
-      if (key === "order") return row.variation_other_se || row.draft_option3;
-      return row.variation_amount_se || row.draft_option4;
-    };
-    const parseNumericAmount = (value: string) => {
-      const normalized = String(value || "")
-        .trim()
-        .replace(",", ".")
-        .match(/-?\d+(?:\.\d+)?/);
-      if (!normalized) return null;
-      const numeric = Number(normalized[0]);
-      return Number.isFinite(numeric) ? numeric : null;
-    };
-    const directionFactor = variantsEditorSort.direction === "asc" ? 1 : -1;
-    return [...variantsEditorRows].sort((left, right) => {
-      const leftValue = String(getValue(left, sortKey) || "").trim();
-      const rightValue = String(getValue(right, sortKey) || "").trim();
-      if (sortKey === "amount") {
-        const leftNumeric = parseNumericAmount(leftValue);
-        const rightNumeric = parseNumericAmount(rightValue);
-        if (leftNumeric != null && rightNumeric != null && leftNumeric !== rightNumeric) {
-          return (leftNumeric - rightNumeric) * directionFactor;
-        }
-      }
-      return (
-        leftValue.localeCompare(rightValue, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        }) * directionFactor
-      );
-    });
-  }, [variantsEditorRows, variantsEditorSort]);
-
-  const variantsEditorColumnStyles = useMemo(() => {
-    const sample = variantsEditorRows.slice(0, 420);
-    const makeStyle = (
-      headerText: string,
-      values: unknown[],
-      options: { minPx: number; maxPx: number; headerAsMax?: boolean }
+  const handleToggleFile = useCallback(
+    (
+      pathValue: string,
+      options?: { shiftKey?: boolean; imageRange?: boolean }
     ) => {
-      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
-      return {
-        width: `${width}px`,
-        minWidth: `${options.minPx}px`,
-        maxWidth: `${options.maxPx}px`,
-      };
-    };
-
-    return {
-      selection: {
-        width: "44px",
-        minWidth: "44px",
-        maxWidth: "44px",
-      },
-      sku: makeStyle(
-        "SKU",
-        sample.map((row) => row.draft_sku),
-        { minPx: 170, maxPx: 360 }
-      ),
-      colorSe: makeStyle(
-        "Color (SE)",
-        sample.map((row) => row.variation_color_se || row.draft_option1),
-        { minPx: 110, maxPx: 260 }
-      ),
-      sizeSe: makeStyle(
-        "Size (SE)",
-        sample.map((row) => row.variation_size_se || row.draft_option2),
-        { minPx: 96, maxPx: 210 }
-      ),
-      otherSe: makeStyle(
-        "Other (SE)",
-        sample.map((row) => row.variation_other_se || row.draft_option3),
-        { minPx: 126, maxPx: 340 }
-      ),
-      amountSe: makeStyle(
-        "Amount (SE)",
-        sample.map((row) => row.variation_amount_se || row.draft_option4),
-        { minPx: 112, maxPx: 260 }
-      ),
-      optionCombinedZh: makeStyle(
-        "Option Combined (ZH)",
-        sample.map((row) => row.draft_option_combined_zh),
-        { minPx: 210, maxPx: 540 }
-      ),
-      colorZh: makeStyle(
-        "Color (ZH)",
-        sample.map((row) => row.draft_option1),
-        { minPx: 110, maxPx: 260 }
-      ),
-      sizeZh: makeStyle(
-        "Size (ZH)",
-        sample.map((row) => row.draft_option2),
-        { minPx: 96, maxPx: 210 }
-      ),
-      otherZh: makeStyle(
-        "Other (ZH)",
-        sample.map((row) => row.draft_option3),
-        { minPx: 126, maxPx: 340 }
-      ),
-      amountZh: makeStyle(
-        "Amount (ZH)",
-        sample.map((row) => row.draft_option4),
-        { minPx: 112, maxPx: 260 }
-      ),
-      price: makeStyle(
-        "Price",
-        sample.map((row) => row.draft_price),
-        { minPx: 90, maxPx: 150, headerAsMax: true }
-      ),
-      weight: makeStyle(
-        "Weight",
-        sample.map((row) => row.draft_weight),
-        { minPx: 100, maxPx: 170, headerAsMax: true }
-      ),
-    };
-  }, [variantsEditorRows]);
-
-  const handleVariantEditorAddRow = useCallback(() => {
-    const fallbackSkuBase = variantsEditorSpu || "SKU";
-    setVariantsEditorRows((prev) => {
-      const template = prev[prev.length - 1];
-      return [
-        ...prev,
-        {
-          key: createVariantEditorKey(),
-          id: null,
-          draft_spu: variantsEditorSpu,
-          draft_sku: template?.draft_sku
-            ? `${template.draft_sku}-copy`
-            : `${fallbackSkuBase}-copy`,
-          draft_option1: template?.draft_option1 ?? "",
-          draft_option2: template?.draft_option2 ?? "",
-          draft_option3: template?.draft_option3 ?? "",
-          draft_option4: template?.draft_option4 ?? "",
-          draft_option_combined_zh: "",
-          draft_price: template?.draft_price ?? "",
-          draft_weight: template?.draft_weight ?? "",
-          draft_weight_unit: template?.draft_weight_unit ?? "",
-          draft_variant_image_url: "",
-          variation_color_se: template?.variation_color_se ?? "",
-          variation_size_se: template?.variation_size_se ?? "",
-          variation_other_se: template?.variation_other_se ?? "",
-          variation_amount_se: template?.variation_amount_se ?? "",
-          draft_raw_row: { ...(template?.draft_raw_row ?? {}) },
-        },
-      ];
-    });
-  }, [variantsEditorSpu]);
-
-  const handleVariantEditorDeleteSelected = useCallback(() => {
-    if (variantsEditorSelectedRows.size === 0) return;
-    setVariantsEditorRows((prev) =>
-      prev.filter((row) => !variantsEditorSelectedRows.has(row.key))
-    );
-    setVariantsEditorSelectedRows(new Set());
-  }, [variantsEditorSelectedRows]);
-
-  const handleVariantEditorAddPacks = useCallback(() => {
-    const tokens = variantsEditorPacksText.match(/\d+/g) ?? [];
-    const seenPacks = new Set<number>();
-    const packValues: number[] = [];
-    tokens.forEach((token) => {
-      const numeric = Number(token);
-      if (!Number.isFinite(numeric) || numeric <= 0 || seenPacks.has(numeric)) return;
-      seenPacks.add(numeric);
-      packValues.push(numeric);
-    });
-    if (packValues.length === 0) {
-      setVariantsEditorError("Enter pack numbers, for example: 1, 2, 4, 10.");
-      return;
-    }
-    setVariantsEditorError(null);
-    setVariantsEditorRows((prev) => {
-      const originalRows: DraftVariantEditorRow[] = prev.map((row): DraftVariantEditorRow => {
-        const skuBaseRaw = stripSkuPackSuffix(row.draft_sku);
-        const skuBase = skuBaseRaw || String(variantsEditorSpu || "SKU").trim();
-        const onePackLabel = "1";
-        return {
-          ...row,
-          draft_sku: `${skuBase}-1P`,
-          draft_option4: onePackLabel,
-          variation_amount_se: onePackLabel,
-          draft_option_combined_zh: buildVariantCombinedZhValue({
-            draft_option1: row.draft_option1,
-            draft_option2: row.draft_option2,
-            draft_option3: row.draft_option3,
-            draft_option4: onePackLabel,
-            fallback: row.draft_option_combined_zh,
-          }),
-          draft_raw_row: {
-            ...(row.draft_raw_row ?? {}),
-            draft_option4: onePackLabel,
-            variation_amount_se: onePackLabel,
-          } as Record<string, unknown>,
-        };
-      });
-      const packsToClone = packValues.slice(1).filter((packValue) => packValue > 1);
-      if (packsToClone.length === 0) {
-        return originalRows;
-      }
-      const next: DraftVariantEditorRow[] = [...originalRows];
-      const usedSkus = new Set(
-        originalRows.map((row) => row.draft_sku.trim().toLowerCase()).filter(Boolean)
-      );
-      const createUniqueSku = (baseSku: string) => {
-        const base = baseSku.trim() || `${variantsEditorSpu || "sku"}-copy`;
-        let candidate = base;
-        let index = 2;
-        while (usedSkus.has(candidate.toLowerCase())) {
-          candidate = `${base}-${index}`;
-          index += 1;
-        }
-        usedSkus.add(candidate.toLowerCase());
-        return candidate;
-      };
-      originalRows.forEach((row) => {
-        const skuBaseRaw = stripSkuPackSuffix(row.draft_sku);
-        const skuBase = skuBaseRaw || String(variantsEditorSpu || "SKU").trim();
-        packsToClone.forEach((packValue) => {
-          const label = String(packValue);
-          const nextSku = createUniqueSku(`${skuBase}-${packValue}P`);
-          const cloned: DraftVariantEditorRow = {
-            ...row,
-            key: createVariantEditorKey(),
-            id: null,
-            draft_sku: nextSku,
-            draft_option4: label,
-            variation_amount_se: label,
-            draft_option_combined_zh: buildVariantCombinedZhValue({
-              draft_option1: row.draft_option1,
-              draft_option2: row.draft_option2,
-              draft_option3: row.draft_option3,
-              draft_option4: label,
-              fallback: row.draft_option_combined_zh,
-            }),
-            draft_raw_row: {
-              ...(row.draft_raw_row ?? {}),
-              draft_option4: label,
-              variation_amount_se: label,
-            } as Record<string, unknown>,
-          };
-          next.push(cloned);
-        });
-      });
-      return next;
-    });
-  }, [variantsEditorPacksText, variantsEditorSpu]);
-
-  const handleVariantEditorRunAi = useCallback(async () => {
-    if (variantsEditorAiRunning || variantsEditorSaving) return;
-    const prompt = variantsEditorAiPrompt.trim();
-    if (!variantsEditorSpu) return;
-    if (!prompt) {
-      setVariantsEditorError("Add instructions before running AI.");
-      return;
-    }
-    setVariantsEditorAiRunning(true);
-    setVariantsEditorError(null);
-    try {
-      const response = await fetch("/api/drafts/variants/ai-update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          spu: variantsEditorSpu,
-          instruction: prompt,
-          variants: buildVariantRowsPayload(variantsEditorRows),
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "AI update failed.");
-      }
-      const nextRows = Array.isArray(payload?.variants)
-        ? (payload.variants as Array<Record<string, unknown>>).map((row) =>
-            mapDraftSkuToVariantEditorRow({
-              id: String(row.id ?? ""),
-              draft_sku: String(row.draft_sku ?? ""),
-              draft_spu: String(row.draft_spu ?? variantsEditorSpu),
-              draft_option1:
-                row.draft_option1 == null ? null : String(row.draft_option1),
-              draft_option2:
-                row.draft_option2 == null ? null : String(row.draft_option2),
-              draft_option3:
-                row.draft_option3 == null ? null : String(row.draft_option3),
-              draft_option4:
-                row.draft_option4 == null ? null : String(row.draft_option4),
-              draft_option_combined_zh: String(row.draft_option_combined_zh ?? ""),
-              draft_price:
-                row.draft_price == null ? null : (row.draft_price as number | string),
-              draft_weight:
-                row.draft_weight == null ? null : (row.draft_weight as number | string),
-              draft_weight_unit: row.draft_weight_unit == null ? null : String(row.draft_weight_unit),
-              draft_variant_image_url:
-                row.draft_variant_image_url == null
-                  ? null
-                  : String(row.draft_variant_image_url),
-              draft_status: "draft",
-              draft_updated_at: null,
-              draft_raw_row:
-                row.draft_raw_row && typeof row.draft_raw_row === "object"
-                  ? (row.draft_raw_row as Record<string, unknown>)
-                  : ({
-                      variation_color_se: row.variation_color_se,
-                      variation_size_se: row.variation_size_se,
-                      variation_other_se: row.variation_other_se,
-                      variation_amount_se: row.variation_amount_se,
-                    } as Record<string, unknown>),
-            })
-          )
-        : [];
-      setVariantsEditorRows(nextRows);
-      setVariantsEditorSelectedRows(new Set());
-    } catch (err) {
-      setVariantsEditorError((err as Error).message);
-    } finally {
-      setVariantsEditorAiRunning(false);
-    }
-  }, [
-    buildVariantRowsPayload,
-    mapDraftSkuToVariantEditorRow,
-    variantsEditorAiPrompt,
-    variantsEditorAiRunning,
-    variantsEditorRows,
-    variantsEditorSaving,
-    variantsEditorSpu,
-  ]);
-
-  const handleVariantEditorSave = useCallback(async () => {
-    if (!variantsEditorSpu || variantsEditorSaving || variantsEditorAiRunning) return;
-    setVariantsEditorSaving(true);
-    setVariantsEditorError(null);
-    try {
-      const response = await fetch("/api/drafts/variants/replace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          spu: variantsEditorSpu,
-          variants: buildVariantRowsPayload(variantsEditorRows),
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to save variants.");
-      }
-      await fetchSpuRows();
-      await fetchSkuRows();
-      closeVariantsEditor(true);
-    } catch (err) {
-      setVariantsEditorError((err as Error).message);
-    } finally {
-      setVariantsEditorSaving(false);
-    }
-  }, [
-    buildVariantRowsPayload,
-    closeVariantsEditor,
-    fetchSkuRows,
-    fetchSpuRows,
-    variantsEditorAiRunning,
-    variantsEditorRows,
-    variantsEditorSaving,
-    variantsEditorSpu,
-  ]);
-
-  const handleOpenFileViewer = useCallback(async (entry: DraftEntry) => {
-    if (!isTextFileEditable(entry)) return;
-    setFileViewerPath(entry.path);
-    setFileViewerContent("");
-    setFileViewerError(null);
-    setFileViewerLoading(true);
-    try {
-      const response = await fetch(
-        `/api/drafts/files/content?path=${encodeURIComponent(entry.path)}`
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to open file.");
-      }
-      setFileViewerContent(String(payload?.content ?? ""));
-    } catch (err) {
-      setFileViewerError((err as Error).message);
-    } finally {
-      setFileViewerLoading(false);
-    }
-  }, [isTextFileEditable]);
-
-  const handleSaveFileViewer = useCallback(async () => {
-    if (!fileViewerPath || fileViewerSaving) return;
-    setFileViewerSaving(true);
-    setFileViewerError(null);
-    try {
-      const response = await fetch("/api/drafts/files/content", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: fileViewerPath,
-          content: fileViewerContent,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to save file.");
-      }
-      if (currentPath) {
-        refreshEntries(currentPath);
-      }
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
-    } catch (err) {
-      setFileViewerError((err as Error).message);
-    } finally {
-      setFileViewerSaving(false);
-    }
-  }, [
-    currentPath,
-    fetchFolderTree,
-    fileViewerContent,
-    fileViewerPath,
-    fileViewerSaving,
-    refreshEntries,
-    selectedFolder,
-  ]);
-
-  const trySendPhotopeaFile = useCallback(() => {
-    const targetWindow = photopeaIframeRef.current?.contentWindow;
-    if (!targetWindow) return;
-    if (!photopeaReadyRef.current) return;
-    if (photopeaFileSentRef.current) return;
-    const buffer = photopeaFileBufferRef.current;
-    if (!buffer) return;
-    photopeaFileSentRef.current = true;
-    photopeaFileBufferRef.current = null;
-    targetWindow.postMessage(buffer, "https://www.photopea.com", [buffer]);
-  }, []);
-
-  const closePhotopea = useCallback(() => {
-    setPhotopeaOpen(false);
-    setPhotopeaEntry(null);
-    setPhotopeaReady(false);
-    setPhotopeaLoading(false);
-    setPhotopeaExporting(false);
-    setPhotopeaPersisting(false);
-    photopeaPersistingRef.current = false;
-    setPhotopeaError(null);
-    photopeaReadyRef.current = false;
-    photopeaFileSentRef.current = false;
-    photopeaFileBufferRef.current = null;
-    photopeaExportBufferRef.current = null;
-  }, []);
-
-  const openPhotopeaEditor = useCallback(
-    async (entry: DraftEntry) => {
-      if (entry.type !== "file" || !isImage(entry.name)) return;
-      setPhotopeaOpen(true);
-      setPhotopeaEntry(entry);
-      setPhotopeaReady(false);
-      setPhotopeaError(null);
-      setPhotopeaLoading(true);
-      setPhotopeaExporting(false);
-      setPhotopeaPersisting(false);
-      photopeaPersistingRef.current = false;
-      setPhotopeaSessionKey((prev) => prev + 1);
-      photopeaReadyRef.current = false;
-      photopeaFileSentRef.current = false;
-      photopeaExportBufferRef.current = null;
-      photopeaFileBufferRef.current = null;
-      try {
-        const response = await fetch(buildDraftDownloadUrl(entry.path, entry.modifiedAt));
-        if (!response.ok) {
-          const message = await response.text().catch(() => "");
-          throw new Error(message || "Unable to load image.");
-        }
-        const buffer = await response.arrayBuffer();
-        photopeaFileBufferRef.current = buffer;
-        trySendPhotopeaFile();
-      } catch (err) {
-        setPhotopeaError((err as Error).message);
-      } finally {
-        setPhotopeaLoading(false);
-      }
-    },
-    [buildDraftDownloadUrl, isImage, trySendPhotopeaFile]
-  );
-
-  const requestPhotopeaExport = useCallback(() => {
-    const win = photopeaIframeRef.current?.contentWindow;
-    if (!win) return;
-    setPhotopeaError(null);
-    setPhotopeaExporting(true);
-    photopeaExportBufferRef.current = null;
-    win.postMessage("app.activeDocument.saveToOE('jpg:0.92');", "https://www.photopea.com");
-  }, []);
-
-  const savePhotopeaResult = useCallback(async () => {
-    const buffer = photopeaExportBufferRef.current;
-    const activeEntry = photopeaEntry;
-    if (!buffer || !activeEntry || photopeaPersistingRef.current) return;
-    photopeaExportBufferRef.current = null;
-    setPhotopeaExporting(false);
-    setPhotopeaPersisting(true);
-    photopeaPersistingRef.current = true;
-    setPhotopeaError(null);
-
-    const oldPath = activeEntry.path;
-    setReloadingImagePaths((prev) => new Set(prev).add(oldPath));
-    try {
-      const formData = new FormData();
-      formData.append("path", oldPath);
-      formData.append(
-        "file",
-        new Blob([buffer], { type: "image/jpeg" }),
-        "photopea.jpg"
-      );
-      const response = await fetch("/api/drafts/images/replace", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Save failed.");
-      }
-
-      const newPath = String(payload?.path || oldPath);
-      const newName = String(payload?.name || activeEntry.name);
-      const newModifiedAt = String(payload?.modifiedAt || new Date().toISOString());
-      const newSize = Number(payload?.size ?? activeEntry.size ?? 0);
-      const newPixelQualityScore =
-        typeof payload?.pixelQualityScore === "number" &&
-        Number.isFinite(payload.pixelQualityScore)
-          ? Math.round(payload.pixelQualityScore)
-          : null;
-      const newZimageUpscaled =
-        typeof payload?.zimageUpscaled === "boolean"
-          ? payload.zimageUpscaled
-          : false;
-
-      setEntries((prev) => {
-        let hadNew = false;
-        let hadOld = false;
-        const next = prev
-          .map((item) => {
-            if (item.path === newPath) {
-              hadNew = true;
-              return {
-                ...item,
-                name: newName,
-                path: newPath,
-                modifiedAt: newModifiedAt,
-                size: newSize,
-                pixelQualityScore: newPixelQualityScore,
-                zimageUpscaled: newZimageUpscaled,
-              };
+      const shiftRangeRequested = Boolean(options?.shiftKey && options?.imageRange);
+      setSelectedFiles((prev) => {
+        const next = new Set(prev);
+        if (shiftRangeRequested) {
+          const anchorPath = selectionAnchorImagePathRef.current;
+          const imagePaths = entries
+            .filter(
+              (entry) => entry.type === "file" && isImage(entry.name)
+            )
+            .map((entry) => entry.path);
+          const anchorIndex = anchorPath ? imagePaths.indexOf(anchorPath) : -1;
+          const targetIndex = imagePaths.indexOf(pathValue);
+          if (anchorIndex >= 0 && targetIndex >= 0) {
+            const [start, end] =
+              anchorIndex <= targetIndex
+                ? [anchorIndex, targetIndex]
+                : [targetIndex, anchorIndex];
+            for (let index = start; index <= end; index += 1) {
+              next.add(imagePaths[index]);
             }
-            if (item.path === oldPath) {
-              hadOld = true;
-              // If we changed extension, drop the old entry and keep/patch the newPath entry above.
-              return null;
-            }
-            return item;
-          })
-          .filter(Boolean) as DraftEntry[];
-
-        if (!hadNew) {
-          if (hadOld) {
-            next.push({
-              ...activeEntry,
-              name: newName,
-              path: newPath,
-              modifiedAt: newModifiedAt,
-              size: newSize,
-              pixelQualityScore: newPixelQualityScore,
-              zimageUpscaled: newZimageUpscaled,
-            });
+            selectionAnchorImagePathRef.current = pathValue;
+            return next;
           }
         }
-        return next;
-      });
-      setSelectedFiles((prev) => {
-        if (!prev.has(oldPath)) return prev;
-        const next = new Set(prev);
-        next.delete(oldPath);
-        next.add(newPath);
-        return next;
-      });
-      setPreviewPath((prev) => (prev === oldPath ? newPath : prev));
-      setImageDimensions((prev) => {
-        const next: Record<string, { width: number; height: number }> = { ...prev };
-        if (oldPath !== newPath) {
-          delete next[oldPath];
-        }
-        return next;
-      });
-      setReloadingImagePaths((prev) => {
-        const next = new Set(prev);
-        if (oldPath !== newPath) {
-          next.delete(oldPath);
-        }
-        next.add(newPath);
-        return next;
-      });
-      setPhotopeaEntry((prev) =>
-        prev
-          ? {
-              ...prev,
-              path: newPath,
-              name: newName,
-              modifiedAt: newModifiedAt,
-              size: newSize,
-              pixelQualityScore: newPixelQualityScore,
-              zimageUpscaled: newZimageUpscaled,
-            }
-          : prev
-      );
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
-    } catch (err) {
-      setPhotopeaError((err as Error).message);
-    } finally {
-      setPhotopeaPersisting(false);
-      photopeaPersistingRef.current = false;
-    }
-  }, [fetchFolderTree, photopeaEntry, selectedFolder]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== "https://www.photopea.com") return;
-      const data = event.data as unknown;
-      if (typeof data === "string") {
-        if (data === "__hub_photopea_ready__") {
-          photopeaReadyRef.current = true;
-          setPhotopeaReady(true);
-          trySendPhotopeaFile();
-          return;
+        if (next.has(pathValue)) {
+          next.delete(pathValue);
+        } else {
+          next.add(pathValue);
         }
-        if (data === "done") {
-          // Photopea sends "done" after each script finishes. If we just received an
-          // exported buffer (via saveToOE), finalize by writing it to the draft path.
-          return;
-        }
-        return;
-      }
-      if (data instanceof ArrayBuffer) {
-        photopeaExportBufferRef.current = data;
-        void savePhotopeaResult();
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [savePhotopeaResult, trySendPhotopeaFile]);
-
-  const handleToggleTreeFolder = (pathValue: string) => {
-    setSelectedTreeFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(pathValue)) {
-        next.delete(pathValue);
-      } else {
-        next.add(pathValue);
-      }
-      return next;
-    });
-  };
+        selectionAnchorImagePathRef.current = pathValue;
+        return next;
+      });
+    },
+    [entries, isImage]
+  );
 
   const handleToggleAllNonImageFiles = useCallback(() => {
     setSelectedFiles((prev) => {
@@ -6431,6 +5469,64 @@ export default function DraftExplorerPage() {
     [currentPath, fetchFolderTree, refreshEntries, selectedFolder]
   );
 
+  const handleCopyImageToClipboard = useCallback(
+    async (entry: DraftEntry) => {
+      if (entry.type !== "file" || !isImage(entry.name)) return;
+      if (!navigator?.clipboard || typeof ClipboardItem === "undefined") {
+        setError("Clipboard image copy is not supported in this browser.");
+        return;
+      }
+      try {
+        setError(null);
+        const response = await fetch(buildDraftDownloadUrl(entry.path, entry.modifiedAt), {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error("Unable to download image for clipboard copy.");
+        }
+        const blob = await response.blob();
+        let pngBlob: Blob = blob;
+        if (blob.type !== "image/png") {
+          const objectUrl = URL.createObjectURL(blob);
+          try {
+            const image = new Image();
+            image.decoding = "async";
+            image.src = objectUrl;
+            await new Promise<void>((resolve, reject) => {
+              image.onload = () => resolve();
+              image.onerror = () =>
+                reject(new Error("Unable to prepare image for clipboard copy."));
+            });
+            const canvas = document.createElement("canvas");
+            canvas.width = image.naturalWidth || image.width || 1;
+            canvas.height = image.naturalHeight || image.height || 1;
+            const context = canvas.getContext("2d");
+            if (!context) {
+              throw new Error("Unable to prepare image for clipboard copy.");
+            }
+            context.drawImage(image, 0, 0);
+            const converted = await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob(resolve, "image/png")
+            );
+            if (!converted) {
+              throw new Error("Unable to prepare image for clipboard copy.");
+            }
+            pngBlob = converted;
+          } finally {
+            URL.revokeObjectURL(objectUrl);
+          }
+        }
+        const clipboardItem = new ClipboardItem({
+          "image/png": pngBlob,
+        });
+        await navigator.clipboard.write([clipboardItem]);
+      } catch (err) {
+        setError((err as Error).message || "Unable to copy image to clipboard.");
+      }
+    },
+    [buildDraftDownloadUrl, isImage]
+  );
+
   const handleCreateCopiesForEntries = useCallback(
     async (sourceEntries: DraftEntry[]) => {
       if (bulkImageActionPending) return;
@@ -6471,7 +5567,7 @@ export default function DraftExplorerPage() {
           const now = new Date().toISOString();
           setEntries((prev) => {
             const existing = new Set(prev.map((row) => row.path));
-            let next = [...prev];
+            const next = [...prev];
             for (const item of created) {
               if (existing.has(item.path)) continue;
               existing.add(item.path);
@@ -6517,14 +5613,136 @@ export default function DraftExplorerPage() {
     ]
   );
 
-	  const runAiEditsForEntries = useCallback(
-	    async (
-	      sourceEntries: DraftEntry[],
-	      provider: AiEditProvider,
-	      mode: AiPromptMode,
-	      promptText: string,
-	      options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
-	    ) => {
+  const handleUndoLastChangeForEntries = useCallback(
+    async (sourceEntries: DraftEntry[]) => {
+      if (bulkImageActionPending) return;
+      const targets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      if (targets.length === 0) return;
+      const locked = targets.filter(
+        (entry) =>
+          Boolean(pendingAiEditsByOriginal[entry.path]) ||
+          Boolean(aiEditJobsByPath[entry.path])
+      );
+      if (locked.length > 0) {
+        setError("Resolve pending/running AI edits before undo.");
+        return;
+      }
+
+      setBulkImageActionPending(true);
+      setError(null);
+      const failures: string[] = [];
+      const updates: Record<
+        string,
+        { path: string; name: string; size: number; modifiedAt: string }
+      > = {};
+
+      try {
+        for (const entry of targets) {
+          try {
+            const response = await fetch("/api/drafts/images/undo", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: entry.path }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Undo failed.");
+            }
+            const nextPath = String(payload?.path || entry.path).trim() || entry.path;
+            const nextName = String(payload?.name || entry.name).trim() || entry.name;
+            const nextSize =
+              typeof payload?.size === "number" && Number.isFinite(payload.size)
+                ? payload.size
+                : entry.size;
+            const nextModifiedAt =
+              String(payload?.modifiedAt || "").trim() || new Date().toISOString();
+            updates[entry.path] = {
+              path: nextPath,
+              name: nextName,
+              size: nextSize,
+              modifiedAt: nextModifiedAt,
+            };
+          } catch (err) {
+            failures.push(`${entry.name}: ${(err as Error).message}`);
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          setEntries((prev) =>
+            prev.map((item) => {
+              const update = updates[item.path];
+              if (!update) return item;
+              return {
+                ...item,
+                path: update.path,
+                name: update.name,
+                size: update.size,
+                modifiedAt: update.modifiedAt,
+              };
+            })
+          );
+          setSelectedFiles((prev) => {
+            if (prev.size === 0) return prev;
+            const next = new Set(prev);
+            Object.entries(updates).forEach(([oldPath, update]) => {
+              if (!next.has(oldPath)) return;
+              next.delete(oldPath);
+              next.add(update.path);
+            });
+            return next;
+          });
+          setPreviewPath((prev) => {
+            if (!prev) return prev;
+            const update = updates[prev];
+            return update ? update.path : prev;
+          });
+          setImageDimensions((prev) => {
+            const next: Record<string, { width: number; height: number }> = {
+              ...prev,
+            };
+            Object.entries(updates).forEach(([oldPath, update]) => {
+              delete next[oldPath];
+              delete next[update.path];
+            });
+            return next;
+          });
+        }
+
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
+        }
+      } finally {
+        setBulkImageActionPending(false);
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Failed to undo ${failures.length} image(s): ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+    },
+    [
+      aiEditJobsByPath,
+      bulkImageActionPending,
+      fetchFolderTree,
+      isImage,
+      pendingAiEditsByOriginal,
+      selectedFolder,
+    ]
+  );
+
+  const runAiEditsForEntries = useCallback(
+    async (
+      sourceEntries: DraftEntry[],
+      provider: AiEditProvider,
+      mode: AiPromptMode,
+      promptText: string,
+      options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
+    ) => {
       const deduped = sourceEntries.filter(
         (entry, index, arr) =>
           entry.type === "file" &&
@@ -6532,6 +5750,35 @@ export default function DraftExplorerPage() {
           arr.findIndex((candidate) => candidate.path === entry.path) === index
       );
       if (deduped.length === 0) return;
+      if (deduped.length > 1) {
+        const providerLabel =
+          provider === "chatgpt" ? "ChatGPT" : provider === "gemini" ? "Gemini" : "Z-Image";
+        const modeLabel =
+          options?.templatePreset === "digideal_main"
+            ? "Digideal Main"
+            : options?.templatePreset === "product_scene"
+              ? "Product Scene"
+              : mode === "template"
+                ? "Standard Template"
+                : mode === "direct"
+                  ? "Direct"
+                  : mode === "white_background"
+                    ? "White BG"
+                    : mode === "auto_center_white"
+                      ? "Auto Center Wide"
+                      : mode === "eraser"
+                        ? "Eraser"
+                        : "Upscale";
+        const outputCount = Number(options?.outputCount ?? 1);
+        const outputSuffix =
+          Number.isFinite(outputCount) && outputCount > 1
+            ? ` (${outputCount} outputs per image)`
+            : "";
+        const confirmed = window.confirm(
+          `Run ${providerLabel} ${modeLabel} on ${deduped.length} selected images${outputSuffix}?`
+        );
+        if (!confirmed) return;
+      }
 
       const skipped: string[] = [];
       const runnable = deduped.filter((entry) => {
@@ -6688,6 +5935,8 @@ export default function DraftExplorerPage() {
         setAiEditTargets([]);
         setAiEditProvider(provider);
         setAiEditMode(mode);
+        setAiEditTemplatePreset("standard");
+        setAiEditOutputCount(1);
         setAiEditPrompt("");
         setAiEditError(null);
         setError(null);
@@ -6697,10 +5946,42 @@ export default function DraftExplorerPage() {
       setAiEditTargets(targets);
       setAiEditProvider(provider);
       setAiEditMode(mode);
+      setAiEditTemplatePreset("standard");
+      setAiEditOutputCount(1);
       setAiEditPrompt("");
       setAiEditError(null);
     },
     [isImage, runAiEditsForEntries]
+  );
+
+  const startAiTemplatePresetForEntries = useCallback(
+    (
+      sourceEntries: DraftEntry[],
+      provider: Exclude<AiEditProvider, "zimage">,
+      templatePreset: Exclude<AiTemplatePreset, "standard">,
+      outputCount: number
+    ) => {
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length === 0) return;
+      setAiEditTargets(targets);
+      setAiEditProvider(provider);
+      setAiEditMode("template");
+      setAiEditTemplatePreset(templatePreset);
+      setAiEditOutputCount(
+        Number.isFinite(outputCount)
+          ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+          : 1
+      );
+      setAiEditPrompt("");
+      setAiEditError(null);
+      setError(null);
+    },
+    [isImage]
   );
 
   const startAiEdit = useCallback(
@@ -6713,6 +5994,8 @@ export default function DraftExplorerPage() {
   const cancelAiEdit = useCallback(() => {
     if (aiEditSubmitting) return;
     setAiEditTargets([]);
+    setAiEditTemplatePreset("standard");
+    setAiEditOutputCount(1);
     setAiEditPrompt("");
     setAiEditError(null);
   }, [aiEditSubmitting]);
@@ -6731,14 +6014,26 @@ export default function DraftExplorerPage() {
     const targets = [...aiEditTargets];
     const provider = aiEditProvider;
     const mode = aiEditMode;
+    const templatePreset = mode === "template" ? aiEditTemplatePreset : undefined;
+    const outputCount =
+      mode === "template" && aiEditTemplatePreset !== "standard"
+        ? aiEditOutputCount
+        : undefined;
     setAiEditSubmitting(true);
     setAiEditTargets([]);
+    setAiEditTemplatePreset("standard");
+    setAiEditOutputCount(1);
     setAiEditPrompt("");
     setAiEditError(null);
     setError(null);
     setAiEditSubmitting(false);
-    void runAiEditsForEntries(targets, provider, mode, promptText);
+    void runAiEditsForEntries(targets, provider, mode, promptText, {
+      templatePreset,
+      outputCount,
+    });
   }, [
+    aiEditOutputCount,
+    aiEditTemplatePreset,
     aiEditTargets,
     aiEditMode,
     aiEditPrompt,
@@ -7656,10 +6951,13 @@ export default function DraftExplorerPage() {
       const selected = entries.filter(
         (candidate) => candidate.type === "file" && selectedFiles.has(candidate.path)
       );
-      if (selected.length > 1 && selected.some((candidate) => candidate.path === entry.path)) {
-        return options?.imageOnly
+      if (entry.type === "file" && selected.length > 1) {
+        const filtered = options?.imageOnly
           ? selected.filter((candidate) => isImage(candidate.name))
           : selected;
+        if (filtered.length > 0) {
+          return filtered;
+        }
       }
       if (options?.imageOnly) {
         return entry.type === "file" && isImage(entry.name) ? [entry] : [];
@@ -7667,6 +6965,27 @@ export default function DraftExplorerPage() {
       return [entry];
     },
     [entries, isImage, selectedFiles]
+  );
+
+  const restoreSelectionAfterContextAction = useCallback(
+    (targets: DraftEntry[]) => {
+      const selectedPaths = Array.from(
+        new Set(
+          targets
+            .filter((entry) => entry.type === "file")
+            .map((entry) => entry.path)
+        )
+      );
+      if (selectedPaths.length === 0) return;
+      window.setTimeout(() => {
+        setSelectedFiles((prev) => {
+          const next = new Set(prev);
+          selectedPaths.forEach((pathValue) => next.add(pathValue));
+          return next;
+        });
+      }, 0);
+    },
+    []
   );
 
   const handleApplyImageTag = useCallback(
@@ -7775,6 +7094,7 @@ export default function DraftExplorerPage() {
       const tag = action.slice("tag-image:".length).trim().toUpperCase();
       if (tag === "MAIN" || tag === "ENV" || tag === "VAR") {
         const targets = resolveContextActionTargets(entry, { imageOnly: true });
+        restoreSelectionAfterContextAction(targets);
         void handleApplyImageTag(targets, tag);
         return;
       }
@@ -7792,7 +7112,23 @@ export default function DraftExplorerPage() {
       return;
     }
     if (action === "create-copy") {
-      handleCreateCopy(entry);
+      const targets = resolveContextActionTargets(entry);
+      restoreSelectionAfterContextAction(targets);
+      void handleCreateCopiesForEntries(targets);
+      return;
+    }
+    if (action === "copy-to-clipboard") {
+      if (entry.type === "file" && isImage(entry.name)) {
+        void handleCopyImageToClipboard(entry);
+      }
+      return;
+    }
+    if (action === "undo-last-change") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        void handleUndoLastChangeForEntries(targets);
+      }
       return;
     }
     if (action === "photopea") {
@@ -7802,30 +7138,40 @@ export default function DraftExplorerPage() {
     if (action === "ai-auto-center-white") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
         startAiEditForEntries(targets, "zimage", "auto_center_white");
       }
       return;
     }
-	    if (action === "ai-chatgpt-template") {
-	      startAiEdit(entry, "chatgpt", "template");
-	      return;
-	    }
+    if (action === "ai-chatgpt-template") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "chatgpt", "template");
+      }
+      return;
+    }
 	    if (action.startsWith("ai-chatgpt-digideal-main")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
-	        setError(null);
+          restoreSelectionAfterContextAction(targets);
           const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
           const outputCount = countRaw ? Number(countRaw) : 1;
-	        void runAiEditsForEntries(targets, "chatgpt", "template", "", {
-	          templatePreset: "digideal_main",
-            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
-	        });
+          startAiTemplatePresetForEntries(
+            targets,
+            "chatgpt",
+            "digideal_main",
+            Number.isFinite(outputCount)
+              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+              : 1
+          );
 	      }
 	      return;
 	    }
 	    if (action.startsWith("ai-chatgpt-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
+          restoreSelectionAfterContextAction(targets);
 	        setError(null);
           const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
           const outputCount = countRaw ? Number(countRaw) : 1;
@@ -7836,30 +7182,43 @@ export default function DraftExplorerPage() {
 	      }
 	      return;
 	    }
-	    if (action === "ai-chatgpt-direct") {
-	      startAiEdit(entry, "chatgpt", "direct");
-	      return;
-	    }
-	    if (action === "ai-gemini-template") {
-	      startAiEdit(entry, "gemini", "template");
-	      return;
-	    }
+    if (action === "ai-chatgpt-direct") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "chatgpt", "direct");
+      }
+      return;
+    }
+    if (action === "ai-gemini-template") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "gemini", "template");
+      }
+      return;
+    }
 	    if (action.startsWith("ai-gemini-digideal-main")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
-	        setError(null);
+          restoreSelectionAfterContextAction(targets);
           const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
           const outputCount = countRaw ? Number(countRaw) : 1;
-	        void runAiEditsForEntries(targets, "gemini", "template", "", {
-	          templatePreset: "digideal_main",
-            outputCount: Number.isFinite(outputCount) ? Math.max(1, Math.min(3, Math.floor(outputCount))) : 1,
-	        });
+          startAiTemplatePresetForEntries(
+            targets,
+            "gemini",
+            "digideal_main",
+            Number.isFinite(outputCount)
+              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+              : 1
+          );
 	      }
 	      return;
 	    }
 	    if (action.startsWith("ai-gemini-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
+          restoreSelectionAfterContextAction(targets);
 	        setError(null);
           const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
           const outputCount = countRaw ? Number(countRaw) : 1;
@@ -7870,24 +7229,44 @@ export default function DraftExplorerPage() {
 	      }
 	      return;
 	    }
-	    if (action === "ai-gemini-direct") {
-	      startAiEdit(entry, "gemini", "direct");
-	      return;
-	    }
+    if (action === "ai-gemini-direct") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "gemini", "direct");
+      }
+      return;
+    }
     if (action === "ai-zimage-white") {
-      startAiEdit(entry, "zimage", "white_background");
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "zimage", "white_background");
+      }
       return;
     }
     if (action === "ai-zimage-eraser") {
-      startAiEdit(entry, "zimage", "eraser");
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "zimage", "eraser");
+      }
       return;
     }
     if (action === "ai-zimage-direct") {
-      startAiEdit(entry, "zimage", "direct");
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "zimage", "direct");
+      }
       return;
     }
     if (action === "ai-zimage-upscale") {
-      startAiEdit(entry, "zimage", "upscale");
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiEditForEntries(targets, "zimage", "upscale");
+      }
       return;
     }
     if (action === "ai-review" && pendingAiEditsByOriginal[entry.path]) {
@@ -8007,7 +7386,9 @@ export default function DraftExplorerPage() {
               />
             </svg>
             <span className={styles.folderTreeNameText}>{node.name}</span>
-            <span className={styles.folderTreeCount}>({node.fileCount ?? 0})</span>
+            {node.fileCount > 0 ? (
+              <span className={styles.folderTreeCount}>({node.fileCount})</span>
+            ) : null}
           </button>
         </div>
         {!isCollapsed && hasChildren ? (
@@ -8395,18 +7776,22 @@ export default function DraftExplorerPage() {
       : aiEditProvider === "gemini"
         ? "Gemini"
         : "ZImage";
-	  const aiEditModeLabel =
-	    aiEditMode === "template"
-	      ? "Standard Template"
-	      : aiEditMode === "direct"
-	        ? "Direct"
-	        : aiEditMode === "white_background"
-	          ? "White Background"
-	          : aiEditMode === "auto_center_white"
-	            ? "Auto Center Wide"
-	          : aiEditMode === "eraser"
-	            ? "Eraser"
-	            : "Upscale";
+  const aiEditModeLabel =
+    aiEditMode === "template"
+      ? aiEditTemplatePreset === "digideal_main"
+        ? "DigiDL Main"
+        : aiEditTemplatePreset === "product_scene"
+          ? "Product Scene"
+          : "Standard Template"
+      : aiEditMode === "direct"
+        ? "Direct"
+        : aiEditMode === "white_background"
+          ? "White Background"
+          : aiEditMode === "auto_center_white"
+            ? "Auto Center Wide"
+            : aiEditMode === "eraser"
+              ? "Eraser"
+              : "Upscale";
   const variantsEditorAllSelected =
     variantsEditorRows.length > 0 &&
     variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
@@ -8421,6 +7806,8 @@ export default function DraftExplorerPage() {
       | "open"
       | "download"
       | "duplicate"
+      | "clipboard"
+      | "undo"
       | "tag"
       | "ai"
       | "photopea"
@@ -8489,6 +7876,45 @@ export default function DraftExplorerPage() {
           <path stroke="none" d="M0 0h24v24H0z" fill="none" />
           <path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" />
           <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+        </svg>
+      );
+    }
+    if (type === "clipboard") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h3m9 -9v-5a2 2 0 0 0 -2 -2h-2" />
+          <path d="M13 17v-1a1 1 0 0 1 1 -1h1m3 0h1a1 1 0 0 1 1 1v1m0 3v1a1 1 0 0 1 -1 1h-1m-3 0h-1a1 1 0 0 1 -1 -1v-1" />
+          <path d="M9 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2" />
+        </svg>
+      );
+    }
+    if (type === "undo") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M9 14l-4 -4l4 -4" />
+          <path d="M5 10h10a4 4 0 1 1 0 8h-1" />
         </svg>
       );
     }
@@ -10831,22 +10257,42 @@ export default function DraftExplorerPage() {
                   <Button
                     appearance="outline"
                     onClick={handleSelectAllRunsForMerge}
+                    disabled={mergeRunsPending || deleteRunsPending}
                   >
                     Select All
                   </Button>
                   <Button
                     appearance="outline"
                     onClick={handleUnselectRunsForMerge}
-                    disabled={selectedRunsForMerge.size === 0}
+                    disabled={
+                      selectedRunsForMerge.size === 0 ||
+                      mergeRunsPending ||
+                      deleteRunsPending
+                    }
                   >
                     Unselect
                   </Button>
                   <Button
                     appearance="primary"
-                    disabled={selectedRunsForMerge.size < 2 || mergeRunsPending}
+                    disabled={
+                      selectedRunsForMerge.size < 2 ||
+                      mergeRunsPending ||
+                      deleteRunsPending
+                    }
                     onClick={() => void handleMergeRuns()}
                   >
                     {mergeRunsPending ? "Merging..." : "Merge"}
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    disabled={
+                      selectedRunsForMerge.size === 0 ||
+                      mergeRunsPending ||
+                      deleteRunsPending
+                    }
+                    onClick={() => void handleDeleteRuns()}
+                  >
+                    {deleteRunsPending ? "Deleting..." : "Delete"}
                   </Button>
                 </div>
               </PopoverSurface>
@@ -11153,12 +10599,11 @@ export default function DraftExplorerPage() {
                             <MenuList className={styles.compactMenuList}>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 1 }
+                                    "digideal_main",
+                                    1
                                   )
                                 }
                               >
@@ -11166,12 +10611,11 @@ export default function DraftExplorerPage() {
                               </MenuItem>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 2 }
+                                    "digideal_main",
+                                    2
                                   )
                                 }
                               >
@@ -11179,12 +10623,11 @@ export default function DraftExplorerPage() {
                               </MenuItem>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 3 }
+                                    "digideal_main",
+                                    3
                                   )
                                 }
                               >
@@ -11282,12 +10725,11 @@ export default function DraftExplorerPage() {
                             <MenuList className={styles.compactMenuList}>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 1 }
+                                    "digideal_main",
+                                    1
                                   )
                                 }
                               >
@@ -11295,12 +10737,11 @@ export default function DraftExplorerPage() {
                               </MenuItem>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 2 }
+                                    "digideal_main",
+                                    2
                                   )
                                 }
                               >
@@ -11308,12 +10749,11 @@ export default function DraftExplorerPage() {
                               </MenuItem>
                               <MenuItem
                                 onClick={() =>
-                                  void runAiEditsForEntries(
+                                  startAiTemplatePresetForEntries(
                                     selectedImageEntries,
                                     "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "digideal_main", outputCount: 3 }
+                                    "digideal_main",
+                                    3
                                   )
                                 }
                               >
@@ -11682,13 +11122,21 @@ export default function DraftExplorerPage() {
                           >
                             <div
                               className={styles.mediaSquare}
-                              onClick={() => handleToggleFile(entry.path)}
+                              onClick={(event) =>
+                                handleToggleFile(entry.path, {
+                                  shiftKey: event.shiftKey,
+                                  imageRange: true,
+                                })
+                              }
                               role="button"
                               tabIndex={0}
                               onKeyDown={(event) => {
                                 if (event.key !== "Enter" && event.key !== " ") return;
                                 event.preventDefault();
-                                handleToggleFile(entry.path);
+                                handleToggleFile(entry.path, {
+                                  shiftKey: event.shiftKey,
+                                  imageRange: true,
+                                });
                               }}
                             >
                               {pendingAi ? (
@@ -12502,7 +11950,7 @@ export default function DraftExplorerPage() {
                 <span>View</span>
               </button>
             ) : null}
-		            <button
+	            <button
 		              type="button"
 		              className={styles.contextMenuButton}
 		              onMouseEnter={() => setContextMenuSubmenu(null)}
@@ -12511,6 +11959,28 @@ export default function DraftExplorerPage() {
 	              {renderContextMenuIcon("duplicate")}
 	              <span>Duplicate</span>
 	            </button>
+	            {contextMenu.image ? (
+	              <button
+	                type="button"
+	                className={styles.contextMenuButton}
+	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onClick={() => handleContextMenuAction("copy-to-clipboard")}
+	              >
+	                {renderContextMenuIcon("clipboard")}
+	                <span>Copy to Clipboard</span>
+	              </button>
+	            ) : null}
+	            {contextMenu.image ? (
+	              <button
+	                type="button"
+	                className={styles.contextMenuButton}
+	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onClick={() => handleContextMenuAction("undo-last-change")}
+	              >
+	                {renderContextMenuIcon("undo")}
+	                <span>Undo last change</span>
+	              </button>
+	            ) : null}
 	            {contextMenu.image ? (
 	              <button
 	                type="button"
@@ -13010,7 +12480,9 @@ export default function DraftExplorerPage() {
 	                <Field
 	                  label={
 	                    aiEditMode === "template"
-	                      ? "Prompt (inserted into standard template)"
+	                      ? aiEditTemplatePreset === "digideal_main"
+                          ? "Micro prompt (optional, added to DigiDL Main template)"
+                          : "Prompt (inserted into standard template)"
 	                      : "Prompt (sent directly)"
 	                  }
 	                >

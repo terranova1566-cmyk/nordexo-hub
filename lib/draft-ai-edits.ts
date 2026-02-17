@@ -5,6 +5,7 @@ import { spawn } from "child_process";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { convertImageFileToJpegInPlace } from "@/lib/image-jpeg";
+import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
 
 export type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 export type AiPromptMode =
@@ -58,6 +59,7 @@ type CreateTemplatePresetOutputsInput = {
   provider: Exclude<AiEditProvider, "zimage">;
   templatePreset: Exclude<AiTemplatePreset, "standard">;
   count: number;
+  prompt?: string;
   requestedBy: string | null;
 };
 
@@ -100,6 +102,7 @@ const AI_EDIT_STATE_FILE = ".ai-edits.json";
 const AI_EDIT_LOG_PATH = path.join(process.cwd(), "logs", "draft-ai-edits.log");
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const CONTEXT_CACHE_TTL_MS = 10 * 60 * 1000;
+const PROMPT_VERSION_CACHE_TTL_MS = 2 * 60 * 1000;
 
 let editQueueTail: Promise<void> = Promise.resolve();
 const digidealContextCache = new Map<
@@ -108,6 +111,13 @@ const digidealContextCache = new Map<
     key: string;
     createdAtMs: number;
     value: { product_description: string; usage_environments: string[]; target_user: string };
+  }
+>();
+const promptVersionCache = new Map<
+  string,
+  {
+    fetchedAtMs: number;
+    value: string | null;
   }
 >();
 let supabaseAdminClient: SupabaseClient<any, "public", any> | null = null;
@@ -184,7 +194,17 @@ const parseEnvFile = (content: string): Record<string, string> => {
     const isQuoted =
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"));
-    if (isQuoted) {
+    const isDoubleQuoted = value.startsWith('"') && value.endsWith('"');
+    const isSingleQuoted = value.startsWith("'") && value.endsWith("'");
+    if (isDoubleQuoted) {
+      // Settings write quoted values using JSON.stringify(). Parse back to avoid escaped
+      // backslashes leaking into prompts (e.g. "\\n" and "\\\"").
+      try {
+        value = JSON.parse(value);
+      } catch {
+        value = value.slice(1, -1);
+      }
+    } else if (isSingleQuoted || isQuoted) {
       value = value.slice(1, -1);
     } else {
       // Support inline comments in .env values: KEY=value # comment
@@ -206,6 +226,74 @@ const loadEnvFromFile = (envPath: string): Record<string, string> => {
 
 const loadProcessorEnv = () => loadEnvFromFile(PROCESSOR_ENV_PATH);
 const loadZImageEnv = () => loadEnvFromFile(ZIMAGE_ENV_PATH);
+
+const loadPromptTemplateFromVersions = async (promptId: string) => {
+  const id = String(promptId || "").trim().toUpperCase();
+  if (!id) return null;
+
+  const cached = promptVersionCache.get(id);
+  if (cached && Date.now() - cached.fetchedAtMs < PROMPT_VERSION_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const client = getSupabaseAdminClient();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client
+      .from("ai_image_edit_prompt_versions")
+      .select("template_text,created_at")
+      .eq("prompt_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      promptVersionCache.set(id, { fetchedAtMs: Date.now(), value: null });
+      return null;
+    }
+
+    const value = String(data.template_text ?? "").trim() || null;
+    promptVersionCache.set(id, { fetchedAtMs: Date.now(), value });
+    return value;
+  } catch {
+    return null;
+  }
+};
+
+const hydrateTemplateFromPromptManager = async (
+  env: NodeJS.ProcessEnv,
+  provider: Exclude<AiEditProvider, "zimage">,
+  templatePreset: AiTemplatePreset,
+  skip: boolean
+) => {
+  if (skip) return;
+
+  if (templatePreset === "digideal_main") {
+    const value = await loadPromptTemplateFromVersions("DDMAINIM");
+    if (value) {
+      env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE = value;
+    }
+    return;
+  }
+
+  if (templatePreset === "product_scene") {
+    const value = await loadPromptTemplateFromVersions("ENVSCNIM");
+    if (value) {
+      env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE = value;
+    }
+    return;
+  }
+
+  const promptId = provider === "chatgpt" ? "OAIIMGED" : "GEMIMGED";
+  const value = await loadPromptTemplateFromVersions(promptId);
+  if (!value) return;
+  if (provider === "chatgpt") {
+    env.OPENAI_IMAGE_PROMPT_TEMPLATE = value;
+  } else {
+    env.GEMINI_IMAGE_PROMPT_TEMPLATE = value;
+  }
+};
 
 const extractJsonFromText = (text: string) => {
   const raw = String(text || "").trim();
@@ -382,6 +470,22 @@ const runScript = async ({
       reject(new Error(detail || `Image edit process exited with code ${code}.`));
     });
   });
+
+export const runAutoCenterWhiteInPlace = async (absolutePath: string) => {
+  const processorEnv = loadProcessorEnv();
+  const mergedEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...processorEnv,
+  };
+  const timeoutMs = readPositiveInt(processorEnv, "IMAGE_EDIT_TIMEOUT_MS", 180000);
+  await runScript({
+    command: resolveGeminiPython(),
+    args: [AUTO_CENTER_SCRIPT_PATH, "--file", absolutePath],
+    env: mergedEnv,
+    timeoutMs,
+    cwd: PROCESSOR_ROOT,
+  });
+};
 
 const buildPendingImageName = (originalAbsPath: string, provider: AiEditProvider) => {
   const parsed = path.parse(originalAbsPath);
@@ -917,6 +1021,38 @@ const applyDigidealMainPackageToTemplate = (
   return next;
 };
 
+const applyAdditionalGuidanceToTemplate = (template: string, guidance: string) => {
+  const prompt = String(guidance || "").trim();
+  if (!prompt) return template;
+
+  const placeholders = [
+    /{{\s*INSERT_MICRO_PROMPT_HERE\s*}}/g,
+    /{{\s*INSERT_NANO_PROMPT_HERE\s*}}/g,
+    /{{\s*INSERT_USER_PROMPT_HERE\s*}}/g,
+    /{{\s*INSERT_USER_GUIDANCE_HERE\s*}}/g,
+    /{{\s*INSERT_ADDITIONAL_GUIDANCE_HERE\s*}}/g,
+  ];
+
+  let next = template;
+  let replaced = false;
+  for (const pattern of placeholders) {
+    if (pattern.test(next)) {
+      next = next.replace(pattern, prompt);
+      replaced = true;
+    }
+  }
+
+  if (replaced) return next;
+
+  return [
+    next,
+    "",
+    "<Additional_User_Guidance>",
+    prompt,
+    "</Additional_User_Guidance>",
+  ].join("\n");
+};
+
 const formatTimestampForFilename = (date: Date) => {
   const iso = date.toISOString(); // 2026-02-13T15:21:18.880Z
   const compact = iso.replace(/\.\d{3}Z$/, "Z");
@@ -999,12 +1135,19 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
     const stamp = formatTimestampForFilename(now);
     const prefix = input.templatePreset === "digideal_main" ? "DD" : "SCENE";
     const suffixTag = input.templatePreset === "product_scene" ? " (ENV)" : "";
+    const additionalPrompt = String(input.prompt || "").trim();
 
     const providerEnv = loadProcessorEnv();
     const mergedEnv: NodeJS.ProcessEnv = {
       ...process.env,
       ...providerEnv,
     };
+    await hydrateTemplateFromPromptManager(
+      mergedEnv,
+      input.provider,
+      input.templatePreset,
+      false
+    );
 
     const presetKey =
       input.templatePreset === "digideal_main"
@@ -1092,6 +1235,12 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
           `Variation directive: Output ${row.idx}/${count}. Choose a distinct Swedish lifestyle environment and lighting/time-of-day compared to the other outputs.`,
         ].join("\n");
       }
+      if (input.templatePreset === "digideal_main" && additionalPrompt) {
+        promptTemplateOverride = applyAdditionalGuidanceToTemplate(
+          promptTemplateOverride,
+          additionalPrompt
+        );
+      }
 
       const runtimeConfig = await runImageEditScript({
         originalAbsPath,
@@ -1140,6 +1289,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
       requested_by: input.requestedBy,
       provider: input.provider,
       template_preset: input.templatePreset,
+      guidance_length: additionalPrompt.length,
       original_path: originalPath,
       created_paths: createdPaths,
     });
@@ -1161,6 +1311,14 @@ const runImageEditScript = async (input: {
     ...process.env,
     ...providerEnv,
   };
+  if (input.provider === "chatgpt" || input.provider === "gemini") {
+    await hydrateTemplateFromPromptManager(
+      mergedEnv,
+      input.provider,
+      input.templatePreset ?? "standard",
+      Boolean(String(input.promptTemplateOverride || "").trim())
+    );
+  }
   const maxAttempts = readPositiveInt(providerEnv, "IMAGE_EDIT_MAX_ATTEMPTS", 2);
   const timeoutMs = readPositiveInt(providerEnv, "IMAGE_EDIT_TIMEOUT_MS", 180000);
   const retryBackoffMs = readPositiveInt(providerEnv, "IMAGE_EDIT_RETRY_BACKOFF_MS", 1500);
@@ -1232,6 +1390,9 @@ const runImageEditScript = async (input: {
         env: mergedEnv,
       });
       nextTemplate = applyDigidealMainPackageToTemplate(nextTemplate, pkg);
+      if (String(input.prompt || "").trim()) {
+        nextTemplate = applyAdditionalGuidanceToTemplate(nextTemplate, input.prompt);
+      }
     }
 
     if (input.provider === "chatgpt") {
@@ -1306,13 +1467,7 @@ const runImageEditScript = async (input: {
       } else if (input.mode === "auto_center_white") {
         fs.copyFileSync(input.originalAbsPath, input.pendingAbsPath);
         try {
-          await runScript({
-            command: resolveGeminiPython(),
-            args: [AUTO_CENTER_SCRIPT_PATH, "--file", input.pendingAbsPath],
-            env: mergedEnv,
-            timeoutMs,
-            cwd: PROCESSOR_ROOT,
-          });
+          await runAutoCenterWhiteInPlace(input.pendingAbsPath);
         } catch (err) {
           removeFileQuietly(input.pendingAbsPath);
           throw err;
@@ -1337,6 +1492,13 @@ const runImageEditScript = async (input: {
           env: mergedEnv,
           timeoutMs,
         });
+        await convertImageFileToJpegInPlace(input.pendingAbsPath);
+      }
+
+      // Every AI-generated output should pass through auto-center white background.
+      // auto_center_white mode already ran it above.
+      if (input.mode !== "auto_center_white") {
+        await runAutoCenterWhiteInPlace(input.pendingAbsPath);
         await convertImageFileToJpegInPlace(input.pendingAbsPath);
       }
 
@@ -1466,6 +1628,7 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
         throw new Error("Pending AI image was not found.");
       }
+      saveDraftImageUndoBackup(originalAbsPath);
       fs.copyFileSync(pendingAbsPath, originalAbsPath);
     } else if (input.decision === "keep_both") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {

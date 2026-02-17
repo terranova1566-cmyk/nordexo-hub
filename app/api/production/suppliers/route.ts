@@ -544,20 +544,7 @@ export async function GET(request: NextRequest) {
     // That makes the UI look like "no suppliers found" forever. If we see that shape, rerun once.
     const looksLikeFailure = normalizedOffers.length === 0 && meta === null;
     if (!looksLikeFailure && !isStale) {
-      const selected =
-        lockedSupplierUrl !== null
-          ? {
-              provider,
-              product_id: productId,
-              selected_offer_id: null,
-              selected_detail_url: lockedSupplierUrl,
-              selected_offer: { detailUrl: lockedSupplierUrl, source: "digideal_manual" },
-              selected_at: null,
-              selected_by: null,
-              updated_at: null,
-              locked: true,
-            }
-          : (selectionRow ?? null);
+      const selected = selectionRow ?? null;
       return NextResponse.json({
         provider,
         product_id: productId,
@@ -713,20 +700,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
-  const selected =
-    lockedSupplierUrl !== null
-      ? {
-          provider,
-          product_id: productId,
-          selected_offer_id: null,
-          selected_detail_url: lockedSupplierUrl,
-          selected_offer: { detailUrl: lockedSupplierUrl, source: "digideal_manual" },
-          selected_at: null,
-          selected_by: null,
-          updated_at: null,
-          locked: true,
-        }
-      : (selectionRow ?? null);
+  const selected = selectionRow ?? null;
 
   return NextResponse.json({
     provider,
@@ -788,26 +762,51 @@ export async function POST(request: NextRequest) {
         : typeof (manualRow as any)?.["1688_url"] === "string"
           ? String((manualRow as any)["1688_url"]).trim()
           : "";
-    if (url) {
-      return NextResponse.json(
-        {
-          error:
-            "A supplier has already been set in DigiDeal (EST rerun price). Remove it there to change the production supplier.",
-        },
-        { status: 409 }
-      );
-    }
 
-    // This supplier is selected via image search (not manually locked). Clear any previously
-    // derived purchase/weight so the UI doesn't keep showing an old estimate after reselection.
+    // This supplier is selected via image search. Clear manual/derived supplier fields so
+    // reselection behaves like a fresh supplier flow.
     try {
       const productIdValue: string | number = /^\d+$/.test(productId)
         ? Number(productId)
         : productId;
-      await adminClient
+      const baseReset = {
+        purchase_price: null,
+        weight_grams: null,
+        weight_kg: null,
+      };
+
+      // Prefer the current canonical column and fallback if only the legacy/migration
+      // column is present in this environment.
+      const resetPrimary = await adminClient
         .from("digideal_products")
-        .update({ purchase_price: null, weight_grams: null, weight_kg: null })
+        .update({ ...baseReset, "1688_URL": null })
         .eq("product_id", productIdValue);
+
+      if (resetPrimary.error) {
+        const message = String(resetPrimary.error.message || "");
+        const isMissingUpper =
+          message.includes("\"1688_URL\"") && message.toLowerCase().includes("does not exist");
+        if (!isMissingUpper) {
+          throw resetPrimary.error;
+        }
+
+        const resetFallback = await adminClient
+          .from("digideal_products")
+          .update({ ...baseReset, "1688_url": null })
+          .eq("product_id", productIdValue);
+        if (resetFallback.error) {
+          throw resetFallback.error;
+        }
+      }
+
+      // If an old manual URL existed, clear supplier URL too so downstream UI always derives it
+      // from the newly selected supplier/variant path.
+      if (url) {
+        await adminClient
+          .from("digideal_products")
+          .update({ supplier_url: null })
+          .eq("product_id", productIdValue);
+      }
     } catch {
       // ignore
     }

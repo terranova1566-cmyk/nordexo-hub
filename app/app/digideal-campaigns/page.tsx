@@ -40,7 +40,7 @@ import {
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useI18n } from "@/components/i18n-provider";
@@ -202,6 +202,11 @@ type DigidealView = {
   name: string;
   created_at: string | null;
   item_count: number;
+};
+
+type DigidealViewMembershipRow = {
+  product_id: string;
+  view_ids: string[];
 };
 
 type SellerOption = {
@@ -406,6 +411,11 @@ const useStyles = makeStyles({
     alignItems: "flex-end",
     gap: "8px",
     flexWrap: "wrap",
+  },
+  actionsButtonBusy: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
   },
   bottomRow: {
     display: "flex",
@@ -751,6 +761,9 @@ const useStyles = makeStyles({
       backgroundColor: "#fff4d6",
     },
   },
+  selectableRow: {
+    cursor: "pointer",
+  },
   imageCol: {
     width: "158px",
     paddingLeft: "8px",
@@ -1060,7 +1073,12 @@ const useStyles = makeStyles({
   supplierSearchDialog: {
     width: "min(980px, 94vw)",
     maxWidth: "min(980px, 94vw)",
-    position: "relative",
+    position: "fixed",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    margin: 0,
+    maxHeight: "92vh",
   },
   supplierSearchContent: {
     position: "relative",
@@ -2495,6 +2513,9 @@ export default function DigidealCampaignsPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [views, setViews] = useState<DigidealView[]>([]);
+  const [viewMembershipByProductId, setViewMembershipByProductId] = useState<
+    Record<string, string[]>
+  >({});
   const [viewsLoading, setViewsLoading] = useState(true);
   const [viewsError, setViewsError] = useState<string | null>(null);
   const [viewsPopoverOpen, setViewsPopoverOpen] = useState(false);
@@ -2535,6 +2556,7 @@ export default function DigidealCampaignsPage() {
   const [isRerunSaving, setIsRerunSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkExportingExcel, setBulkExportingExcel] = useState(false);
   const [bulkFindingSuppliers, setBulkFindingSuppliers] = useState(false);
   const [bulkFindingSupplierProgress, setBulkFindingSupplierProgress] = useState<{
     done: number;
@@ -3086,6 +3108,34 @@ export default function DigidealCampaignsPage() {
     });
   }, []);
 
+  const isRowSelectionBackgroundClick = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      if (event.defaultPrevented) return false;
+      const target = event.target as HTMLElement | null;
+      if (!target) return false;
+      const interactive = target.closest(
+        [
+          "a",
+          "button",
+          "input",
+          "textarea",
+          "select",
+          "label",
+          "[role='button']",
+          "[role='link']",
+          "[role='menuitem']",
+          "[role='checkbox']",
+          "[aria-haspopup]",
+          ".fui-Button",
+          ".fui-Checkbox",
+          ".fui-MenuItem",
+        ].join(",")
+      );
+      return !interactive;
+    },
+    []
+  );
+
   const startSupplierPayloadPoll = useCallback(
     (productId: string, expectedOfferId: string | null) => {
       const safeProductId = String(productId || "").trim();
@@ -3367,6 +3417,109 @@ export default function DigidealCampaignsPage() {
     return raw;
   }, []);
 
+  const normalizeOfferSoldCount = useCallback((value: unknown): number | null => {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value >= 0 ? Math.round(value) : null;
+    }
+
+    const digitMap: Record<string, number> = {
+      "零": 0,
+      "〇": 0,
+      "一": 1,
+      "二": 2,
+      "两": 2,
+      "三": 3,
+      "四": 4,
+      "五": 5,
+      "六": 6,
+      "七": 7,
+      "八": 8,
+      "九": 9,
+    };
+
+    const parseChineseSection = (input: string): number | null => {
+      const text = input.trim();
+      if (!text) return 0;
+      let total = 0;
+      let current = 0;
+      for (const ch of text) {
+        if (Object.prototype.hasOwnProperty.call(digitMap, ch)) {
+          current = digitMap[ch];
+          continue;
+        }
+        if (ch === "十") {
+          total += (current || 1) * 10;
+          current = 0;
+          continue;
+        }
+        if (ch === "百") {
+          total += (current || 1) * 100;
+          current = 0;
+          continue;
+        }
+        if (ch === "千") {
+          total += (current || 1) * 1000;
+          current = 0;
+          continue;
+        }
+        return null;
+      }
+      return total + current;
+    };
+
+    const parseChineseInteger = (input: string): number | null => {
+      const text = input.trim();
+      if (!text) return null;
+      if (!text.includes("万")) {
+        return parseChineseSection(text);
+      }
+      const [highRaw, lowRaw = ""] = text.split("万", 2);
+      const high = highRaw.trim() ? parseChineseSection(highRaw) : 1;
+      const low = lowRaw.trim() ? parseChineseSection(lowRaw) : 0;
+      if (high === null || low === null) return null;
+      return high * 10000 + low;
+    };
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const normalized = raw
+      .replace(/[,，\s]/g, "")
+      .replace(/[+＋]/g, "")
+      .replace(/(以上|余|多|件|个|笔|销量|月销|人付款|已售|成交|单)/g, "");
+
+    if (!normalized) return null;
+
+    const unitMatch = normalized.match(
+      /^([0-9]+(?:\.[0-9]+)?|[零〇一二两三四五六七八九十百千]+)(万|千)$/
+    );
+    if (unitMatch) {
+      const baseRaw = unitMatch[1];
+      const unit = unitMatch[2];
+      let base = Number(baseRaw);
+      if (!Number.isFinite(base)) {
+        const zh = parseChineseInteger(baseRaw);
+        base = zh === null ? Number.NaN : zh;
+      }
+      if (Number.isFinite(base) && base >= 0) {
+        return Math.round(base * (unit === "万" ? 10000 : 1000));
+      }
+    }
+
+    if (/^[零〇一二两三四五六七八九十百千万]+$/.test(normalized)) {
+      const zh = parseChineseInteger(normalized);
+      if (zh !== null && Number.isFinite(zh) && zh >= 0) return Math.round(zh);
+    }
+
+    const numericMatch = normalized.match(/\d+(?:\.\d+)?/);
+    if (numericMatch?.[0]) {
+      const num = Number(numericMatch[0]);
+      if (Number.isFinite(num) && num >= 0) return Math.round(num);
+    }
+
+    return null;
+  }, []);
+
   const pickOfferPriceRmb = useCallback(
     (offer: SupplierOffer): string | null => {
       const candidates = [
@@ -3418,6 +3571,12 @@ export default function DigidealCampaignsPage() {
         ];
         for (const candidate of candidates) {
           if (candidate === null || candidate === undefined) continue;
+          const normalized = normalizeOfferSoldCount(candidate);
+          if (Number.isFinite(normalized as number)) {
+            return new Intl.NumberFormat("en-US", {
+              maximumFractionDigits: 0,
+            }).format(normalized as number);
+          }
           const text = String(candidate).trim();
           if (text) return text;
         }
@@ -3436,7 +3595,7 @@ export default function DigidealCampaignsPage() {
       const price = pickOfferPriceRmb(offer);
       return { price, sold, moq, location };
     },
-    [pickOfferPriceRmb]
+    [normalizeOfferSoldCount, pickOfferPriceRmb]
   );
 
   const isSupplierImageFetchError = useCallback((message: unknown) => {
@@ -3872,7 +4031,6 @@ export default function DigidealCampaignsPage() {
 
   const handleSaveSupplierSearch = useCallback(async () => {
     if (!supplierSearchTarget) return;
-    if (supplierLockedUrl) return;
     const offerId = supplierSelectedOfferId.trim();
     if (!offerId) return;
 
@@ -3966,7 +4124,6 @@ export default function DigidealCampaignsPage() {
     closeSupplierSearchDialog,
     normalizeSupplierImageUrl,
     startSupplierPayloadPoll,
-    supplierLockedUrl,
     supplierSearchTarget,
     supplierSelectedOfferId,
   ]);
@@ -4525,6 +4682,80 @@ export default function DigidealCampaignsPage() {
     }
   };
 
+  const exportSelectedAsExcel = useCallback(async () => {
+    if (bulkExportingExcel) return;
+    const selected = items.filter((item) => selectedIds.has(item.product_id));
+    if (selected.length === 0) return;
+
+    setBulkExportingExcel(true);
+    setError(null);
+    try {
+      const payload = {
+        name: "digideal-deals-selected",
+        items: selected.map((item) => ({
+          product_id: item.product_id,
+          listing_title: item.listing_title,
+          title_h1: item.title_h1,
+          google_taxonomy_path: item.google_taxonomy_path,
+          first_seen_at: item.first_seen_at,
+          last_seen_at: item.last_seen_at,
+          seller_name: item.seller_name,
+          sold_today: item.sold_today,
+          sold_7d: item.sold_7d,
+          sold_all_time: item.sold_all_time,
+          last_price: item.last_price,
+          shipping_cost: item.shipping_cost,
+          last_original_price: item.last_original_price,
+          last_discount_percent: item.last_discount_percent,
+          last_you_save_kr: item.last_you_save_kr,
+          status: item.status,
+          product_url: item.product_url,
+          supplier_url: item.supplier_url,
+          weight_grams: item.weight_grams,
+          weight_kg: item.weight_kg,
+          purchase_price: item.purchase_price,
+          estimated_rerun_price: item.estimated_rerun_price,
+          primary_image_url: item.primary_image_url,
+          image_urls: item.image_urls,
+        })),
+      };
+
+      const response = await fetch("/api/digideal/export-excel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof errorPayload?.error === "string"
+            ? errorPayload.error
+            : "Failed to export Excel."
+        );
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition") || "";
+      const filenameMatch = contentDisposition.match(/filename\*?=(?:UTF-8''|\"?)([^\";]+)/i);
+      const rawFilename = filenameMatch?.[1] || "digideal-deals-selected.xlsx";
+      const filename = decodeURIComponent(rawFilename.replace(/\"/g, "").trim());
+
+      const blobUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export Excel.");
+    } finally {
+      setBulkExportingExcel(false);
+    }
+  }, [bulkExportingExcel, items, selectedIds]);
+
   const openBulkRerunDialog = () => {
     const selected = items.filter(
       (item) =>
@@ -4552,6 +4783,64 @@ export default function DigidealCampaignsPage() {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(text || "Failed to add items to view.");
+    }
+
+    setViewMembershipByProductId((prev) => {
+      const next: Record<string, string[]> = { ...prev };
+      unique.forEach((productId) => {
+        const current = new Set(next[productId] ?? []);
+        current.add(viewId);
+        next[productId] = Array.from(current);
+      });
+      return next;
+    });
+
+    setViewsRefreshToken((prev) => prev + 1);
+  };
+
+  const removeProductsFromView = async (viewId: string, productIds: string[]) => {
+    const unique = Array.from(
+      new Set(productIds.map((id) => String(id ?? "").trim()).filter(Boolean))
+    );
+    if (!viewId || unique.length === 0) return;
+
+    const response = await fetch("/api/digideal/views/items", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ viewId, productIds: unique }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Failed to remove items from list.");
+    }
+
+    setViewMembershipByProductId((prev) => {
+      const next: Record<string, string[]> = { ...prev };
+      unique.forEach((productId) => {
+        const current = new Set(next[productId] ?? []);
+        current.delete(viewId);
+        next[productId] = Array.from(current);
+      });
+      return next;
+    });
+
+    if (viewIdFilter === viewId) {
+      const removeSet = new Set(unique);
+      const removedInCurrentView = items.reduce(
+        (count, row) => (removeSet.has(row.product_id) ? count + 1 : count),
+        0
+      );
+
+      if (removedInCurrentView > 0) {
+        setItems((prev) => prev.filter((row) => !removeSet.has(row.product_id)));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          unique.forEach((id) => next.delete(id));
+          return next;
+        });
+        setTotal((prev) => Math.max(0, prev - removedInCurrentView));
+      }
     }
 
     setViewsRefreshToken((prev) => prev + 1);
@@ -5161,6 +5450,74 @@ export default function DigidealCampaignsPage() {
 
     return () => controller.abort();
   }, [viewsRefreshToken]);
+
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        items
+          .map((item) => String(item?.product_id ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (ids.length === 0) {
+      setViewMembershipByProductId({});
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    const loadMemberships = async () => {
+      const next: Record<string, string[]> = {};
+      ids.forEach((id) => {
+        next[id] = [];
+      });
+
+      try {
+        for (let index = 0; index < ids.length; index += 80) {
+          const chunk = ids.slice(index, index + 80);
+          const params = new URLSearchParams({
+            productIds: chunk.join(","),
+          });
+          const response = await fetch(`/api/digideal/views/items?${params.toString()}`, {
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "Failed to load list membership.");
+          }
+          const payload = (await response.json()) as {
+            items?: DigidealViewMembershipRow[];
+          };
+          const memberships = Array.isArray(payload.items) ? payload.items : [];
+          memberships.forEach((row) => {
+            const productId = String(row?.product_id ?? "").trim();
+            if (!productId) return;
+            const viewIds = Array.isArray(row?.view_ids)
+              ? row.view_ids
+                  .map((viewId) => String(viewId ?? "").trim())
+                  .filter(Boolean)
+              : [];
+            next[productId] = viewIds;
+          });
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+
+      if (active) {
+        setViewMembershipByProductId(next);
+      }
+    };
+
+    void loadMemberships();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [items, viewsRefreshToken]);
 
   useEffect(() => {
     if (!isOptimizeDialogOpen || !optimizeTargetId) {
@@ -5937,16 +6294,28 @@ export default function DigidealCampaignsPage() {
           !hasManualSupplierData &&
           !supplierSelected &&
           !supplierHasSuggestions;
+        const itemViewIds = new Set(viewMembershipByProductId[item.product_id] ?? []);
+        if (viewIdFilter) {
+          itemViewIds.add(viewIdFilter);
+        }
+        const removableViews = views.filter((view) => itemViewIds.has(view.id));
 
         return (
           <TableRow
             key={item.product_id}
             className={mergeClasses(
+              !isNordexo ? styles.selectableRow : undefined,
               hasEstimatedPrice && !isProductionActive
                 ? styles.priceMatchRow
                 : undefined,
               isProductionActive ? styles.productionRow : undefined
             )}
+            onClick={(event) => {
+              if (isNordexo) return;
+              if (!isRowSelectionBackgroundClick(event)) return;
+              const currentlySelected = selectedIds.has(item.product_id);
+              toggleRowSelected(item.product_id, !currentlySelected);
+            }}
           >
             <TableCell className={styles.imageCol}>
               <div className={styles.thumbnailWrap}>
@@ -6301,18 +6670,37 @@ export default function DigidealCampaignsPage() {
 		                        </Button>
 		                      )
 		                    ) : hasManualSupplierData ? (
-		                      <Button
-		                        appearance="outline"
-		                        size="small"
-		                        className={mergeClasses(
-		                          styles.linkButton,
-		                          styles.estimatedPriceEditButton,
-		                          styles.supplierManualEditButton
-		                        )}
-		                        onClick={() => openSupplierDialog(item)}
-		                      >
-		                        {t("digideal.supplier.edit")}
-		                      </Button>
+                              <Menu>
+                                <MenuTrigger disableButtonEnhancement>
+		                            <Button
+		                              appearance="outline"
+		                              size="small"
+		                              className={mergeClasses(
+		                                styles.linkButton,
+		                                styles.estimatedPriceEditButton,
+		                                styles.supplierManualEditButton
+		                              )}
+		                            >
+		                              {t("digideal.supplier.edit")}
+		                            </Button>
+                                </MenuTrigger>
+                                <MenuPopover className={styles.compactMenuPopover}>
+                                  <MenuList className={styles.compactMenuList}>
+                                    <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
+                                      <span className={styles.menuItemContent}>
+                                        <PhotoSearchIcon className={styles.menuItemIcon} />
+                                        <span>Find Supplier</span>
+                                      </span>
+                                    </MenuItem>
+                                    <MenuItem onClick={() => openSupplierDialog(item)}>
+                                      <span className={styles.menuItemContent}>
+                                        <FormsIcon className={styles.menuItemIcon} />
+                                        <span>{t("digideal.supplier.manualInput")}</span>
+                                      </span>
+                                    </MenuItem>
+                                  </MenuList>
+                                </MenuPopover>
+                              </Menu>
 		                    ) : supplierFinding ? (
 		                      <Button
 		                        appearance="outline"
@@ -6467,7 +6855,7 @@ export default function DigidealCampaignsPage() {
                             className={styles.rerunMenuButton}
                             disabled={isAdding}
                           >
-                            {t("digideal.rerun.add")}
+                            Actions
                           </Button>
                         </MenuTrigger>
 	                        <MenuPopover className={styles.compactMenuPopover}>
@@ -6487,12 +6875,12 @@ export default function DigidealCampaignsPage() {
 	                              onClick={() => openRerunDialog(title, item.product_id)}
 	                              disabled={isAdding}
 	                            >
-	                              {t("digideal.rerun.addWithComment")}
+	                              Add to Production + Comment
 	                            </MenuItem>
 	                            <Menu positioning={{ position: "before", align: "start" }}>
 	                              <MenuTrigger disableButtonEnhancement>
 	                                <MenuItem disabled={isAdding}>
-	                                  {t("digideal.views.addToView")}
+	                                  Add to List
 	                                </MenuItem>
 	                              </MenuTrigger>
 	                              <MenuPopover className={styles.compactMenuPopover}>
@@ -6502,7 +6890,7 @@ export default function DigidealCampaignsPage() {
 	                                      openCreateViewDialog([item.product_id])
 	                                    }
 	                                  >
-	                                    {t("digideal.views.addNew")}
+	                                    Add to New List
 	                                  </MenuItem>
                                       <MenuDivider />
 	                                  {viewsLoading ? (
@@ -6536,6 +6924,37 @@ export default function DigidealCampaignsPage() {
 	                                </MenuList>
 	                              </MenuPopover>
 	                            </Menu>
+                              {removableViews.length > 0 ? (
+	                            <Menu positioning={{ position: "before", align: "start" }}>
+	                              <MenuTrigger disableButtonEnhancement>
+	                                <MenuItem disabled={isAdding}>
+	                                  Remove from List
+	                                </MenuItem>
+	                              </MenuTrigger>
+	                              <MenuPopover className={styles.compactMenuPopover}>
+	                                <MenuList className={styles.compactMenuList}>
+                                    {removableViews.map((view) => (
+                                      <MenuItem
+                                        key={`remove-${view.id}`}
+                                        onClick={() => {
+                                          void removeProductsFromView(view.id, [
+                                            item.product_id,
+                                          ]).catch((err) => {
+                                            setError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed to remove item from list."
+                                            );
+                                          });
+                                        }}
+                                      >
+                                        {view.name}
+                                      </MenuItem>
+                                    ))}
+	                                </MenuList>
+	                              </MenuPopover>
+	                            </Menu>
+                              ) : null}
 	                          </MenuList>
 	                        </MenuPopover>
 	                      </Menu>
@@ -6589,13 +7008,17 @@ export default function DigidealCampaignsPage() {
       openLinkedDialog,
       openCreateViewDialog,
       addProductsToView,
+      removeProductsFromView,
       viewsLoading,
       views,
+      viewMembershipByProductId,
+      viewIdFilter,
       groupIdFilter,
       isAdmin,
       selectedIds,
       supplierFindingIds,
       toggleRowSelected,
+      isRowSelectionBackgroundClick,
     ]
   );
 
@@ -6657,11 +7080,11 @@ export default function DigidealCampaignsPage() {
             <Dropdown
               value={
                 supplierWorkflowFilter === "no_supplier"
-                  ? "Don't have a supplier"
+                  ? "No Supplier"
                   : supplierWorkflowFilter === "need_select_supplier"
-                    ? "Need to select a supplier"
+                    ? "Select Supplier"
                     : supplierWorkflowFilter === "need_pick_variants"
-                      ? "Need to pick variants"
+                      ? "Pick Variants"
                       : "All"
               }
               selectedOptions={[supplierWorkflowFilter]}
@@ -6674,9 +7097,9 @@ export default function DigidealCampaignsPage() {
               className={mergeClasses(styles.dropdownCompact, styles.filterField)}
             >
               <Option value="all">All</Option>
-              <Option value="no_supplier">Don't have a supplier</Option>
-              <Option value="need_select_supplier">Need to select a supplier</Option>
-              <Option value="need_pick_variants">Need to pick variants</Option>
+              <Option value="no_supplier">No Supplier</Option>
+              <Option value="need_select_supplier">Select Supplier</Option>
+              <Option value="need_pick_variants">Pick Variants</Option>
             </Dropdown>
           </Field>
           <Field
@@ -6965,9 +7388,12 @@ export default function DigidealCampaignsPage() {
                 <Button
                   appearance="primary"
                   size="medium"
-                  disabled={selectedCount === 0 || bulkAdding}
+                  disabled={selectedCount === 0 || bulkAdding || bulkExportingExcel}
                 >
-                  {t("digideal.rerun.add")}
+                  <span className={styles.actionsButtonBusy}>
+                    {bulkExportingExcel ? <Spinner size="tiny" /> : null}
+                    <span>Actions</span>
+                  </span>
                 </Button>
               </MenuTrigger>
               <MenuPopover className={styles.compactMenuPopover}>
@@ -6984,6 +7410,12 @@ export default function DigidealCampaignsPage() {
 	                  >
 	                    {t("digideal.rerun.addWithComment")}
 	                  </MenuItem>
+                  <MenuItem
+                    onClick={() => void exportSelectedAsExcel()}
+                    disabled={selectedCount === 0 || bulkAdding || bulkExportingExcel}
+                  >
+                    {bulkExportingExcel ? "Exporting Excel..." : "Export as Excel"}
+                  </MenuItem>
 	                  <Menu positioning={{ position: "before", align: "start" }}>
 	                    <MenuTrigger disableButtonEnhancement>
 	                      <MenuItem disabled={selectedCount === 0 || bulkAdding}>
@@ -7121,10 +7553,10 @@ export default function DigidealCampaignsPage() {
             <div className={styles.inlineFilterRow}>
               <Dropdown
                 value={
-                  inactiveMode === "no_sales"
-                    ? t("digideal.filters.inactiveMode.noSales")
-                    : inactiveMode === "offline"
-                      ? t("digideal.filters.inactiveMode.offline")
+                  inactiveMode === "offline"
+                    ? t("digideal.filters.inactiveMode.offline")
+                    : inactiveMode === "no_sales"
+                      ? t("digideal.filters.inactiveMode.noSales")
                       : t("digideal.filters.inactiveMode.any")
                 }
                 selectedOptions={[inactiveMode]}
@@ -7135,8 +7567,8 @@ export default function DigidealCampaignsPage() {
                 className={styles.dropdownCompact}
               >
                 <Option value="any">{t("digideal.filters.inactiveMode.any")}</Option>
-                <Option value="no_sales">{t("digideal.filters.inactiveMode.noSales")}</Option>
                 <Option value="offline">{t("digideal.filters.inactiveMode.offline")}</Option>
+                <Option value="no_sales">{t("digideal.filters.inactiveMode.noSales")}</Option>
               </Dropdown>
               <Input
                 type="number"
@@ -7278,7 +7710,7 @@ export default function DigidealCampaignsPage() {
                   {t("digideal.table.estimatedRerunPrice")}
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.rerunCol}>
-                  {t("digideal.table.rerun")}
+                  Actions
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.selectCol}>
                   <div className={styles.selectCheckboxWrap}>
@@ -7311,7 +7743,7 @@ export default function DigidealCampaignsPage() {
         )}
         <div className={styles.pagination}>
           <Text size={200} className={styles.metaText}>
-            {t("digideal.pagination.pageOf", { page, pageCount })}
+            {`${t("digideal.pagination.pageOf", { page, pageCount })} (${items.length}/${total})`}
           </Text>
           <div>
             <Button
@@ -7840,8 +8272,8 @@ export default function DigidealCampaignsPage() {
               </div>
               {supplierLockedUrl ? (
                 <MessageBar>
-                  A supplier is already set in DigiDeal EST rerun price. You can view suggestions,
-                  but that manual supplier remains the selected one.
+                  A supplier is already set in DigiDeal EST rerun price. Saving here will replace
+                  it with the selected supplier.
                 </MessageBar>
               ) : null}
               {supplierSearchError ? (
@@ -7861,7 +8293,7 @@ export default function DigidealCampaignsPage() {
                             ? ""
                             : String(offer.offerId);
                         const isSelected = Boolean(offerId) && supplierSelectedOfferId === offerId;
-                        const isClickable = Boolean(offerId) && !supplierLockedUrl;
+                        const isClickable = Boolean(offerId);
                         const url =
                           typeof offer?.detailUrl === "string" ? offer.detailUrl : "";
                         const title =
@@ -8053,7 +8485,7 @@ export default function DigidealCampaignsPage() {
                             isSelected ? styles.supplierRowSelected : undefined
                           )}
                           onClick={() => {
-                            if (!offerId || supplierLockedUrl) return;
+                            if (!offerId) return;
                             setSupplierSelectedOfferId(offerId);
                           }}
                           role="button"
@@ -8061,7 +8493,7 @@ export default function DigidealCampaignsPage() {
                           onKeyDown={(ev) => {
                             if (ev.key !== "Enter" && ev.key !== " ") return;
                             ev.preventDefault();
-                            if (!offerId || supplierLockedUrl) return;
+                            if (!offerId) return;
                             setSupplierSelectedOfferId(offerId);
                           }}
                         >
@@ -8183,12 +8615,11 @@ export default function DigidealCampaignsPage() {
 	                appearance="primary"
 	                onClick={handleSaveSupplierSearch}
 	                disabled={
-	                  supplierSearchSaving ||
-	                  supplierSearchBusy ||
-	                  supplierSelectedOfferId.trim().length === 0 ||
-	                  Boolean(supplierLockedUrl)
-	                }
-	              >
+                  supplierSearchSaving ||
+                  supplierSearchBusy ||
+                  supplierSelectedOfferId.trim().length === 0
+                }
+              >
                 Save
               </Button>
             </DialogActions>

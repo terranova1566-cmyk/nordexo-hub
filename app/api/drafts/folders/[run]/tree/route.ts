@@ -14,6 +14,8 @@ type FolderTreeNode = {
   children: FolderTreeNode[];
 };
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+
 const buildTree = (absolutePath: string): FolderTreeNode => {
   const stat = fs.statSync(absolutePath);
   const entries = fs
@@ -25,13 +27,17 @@ const buildTree = (absolutePath: string): FolderTreeNode => {
     .filter((child) => child.startsWith(`${DRAFT_ROOT}${path.sep}`))
     .map((child) => buildTree(child))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const directFileCount = entries.filter((entry) => entry.isFile()).length;
+  const directImageCount = entries.filter((entry) => {
+    if (!entry.isFile()) return false;
+    const ext = path.extname(entry.name).toLowerCase();
+    return IMAGE_EXTENSIONS.has(ext);
+  }).length;
 
   return {
     name: path.basename(absolutePath),
     path: toRelativePath(absolutePath),
     modifiedAt: stat.mtime.toISOString(),
-    fileCount: directFileCount,
+    fileCount: directImageCount,
     children,
   };
 };

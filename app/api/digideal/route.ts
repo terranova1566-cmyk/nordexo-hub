@@ -141,12 +141,6 @@ type DigidealDetailRow = {
   "1688_url"?: string | null;
 };
 
-type ManualSupplierUrlRow = {
-  product_id: string | null;
-  "1688_URL"?: string | null;
-  "1688_url"?: string | null;
-};
-
 type SupplierSearchRow = {
   provider: string;
   product_id: string;
@@ -208,33 +202,31 @@ const loadPricedProductIds = async (supabase: any) => {
   return { ids: Array.from(ids), error: null as any };
 };
 
-const loadManualSupplierProductIds = async (
+const loadManualSupplierStateProductIds = async (
   supabase: any,
   productIds: string[] | null
 ) => {
   if (productIds && productIds.length === 0) return { ids: [] as string[], error: null as any };
 
-  const primarySelect = 'product_id, "1688_URL"';
-  const fallbackSelect = "product_id, 1688_url";
+  const primarySelect =
+    'product_id, purchase_price, weight_kg, weight_grams, "1688_URL"';
+  const fallbackSelect =
+    "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
 
   const loadPrimary = () =>
-    loadAllRows<ManualSupplierUrlRow>((from, to) => {
+    loadAllRows<DigidealDetailRow>((from, to) => {
       let query = supabase.from("digideal_products").select(primarySelect);
       if (productIds) {
-        query = query.in("product_id", productIds).not("1688_URL", "is", null);
-      } else {
-        query = query.not("1688_URL", "is", null);
+        query = query.in("product_id", productIds);
       }
       return query.order("product_id", { ascending: true }).range(from, to);
     });
 
   const loadFallback = () =>
-    loadAllRows<ManualSupplierUrlRow>((from, to) => {
+    loadAllRows<DigidealDetailRow>((from, to) => {
       let query = supabase.from("digideal_products").select(fallbackSelect);
       if (productIds) {
-        query = query.in("product_id", productIds).not("1688_url", "is", null);
-      } else {
-        query = query.not("1688_url", "is", null);
+        query = query.in("product_id", productIds);
       }
       return query.order("product_id", { ascending: true }).range(from, to);
     });
@@ -251,9 +243,21 @@ const loadManualSupplierProductIds = async (
   (data ?? []).forEach((row) => {
     const id = String(row?.product_id ?? "").trim();
     if (!id) return;
+
     const url = toText((row as any)["1688_URL"] ?? (row as any)["1688_url"]);
-    if (!url) return;
-    ids.add(id);
+    const purchasePrice = toNumber((row as any).purchase_price);
+    const weightKg = toNumber((row as any).weight_kg);
+    const weightGrams = toNumber((row as any).weight_grams);
+
+    const hasManualUrl = Boolean(url);
+    const hasManualPrice = purchasePrice !== null && purchasePrice > 0;
+    const hasManualWeight =
+      (weightKg !== null && weightKg > 0) ||
+      (weightGrams !== null && weightGrams > 0);
+
+    if (hasManualUrl || hasManualPrice || hasManualWeight) {
+      ids.add(id);
+    }
   });
 
   return { ids: Array.from(ids), error: null as any };
@@ -801,21 +805,21 @@ export async function GET(request: NextRequest) {
         const candidates = Array.from(supplierSuggestionsIds).filter(
           (productId) => !supplierSelectedIds.has(productId)
         );
-        const { ids: manualIds, error: manualError } =
-          await loadManualSupplierProductIds(supabase, candidates);
-        if (manualError) {
-          console.error("digideal supplier workflow manual supplier error", {
-            message: manualError.message,
-            details: manualError.details,
-            hint: manualError.hint,
-            code: manualError.code,
+        const { ids: manualStateIds, error: manualStateError } =
+          await loadManualSupplierStateProductIds(supabase, candidates);
+        if (manualStateError) {
+          console.error("digideal supplier workflow manual supplier state error", {
+            message: manualStateError.message,
+            details: manualStateError.details,
+            hint: manualStateError.hint,
+            code: manualStateError.code,
           });
           return NextResponse.json(
             { error: "Failed to load manual supplier state." },
             { status: 500 }
           );
         }
-        const manualSet = new Set(manualIds);
+        const manualSet = new Set(manualStateIds);
         const ids = candidates.filter(
           (productId) => !manualSet.has(productId) && !pricedProductIds.has(productId)
         );
@@ -827,21 +831,21 @@ export async function GET(request: NextRequest) {
         const candidates = Array.from(supplierSelectedIds).filter(
           (productId) => !supplierPickedVariantsIds.has(productId)
         );
-        const { ids: manualIds, error: manualError } =
-          await loadManualSupplierProductIds(supabase, candidates);
-        if (manualError) {
-          console.error("digideal supplier workflow manual supplier error", {
-            message: manualError.message,
-            details: manualError.details,
-            hint: manualError.hint,
-            code: manualError.code,
+        const { ids: manualStateIds, error: manualStateError } =
+          await loadManualSupplierStateProductIds(supabase, candidates);
+        if (manualStateError) {
+          console.error("digideal supplier workflow manual supplier state error", {
+            message: manualStateError.message,
+            details: manualStateError.details,
+            hint: manualStateError.hint,
+            code: manualStateError.code,
           });
           return NextResponse.json(
             { error: "Failed to load manual supplier state." },
             { status: 500 }
           );
         }
-        const manualSet = new Set(manualIds);
+        const manualSet = new Set(manualStateIds);
         const ids = candidates.filter(
           (productId) => !manualSet.has(productId) && !pricedProductIds.has(productId)
         );
@@ -850,14 +854,14 @@ export async function GET(request: NextRequest) {
         }
         query = query.in("product_id", ids);
       } else if (supplierWorkflowMode === "no_supplier") {
-        const { ids: manualIds, error: manualError } =
-          await loadManualSupplierProductIds(supabase, null);
-        if (manualError) {
-          console.error("digideal supplier workflow manual supplier error", {
-            message: manualError.message,
-            details: manualError.details,
-            hint: manualError.hint,
-            code: manualError.code,
+        const { ids: manualStateIds, error: manualStateError } =
+          await loadManualSupplierStateProductIds(supabase, null);
+        if (manualStateError) {
+          console.error("digideal supplier workflow manual supplier state error", {
+            message: manualStateError.message,
+            details: manualStateError.details,
+            hint: manualStateError.hint,
+            code: manualStateError.code,
           });
           return NextResponse.json(
             { error: "Failed to load manual supplier state." },
@@ -865,7 +869,7 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const exclude = new Set<string>(manualIds);
+        const exclude = new Set<string>(manualStateIds);
         supplierSuggestionsIds.forEach((id) => exclude.add(id));
         supplierSelectedIds.forEach((id) => exclude.add(id));
         pricedProductIds.forEach((id) => exclude.add(id));

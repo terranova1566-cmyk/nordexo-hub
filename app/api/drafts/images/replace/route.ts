@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
 import { convertBufferToJpeg } from "@/lib/image-jpeg";
+import { runAutoCenterWhiteInPlace } from "@/lib/draft-ai-edits";
+import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
 
 export const runtime = "nodejs";
 
@@ -33,6 +35,23 @@ const requireAdmin = async () => {
 const isJpegExt = (ext: string) => {
   const lower = ext.toLowerCase();
   return lower === ".jpg" || lower === ".jpeg";
+};
+
+const replaceFileWithFallback = (sourcePath: string, targetPath: string) => {
+  try {
+    fs.renameSync(sourcePath, targetPath);
+    return true;
+  } catch {}
+  try {
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+    }
+    fs.copyFileSync(sourcePath, targetPath);
+    fs.unlinkSync(sourcePath);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export async function POST(request: Request) {
@@ -89,7 +108,61 @@ export async function POST(request: Request) {
       (parts.length > 1 ? `${parts.slice(0, -1).join("/")}/` : "") + `${parsed.name}.jpg`;
   }
 
-  fs.writeFileSync(finalAbsolute, jpeg);
+  const tempAbsolute = path.join(
+    dir,
+    `.${parsed.name}.photopea-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2, 10)}.tmp.jpg`
+  );
+
+  fs.writeFileSync(tempAbsolute, jpeg);
+  try {
+    // Always normalize Photopea saves through the auto-center white script.
+    await runAutoCenterWhiteInPlace(tempAbsolute);
+  } catch (err) {
+    try {
+      fs.unlinkSync(tempAbsolute);
+    } catch {
+      // Best-effort cleanup.
+    }
+    return NextResponse.json(
+      {
+        error: `Auto-center white failed after Photopea save: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`,
+      },
+      { status: 400 }
+    );
+  }
+
+  try {
+    if (fs.existsSync(finalAbsolute) && fs.statSync(finalAbsolute).isFile()) {
+      saveDraftImageUndoBackup(finalAbsolute);
+    }
+  } catch (err) {
+    try {
+      fs.unlinkSync(tempAbsolute);
+    } catch {
+      // Best-effort cleanup.
+    }
+    return NextResponse.json(
+      {
+        error: `Unable to create undo backup: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`,
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!replaceFileWithFallback(tempAbsolute, finalAbsolute)) {
+    try {
+      fs.unlinkSync(tempAbsolute);
+    } catch {
+      // Best-effort cleanup.
+    }
+    return NextResponse.json({ error: "Unable to persist edited image." }, { status: 500 });
+  }
   if (finalAbsolute !== absolute) {
     try {
       fs.unlinkSync(absolute);

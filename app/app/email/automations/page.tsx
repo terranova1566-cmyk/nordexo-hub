@@ -21,11 +21,11 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 
 type TemplateOption = {
-  id: string;
+  template_id: string;
   name: string;
 };
 
@@ -229,7 +229,7 @@ export default function EmailAutomationsPage() {
     const loadTemplates = async () => {
       setIsLoadingTemplates(true);
       try {
-        const response = await fetch("/api/sendpulse/templates");
+        const response = await fetch("/api/email/templates");
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(errorText || "Unable to load templates.");
@@ -249,7 +249,7 @@ export default function EmailAutomationsPage() {
     const loadSenders = async () => {
       setIsLoadingSenders(true);
       try {
-        const response = await fetch("/api/sendpulse/senders");
+        const response = await fetch("/api/email/senders");
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(errorText || "Unable to load senders.");
@@ -275,7 +275,9 @@ export default function EmailAutomationsPage() {
     setRules((prev) =>
       prev.map((rule) => {
         if (rule.templateId && !rule.templateQuery) {
-          const match = templates.find((item) => item.id === rule.templateId);
+          const match = templates.find(
+            (item) => item.template_id === rule.templateId
+          );
           return { ...rule, templateQuery: match?.name ?? "" };
         }
         return rule;
@@ -423,7 +425,7 @@ export default function EmailAutomationsPage() {
                           onOptionSelect={(_, data) => {
                             const value = String(data.optionValue ?? "");
                             const template = templates.find(
-                              (item) => item.id === value
+                              (item) => item.template_id === value
                             );
                             updateRule(rule.id, {
                               templateId: value,
@@ -432,7 +434,10 @@ export default function EmailAutomationsPage() {
                           }}
                         >
                           {filteredTemplates.map((template) => (
-                            <Option key={template.id} value={template.id}>
+                            <Option
+                              key={template.template_id}
+                              value={template.template_id}
+                            >
                               {template.name}
                             </Option>
                           ))}

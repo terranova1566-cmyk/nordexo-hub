@@ -167,6 +167,7 @@ export async function POST(request: Request) {
         provider: providerRaw,
         templatePreset,
         count: outputCount,
+        prompt,
         requestedBy: auth.userId,
       });
       return NextResponse.json({ ok: true, createdPaths });

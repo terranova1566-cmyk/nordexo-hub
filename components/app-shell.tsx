@@ -191,6 +191,7 @@ const ordersMenuItems = [
 
 const emailMenuItems = [
   { label: "nav.sendEmail", href: "/app/email/send" },
+  { label: "nav.emailSettings", href: "/app/email/settings", adminOnly: true },
   { label: "nav.emailAutomations", href: "/app/email/automations" },
 ];
 

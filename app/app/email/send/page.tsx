@@ -3,7 +3,6 @@
 import {
   Button,
   Card,
-  Combobox,
   Dropdown,
   Field,
   Input,
@@ -21,11 +20,12 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { useEffect, useMemo, useState } from "react";
-import { useI18n } from "@/components/i18n-provider";
 
 type TemplateOption = {
-  id: string;
+  template_id: string;
   name: string;
+  description?: string | null;
+  macros?: string[];
 };
 
 type SenderOption = {
@@ -89,17 +89,12 @@ const useStyles = makeStyles({
   status: {
     fontSize: tokens.fontSizeBase200,
   },
-  errorText: {
-    color: tokens.colorStatusDangerForeground1,
-  },
 });
 
 export default function ManualEmailSenderPage() {
   const styles = useStyles();
-  const { t } = useI18n();
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [senders, setSenders] = useState<SenderOption[]>([]);
-  const [templateQuery, setTemplateQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [selectedSender, setSelectedSender] = useState<string>("");
   const [toValue, setToValue] = useState("");
@@ -118,18 +113,18 @@ export default function ManualEmailSenderPage() {
     const loadTemplates = async () => {
       setIsLoadingTemplates(true);
       try {
-        const response = await fetch("/api/sendpulse/templates");
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || "Unable to load templates.");
-        }
+        const response = await fetch("/api/email/templates");
         const payload = await response.json();
-        setTemplates(payload.templates ?? []);
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load templates.");
+        }
+        const nextTemplates = payload.templates ?? [];
+        setTemplates(nextTemplates);
+        if (!selectedTemplateId && nextTemplates.length > 0) {
+          setSelectedTemplateId(nextTemplates[0].template_id);
+        }
       } catch (error) {
-        setMessage({
-          type: "error",
-          text: (error as Error).message || t("email.templates.error"),
-        });
+        setMessage({ type: "error", text: (error as Error).message });
       } finally {
         setIsLoadingTemplates(false);
       }
@@ -138,18 +133,18 @@ export default function ManualEmailSenderPage() {
     const loadSenders = async () => {
       setIsLoadingSenders(true);
       try {
-        const response = await fetch("/api/sendpulse/senders");
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || "Unable to load senders.");
-        }
+        const response = await fetch("/api/email/senders");
         const payload = await response.json();
-        setSenders(payload.senders ?? []);
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load senders.");
+        }
+        const nextSenders = payload.senders ?? [];
+        setSenders(nextSenders);
+        if (!selectedSender && nextSenders.length > 0) {
+          setSelectedSender(nextSenders[0].email);
+        }
       } catch (error) {
-        setMessage({
-          type: "error",
-          text: (error as Error).message || t("email.senders.error"),
-        });
+        setMessage({ type: "error", text: (error as Error).message });
       } finally {
         setIsLoadingSenders(false);
       }
@@ -157,27 +152,19 @@ export default function ManualEmailSenderPage() {
 
     loadTemplates();
     loadSenders();
-  }, [t]);
-
-  const filteredTemplates = useMemo(() => {
-    const query = templateQuery.trim().toLowerCase();
-    if (!query) return templates;
-    return templates.filter((template) =>
-      template.name.toLowerCase().includes(query)
-    );
-  }, [templates, templateQuery]);
+  }, [selectedSender, selectedTemplateId]);
 
   const selectedTemplate = useMemo(
-    () => templates.find((template) => template.id === selectedTemplateId),
+    () => templates.find((template) => template.template_id === selectedTemplateId),
     [templates, selectedTemplateId]
   );
 
   const addVariable = () => {
     if (!variableKey.trim()) return;
-    setVariables((prev) => [
-      ...prev,
-      { key: variableKey.trim(), value: variableValue.trim() },
-    ]);
+    setVariables((prev) => {
+      const filtered = prev.filter((entry) => entry.key !== variableKey.trim());
+      return [...filtered, { key: variableKey.trim(), value: variableValue.trim() }];
+    });
     setVariableKey("");
     setVariableValue("");
   };
@@ -186,9 +173,14 @@ export default function ManualEmailSenderPage() {
     setVariables((prev) => prev.filter((row) => row.key !== key));
   };
 
+  const setMacroKey = (macro: string) => {
+    setVariableKey(macro);
+  };
+
   const handleSend = async () => {
     setIsSending(true);
     setMessage(null);
+
     try {
       const payload = {
         to: toValue,
@@ -200,26 +192,23 @@ export default function ManualEmailSenderPage() {
           return acc;
         }, {}),
       };
-      const response = await fetch("/api/sendpulse/send", {
+      const response = await fetch("/api/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const result = await response.json();
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || t("email.sendError"));
+        throw new Error(result?.error || "Unable to send email.");
       }
-      setMessage({ type: "success", text: t("email.sendSuccess") });
+      setMessage({ type: "success", text: "Email sent." });
       setToValue("");
       setSubject("");
       setVariables([]);
       setVariableKey("");
       setVariableValue("");
     } catch (error) {
-      setMessage({
-        type: "error",
-        text: (error as Error).message || t("email.sendError"),
-      });
+      setMessage({ type: "error", text: (error as Error).message });
     } finally {
       setIsSending(false);
     }
@@ -229,154 +218,174 @@ export default function ManualEmailSenderPage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <Text size={700} weight="semibold">
-          {t("email.title")}
+          Send partner email
         </Text>
         <Text size={300} className={styles.helper}>
-          {t("email.subtitle")}
+          Send low-volume partner updates using internal templates and MXRoute SMTP.
         </Text>
       </div>
 
       <Card className={styles.formCard}>
-        {message ? (
-          <MessageBar intent={message.type}>{message.text}</MessageBar>
-        ) : null}
+        {message ? <MessageBar intent={message.type}>{message.text}</MessageBar> : null}
 
         <div className={styles.row}>
-          <Field label={t("email.to.label")} className={styles.grow}>
+          <Field label="To" className={styles.grow}>
             <Input
               value={toValue}
               onChange={(_, data) => setToValue(data.value)}
-              placeholder={t("email.to.placeholder")}
+              placeholder="email1@example.com, email2@example.com"
             />
           </Field>
-          <Field label={t("email.subject.label")} className={styles.grow}>
+          <Field label="Subject override (optional)" className={styles.grow}>
             <Input
               value={subject}
               onChange={(_, data) => setSubject(data.value)}
-              placeholder={t("email.subject.placeholder")}
+              placeholder="Leave empty to use template subject"
             />
           </Field>
         </div>
 
         <div className={styles.row}>
-          <Field label={t("email.template.label")} className={styles.grow}>
-            <Combobox
-              value={templateQuery}
-              placeholder={
-                isLoadingTemplates
-                  ? t("email.templates.loading")
-                  : t("email.template.placeholder")
-              }
-              onInput={(event) => setTemplateQuery(event.currentTarget.value)}
-              onOptionSelect={(_, data) => {
-                const value = String(data.optionValue ?? "");
-                setSelectedTemplateId(value);
-                const template = templates.find((item) => item.id === value);
-                setTemplateQuery(template?.name ?? "");
-              }}
-            >
-              {filteredTemplates.map((template) => (
-                <Option key={template.id} value={template.id}>
-                  {template.name}
-                </Option>
-              ))}
-            </Combobox>
-          </Field>
-          <Field label={t("email.sender.label")} className={styles.grow}>
+          <Field label="Template" className={styles.grow}>
             <Dropdown
               value={
-                selectedSender ||
-                (isLoadingSenders ? t("email.senders.loading") : "")
+                selectedTemplate
+                  ? `${selectedTemplate.name} (${selectedTemplate.template_id})`
+                  : isLoadingTemplates
+                    ? "Loading templates..."
+                    : ""
+              }
+              selectedOptions={selectedTemplateId ? [selectedTemplateId] : []}
+              placeholder="Select template"
+              onOptionSelect={(_, data) => setSelectedTemplateId(String(data.optionValue))}
+            >
+              {templates.map((template) => (
+                <Option
+                  key={template.template_id}
+                  value={template.template_id}
+                  text={`${template.name} (${template.template_id})`}
+                >
+                  {template.name} ({template.template_id})
+                </Option>
+              ))}
+            </Dropdown>
+          </Field>
+          <Field label="Sender" className={styles.grow}>
+            <Dropdown
+              value={
+                selectedSender || (isLoadingSenders ? "Loading senders..." : "")
               }
               selectedOptions={selectedSender ? [selectedSender] : []}
-              placeholder={t("email.sender.placeholder")}
+              placeholder="Select sender"
               onOptionSelect={(_, data) => setSelectedSender(String(data.optionValue))}
             >
               {senders.map((sender) => (
-                <Option key={sender.email} value={sender.email}>
-                  {sender.name
-                    ? `${sender.name} (${sender.email})`
-                    : sender.email}
+                <Option
+                  key={sender.email}
+                  value={sender.email}
+                  text={sender.name ? `${sender.name} (${sender.email})` : sender.email}
+                >
+                  {sender.name ? `${sender.name} (${sender.email})` : sender.email}
                 </Option>
               ))}
             </Dropdown>
           </Field>
         </div>
 
+        {isLoadingTemplates || isLoadingSenders ? <Spinner label="Loading" /> : null}
+
         <div>
-          <Text weight="semibold">{t("email.variables.title")}</Text>
+          <Text weight="semibold">Template variables</Text>
           <Text size={200} className={styles.helper}>
-            {t("email.variables.helper")}
+            Use keys like partner_name, products_csv_url, top_sellers_url, date_range,
+            PARTNER_CONTACT_NAME.
           </Text>
+          {selectedTemplate?.macros?.length ? (
+            <Text size={200} className={styles.helper}>
+              Suggested macros: {selectedTemplate.macros.join(", ")}
+            </Text>
+          ) : null}
         </div>
 
         <div className={styles.variableRow}>
-          <Field label={t("email.variables.key")}>
+          <Field label="Key">
             <Input
               value={variableKey}
               onChange={(_, data) => setVariableKey(data.value)}
-              placeholder={t("email.variables.keyPlaceholder")}
+              placeholder="partner_name"
             />
           </Field>
-          <Field label={t("email.variables.value")}>
+          <Field label="Value" className={styles.grow}>
             <Input
               value={variableValue}
               onChange={(_, data) => setVariableValue(data.value)}
-              placeholder={t("email.variables.valuePlaceholder")}
+              placeholder="Nordexo Partner"
             />
           </Field>
-          <Button appearance="outline" onClick={addVariable}>
-            {t("email.variables.add")}
+          <Button appearance="secondary" onClick={addVariable}>
+            Add variable
           </Button>
         </div>
 
-        {variables.length > 0 ? (
-          <div className={styles.variableTable}>
-            <Table size="small">
-              <TableHeader>
+        {selectedTemplate?.macros?.length ? (
+          <div className={styles.actionsRow}>
+            {selectedTemplate.macros.map((macro) => (
+              <Button
+                key={macro}
+                size="small"
+                appearance="subtle"
+                onClick={() => setMacroKey(macro)}
+              >
+                + {macro}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className={styles.variableTable}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Key</TableHeaderCell>
+                <TableHeaderCell>Value</TableHeaderCell>
+                <TableHeaderCell>Actions</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {variables.length === 0 ? (
                 <TableRow>
-                  <TableHeaderCell>{t("email.variables.key")}</TableHeaderCell>
-                  <TableHeaderCell>{t("email.variables.value")}</TableHeaderCell>
-                  <TableHeaderCell>{t("email.variables.actions")}</TableHeaderCell>
+                  <TableCell>No variables added.</TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>-</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {variables.map((row) => (
+              ) : (
+                variables.map((row) => (
                   <TableRow key={row.key}>
                     <TableCell>{row.key}</TableCell>
-                    <TableCell>{row.value}</TableCell>
+                    <TableCell>{row.value || "-"}</TableCell>
                     <TableCell>
-                      <Button
-                        appearance="subtle"
-                        onClick={() => removeVariable(row.key)}
-                      >
-                        {t("email.variables.remove")}
+                      <Button appearance="subtle" onClick={() => removeVariable(row.key)}>
+                        Remove
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <Text size={200} className={styles.helper}>
-            {t("email.variables.empty")}
-          </Text>
-        )}
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
         <div className={styles.actionsRow}>
           <Button
             appearance="primary"
             onClick={handleSend}
-            disabled={isSending}
+            disabled={
+              isSending || !toValue.trim() || !selectedTemplateId || !selectedSender
+            }
           >
-            {isSending ? <Spinner size="tiny" /> : t("email.send")}
+            {isSending ? "Sending..." : "Send email"}
           </Button>
-          {selectedTemplate ? (
-            <Text size={200} className={styles.helper}>
-              {t("email.template.selected")} {selectedTemplate.name}
-            </Text>
-          ) : null}
+          <Text className={styles.status}>Template: {selectedTemplateId || "-"}</Text>
         </div>
       </Card>
     </div>

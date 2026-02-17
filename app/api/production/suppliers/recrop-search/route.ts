@@ -297,8 +297,7 @@ export async function POST(request: NextRequest) {
     height: clampInt(Number(crop.height), 1, 100000),
   };
 
-  // DigiDeal manual supplier precedence remains; we still allow recrop search to run and cache,
-  // but selection stays locked.
+  // Keep exposing the current manual supplier URL for UI context.
   let lockedSupplierUrl: string | null = null;
   if (provider === "digideal") {
     const { data: manualRow } = await adminClient
@@ -453,20 +452,7 @@ export async function POST(request: NextRequest) {
       .eq("product_id", productId)
       .maybeSingle();
 
-    const selected =
-      lockedSupplierUrl !== null
-        ? {
-            provider,
-            product_id: productId,
-            selected_offer_id: null,
-            selected_detail_url: lockedSupplierUrl,
-            selected_offer: { detailUrl: lockedSupplierUrl, source: "digideal_manual" },
-            selected_at: null,
-            selected_by: null,
-            updated_at: null,
-            locked: true,
-          }
-        : (selectionRow ?? null);
+    const selected = selectionRow ?? null;
 
     return NextResponse.json({
       provider,

@@ -16,6 +16,22 @@ Create `.env.local` in the project root:
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# MXRoute / SMTP sender
+MXROUTE_SMTP_HOST=fusion.mxrouting.net
+MXROUTE_SMTP_PORT=587
+MXROUTE_SMTP_SECURE=false
+MXROUTE_SMTP_USER=partner@nordexo.se
+MXROUTE_SMTP_PASS=your_smtp_password
+PARTNER_EMAIL_FROM=partner@nordexo.se
+PARTNER_EMAIL_FROM_NAME=Nordexo - Partner Support
+
+# Public file links
+PARTNER_PUBLIC_FILES_BASE_URL=https://files.nordexo.se
+PARTNER_PUBLIC_FILES_ROOT=/srv/node-files/exports/public
+PARTNER_PUBLIC_LINK_EXPIRY_DAYS=30
+PARTNER_PUBLIC_FILE_RETENTION_DAYS=90
 ```
 
 Use the existing Supabase URL from `/srv/shopify-sync/.env` and retrieve the anon key from the Supabase project settings.
@@ -48,6 +64,8 @@ App routes:
 - `/app/products/[id]`
 - `/app/saved`
 - `/app/exports`
+- `/app/email/send`
+- `/app/email/settings`
 - `/app/ui-kit`
 
 ## Notes

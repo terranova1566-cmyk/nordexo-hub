@@ -11,6 +11,14 @@ export const runtime = "nodejs";
 
 const UPLOAD_DIR = "/srv/incoming-scripts/uploads/draft-imports";
 const TEMP_EXTRACT_ROOT = "/tmp";
+const COLLISION_LOG_FILE = "/srv/nordexo-hub/logs/draft-import-collision.log";
+const COLLISION_BACKUP_DIR = "/srv/nordexo-hub/logs/draft-import-backups";
+const VALID_COLLISION_STRATEGIES = new Set([
+  "ask",
+  "skip",
+  "replace",
+  "create_revision",
+]);
 
 const ensureDir = (dir: string) => {
   fs.mkdirSync(dir, { recursive: true });
@@ -196,6 +204,26 @@ const mapZipSpus = (extractedRoot: string) => {
   return new Map(roots.map((spu) => [spu, path.join(extractedRoot, spu)]));
 };
 
+const normalizeCollisionStrategy = (value: unknown) => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "ask";
+  if (VALID_COLLISION_STRATEGIES.has(raw)) return raw;
+  return "ask";
+};
+
+const appendCollisionLog = (payload: Record<string, unknown>) => {
+  try {
+    ensureDir(path.dirname(COLLISION_LOG_FILE));
+    fs.appendFileSync(
+      COLLISION_LOG_FILE,
+      `${JSON.stringify(payload)}\n`,
+      "utf8"
+    );
+  } catch {
+    // Non-fatal; imports should continue even if logging fails.
+  }
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   const {
@@ -225,11 +253,27 @@ export async function POST(request: Request) {
 
   const workbookFile = formData.get("workbook");
   const zipFile = formData.get("images_zip");
-  const purgeMissing =
-    formData.get("purgeMissing")?.toString() !== "false";
+  const purgeMissing = formData.get("purgeMissing")?.toString() === "true";
+  const purgeMissingConfirmed =
+    formData.get("purgeMissingConfirmed")?.toString() === "true";
+  const collisionStrategy = normalizeCollisionStrategy(
+    formData.get("collisionStrategy")
+  );
+  const replaceConfirmed =
+    formData.get("replaceConfirmed")?.toString() === "true";
 
   if (!workbookFile && !zipFile) {
     return NextResponse.json({ error: "No files provided." }, { status: 400 });
+  }
+
+  if (purgeMissing && !purgeMissingConfirmed) {
+    return NextResponse.json(
+      {
+        error:
+          "purgeMissing requires explicit confirmation. Set purgeMissingConfirmed=true.",
+      },
+      { status: 400 }
+    );
   }
 
   ensureDir(UPLOAD_DIR);
@@ -310,6 +354,186 @@ export async function POST(request: Request) {
     );
   }
 
+  const supabaseEnv = loadSupabaseEnv();
+  const adminClient =
+    supabaseEnv.SUPABASE_URL && supabaseEnv.SUPABASE_SERVICE_ROLE
+      ? createClient(supabaseEnv.SUPABASE_URL, supabaseEnv.SUPABASE_SERVICE_ROLE, {
+          auth: { persistSession: false },
+        })
+      : null;
+  const dbClient = adminClient ?? supabase;
+
+  const uploadedSpus = [...uploadSpuSet];
+  const existingDraftRows: Array<{
+    draft_spu: string;
+    draft_image_folder: string | null;
+    draft_updated_at: string | null;
+  }> = [];
+  for (let i = 0; i < uploadedSpus.length; i += 200) {
+    const chunk = uploadedSpus.slice(i, i + 200);
+    const { data, error } = await dbClient
+      .from("draft_products")
+      .select("draft_spu,draft_image_folder,draft_updated_at")
+      .eq("draft_status", "draft")
+      .in("draft_spu", chunk);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    (data ?? []).forEach((row) => {
+      const spu = normalizeSku((row as { draft_spu?: unknown }).draft_spu);
+      if (!spu) return;
+      existingDraftRows.push({
+        draft_spu: spu,
+        draft_image_folder: String(
+          (row as { draft_image_folder?: string | null }).draft_image_folder ?? ""
+        ) || null,
+        draft_updated_at: String(
+          (row as { draft_updated_at?: string | null }).draft_updated_at ?? ""
+        ) || null,
+      });
+    });
+  }
+
+  const collisionSet = new Set(existingDraftRows.map((row) => row.draft_spu));
+  const collisionSpus = [...collisionSet].sort();
+  const collisionCount = collisionSpus.length;
+
+  if (collisionCount > 0) {
+    if (collisionStrategy === "ask") {
+      return NextResponse.json(
+        {
+          error:
+            "Draft SPU collision detected. Choose a collision strategy: skip, replace, or create_revision.",
+          code: "draft_spu_collision",
+          collisions: existingDraftRows,
+          collisionSpus,
+          suggestedStrategy: "skip",
+        },
+        { status: 409 }
+      );
+    }
+    if (collisionStrategy === "replace" && !replaceConfirmed) {
+      return NextResponse.json(
+        {
+          error:
+            "Replace strategy requires replaceConfirmed=true because it will overwrite existing draft SPU/SKU data.",
+          code: "draft_spu_collision_confirm_required",
+          collisions: existingDraftRows,
+          collisionSpus,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  const effectiveUploadSpuSet = new Set(uploadSpuSet);
+  const skippedCollisionSpus: string[] = [];
+  if (collisionStrategy === "skip" && collisionCount > 0) {
+    collisionSpus.forEach((spu) => {
+      effectiveUploadSpuSet.delete(spu);
+      skippedCollisionSpus.push(spu);
+    });
+  }
+
+  if (effectiveUploadSpuSet.size === 0) {
+    appendCollisionLog({
+      ts: new Date().toISOString(),
+      userId: user.id,
+      strategy: collisionStrategy,
+      collisionCount,
+      collisionSpus,
+      skippedCollisionSpus,
+      result: "no-op",
+      reason: "all-upload-spus-collided",
+    });
+    return NextResponse.json({
+      matchedRuns: [],
+      uploadSpuCount: 0,
+      purgedSpuCount: 0,
+      filesReplacedCount: 0,
+      skippedCollisionSpus,
+      errors: [],
+    });
+  }
+
+  // Keep verification and workbook subsets aligned with the final effective import set.
+  [...verifySpuSet].forEach((spu) => {
+    if (!effectiveUploadSpuSet.has(spu)) verifySpuSet.delete(spu);
+  });
+  [...workbookSpuSet].forEach((spu) => {
+    if (!effectiveUploadSpuSet.has(spu)) workbookSpuSet.delete(spu);
+  });
+
+  let collisionBackupPath: string | null = null;
+  if (
+    collisionCount > 0 &&
+    (collisionStrategy === "replace" || collisionStrategy === "create_revision")
+  ) {
+    const productRows: Record<string, unknown>[] = [];
+    const variantRows: Record<string, unknown>[] = [];
+    for (let i = 0; i < collisionSpus.length; i += 200) {
+      const chunk = collisionSpus.slice(i, i + 200);
+      const { data: pRows, error: pError } = await dbClient
+        .from("draft_products")
+        .select("*")
+        .in("draft_spu", chunk);
+      if (pError) {
+        return NextResponse.json({ error: pError.message }, { status: 500 });
+      }
+      productRows.push(...((pRows ?? []) as Record<string, unknown>[]));
+
+      const { data: vRows, error: vError } = await dbClient
+        .from("draft_variants")
+        .select("*")
+        .in("draft_spu", chunk);
+      if (vError) {
+        return NextResponse.json({ error: vError.message }, { status: 500 });
+      }
+      variantRows.push(...((vRows ?? []) as Record<string, unknown>[]));
+    }
+
+    try {
+      ensureDir(COLLISION_BACKUP_DIR);
+      collisionBackupPath = path.join(
+        COLLISION_BACKUP_DIR,
+        `draft-import-backup-${stamp}-${collisionStrategy}.json`
+      );
+      fs.writeFileSync(
+        collisionBackupPath,
+        JSON.stringify(
+          {
+            ts: new Date().toISOString(),
+            userId: user.id,
+            strategy: collisionStrategy,
+            collisionSpus,
+            products: productRows,
+            variants: variantRows,
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+    } catch {
+      collisionBackupPath = null;
+    }
+  }
+
+  if (collisionCount > 0) {
+    appendCollisionLog({
+      ts: new Date().toISOString(),
+      userId: user.id,
+      strategy: collisionStrategy,
+      replaceConfirmed,
+      purgeMissing,
+      collisionCount,
+      collisionSpus,
+      skippedCollisionSpus,
+      effectiveUploadSpuCount: effectiveUploadSpuSet.size,
+      backupPath: collisionBackupPath,
+    });
+  }
+
   const runFolders = listRunFolders();
   const runIndex = new Map<string, Set<string>>();
   runFolders.forEach((run) => {
@@ -321,7 +545,7 @@ export async function POST(request: Request) {
   const matchedRuns = runFolders.filter((run) => {
     const runSpus = runIndex.get(run);
     if (!runSpus) return false;
-    for (const spu of uploadSpuSet) {
+    for (const spu of effectiveUploadSpuSet) {
       if (runSpus.has(spu)) return true;
     }
     return false;
@@ -334,15 +558,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabaseEnv = loadSupabaseEnv();
-  const adminClient =
-    supabaseEnv.SUPABASE_URL && supabaseEnv.SUPABASE_SERVICE_ROLE
-      ? createClient(supabaseEnv.SUPABASE_URL, supabaseEnv.SUPABASE_SERVICE_ROLE, {
-          auth: { persistSession: false },
-        })
-      : null;
-  const dbClient = adminClient ?? supabase;
-
   let purgedSpuCount = 0;
   let filesReplacedCount = 0;
   const uploadSpusByRun = new Map<string, Set<string>>();
@@ -350,7 +565,7 @@ export async function POST(request: Request) {
   for (const run of matchedRuns) {
     const runSpus = runIndex.get(run) ?? new Set<string>();
     const uploadSpusForRun = new Set(
-      [...uploadSpuSet].filter((spu) => runSpus.has(spu))
+      [...effectiveUploadSpuSet].filter((spu) => runSpus.has(spu))
     );
     uploadSpusByRun.set(run, uploadSpusForRun);
 
@@ -552,7 +767,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     matchedRuns,
-    uploadSpuCount: uploadSpuSet.size,
+    uploadSpuCount: effectiveUploadSpuSet.size,
+    originalUploadSpuCount: uploadSpuSet.size,
+    collisionStrategy,
+    skippedCollisionSpus,
+    collisionBackupPath,
     purgedSpuCount,
     filesReplacedCount,
     errors,

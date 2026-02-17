@@ -2536,6 +2536,109 @@ export default function ProductionPage() {
     return raw;
   }, []);
 
+  const normalizeOfferSoldCount = useCallback((value: unknown): number | null => {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value >= 0 ? Math.round(value) : null;
+    }
+
+    const digitMap: Record<string, number> = {
+      "零": 0,
+      "〇": 0,
+      "一": 1,
+      "二": 2,
+      "两": 2,
+      "三": 3,
+      "四": 4,
+      "五": 5,
+      "六": 6,
+      "七": 7,
+      "八": 8,
+      "九": 9,
+    };
+
+    const parseChineseSection = (input: string): number | null => {
+      const text = input.trim();
+      if (!text) return 0;
+      let total = 0;
+      let current = 0;
+      for (const ch of text) {
+        if (Object.prototype.hasOwnProperty.call(digitMap, ch)) {
+          current = digitMap[ch];
+          continue;
+        }
+        if (ch === "十") {
+          total += (current || 1) * 10;
+          current = 0;
+          continue;
+        }
+        if (ch === "百") {
+          total += (current || 1) * 100;
+          current = 0;
+          continue;
+        }
+        if (ch === "千") {
+          total += (current || 1) * 1000;
+          current = 0;
+          continue;
+        }
+        return null;
+      }
+      return total + current;
+    };
+
+    const parseChineseInteger = (input: string): number | null => {
+      const text = input.trim();
+      if (!text) return null;
+      if (!text.includes("万")) {
+        return parseChineseSection(text);
+      }
+      const [highRaw, lowRaw = ""] = text.split("万", 2);
+      const high = highRaw.trim() ? parseChineseSection(highRaw) : 1;
+      const low = lowRaw.trim() ? parseChineseSection(lowRaw) : 0;
+      if (high === null || low === null) return null;
+      return high * 10000 + low;
+    };
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const normalized = raw
+      .replace(/[,，\s]/g, "")
+      .replace(/[+＋]/g, "")
+      .replace(/(以上|余|多|件|个|笔|销量|月销|人付款|已售|成交|单)/g, "");
+
+    if (!normalized) return null;
+
+    const unitMatch = normalized.match(
+      /^([0-9]+(?:\.[0-9]+)?|[零〇一二两三四五六七八九十百千]+)(万|千)$/
+    );
+    if (unitMatch) {
+      const baseRaw = unitMatch[1];
+      const unit = unitMatch[2];
+      let base = Number(baseRaw);
+      if (!Number.isFinite(base)) {
+        const zh = parseChineseInteger(baseRaw);
+        base = zh === null ? Number.NaN : zh;
+      }
+      if (Number.isFinite(base) && base >= 0) {
+        return Math.round(base * (unit === "万" ? 10000 : 1000));
+      }
+    }
+
+    if (/^[零〇一二两三四五六七八九十百千万]+$/.test(normalized)) {
+      const zh = parseChineseInteger(normalized);
+      if (zh !== null && Number.isFinite(zh) && zh >= 0) return Math.round(zh);
+    }
+
+    const numericMatch = normalized.match(/\d+(?:\.\d+)?/);
+    if (numericMatch?.[0]) {
+      const num = Number(numericMatch[0]);
+      if (Number.isFinite(num) && num >= 0) return Math.round(num);
+    }
+
+    return null;
+  }, []);
+
   const pickOfferPriceRmb = useCallback(
     (offer: SupplierOffer): string | null => {
       const candidates = [
@@ -2584,6 +2687,12 @@ export default function ProductionPage() {
         ];
         for (const candidate of candidates) {
           if (candidate === null || candidate === undefined) continue;
+          const normalized = normalizeOfferSoldCount(candidate);
+          if (Number.isFinite(normalized as number)) {
+            return new Intl.NumberFormat("en-US", {
+              maximumFractionDigits: 0,
+            }).format(normalized as number);
+          }
           const text = String(candidate).trim();
           if (text) return text;
         }
@@ -2614,7 +2723,7 @@ export default function ProductionPage() {
         seller: typeof offer?.sellerName === "string" ? offer.sellerName.trim() : "",
       };
     },
-    [pickOfferPriceRmb]
+    [normalizeOfferSoldCount, pickOfferPriceRmb]
   );
 
   const openLinkedDialog = useCallback((item: ProductionItem) => {

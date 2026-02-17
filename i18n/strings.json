@@ -287,6 +287,11 @@
       "context": "Email menu item"
     },
     {
+      "key": "nav.emailSettings",
+      "text": "Email settings",
+      "context": "Email menu item"
+    },
+    {
       "key": "nav.emailAutomations",
       "text": "Automations",
       "context": "Email menu item"
