@@ -27,6 +27,7 @@ import {
   PopoverSurface,
   PopoverTrigger,
   Spinner,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -98,6 +99,14 @@ type DigidealItem = {
   supplier_variant_available_count?: number | null;
   supplier_variant_selected_count?: number | null;
   supplier_variant_packs_text?: string | null;
+  digideal_price_override_price?: number | null;
+  digideal_price_override_mode?: string | null;
+  digideal_price_override_margin_percent?: number | null;
+  digideal_price_override_updated_at?: string | null;
+  digideal_price_ignored?: boolean | null;
+  digideal_price_ignored_at?: string | null;
+  digideal_extreme_ratio_confirmed?: boolean | null;
+  digideal_extreme_ratio_confirmed_at?: string | null;
   shipping_cost: number | null;
   estimated_rerun_price: number | null;
   report_exists: boolean;
@@ -128,6 +137,13 @@ type CropRectNorm = { x: number; y: number; w: number; h: number };
 
 const DEFAULT_CROP_MARGIN_PX = 15;
 const DEFAULT_CROP_RECT_FALLBACK: CropRectNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
+const DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX = 0.47;
+const DIGIDEAL_SUPPLIER_SHARE_FLOOR = 0.4;
+const DIGIDEAL_MIN_MARGIN_PERCENT = 20;
+const DIGIDEAL_MAX_MARGIN_PERCENT = 50;
+// Strong quantity indicators only (explicitly excluding ambiguous words like "delar"/"bitar").
+const DIGIDEAL_STRONG_QTY_TOKEN_REGEX =
+  /\b\d{1,3}\s*[-–]?\s*pack\b|\b\d{1,3}pack\b|\b\d{1,3}\s*st\.?\b|\b\d{1,3}\s*par\b/gi;
 
 type VariantCombo = {
   index: number;
@@ -188,6 +204,55 @@ const resolveVariantComboWeightGrams = (combo: VariantCombo) => {
 
 const formatPriceWeightKey = (priceRmb: number, weightGrams: number) =>
   `${priceRmb.toFixed(2)}|${Math.round(weightGrams)}`;
+
+type PriceHealthState = "green" | "orange" | "red" | "purple" | "yellow" | "gray";
+
+type PriceComputationResult = {
+  displayedPrice: number | null;
+  automaticPrice: number | null;
+  benchmarkPrice: number | null;
+  productCostKr: number | null;
+  shippingCostKrCalculated: number | null;
+  totalCost: number | null;
+  marginPercent: number | null;
+  marginKr: number | null;
+  standardMarginPercent: number | null;
+  supplierToMarketRatioPercent: number | null;
+  extremeRatioFlagged: boolean;
+  state: PriceHealthState;
+  hasOverride: boolean;
+  ignored: boolean;
+};
+
+const clampNumber = (value: number, minValue: number, maxValue: number) =>
+  Math.min(Math.max(value, minValue), maxValue);
+
+const splitStrongQuantitySegments = (value: string) => {
+  const text = String(value ?? "");
+  if (!text) return [] as Array<{ text: string; highlight: boolean }>;
+
+  const segments: Array<{ text: string; highlight: boolean }> = [];
+  let cursor = 0;
+  DIGIDEAL_STRONG_QTY_TOKEN_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = DIGIDEAL_STRONG_QTY_TOKEN_REGEX.exec(text)) !== null) {
+    const start = match.index;
+    const token = match[0] ?? "";
+    const end = start + token.length;
+    if (start > cursor) {
+      segments.push({ text: text.slice(cursor, start), highlight: false });
+    }
+    segments.push({ text: text.slice(start, end), highlight: true });
+    cursor = end;
+  }
+
+  if (cursor < text.length) {
+    segments.push({ text: text.slice(cursor), highlight: false });
+  }
+
+  return segments.length > 0 ? segments : [{ text, highlight: false }];
+};
 
 type DigidealResponse = {
   items: DigidealItem[];
@@ -1018,6 +1083,119 @@ const useStyles = makeStyles({
       opacity: 1,
     },
     fontWeight: tokens.fontWeightSemibold,
+  },
+  estimatedPriceBadgeClickable: {
+    cursor: "pointer",
+    transition: "filter 120ms ease, transform 120ms ease",
+    "&:hover": {
+      filter: "brightness(0.94)",
+    },
+    "&:active": {
+      filter: "brightness(0.9)",
+      transform: "translateY(0.5px)",
+    },
+  },
+  estimatedPriceBadgeWarning: {
+    border: "1px solid #d97706",
+    color: "#b45309",
+    backgroundColor: "#fff4cc",
+    "&.fui-Badge": {
+      backgroundColor: "#fff4cc",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#fff4cc",
+      opacity: 1,
+    },
+  },
+  estimatedPriceBadgeAlert: {
+    border: "1px solid #b42318",
+    color: "#b42318",
+    backgroundColor: "#fee4e2",
+    "&.fui-Badge": {
+      backgroundColor: "#fee4e2",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#fee4e2",
+      opacity: 1,
+    },
+  },
+  estimatedPriceBadgeOverride: {
+    border: "1px solid #6d28d9",
+    color: "#6d28d9",
+    backgroundColor: "#ede9fe",
+    "&.fui-Badge": {
+      backgroundColor: "#ede9fe",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#ede9fe",
+      opacity: 1,
+    },
+  },
+  estimatedPriceBadgeIgnored: {
+    border: "1px solid #cfd4dc",
+    color: "#7b8494",
+    backgroundColor: "#f3f5f8",
+    "&.fui-Badge": {
+      backgroundColor: "#f3f5f8",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#f3f5f8",
+      opacity: 1,
+    },
+  },
+  estimatedPriceBadgeExtreme: {
+    border: "1px solid #000000",
+    color: "#000000",
+    backgroundColor: "#facc15",
+    "&.fui-Badge": {
+      backgroundColor: "#facc15",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#facc15",
+      opacity: 1,
+    },
+  },
+  estimatedPriceDialogSurface: {
+    width: "min(520px, 92vw)",
+    maxWidth: "min(520px, 92vw)",
+  },
+  estimatedPriceDialogContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  estimatedPriceDialogMeta: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+  },
+  estimatedPriceDialogInputRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "8px",
+  },
+  estimatedPriceDialogInput: {
+    width: "140px",
+  },
+  estimatedPriceHintText: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: tokens.lineHeightBase100,
+    marginTop: "1px",
+    whiteSpace: "nowrap",
+  },
+  estimatedPriceHintCritical: {
+    color: "#b42318",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  estimatedPriceHintIgnored: {
+    color: "#8a93a3",
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightRegular,
   },
   estimatedPriceBadgeSlot: {
     width: "10ch",
@@ -1946,12 +2124,12 @@ const useStyles = makeStyles({
   productCellStack: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "1px",
   },
   metaStack: {
     display: "flex",
     flexDirection: "column",
-    gap: "1px",
+    gap: "3px",
   },
   metaInlineRow: {
     display: "flex",
@@ -2009,6 +2187,21 @@ const useStyles = makeStyles({
   },
   productTitle: {
     fontWeight: tokens.fontWeightSemibold,
+  },
+  productSecondaryTitle: {
+    display: "block",
+    maxWidth: "100%",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  productSecondaryTitleTooltip: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+  },
+  productQuantityHighlight: {
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground2,
   },
   productIdInline: {
     fontSize: tokens.fontSizeBase200,
@@ -2546,6 +2739,12 @@ export default function DigidealCampaignsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [priceDialogOpen, setPriceDialogOpen] = useState(false);
+  const [priceDialogTarget, setPriceDialogTarget] = useState<DigidealItem | null>(null);
+  const [priceDialogMarginDraft, setPriceDialogMarginDraft] = useState("20");
+  const [priceDialogSaving, setPriceDialogSaving] = useState(false);
+  const [priceDialogError, setPriceDialogError] = useState<string | null>(null);
+  const [priceDialogIgnoreDraft, setPriceDialogIgnoreDraft] = useState(false);
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [rerunComment, setRerunComment] = useState("");
   const [rerunTargetTitle, setRerunTargetTitle] = useState<string | null>(null);
@@ -2771,6 +2970,8 @@ export default function DigidealCampaignsPage() {
   };
 
   const pricingSeConfigRef = useRef<PricingSeConfig | null>(null);
+  const [pricingSeConfigSnapshot, setPricingSeConfigSnapshot] =
+    useState<PricingSeConfig | null>(null);
 
   const loadPricingSeConfig = useCallback(async (): Promise<PricingSeConfig | null> => {
     if (pricingSeConfigRef.current) return pricingSeConfigRef.current;
@@ -2824,6 +3025,7 @@ export default function DigidealCampaignsPage() {
       };
 
       pricingSeConfigRef.current = config;
+      setPricingSeConfigSnapshot(config);
       return config;
     } catch {
       return null;
@@ -2879,7 +3081,291 @@ export default function DigidealCampaignsPage() {
     [computeEstimatedPriceSe, loadPricingSeConfig]
   );
 
+  useEffect(() => {
+    if (pricingSeConfigRef.current) return;
+    void loadPricingSeConfig();
+  }, [loadPricingSeConfig]);
+
+  const computePriceComputation = useCallback(
+    (item: DigidealItem): PriceComputationResult => {
+      const automaticPrice =
+        typeof item.estimated_rerun_price === "number" && item.estimated_rerun_price > 0
+          ? Number(item.estimated_rerun_price)
+          : null;
+      const market = pricingSeConfigSnapshot?.market ?? null;
+      const shippingClass = pricingSeConfigSnapshot?.shippingClass ?? null;
+      const shippingCost =
+        typeof item.shipping_cost === "number" && Number.isFinite(item.shipping_cost)
+          ? Number(item.shipping_cost)
+          : null;
+      const marketPrice =
+        typeof item.last_price === "number" && Number.isFinite(item.last_price)
+          ? Number(item.last_price)
+          : null;
+      const benchmarkTotal =
+        marketPrice !== null ? marketPrice + Math.max(0, shippingCost ?? 0) : null;
+
+      const benchmarkPriceRaw =
+        automaticPrice !== null &&
+        benchmarkTotal !== null &&
+        Number.isFinite(benchmarkTotal) &&
+        benchmarkTotal > 0
+          ? clampNumber(
+              automaticPrice,
+              benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_FLOOR,
+              benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX
+            )
+          : automaticPrice;
+
+      const overridePriceRaw =
+        typeof item.digideal_price_override_price === "number" &&
+        Number.isFinite(item.digideal_price_override_price) &&
+        item.digideal_price_override_price > 0
+          ? Number(item.digideal_price_override_price)
+          : null;
+      const hasOverride = overridePriceRaw !== null;
+      const ignored = item.digideal_price_ignored === true;
+      const extremeRatioConfirmed = item.digideal_extreme_ratio_confirmed === true;
+
+      const purchaseCny =
+        typeof item.purchase_price === "number" && Number.isFinite(item.purchase_price)
+          ? Number(item.purchase_price)
+          : null;
+      const weightKg =
+        typeof item.weight_kg === "number" && Number.isFinite(item.weight_kg) && item.weight_kg > 0
+          ? Number(item.weight_kg)
+          : typeof item.weight_grams === "number" &&
+              Number.isFinite(item.weight_grams) &&
+              item.weight_grams > 0
+            ? Number(item.weight_grams) / 1000
+            : null;
+
+      const directCost =
+        purchaseCny !== null &&
+        purchaseCny > 0 &&
+        weightKg !== null &&
+        weightKg > 0 &&
+        market &&
+        shippingClass
+          ? (() => {
+              const weightG = weightKg * 1000;
+              const useLow = weightG <= market.weight_threshold_g;
+              const rate = useLow ? shippingClass.rate_low : shippingClass.rate_high;
+              const base = useLow ? shippingClass.base_low : shippingClass.base_high;
+              const mult = useLow ? shippingClass.mult_low : shippingClass.mult_high;
+              const shippingCny = weightG * mult * rate + base;
+              const shippingLocal =
+                shippingCny * market.fx_rate_cny + market.packing_fee;
+              const stockLocal = purchaseCny * market.fx_rate_cny;
+              const totalLocal = stockLocal + shippingLocal;
+              return {
+                productCostKr:
+                  Number.isFinite(stockLocal) && stockLocal >= 0 ? stockLocal : null,
+                shippingCostKr:
+                  Number.isFinite(shippingLocal) && shippingLocal >= 0
+                    ? shippingLocal
+                    : null,
+                totalCost:
+                  Number.isFinite(totalLocal) && totalLocal > 0 ? totalLocal : null,
+              };
+            })()
+          : null;
+
+      const fallbackTotalCost =
+        automaticPrice !== null &&
+        market &&
+        Number.isFinite(market.markup_percent) &&
+        Number.isFinite(market.markup_fixed)
+          ? (() => {
+              const divisor = 1 + Number(market.markup_percent);
+              if (!Number.isFinite(divisor) || divisor <= 0) return null;
+              const result = (automaticPrice - Number(market.markup_fixed)) / divisor;
+              return Number.isFinite(result) && result > 0 ? result : null;
+            })()
+          : null;
+      const totalCost = directCost?.totalCost ?? fallbackTotalCost;
+
+      const maxAllowedByMargin =
+        totalCost !== null && totalCost > 0
+          ? totalCost / (1 - DIGIDEAL_MAX_MARGIN_PERCENT / 100)
+          : null;
+
+      const benchmarkPrice =
+        benchmarkPriceRaw !== null && maxAllowedByMargin !== null
+          ? Math.min(benchmarkPriceRaw, maxAllowedByMargin)
+          : benchmarkPriceRaw;
+      const displayedPrice = hasOverride ? overridePriceRaw : benchmarkPrice;
+
+      const computeMarginPercent = (price: number | null) => {
+        if (price === null || totalCost === null || price <= 0) return null;
+        const pct = ((price - totalCost) / price) * 100;
+        return Number.isFinite(pct) ? pct : null;
+      };
+      const computeMarginKr = (price: number | null) => {
+        if (price === null || totalCost === null) return null;
+        const kr = price - totalCost;
+        return Number.isFinite(kr) ? kr : null;
+      };
+
+      const marginPercent = computeMarginPercent(displayedPrice);
+      const marginKr = computeMarginKr(displayedPrice);
+      const standardMarginPercent = computeMarginPercent(automaticPrice);
+      const supplierToMarketRatioPercent =
+        benchmarkTotal !== null && displayedPrice !== null && benchmarkTotal > 0
+          ? (displayedPrice / benchmarkTotal) * 100
+          : null;
+      const extremeRatioFlagged =
+        !hasOverride &&
+        !extremeRatioConfirmed &&
+        supplierToMarketRatioPercent !== null &&
+        (supplierToMarketRatioPercent >= 75 || supplierToMarketRatioPercent <= 25);
+
+      const state: PriceHealthState = (() => {
+        if (ignored) return "gray";
+        if (extremeRatioFlagged) return "yellow";
+        if (hasOverride) return "purple";
+        if (marginPercent !== null && marginPercent < DIGIDEAL_MIN_MARGIN_PERCENT) return "red";
+        if (
+          marginPercent !== null &&
+          standardMarginPercent !== null &&
+          marginPercent + 0.05 < standardMarginPercent
+        ) {
+          return "orange";
+        }
+        return "green";
+      })();
+
+      return {
+        displayedPrice,
+        automaticPrice,
+        benchmarkPrice,
+        productCostKr: directCost?.productCostKr ?? null,
+        shippingCostKrCalculated: directCost?.shippingCostKr ?? null,
+        totalCost,
+        marginPercent,
+        marginKr,
+        standardMarginPercent,
+        supplierToMarketRatioPercent,
+        extremeRatioFlagged,
+        state,
+        hasOverride,
+        ignored,
+      };
+    },
+    [pricingSeConfigSnapshot]
+  );
+
+  const closePriceDialog = useCallback(() => {
+    setPriceDialogOpen(false);
+    setPriceDialogTarget(null);
+    setPriceDialogSaving(false);
+    setPriceDialogError(null);
+    setPriceDialogIgnoreDraft(false);
+  }, []);
+
+  const openPriceDialog = useCallback(
+    (item: DigidealItem, pricing: PriceComputationResult) => {
+      if (!isAdmin) return;
+      setPriceDialogTarget(item);
+      setPriceDialogMarginDraft(
+        pricing.marginPercent !== null
+          ? String(Math.max(DIGIDEAL_MIN_MARGIN_PERCENT, Math.round(pricing.marginPercent)))
+          : String(DIGIDEAL_MIN_MARGIN_PERCENT)
+      );
+      setPriceDialogIgnoreDraft(pricing.ignored === true);
+      setPriceDialogError(null);
+      setPriceDialogOpen(true);
+    },
+    [isAdmin]
+  );
+
+  const applyPriceOverride = useCallback(
+    async (
+      item: DigidealItem,
+      action: "set" | "clear",
+      payload?: {
+        price?: number;
+        marginPercent?: number | null;
+        mode?: string;
+        ignorePriceAction?: "set" | "clear";
+        extremeRatioAction?: "confirm" | "clear";
+      }
+    ) => {
+      const productId = String(item.product_id || "").trim();
+      if (!productId) return false;
+      setPriceDialogSaving(true);
+      setPriceDialogError(null);
+      try {
+        const response = await fetch("/api/digideal", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_id: productId,
+            price_override_action: action,
+            price_override_price: payload?.price,
+            price_override_margin_percent: payload?.marginPercent ?? null,
+            price_override_mode: payload?.mode ?? null,
+            ignore_price_action: payload?.ignorePriceAction ?? null,
+            extreme_ratio_action: payload?.extremeRatioAction ?? null,
+          }),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(json?.error || "Failed to update price override.");
+        }
+        const next = json?.item ?? {};
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.product_id === productId
+              ? {
+                  ...entry,
+                  digideal_price_override_price:
+                    typeof next?.digideal_price_override_price === "number"
+                      ? next.digideal_price_override_price
+                      : null,
+                  digideal_price_override_mode:
+                    typeof next?.digideal_price_override_mode === "string"
+                      ? next.digideal_price_override_mode
+                      : null,
+                  digideal_price_override_margin_percent:
+                    typeof next?.digideal_price_override_margin_percent === "number"
+                      ? next.digideal_price_override_margin_percent
+                      : null,
+                  digideal_price_override_updated_at:
+                    typeof next?.digideal_price_override_updated_at === "string"
+                      ? next.digideal_price_override_updated_at
+                      : null,
+                  digideal_price_ignored:
+                    next?.digideal_price_ignored === true,
+                  digideal_price_ignored_at:
+                    typeof next?.digideal_price_ignored_at === "string"
+                      ? next.digideal_price_ignored_at
+                      : null,
+                  digideal_extreme_ratio_confirmed:
+                    next?.digideal_extreme_ratio_confirmed === true,
+                  digideal_extreme_ratio_confirmed_at:
+                    typeof next?.digideal_extreme_ratio_confirmed_at === "string"
+                      ? next.digideal_extreme_ratio_confirmed_at
+                      : null,
+                }
+              : entry
+          )
+        );
+        return true;
+      } catch (err) {
+        setPriceDialogError(
+          err instanceof Error ? err.message : "Failed to update price override."
+        );
+        return false;
+      } finally {
+        setPriceDialogSaving(false);
+      }
+    },
+    []
+  );
+
   const autoVariantPickAttemptsRef = useRef<Set<string>>(new Set());
+  const autoSupplierSearchAttemptsRef = useRef<Set<string>>(new Set());
 
   const attemptAutoPickDigidealVariant = useCallback(
     async (item: DigidealItem) => {
@@ -3031,6 +3517,112 @@ export default function DigidealCampaignsPage() {
     });
   }, [attemptAutoPickDigidealVariant, isAdmin, items, variantsDialogOpen, variantsTarget]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (bulkFindingSuppliers) return;
+
+    const candidates = items.filter((item) => {
+      const productId = String(item?.product_id ?? "").trim();
+      if (!productId) return false;
+      if (autoSupplierSearchAttemptsRef.current.has(productId)) return false;
+
+      const isNordexoSeller = String(item?.seller_name ?? "")
+        .trim()
+        .toLowerCase()
+        .includes("nordexo");
+      if (isNordexoSeller) return false;
+
+      const hasManualSupplierData =
+        item.purchase_price !== null ||
+        item.weight_grams !== null ||
+        item.weight_kg !== null ||
+        (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
+      if (hasManualSupplierData) return false;
+      if (Boolean(item.supplier_locked)) return false;
+      if (Boolean(item.supplier_selected)) return false;
+
+      const supplierCount =
+        typeof item.supplier_count === "number" && Number.isFinite(item.supplier_count)
+          ? Number(item.supplier_count)
+          : null;
+      const hasSuggestions = supplierCount !== null && supplierCount > 0;
+      if (hasSuggestions) return false;
+
+      return true;
+    });
+
+    if (candidates.length === 0) return;
+
+    let cancelled = false;
+    candidates.forEach((item) => {
+      const productId = String(item?.product_id ?? "").trim();
+      if (!productId) return;
+      autoSupplierSearchAttemptsRef.current.add(productId);
+    });
+    setSupplierFindingIds((prev) => {
+      const next = new Set(prev);
+      candidates.forEach((item) => {
+        if (item.product_id) next.add(item.product_id);
+      });
+      return next;
+    });
+
+    const run = async () => {
+      for (const item of candidates) {
+        if (cancelled) break;
+        const productId = String(item?.product_id ?? "").trim();
+        if (!productId) continue;
+        try {
+          const params = new URLSearchParams({
+            provider: "digideal",
+            product_id: productId,
+          });
+          const imageUrls = normalizeImageUrls(item.image_urls);
+          const imageUrl = item.primary_image_url || imageUrls[0] || null;
+          if (imageUrl) params.set("image_url", imageUrl);
+          const response = await fetch(`/api/production/suppliers?${params.toString()}`);
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(String((payload as any)?.error || "Supplier search failed."));
+          }
+          const offerCountRaw = Number((payload as any)?.offer_count);
+          const offerCount = Number.isFinite(offerCountRaw)
+            ? offerCountRaw
+            : Array.isArray((payload as any)?.offers)
+              ? (payload as any).offers.length
+              : null;
+          if (typeof offerCount === "number") {
+            setItems((prev) =>
+              prev.map((entry) =>
+                entry.product_id === productId
+                  ? { ...entry, supplier_count: offerCount }
+                  : entry
+              )
+            );
+          }
+        } catch {
+          // Keep best-effort behavior; user can still trigger manually if needed.
+        } finally {
+          if (!cancelled) {
+            setSupplierFindingIds((prev) => {
+              if (!prev.has(productId)) return prev;
+              const next = new Set(prev);
+              next.delete(productId);
+              return next;
+            });
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 180));
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bulkFindingSuppliers, isAdmin, items]);
+
   const supplierPayloadPollersRef = useRef<Map<string, { stop: () => void }>>(new Map());
 
   useEffect(() => {
@@ -3129,6 +3721,8 @@ export default function DigidealCampaignsPage() {
           ".fui-Button",
           ".fui-Checkbox",
           ".fui-MenuItem",
+          ".fui-Badge",
+          "[data-price-inspector='true']",
         ].join(",")
       );
       return !interactive;
@@ -5041,9 +5635,46 @@ export default function DigidealCampaignsPage() {
       if (!response.ok) {
         throw new Error(payload?.error || t("digideal.supplier.errorSave"));
       }
+      const saved = payload?.item ?? {};
+      const nextPurchasePrice =
+        typeof saved?.purchase_price === "number" && Number.isFinite(saved.purchase_price)
+          ? Number(saved.purchase_price)
+          : priceValue;
+      const nextWeightGrams =
+        typeof saved?.weight_grams === "number" && Number.isFinite(saved.weight_grams)
+          ? Math.round(Number(saved.weight_grams))
+          : Math.round(weightValue);
+      const nextWeightKg =
+        typeof saved?.weight_kg === "number" && Number.isFinite(saved.weight_kg)
+          ? Number(saved.weight_kg)
+          : Number((nextWeightGrams / 1000).toFixed(3));
+      const nextSupplierUrl =
+        typeof saved?.supplier_url === "string" && saved.supplier_url.trim()
+          ? saved.supplier_url.trim()
+          : supplierUrl;
+
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.product_id === supplierTarget.product_id
+            ? {
+                ...entry,
+                purchase_price: nextPurchasePrice,
+                weight_grams: nextWeightGrams,
+                weight_kg: nextWeightKg,
+                supplier_url: nextSupplierUrl,
+                supplier_locked: true,
+                supplier_count: entry.supplier_count ?? 0,
+              }
+            : entry
+        )
+      );
+      void updateEstimatedPriceForRow(
+        supplierTarget.product_id,
+        nextPurchasePrice,
+        nextWeightKg
+      );
       setSupplierDialogOpen(false);
       setSupplierTarget(null);
-      setRefreshToken((prev) => prev + 1);
     } catch (err) {
       setSupplierError(
         err instanceof Error ? err.message : t("digideal.supplier.errorSave")
@@ -5074,9 +5705,29 @@ export default function DigidealCampaignsPage() {
       if (!response.ok) {
         throw new Error(payload?.error || t("digideal.supplier.errorSave"));
       }
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.product_id === supplierTarget.product_id
+            ? {
+                ...entry,
+                purchase_price: null,
+                weight_grams: null,
+                weight_kg: null,
+                supplier_url: null,
+                supplier_locked: false,
+                estimated_rerun_price: null,
+                digideal_price_override_price: null,
+                digideal_price_override_mode: null,
+                digideal_price_override_margin_percent: null,
+                digideal_price_override_updated_at: null,
+                digideal_extreme_ratio_confirmed: false,
+                digideal_extreme_ratio_confirmed_at: null,
+              }
+            : entry
+        )
+      );
       setSupplierDialogOpen(false);
       setSupplierTarget(null);
-      setRefreshToken((prev) => prev + 1);
     } catch (err) {
       setSupplierError(
         err instanceof Error ? err.message : t("digideal.supplier.errorSave")
@@ -6130,11 +6781,20 @@ export default function DigidealCampaignsPage() {
   const rows = useMemo(
     () =>
       items.map((item) => {
-        const title =
-          item.listing_title ||
-          item.title_h1 ||
-          item.product_slug ||
-          item.product_id;
+        const listingTitle =
+          typeof item.listing_title === "string" ? item.listing_title.trim() : "";
+        const h1Title =
+          typeof item.title_h1 === "string" ? item.title_h1.trim() : "";
+        const title = listingTitle || h1Title || item.product_slug || item.product_id;
+        const secondaryTitleCandidate = title === listingTitle ? h1Title : listingTitle;
+        const secondaryTitle =
+          secondaryTitleCandidate &&
+          secondaryTitleCandidate.toLowerCase() !== String(title).trim().toLowerCase()
+            ? secondaryTitleCandidate
+            : null;
+        const secondaryTitleSegments = secondaryTitle
+          ? splitStrongQuantitySegments(secondaryTitle)
+          : [];
         const imageUrls = normalizeImageUrls(item.image_urls);
         const imageSrc = item.primary_image_url || imageUrls[0] || null;
         const productId = item.prodno || item.product_id;
@@ -6237,15 +6897,33 @@ export default function DigidealCampaignsPage() {
         const isRemoving = removingIds.has(item.product_id);
         const isHoveringRemove =
           hoveredRemoveId === item.product_id || isRemoving;
-        const estimatedPriceValue =
-          typeof item.estimated_rerun_price === "number"
-            ? item.estimated_rerun_price
-            : null;
+        const priceComputation = computePriceComputation(item);
+        const hidePriceForPartner =
+          !isAdmin && priceComputation.state === "red" && !priceComputation.hasOverride;
+        const estimatedPriceValue = hidePriceForPartner
+          ? null
+          : priceComputation.displayedPrice;
         const hasEstimatedPrice = estimatedPriceValue !== null;
         const estimatedPriceLabel =
           estimatedPriceValue !== null
             ? formatCurrency(estimatedPriceValue, "SEK") || "-"
             : "-";
+        const estimatedPriceBadgeState = isAdmin
+          ? priceComputation.state
+          : "green";
+        const canOpenPriceInspector = isAdmin && estimatedPriceValue !== null;
+        const showAdminPriceHint = isAdmin && estimatedPriceValue !== null;
+        const marginHint =
+          priceComputation.marginPercent !== null
+            ? `${priceComputation.marginPercent.toFixed(1)}%`
+            : "-";
+        const marginHintClass =
+          estimatedPriceBadgeState === "gray"
+            ? styles.estimatedPriceHintIgnored
+            : priceComputation.marginPercent !== null &&
+                priceComputation.marginPercent < 20
+              ? styles.estimatedPriceHintCritical
+              : styles.estimatedPriceHintText;
         const canManageSupplier = isAdmin && !isNordexo;
         const hasManualSupplierData =
           item.purchase_price !== null ||
@@ -6345,6 +7023,45 @@ export default function DigidealCampaignsPage() {
                     {`\u00A0(ID: ${productId})`}
                   </span>
                 </Text>
+                {secondaryTitle ? (
+                  <Tooltip
+                    relationship="label"
+                    positioning="above-start"
+                    content={
+                      <span className={styles.productSecondaryTitleTooltip}>
+                        {secondaryTitleSegments.map((segment, index) => (
+                          <span
+                            key={`secondary-title-tooltip-${item.product_id}-${index}`}
+                            className={
+                              segment.highlight ? styles.productQuantityHighlight : undefined
+                            }
+                          >
+                            {segment.text}
+                          </span>
+                        ))}
+                      </span>
+                    }
+                  >
+                    <Text
+                      className={mergeClasses(
+                        styles.metaText,
+                        styles.metaLineTight,
+                        styles.productSecondaryTitle
+                      )}
+                    >
+                      {secondaryTitleSegments.map((segment, index) => (
+                        <span
+                          key={`secondary-title-${item.product_id}-${index}`}
+                          className={
+                            segment.highlight ? styles.productQuantityHighlight : undefined
+                          }
+                        >
+                          {segment.text}
+                        </span>
+                      ))}
+                    </Text>
+                  </Tooltip>
+                ) : null}
                 <div className={styles.metaStack}>
                   {googleBreadcrumbs.length > 0 ? (
                     <div className={styles.breadcrumbRow}>
@@ -6607,18 +7324,45 @@ export default function DigidealCampaignsPage() {
 	            <TableCell className={styles.estimatedPriceCol}>
 	              <div className={styles.estimatedPriceRow}>
 	                <div className={styles.estimatedPriceActionRow}>
-		                  {hasEstimatedPrice ? (
-		                    <div className={styles.estimatedPriceBadgeSlot}>
-		                      <Badge
-		                        appearance="outline"
-		                        className={styles.estimatedPriceBadge}
-		                      >
-		                        {estimatedPriceLabel}
-		                      </Badge>
-		                    </div>
-		                  ) : canManageSupplier ? null : (
-		                    <Text className={styles.estimatedPriceText}>-</Text>
-		                  )}
+	                  {hasEstimatedPrice ? (
+	                    <div className={styles.estimatedPriceBadgeSlot}>
+                      <Badge
+                        data-price-inspector="true"
+                        appearance="outline"
+                        className={mergeClasses(
+                            styles.estimatedPriceBadge,
+                            estimatedPriceBadgeState === "orange"
+                              ? styles.estimatedPriceBadgeWarning
+                              : undefined,
+                            estimatedPriceBadgeState === "red"
+                              ? styles.estimatedPriceBadgeAlert
+                              : undefined,
+                            estimatedPriceBadgeState === "purple"
+                              ? styles.estimatedPriceBadgeOverride
+                              : undefined,
+                            estimatedPriceBadgeState === "yellow"
+                              ? styles.estimatedPriceBadgeExtreme
+                              : undefined,
+                            estimatedPriceBadgeState === "gray"
+                              ? styles.estimatedPriceBadgeIgnored
+                              : undefined,
+                            canOpenPriceInspector
+                              ? styles.estimatedPriceBadgeClickable
+                              : undefined
+                          )}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (!canOpenPriceInspector) return;
+                            openPriceDialog(item, priceComputation);
+                          }}
+	                      >
+	                        {estimatedPriceLabel}
+	                      </Badge>
+	                    </div>
+	                  ) : canManageSupplier ? null : (
+	                    <Text className={styles.estimatedPriceText}>-</Text>
+	                  )}
 	                  {canManageSupplier ? (
 		                    supplierPayloadReady ? (
 		                      supplierHasVariantSelection ? (
@@ -6781,6 +7525,23 @@ export default function DigidealCampaignsPage() {
 	                    )
 	                  ) : null}
 	                </div>
+                  {showAdminPriceHint ? (
+                    estimatedPriceBadgeState === "purple" ? (
+                      <Text className={styles.estimatedPriceHintText}>
+                        {`${marginHint} (Override)`}
+                      </Text>
+                    ) : estimatedPriceBadgeState === "gray" ? (
+                      <Text className={styles.estimatedPriceHintIgnored}>
+                        {`${marginHint} (Ignored)`}
+                      </Text>
+                    ) : estimatedPriceBadgeState === "red" ||
+                      estimatedPriceBadgeState === "orange" ||
+                      estimatedPriceBadgeState === "green" ? (
+                      <Text className={marginHintClass}>
+                        {marginHint}
+                      </Text>
+                    ) : null
+                  ) : null}
 	                {canManageSupplier &&
 	                !supplierHasVariantSelection &&
 	                (supplierPayloadLoading || supplierPayloadReady || supplierPayloadFailed) ? (
@@ -7015,12 +7776,168 @@ export default function DigidealCampaignsPage() {
       viewIdFilter,
       groupIdFilter,
       isAdmin,
+      computePriceComputation,
+      openPriceDialog,
       selectedIds,
       supplierFindingIds,
       toggleRowSelected,
       isRowSelectionBackgroundClick,
     ]
   );
+
+  const priceDialogComputation = useMemo(
+    () => (priceDialogTarget ? computePriceComputation(priceDialogTarget) : null),
+    [computePriceComputation, priceDialogTarget]
+  );
+
+  const handleKeepCurrentPrice = useCallback(async () => {
+    if (!priceDialogTarget || !priceDialogComputation) return;
+    const price = priceDialogComputation.displayedPrice;
+    if (price === null || price <= 0) return;
+    const ok = await applyPriceOverride(priceDialogTarget, "set", {
+      price,
+      marginPercent: priceDialogComputation.marginPercent,
+      mode: "keep_current_price",
+    });
+    if (ok) closePriceDialog();
+  }, [applyPriceOverride, closePriceDialog, priceDialogComputation, priceDialogTarget]);
+
+  const handleSetMarginPrice = useCallback(async () => {
+    if (!priceDialogTarget || !priceDialogComputation) return;
+    const marginPercent = Number(priceDialogMarginDraft);
+    if (!Number.isFinite(marginPercent) || marginPercent < DIGIDEAL_MIN_MARGIN_PERCENT) {
+      setPriceDialogError(`Minimum allowed margin is ${DIGIDEAL_MIN_MARGIN_PERCENT}%.`);
+      return;
+    }
+    if (marginPercent >= 95) {
+      setPriceDialogError("Margin percentage is too high.");
+      return;
+    }
+    if (priceDialogComputation.totalCost === null || priceDialogComputation.totalCost <= 0) {
+      setPriceDialogError("Missing cost basis for this product.");
+      return;
+    }
+    const computedPrice = priceDialogComputation.totalCost / (1 - marginPercent / 100);
+    if (!Number.isFinite(computedPrice) || computedPrice <= 0) {
+      setPriceDialogError("Unable to compute override price.");
+      return;
+    }
+    const roundedPrice = Math.round(computedPrice);
+    const ok = await applyPriceOverride(priceDialogTarget, "set", {
+      price: roundedPrice,
+      marginPercent,
+      mode: "target_margin_percent",
+    });
+    if (ok) closePriceDialog();
+  }, [
+    applyPriceOverride,
+    closePriceDialog,
+    priceDialogComputation,
+    priceDialogMarginDraft,
+    priceDialogTarget,
+  ]);
+
+  const handleRollbackPriceOverride = useCallback(async () => {
+    if (!priceDialogTarget) return;
+    const ok = await applyPriceOverride(priceDialogTarget, "clear");
+    if (ok) closePriceDialog();
+  }, [applyPriceOverride, closePriceDialog, priceDialogTarget]);
+
+  const handleRecalculateProfit = useCallback(async () => {
+    if (!priceDialogTarget) return;
+    const productId = String(priceDialogTarget.product_id || "").trim();
+    if (!productId) return;
+    const purchaseCny =
+      typeof priceDialogTarget.purchase_price === "number" &&
+      Number.isFinite(priceDialogTarget.purchase_price)
+        ? Number(priceDialogTarget.purchase_price)
+        : null;
+    const weightKg =
+      typeof priceDialogTarget.weight_kg === "number" &&
+      Number.isFinite(priceDialogTarget.weight_kg) &&
+      priceDialogTarget.weight_kg > 0
+        ? Number(priceDialogTarget.weight_kg)
+        : typeof priceDialogTarget.weight_grams === "number" &&
+            Number.isFinite(priceDialogTarget.weight_grams) &&
+            priceDialogTarget.weight_grams > 0
+          ? Number(priceDialogTarget.weight_grams) / 1000
+          : null;
+    await updateEstimatedPriceForRow(productId, purchaseCny, weightKg);
+  }, [priceDialogTarget, updateEstimatedPriceForRow]);
+
+  const handleConfirmExtremeRatio = useCallback(async () => {
+    if (!priceDialogTarget) return;
+    const productId = String(priceDialogTarget.product_id || "").trim();
+    if (!productId) return;
+    setPriceDialogSaving(true);
+    setPriceDialogError(null);
+    try {
+      const response = await fetch("/api/digideal", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: productId,
+          extreme_ratio_action: "confirm",
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || "Failed to confirm warning.");
+      }
+      const next = json?.item ?? {};
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.product_id === productId
+            ? {
+                ...entry,
+                digideal_extreme_ratio_confirmed:
+                  next?.digideal_extreme_ratio_confirmed === true,
+                digideal_extreme_ratio_confirmed_at:
+                  typeof next?.digideal_extreme_ratio_confirmed_at === "string"
+                    ? next.digideal_extreme_ratio_confirmed_at
+                    : null,
+              }
+            : entry
+        )
+      );
+      closePriceDialog();
+    } catch (err) {
+      setPriceDialogError(
+        err instanceof Error ? err.message : "Failed to confirm warning."
+      );
+    } finally {
+      setPriceDialogSaving(false);
+    }
+  }, [closePriceDialog, priceDialogTarget]);
+
+  const handleSaveIgnorePrice = useCallback(async () => {
+    if (!priceDialogTarget || !priceDialogComputation) return;
+    const nextAction = priceDialogIgnoreDraft ? "set" : "clear";
+    const ok = await applyPriceOverride(priceDialogTarget, "set", {
+      price:
+        typeof priceDialogComputation.displayedPrice === "number"
+          ? priceDialogComputation.displayedPrice
+          : undefined,
+      marginPercent: priceDialogComputation.marginPercent,
+      mode: priceDialogComputation.hasOverride ? "manual" : "ignore_toggle",
+      ignorePriceAction: nextAction,
+    });
+    if (ok) closePriceDialog();
+  }, [
+    applyPriceOverride,
+    closePriceDialog,
+    priceDialogComputation,
+    priceDialogIgnoreDraft,
+    priceDialogTarget,
+  ]);
+
+  useEffect(() => {
+    if (!priceDialogOpen || !priceDialogTarget) return;
+    const current = items.find((entry) => entry.product_id === priceDialogTarget.product_id);
+    if (!current || current === priceDialogTarget) return;
+    setPriceDialogTarget(current);
+    setPriceDialogIgnoreDraft(current.digideal_price_ignored === true);
+  }, [items, priceDialogOpen, priceDialogTarget]);
 
 	  return (
 	    <div className={styles.layout}>
@@ -7763,6 +8680,146 @@ export default function DigidealCampaignsPage() {
           </div>
         </div>
       </Card>
+
+      <Dialog
+        open={priceDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) closePriceDialog();
+        }}
+      >
+        <DialogSurface className={styles.estimatedPriceDialogSurface}>
+          <DialogBody>
+            <DialogTitle>Price Inspector</DialogTitle>
+            <DialogContent className={styles.estimatedPriceDialogContent}>
+              {priceDialogTarget ? (
+                <Text size={200}>
+                  {priceDialogTarget.listing_title ||
+                    priceDialogTarget.title_h1 ||
+                    priceDialogTarget.product_slug ||
+                    priceDialogTarget.product_id}
+                </Text>
+              ) : null}
+              {priceDialogComputation ? (
+                <>
+                  <Text className={styles.estimatedPriceDialogMeta}>
+                    {`Current price: ${
+                      priceDialogComputation.displayedPrice !== null
+                        ? formatCurrency(priceDialogComputation.displayedPrice, "SEK")
+                        : "-"
+                    } | Profit: ${
+                      priceDialogComputation.marginKr !== null
+                        ? formatCurrency(priceDialogComputation.marginKr, "SEK")
+                        : "-"
+                    } (${priceDialogComputation.marginPercent !== null
+                      ? `${priceDialogComputation.marginPercent.toFixed(1)}%`
+                      : "-"})`}
+                  </Text>
+                  <Text className={styles.estimatedPriceDialogMeta}>
+                    {`Product cost: ${
+                      priceDialogComputation.productCostKr !== null
+                        ? formatCurrency(priceDialogComputation.productCostKr, "SEK")
+                        : "-"
+                    } | Shipping cost: ${
+                      priceDialogComputation.shippingCostKrCalculated !== null
+                        ? formatCurrency(priceDialogComputation.shippingCostKrCalculated, "SEK")
+                        : "-"
+                    } | Total cost: ${
+                      priceDialogComputation.totalCost !== null
+                        ? formatCurrency(priceDialogComputation.totalCost, "SEK")
+                        : "-"
+                    }`}
+                  </Text>
+                  <Text className={styles.estimatedPriceDialogMeta}>
+                    {`Supplier-to-market ratio: ${
+                      priceDialogComputation.supplierToMarketRatioPercent !== null
+                        ? `${priceDialogComputation.supplierToMarketRatioPercent.toFixed(1)}%`
+                        : "-"
+                    }`}
+                  </Text>
+                  <Field label="Ignore Price">
+                    <Switch
+                      checked={priceDialogIgnoreDraft}
+                      onChange={(_, data) =>
+                        setPriceDialogIgnoreDraft(Boolean(data.checked))
+                      }
+                    />
+                  </Field>
+                  {priceDialogComputation.extremeRatioFlagged ? (
+                    <MessageBar intent="warning">
+                      Extreme price ratio warning: this needs manual confirm or correction.
+                    </MessageBar>
+                  ) : null}
+                  <div className={styles.estimatedPriceDialogInputRow}>
+                    <Field label="Keep profit at (%)" className={styles.estimatedPriceDialogInput}>
+                      <Input
+                        type="number"
+                        min={DIGIDEAL_MIN_MARGIN_PERCENT}
+                        max={95}
+                        value={priceDialogMarginDraft}
+                        onChange={(_, data) => setPriceDialogMarginDraft(data.value)}
+                      />
+                    </Field>
+                    <Button
+                      appearance="secondary"
+                      onClick={() => void handleSetMarginPrice()}
+                      disabled={priceDialogSaving}
+                    >
+                      Set Margin %
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+              {priceDialogError ? (
+                <MessageBar intent="error">{priceDialogError}</MessageBar>
+              ) : null}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closePriceDialog} disabled={priceDialogSaving}>
+                Close
+              </Button>
+              {priceDialogComputation?.hasOverride ? (
+                <Button
+                  appearance="secondary"
+                  onClick={() => void handleRollbackPriceOverride()}
+                  disabled={priceDialogSaving}
+                >
+                  Rollback to Auto
+                </Button>
+              ) : null}
+              <Button
+                appearance="secondary"
+                onClick={() => void handleRecalculateProfit()}
+                disabled={priceDialogSaving}
+              >
+                Recalculate Profit
+              </Button>
+              {priceDialogComputation?.extremeRatioFlagged ? (
+                <Button
+                  appearance="secondary"
+                  onClick={() => void handleConfirmExtremeRatio()}
+                  disabled={priceDialogSaving}
+                >
+                  Confirm Warning
+                </Button>
+              ) : null}
+              <Button
+                appearance="secondary"
+                onClick={() => void handleSaveIgnorePrice()}
+                disabled={priceDialogSaving}
+              >
+                Save
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => void handleKeepCurrentPrice()}
+                disabled={priceDialogSaving || !priceDialogComputation?.displayedPrice}
+              >
+                Keep this price
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
 
       <Dialog open={isRerunDialogOpen} onOpenChange={(_, data) => setIsRerunDialogOpen(data.open)}>
         <DialogSurface className={styles.dialogSurface}>

@@ -112,6 +112,17 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const DIGIDEAL_FAKE_SALES_OFFSET = 30;
+
+const normalizeDisplayedSales = (value: unknown) => {
+  const numeric = toNumber(value) ?? 0;
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.round(numeric - DIGIDEAL_FAKE_SALES_OFFSET));
+};
+
+const toRawSalesThreshold = (displayedThreshold: number) =>
+  Math.max(0, Math.ceil(displayedThreshold + DIGIDEAL_FAKE_SALES_OFFSET));
+
 type MarketConfig = {
   market: string;
   currency: string;
@@ -882,16 +893,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (minSold !== null && minSold > 0) {
+      const rawSalesThreshold = toRawSalesThreshold(minSold);
       switch (minSoldMetric) {
         case "sold_today":
-          query = query.gte("sold_today", minSold);
+          query = query.gte("sold_today", rawSalesThreshold);
           break;
         case "sold_7d":
-          query = query.gte("sold_7d", minSold);
+          query = query.gte("sold_7d", rawSalesThreshold);
           break;
         case "sold_all_time":
         default:
-          query = query.gte("last_purchased_count", minSold);
+          query = query.gte("last_purchased_count", rawSalesThreshold);
           break;
       }
     }
@@ -1178,6 +1190,14 @@ export async function GET(request: NextRequest) {
         variant_available_count: number | null;
         variant_selected_count: number | null;
         variant_packs_text: string | null;
+        price_override_price: number | null;
+        price_override_mode: string | null;
+        price_override_margin_percent: number | null;
+        price_override_updated_at: string | null;
+        price_ignored: boolean;
+        price_ignored_at: string | null;
+        extreme_ratio_confirmed: boolean;
+        extreme_ratio_confirmed_at: string | null;
       }
     >();
     if (productIds.length) {
@@ -1260,6 +1280,24 @@ export async function GET(request: NextRequest) {
               : null,
             variant_packs_text:
               toText((offer as any)._production_variant_packs_text) || null,
+            price_override_price: toNumber(
+              (offer as any)._digideal_price_override_price
+            ),
+            price_override_mode:
+              toText((offer as any)._digideal_price_override_mode) || null,
+            price_override_margin_percent: toNumber(
+              (offer as any)._digideal_price_override_margin_percent
+            ),
+            price_override_updated_at:
+              toText((offer as any)._digideal_price_override_updated_at) || null,
+            price_ignored:
+              (offer as any)._digideal_price_ignored === true,
+            price_ignored_at:
+              toText((offer as any)._digideal_price_ignored_at) || null,
+            extreme_ratio_confirmed:
+              (offer as any)._digideal_extreme_ratio_confirmed === true,
+            extreme_ratio_confirmed_at:
+              toText((offer as any)._digideal_extreme_ratio_confirmed_at) || null,
           });
         });
       }
@@ -1544,11 +1582,27 @@ export async function GET(request: NextRequest) {
           supplier_variant_selected_count:
             supplierMeta?.variant_selected_count ?? null,
           supplier_variant_packs_text: supplierMeta?.variant_packs_text ?? null,
+          digideal_price_override_price:
+            supplierMeta?.price_override_price ?? null,
+          digideal_price_override_mode:
+            supplierMeta?.price_override_mode ?? null,
+          digideal_price_override_margin_percent:
+            supplierMeta?.price_override_margin_percent ?? null,
+          digideal_price_override_updated_at:
+            supplierMeta?.price_override_updated_at ?? null,
+          digideal_price_ignored:
+            supplierMeta?.price_ignored ?? false,
+          digideal_price_ignored_at:
+            supplierMeta?.price_ignored_at ?? null,
+          digideal_extreme_ratio_confirmed:
+            supplierMeta?.extreme_ratio_confirmed ?? false,
+          digideal_extreme_ratio_confirmed_at:
+            supplierMeta?.extreme_ratio_confirmed_at ?? null,
           shipping_cost: shippingCost,
           estimated_rerun_price: estimatedPrice,
-          sold_today: toNumber(product.sold_today) ?? 0,
-          sold_7d: toNumber(product.sold_7d) ?? 0,
-          sold_all_time: toNumber(product.last_purchased_count) ?? 0,
+          sold_today: normalizeDisplayedSales(product.sold_today),
+          sold_7d: normalizeDisplayedSales(product.sold_7d),
+          sold_all_time: normalizeDisplayedSales(product.last_purchased_count),
           report_exists: reportExistsMap.get(product.product_id) ?? false,
         };
       }) ?? [];
@@ -1726,6 +1780,12 @@ export async function PATCH(request: Request) {
     weight_grams?: number;
     purchase_price?: number;
     remove_supplier?: boolean;
+    price_override_action?: "set" | "clear";
+    price_override_price?: number;
+    price_override_margin_percent?: number;
+    price_override_mode?: string;
+    ignore_price_action?: "set" | "clear";
+    extreme_ratio_action?: "confirm" | "clear";
   };
   try {
     payload = (await request.json()) as typeof payload;
@@ -1735,6 +1795,18 @@ export async function PATCH(request: Request) {
 
   const productId = String(payload?.product_id ?? "").trim();
   const removeSupplier = payload?.remove_supplier === true;
+  const priceOverrideAction =
+    payload?.price_override_action === "set" || payload?.price_override_action === "clear"
+      ? payload.price_override_action
+      : null;
+  const extremeRatioAction =
+    payload?.extreme_ratio_action === "confirm" || payload?.extreme_ratio_action === "clear"
+      ? payload.extreme_ratio_action
+      : null;
+  const ignorePriceAction =
+    payload?.ignore_price_action === "set" || payload?.ignore_price_action === "clear"
+      ? payload.ignore_price_action
+      : null;
   const supplierUrl =
     typeof payload?.supplier_url === "string" ? payload.supplier_url.trim() : "";
   const normalizedSupplierUrl = supplierUrl ? normalize1688Url(supplierUrl) : "";
@@ -1743,6 +1815,117 @@ export async function PATCH(request: Request) {
   if (!productId) {
     return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
   }
+
+  if (priceOverrideAction || extremeRatioAction || ignorePriceAction) {
+    const { data: existingSelection, error: selectionFetchError } = await adminClient
+      .from("discovery_production_supplier_selection")
+      .select("selected_offer")
+      .eq("provider", "digideal")
+      .eq("product_id", productId)
+      .maybeSingle();
+
+    if (selectionFetchError) {
+      return NextResponse.json({ error: selectionFetchError.message }, { status: 500 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const selectedOfferBase =
+      existingSelection?.selected_offer &&
+      typeof existingSelection.selected_offer === "object"
+        ? { ...(existingSelection.selected_offer as Record<string, unknown>) }
+        : {};
+
+    if (priceOverrideAction === "set") {
+      const overridePrice = toNumber(payload?.price_override_price);
+      if (overridePrice === null || overridePrice <= 0) {
+        return NextResponse.json(
+          { error: "Missing price_override_price." },
+          { status: 400 }
+        );
+      }
+
+      const marginPercent = toNumber(payload?.price_override_margin_percent);
+      const modeText =
+        typeof payload?.price_override_mode === "string"
+          ? payload.price_override_mode.trim()
+          : "";
+
+      selectedOfferBase._digideal_price_override_price = Number(overridePrice);
+      selectedOfferBase._digideal_price_override_mode = modeText || "manual";
+      selectedOfferBase._digideal_price_override_margin_percent =
+        marginPercent !== null ? Number(marginPercent) : null;
+      selectedOfferBase._digideal_price_override_updated_at = nowIso;
+    } else if (priceOverrideAction === "clear") {
+      delete selectedOfferBase._digideal_price_override_price;
+      delete selectedOfferBase._digideal_price_override_mode;
+      delete selectedOfferBase._digideal_price_override_margin_percent;
+      delete selectedOfferBase._digideal_price_override_updated_at;
+    }
+
+    if (extremeRatioAction === "confirm") {
+      selectedOfferBase._digideal_extreme_ratio_confirmed = true;
+      selectedOfferBase._digideal_extreme_ratio_confirmed_at = nowIso;
+    } else if (extremeRatioAction === "clear") {
+      delete selectedOfferBase._digideal_extreme_ratio_confirmed;
+      delete selectedOfferBase._digideal_extreme_ratio_confirmed_at;
+    }
+
+    if (ignorePriceAction === "set") {
+      selectedOfferBase._digideal_price_ignored = true;
+      selectedOfferBase._digideal_price_ignored_at = nowIso;
+    } else if (ignorePriceAction === "clear") {
+      delete selectedOfferBase._digideal_price_ignored;
+      delete selectedOfferBase._digideal_price_ignored_at;
+    }
+
+    const { data: savedSelection, error: selectionSaveError } = await adminClient
+      .from("discovery_production_supplier_selection")
+      .upsert(
+        {
+          provider: "digideal",
+          product_id: productId,
+          selected_offer: selectedOfferBase,
+          updated_at: nowIso,
+        },
+        { onConflict: "provider,product_id" }
+      )
+      .select("selected_offer")
+      .maybeSingle();
+
+    if (selectionSaveError) {
+      return NextResponse.json({ error: selectionSaveError.message }, { status: 500 });
+    }
+
+    const savedOffer =
+      savedSelection?.selected_offer && typeof savedSelection.selected_offer === "object"
+        ? (savedSelection.selected_offer as Record<string, unknown>)
+        : null;
+
+    return NextResponse.json({
+      item: {
+        product_id: productId,
+        digideal_price_override_price: toNumber(
+          savedOffer?._digideal_price_override_price
+        ),
+        digideal_price_override_mode:
+          toText(savedOffer?._digideal_price_override_mode) || null,
+        digideal_price_override_margin_percent: toNumber(
+          savedOffer?._digideal_price_override_margin_percent
+        ),
+        digideal_price_override_updated_at:
+          toText(savedOffer?._digideal_price_override_updated_at) || null,
+        digideal_price_ignored:
+          savedOffer?._digideal_price_ignored === true,
+        digideal_price_ignored_at:
+          toText(savedOffer?._digideal_price_ignored_at) || null,
+        digideal_extreme_ratio_confirmed:
+          savedOffer?._digideal_extreme_ratio_confirmed === true,
+        digideal_extreme_ratio_confirmed_at:
+          toText(savedOffer?._digideal_extreme_ratio_confirmed_at) || null,
+      },
+    });
+  }
+
   if (removeSupplier) {
     const { data, error } = await adminClient
       .from("digideal_products")

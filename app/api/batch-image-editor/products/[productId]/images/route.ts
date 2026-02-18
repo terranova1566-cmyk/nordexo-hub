@@ -99,6 +99,257 @@ function chunk<T>(items: T[], size: number) {
   return out;
 }
 
+async function ensureCanonicalAsset(
+  adminClient: AdminClient,
+  productId: string,
+  filename: string,
+  userId: string | null,
+  selectedVia: string
+) {
+  const safeFilename = path.basename(String(filename || "").trim());
+  if (!safeFilename) {
+    throw new Error("Missing filename for canonical asset.");
+  }
+
+  const nowIso = new Date().toISOString();
+  const payload: any = {
+    product_id: productId,
+    filename: safeFilename,
+    source_kind: "local_file",
+    lifecycle_state: "draft",
+    selected_via: selectedVia,
+    selected_at: nowIso,
+    updated_at: nowIso,
+  };
+  if (userId) payload.selected_by = userId;
+
+  const { data, error } = await adminClient
+    .from("catalog_product_image_assets")
+    .upsert(payload, { onConflict: "product_id,filename" })
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`canonical asset upsert failed: ${error.message}`);
+  }
+  if (!(data as any)?.id) {
+    throw new Error("canonical asset upsert returned no id.");
+  }
+  return String((data as any).id);
+}
+
+async function clearCanonicalMainRole(
+  adminClient: AdminClient,
+  productId: string
+) {
+  const { error } = await adminClient
+    .from("catalog_product_image_roles")
+    .delete()
+    .eq("product_id", productId)
+    .eq("role", "main");
+  if (error) {
+    throw new Error(`canonical main role clear failed: ${error.message}`);
+  }
+}
+
+async function upsertCanonicalRole(
+  adminClient: AdminClient,
+  productId: string,
+  imageId: string,
+  role: "main" | "environment" | "gallery",
+  userId: string | null,
+  assignedVia: string
+) {
+  const nowIso = new Date().toISOString();
+  const payload: any = {
+    product_id: productId,
+    image_id: imageId,
+    role,
+    lifecycle_state: "draft",
+    assigned_via: assignedVia,
+    assigned_at: nowIso,
+    updated_at: nowIso,
+  };
+  if (userId) payload.assigned_by = userId;
+
+  const { error } = await adminClient
+    .from("catalog_product_image_roles")
+    .upsert(payload, { onConflict: "product_id,image_id,role" });
+  if (error) {
+    throw new Error(`canonical role upsert failed: ${error.message}`);
+  }
+}
+
+async function clearCanonicalRole(
+  adminClient: AdminClient,
+  productId: string,
+  role: "main" | "environment" | "gallery",
+  filenames: string[] = []
+) {
+  if (filenames.length === 0) {
+    const { error } = await adminClient
+      .from("catalog_product_image_roles")
+      .delete()
+      .eq("product_id", productId)
+      .eq("role", role);
+    if (error) {
+      throw new Error(`canonical role clear failed: ${error.message}`);
+    }
+    return;
+  }
+
+  const safeNames = filenames.map((name) => path.basename(String(name)));
+  const { data: assets, error: assetErr } = await adminClient
+    .from("catalog_product_image_assets")
+    .select("id")
+    .eq("product_id", productId)
+    .in("filename", safeNames);
+  if (assetErr) {
+    throw new Error(`canonical role clear lookup failed: ${assetErr.message}`);
+  }
+  const ids = (assets ?? []).map((row: any) => String(row.id)).filter(Boolean);
+  if (ids.length === 0) return;
+  const { error } = await adminClient
+    .from("catalog_product_image_roles")
+    .delete()
+    .eq("product_id", productId)
+    .eq("role", role)
+    .in("image_id", ids);
+  if (error) {
+    throw new Error(`canonical role clear failed: ${error.message}`);
+  }
+}
+
+async function updateCanonicalFilename(
+  adminClient: AdminClient,
+  productId: string,
+  fromFilename: string,
+  toFilename: string,
+  userId: string | null,
+  selectedVia: string
+) {
+  const fromSafe = path.basename(String(fromFilename || ""));
+  const toSafe = path.basename(String(toFilename || ""));
+  if (!fromSafe || !toSafe) return;
+
+  const nowIso = new Date().toISOString();
+  const updatePayload: any = {
+    filename: toSafe,
+    selected_via: selectedVia,
+    selected_at: nowIso,
+    updated_at: nowIso,
+  };
+  if (userId) updatePayload.selected_by = userId;
+
+  const { data, error } = await adminClient
+    .from("catalog_product_image_assets")
+    .update(updatePayload)
+    .eq("product_id", productId)
+    .eq("filename", fromSafe)
+    .select("id");
+  if (error) {
+    throw new Error(`canonical filename update failed: ${error.message}`);
+  }
+  if (Array.isArray(data) && data.length > 0) return;
+  await ensureCanonicalAsset(adminClient, productId, toSafe, userId, selectedVia);
+}
+
+async function assignCanonicalVariantImage(
+  adminClient: AdminClient,
+  productId: string,
+  variantIds: string[],
+  imageId: string,
+  userId: string | null,
+  mappedVia: string
+) {
+  const nowIso = new Date().toISOString();
+  const rows = variantIds.map((variantId) => {
+    const row: any = {
+      variant_id: variantId,
+      product_id: productId,
+      image_id: imageId,
+      lifecycle_state: "draft",
+      mapped_via: mappedVia,
+      mapped_at: nowIso,
+      updated_at: nowIso,
+    };
+    if (userId) row.mapped_by = userId;
+    return row;
+  });
+  for (const part of chunk(rows, 500)) {
+    const { error } = await adminClient
+      .from("catalog_variant_image_map")
+      .upsert(part, { onConflict: "variant_id" });
+    if (error) {
+      throw new Error(`canonical variant map upsert failed: ${error.message}`);
+    }
+  }
+}
+
+async function clearCanonicalVariantImage(
+  adminClient: AdminClient,
+  productId: string,
+  variantIds: string[]
+) {
+  if (variantIds.length === 0) return;
+  for (const part of chunk(variantIds, 500)) {
+    const { error } = await adminClient
+      .from("catalog_variant_image_map")
+      .delete()
+      .eq("product_id", productId)
+      .in("variant_id", part);
+    if (error) {
+      throw new Error(`canonical variant map clear failed: ${error.message}`);
+    }
+  }
+}
+
+async function deleteCanonicalAssets(
+  adminClient: AdminClient,
+  productId: string,
+  filenames: string[]
+) {
+  if (filenames.length === 0) return;
+  const safeNames = filenames.map((name) => path.basename(String(name)));
+  const { data: assets, error: assetErr } = await adminClient
+    .from("catalog_product_image_assets")
+    .select("id")
+    .eq("product_id", productId)
+    .in("filename", safeNames);
+  if (assetErr) {
+    throw new Error(`canonical asset lookup failed: ${assetErr.message}`);
+  }
+  const ids = (assets ?? []).map((row: any) => String(row.id)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const { error: roleErr } = await adminClient
+    .from("catalog_product_image_roles")
+    .delete()
+    .eq("product_id", productId)
+    .in("image_id", ids);
+  if (roleErr) {
+    throw new Error(`canonical role delete failed: ${roleErr.message}`);
+  }
+
+  const { error: mapErr } = await adminClient
+    .from("catalog_variant_image_map")
+    .delete()
+    .eq("product_id", productId)
+    .in("image_id", ids);
+  if (mapErr) {
+    throw new Error(`canonical variant map delete failed: ${mapErr.message}`);
+  }
+
+  const { error: assetDeleteErr } = await adminClient
+    .from("catalog_product_image_assets")
+    .delete()
+    .eq("product_id", productId)
+    .in("id", ids);
+  if (assetDeleteErr) {
+    throw new Error(`canonical asset delete failed: ${assetDeleteErr.message}`);
+  }
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ productId: string }> }
@@ -242,6 +493,15 @@ export async function POST(
         .in("filename", part);
     }
 
+    try {
+      await deleteCanonicalAssets(adminClient, productId, safeNames);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: err?.message || "Failed to sync canonical image deletes." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ ok: true, removed_files: removed });
   }
 
@@ -329,6 +589,38 @@ export async function POST(
       .eq("product_id", productId)
       .eq("filename", filename);
 
+    try {
+      await updateCanonicalFilename(
+        adminClient,
+        productId,
+        filename,
+        target,
+        userId,
+        "batch_image_editor_set_main_rename"
+      );
+      const canonicalImageId = await ensureCanonicalAsset(
+        adminClient,
+        productId,
+        target,
+        userId,
+        "batch_image_editor_set_main"
+      );
+      await clearCanonicalMainRole(adminClient, productId);
+      await upsertCanonicalRole(
+        adminClient,
+        productId,
+        canonicalImageId,
+        "main",
+        userId,
+        "batch_image_editor_set_main"
+      );
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: err?.message || "Failed to sync canonical main image." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ ok: true, filename: target });
   }
 
@@ -343,6 +635,12 @@ export async function POST(
     }
 
     const safeNames = filenames.map((name) => path.basename(String(name)));
+    if (role === "main" && safeNames.length !== 1) {
+      return NextResponse.json(
+        { error: "Main role requires exactly one filename." },
+        { status: 400 }
+      );
+    }
     const rows = safeNames.map((name) => ({
       product_id: productId,
       filename: name,
@@ -358,6 +656,50 @@ export async function POST(
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
+    }
+
+    try {
+      if (role === "main") {
+        const canonicalImageId = await ensureCanonicalAsset(
+          adminClient,
+          productId,
+          safeNames[0],
+          userId,
+          "batch_image_editor_set_role_main"
+        );
+        await clearCanonicalMainRole(adminClient, productId);
+        await upsertCanonicalRole(
+          adminClient,
+          productId,
+          canonicalImageId,
+          "main",
+          userId,
+          "batch_image_editor_set_role_main"
+        );
+      } else if (role === "environment" || role === "gallery") {
+        for (const filename of safeNames) {
+          const canonicalImageId = await ensureCanonicalAsset(
+            adminClient,
+            productId,
+            filename,
+            userId,
+            "batch_image_editor_set_role"
+          );
+          await upsertCanonicalRole(
+            adminClient,
+            productId,
+            canonicalImageId,
+            role as "environment" | "gallery",
+            userId,
+            "batch_image_editor_set_role"
+          );
+        }
+      }
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: err?.message || "Failed to sync canonical role tags." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });
@@ -388,6 +730,23 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    if (role === "main" || role === "environment" || role === "gallery") {
+      try {
+        const safeNames = filenames.map((name) => path.basename(String(name)));
+        await clearCanonicalRole(
+          adminClient,
+          productId,
+          role as "main" | "environment" | "gallery",
+          safeNames
+        );
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: err?.message || "Failed to clear canonical role tags." },
+          { status: 500 }
+        );
+      }
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -414,6 +773,29 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    try {
+      const canonicalImageId = await ensureCanonicalAsset(
+        adminClient,
+        productId,
+        filename,
+        userId,
+        "batch_image_editor_assign_variant_image"
+      );
+      await assignCanonicalVariantImage(
+        adminClient,
+        productId,
+        variantIds,
+        canonicalImageId,
+        userId,
+        "batch_image_editor_assign_variant_image"
+      );
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: err?.message || "Failed to sync canonical variant mapping." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -434,6 +816,15 @@ export async function POST(
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    try {
+      await clearCanonicalVariantImage(adminClient, productId, variantIds);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: err?.message || "Failed to clear canonical variant mapping." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });

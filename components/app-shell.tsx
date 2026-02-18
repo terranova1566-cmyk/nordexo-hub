@@ -93,21 +93,8 @@ const useStyles = makeStyles({
   menuPopover: {
     minWidth: "220px",
   },
-  researchIcon: {
-    display: "inline-flex",
-    marginLeft: "4px",
-    color: "inherit",
-  },
-  researchButton: {
-    "&:hover .researchIcon": {
-      color: "#6732d3",
-    },
-    "&[data-active='true'] .researchIcon": {
-      color: tokens.colorNeutralForegroundOnBrand,
-    },
-    "&[data-active='true']:hover .researchIcon": {
-      color: tokens.colorNeutralForegroundOnBrand,
-    },
+  navMenuButton: {
+    gap: "8px",
   },
   languageDropdown: {
     minWidth: "0",
@@ -150,10 +137,14 @@ const useStyles = makeStyles({
   },
 });
 
-const navItems = [
+const standaloneNavItems = [
   { label: "nav.marketTrends", href: "/app/market-trends" },
-  { label: "nav.trendResearch", href: "/app/trend-research" },
   { label: "nav.uiKit", href: "/app/ui-kit" },
+];
+
+const nxLabsMenuItems = [
+  { label: "nav.nxLabsMarketOverview", href: "/app/trend-research" },
+  { label: "nav.nxLabsAgents", href: "/app/nx-agents", adminOnly: true },
 ];
 
 const productMenuItems = [
@@ -212,30 +203,6 @@ const shopifyMenuItems = [
   { label: "nav.shopifyStoreSettings", href: "/app/shopify/store-settings" },
   { label: "nav.shopifyWebshopTexts", href: "/app/shopify/webshop-texts" },
 ];
-
-function ResearchSparkIcon({ className }: { className?: string }) {
-  return (
-    <span className={className} aria-hidden="true">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-        <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
-        <path d="M12 18c-.328 0 -.652 -.017 -.97 -.05c-3.172 -.332 -5.85 -2.315 -8.03 -5.95c2.4 -4 5.4 -6 9 -6c3.465 0 6.374 1.853 8.727 5.558" />
-        <path d="M15 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
-        <path d="M20.2 20.2l1.8 1.8" />
-      </svg>
-    </span>
-  );
-}
 
 function SettingsIcon({ className }: { className?: string }) {
   return (
@@ -363,11 +330,21 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     return () => {
       isActive = false;
     };
-  }, [supabase]);
+  }, [setLocale, supabase]);
 
-  const visibleNavItems = useMemo(
-    () => navItems.filter((item) => (item.href === "/app/ui-kit" ? isAdmin : true)),
+  const visibleStandaloneNavItems = useMemo(
+    () => standaloneNavItems.filter((item) => (item.href === "/app/ui-kit" ? isAdmin : true)),
     [isAdmin]
+  );
+  const visibleNxLabsItems = useMemo(
+    () => nxLabsMenuItems.filter((item) => (!item.adminOnly ? true : isAdmin)),
+    [isAdmin]
+  );
+  const isNxLabsActive = useMemo(
+    () =>
+      pathname.startsWith("/app/trend-research") ||
+      pathname.startsWith("/app/nx-agents"),
+    [pathname]
   );
 
   const canAccessB2B = Boolean(userId) || isAdmin || isB2BInternal;
@@ -606,36 +583,43 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   </MenuPopover>
                 </Menu>
               ) : null}
-              {visibleNavItems.map((item) => {
+              {visibleStandaloneNavItems.map((item) => {
                 const active = item.href ? pathname.startsWith(item.href) : false;
-                const isResearch = item.href === "/app/trend-research";
                 return (
                   <Button
                     key={item.href ?? item.label}
                     appearance={active ? "primary" : "subtle"}
-                    data-active={active ? "true" : "false"}
-                    className={mergeClasses(
-                      styles.navButton,
-                      isResearch ? styles.researchButton : undefined
-                    )}
+                    className={styles.navButton}
                     onClick={item.href ? () => router.push(item.href) : undefined}
                   >
-                    {isResearch ? (
-                      <span className={styles.navLabel}>
-                        {t(item.label)}
-                        <ResearchSparkIcon
-                          className={mergeClasses(
-                            styles.researchIcon,
-                            "researchIcon"
-                          )}
-                        />
-                      </span>
-                    ) : (
-                      t(item.label)
-                    )}
+                    {t(item.label)}
                   </Button>
                 );
               })}
+              {visibleNxLabsItems.length > 0 ? (
+                <Menu openOnHover hoverDelay={0}>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance={isNxLabsActive ? "primary" : "subtle"}
+                      className={mergeClasses(styles.navButton, styles.navMenuButton)}
+                    >
+                      {t("nav.nxLabs")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover className={styles.menuPopover}>
+                    <MenuList>
+                      {visibleNxLabsItems.map((item) => (
+                        <MenuItem
+                          key={item.href}
+                          onClick={() => router.push(item.href)}
+                        >
+                          <span className={styles.navMenuItem}>{t(item.label)}</span>
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
+              ) : null}
             </div>
           </div>
           <Toolbar className={styles.toolbar}>

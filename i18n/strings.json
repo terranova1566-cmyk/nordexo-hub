@@ -242,8 +242,23 @@
       "context": "Main navigation item"
     },
     {
+      "key": "nav.nxLabs",
+      "text": "NX Labs",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.nxLabsMarketOverview",
+      "text": "Market Overview",
+      "context": "NX Labs menu item"
+    },
+    {
+      "key": "nav.nxLabsAgents",
+      "text": "NX Agents",
+      "context": "NX Labs menu item"
+    },
+    {
       "key": "nav.trendResearch",
-      "text": "NX Research",
+      "text": "Market Overview",
       "context": "Main navigation item"
     },
     {
@@ -4848,7 +4863,7 @@
     },
     {
       "key": "trend.title",
-      "text": "NX Research",
+      "text": "Market Overview",
       "context": "Trend page title"
     },
     {

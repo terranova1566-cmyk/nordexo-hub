@@ -1,0 +1,62 @@
+[
+  {
+    "route": "/login",
+    "file": "login.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login"
+  },
+  {
+    "route": "/",
+    "file": "root.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp"
+  },
+  {
+    "route": "/app",
+    "file": "app.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp"
+  },
+  {
+    "route": "/app/ui-kit",
+    "file": "app_ui-kit.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fui-kit"
+  },
+  {
+    "route": "/app/discovery",
+    "file": "app_discovery.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fdiscovery"
+  },
+  {
+    "route": "/app/products",
+    "file": "app_products.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fproducts"
+  },
+  {
+    "route": "/app/digideal/deals-manager",
+    "file": "app_digideal_deals-manager.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fdigideal%2Fdeals-manager"
+  },
+  {
+    "route": "/app/settings",
+    "file": "app_settings.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fsettings"
+  },
+  {
+    "route": "/app/nx-agents",
+    "file": "app_nx-agents.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/login?redirectedFrom=%2Fapp%2Fnx-agents"
+  },
+  {
+    "route": "/share/demo-token",
+    "file": "share_demo-token.png",
+    "status": "200",
+    "finalUrl": "http://127.0.0.1:3202/share/demo-token"
+  }
+]

@@ -104,6 +104,93 @@ type CatalogProduct = {
   small_image_url: string | null;
 };
 
+type TrendingMetrics = {
+  isTrending: boolean;
+  score: number;
+  reason: string;
+  ageDays: number | null;
+  trendDaysEstimate: number;
+};
+
+const DISCOVERY_TREND = {
+  newProductDays: 10,
+  newHotSoldToday: 8,
+  newHotSold7d: 18,
+  accelMinSoldToday: 6,
+  accelRatioVsPrev6Avg: 2.5,
+  stagnantPrev6DailyMax: 1,
+  stagnantSpikeSoldToday: 8,
+};
+
+const computeTrendingMetrics = (item: DiscoveryItem): TrendingMetrics => {
+  const soldToday = Math.max(0, Number(item.sold_today ?? 0));
+  const sold7d = Math.max(0, Number(item.sold_7d ?? 0));
+  if (soldToday <= 0 && sold7d <= 0) {
+    return {
+      isTrending: false,
+      score: 0,
+      reason: "No current momentum",
+      ageDays: null,
+      trendDaysEstimate: 0,
+    };
+  }
+
+  const firstSeenTs = item.first_seen_at ? Date.parse(item.first_seen_at) : Number.NaN;
+  const ageDays = Number.isFinite(firstSeenTs)
+    ? Math.max(0, (Date.now() - firstSeenTs) / 86_400_000)
+    : null;
+
+  // Case 1: New listing that starts selling quickly.
+  const isNewAndHot =
+    ageDays !== null &&
+    ageDays <= DISCOVERY_TREND.newProductDays &&
+    (soldToday >= DISCOVERY_TREND.newHotSoldToday ||
+      sold7d >= DISCOVERY_TREND.newHotSold7d);
+
+  // Case 2: Acceleration after low/stagnant baseline.
+  const previousSixDaysSales = Math.max(0, sold7d - soldToday);
+  const previousSixDaysDailyAvg = previousSixDaysSales / 6;
+  const isAccelerating =
+    soldToday >= DISCOVERY_TREND.accelMinSoldToday &&
+    (previousSixDaysDailyAvg <= 0
+      ? soldToday >= DISCOVERY_TREND.accelMinSoldToday
+      : soldToday >= previousSixDaysDailyAvg * DISCOVERY_TREND.accelRatioVsPrev6Avg);
+  const wasStagnantThenSpiked =
+    previousSixDaysDailyAvg <= DISCOVERY_TREND.stagnantPrev6DailyMax &&
+    soldToday >= DISCOVERY_TREND.stagnantSpikeSoldToday;
+
+  let reason = "Rising sales momentum";
+  if (isNewAndHot) reason = "New listing with strong early sales";
+  else if (wasStagnantThenSpiked) reason = "Comeback spike after low activity";
+  else if (isAccelerating) reason = "Strong day-over-week acceleration";
+
+  const ratio =
+    previousSixDaysDailyAvg > 0
+      ? soldToday / previousSixDaysDailyAvg
+      : soldToday > 0
+        ? DISCOVERY_TREND.accelRatioVsPrev6Avg
+        : 0;
+
+  const scoreRaw =
+    Math.min(45, soldToday * 4) +
+    Math.min(30, Math.max(0, ratio - 1) * 10) +
+    Math.min(15, sold7d / 2) +
+    (isNewAndHot ? 8 : 0) +
+    (wasStagnantThenSpiked ? 8 : 0);
+  const score = Math.max(0, Math.min(100, Math.round(scoreRaw)));
+
+  const trendDaysEstimate =
+    soldToday <= 0 ? 0 : Math.max(1, Math.min(7, Math.round(sold7d / soldToday)));
+
+  return {
+    isTrending: isNewAndHot || isAccelerating || wasStagnantThenSpiked,
+    score,
+    reason,
+    ageDays,
+    trendDaysEstimate,
+  };
+};
+
 const useStyles = makeStyles({
   layout: {
     display: "flex",
@@ -347,12 +434,49 @@ const useStyles = makeStyles({
   cardImageWrap: {
     width: "100%",
     aspectRatio: "1 / 1",
+    position: "relative",
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+  },
+  trendingBadge: {
+    position: "absolute",
+    top: "8px",
+    left: "8px",
+    width: "28px",
+    height: "28px",
+    borderRadius: "999px",
+    backgroundColor: "#6b46c1",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+    pointerEvents: "none",
+  },
+  trendingIcon: {
+    width: "16px",
+    height: "16px",
+    display: "block",
+  },
+  trendingTooltip: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: "220px",
+  },
+  trendingTooltipTitle: {
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+  },
+  trendingTooltipMeta: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
   },
   imageDivider: {
     height: "1px",
@@ -930,7 +1054,49 @@ function DiscoveryPageInner() {
               providerOptions.find((option) => option.value === value)?.label ??
               value
           )
-          .join(", ");
+      .join(", ");
+  const trendingMetaByItemKey = useMemo(() => {
+    const result = new Map<string, TrendingMetrics>();
+    items.forEach((item) => {
+      result.set(`${item.provider}:${item.product_id}`, computeTrendingMetrics(item));
+    });
+    return result;
+  }, [items]);
+  const trendingRanksByItemKey = useMemo(() => {
+    const recentCutoffTs = Date.now() - 30 * 86_400_000;
+    const trendRows = items
+      .map((item) => {
+        const key = `${item.provider}:${item.product_id}`;
+        const metrics = trendingMetaByItemKey.get(key);
+        if (!metrics?.isTrending) return null;
+        return { key, metrics };
+      })
+      .filter((row): row is { key: string; metrics: TrendingMetrics } => Boolean(row));
+
+    trendRows.sort((a, b) => b.metrics.score - a.metrics.score);
+    const allRank = new Map<string, number>();
+    trendRows.forEach((row, idx) => {
+      allRank.set(row.key, idx + 1);
+    });
+
+    const recentRows = trendRows.filter((row) => {
+      const metrics = row.metrics;
+      if (metrics.ageDays === null) return false;
+      return metrics.ageDays <= 30;
+    });
+    recentRows.sort((a, b) => b.metrics.score - a.metrics.score);
+    const recentRank = new Map<string, number>();
+    recentRows.forEach((row, idx) => {
+      recentRank.set(row.key, idx + 1);
+    });
+
+    return {
+      allRank,
+      allTotal: trendRows.length,
+      recentRank,
+      recentTotal: recentRows.length,
+    };
+  }, [items, trendingMetaByItemKey]);
   const showOnlyLabel =
     showOnly.length === 0
       ? "All products"
@@ -1713,23 +1879,48 @@ function DiscoveryPageInner() {
     action: "like" | "remove",
     valueOverride?: boolean
   ) => {
+    const itemKey = `${item.provider}:${item.product_id}`;
     const nextValue =
       typeof valueOverride === "boolean"
         ? valueOverride
         : action === "like"
           ? !item.liked
           : !item.removed;
-    setItems((prev) =>
-      prev.map((entry) =>
-        entry.provider === item.provider && entry.product_id === item.product_id
-          ? {
-              ...entry,
-              liked: action === "like" ? nextValue : entry.liked,
-              removed: action === "remove" ? nextValue : entry.removed,
-            }
-          : entry
-      )
-    );
+    let removedSnapshot: { entry: DiscoveryItem; index: number } | null = null;
+
+    // Hide at card-level without forcing a full list reload.
+    if (action === "remove" && nextValue) {
+      setItems((prev) => {
+        const index = prev.findIndex(
+          (entry) =>
+            entry.provider === item.provider && entry.product_id === item.product_id
+        );
+        if (index === -1) return prev;
+        removedSnapshot = { entry: prev[index], index };
+        const next = prev.slice();
+        next.splice(index, 1);
+        return next;
+      });
+      setSelectedIds((prev) => {
+        if (!prev.has(itemKey)) return prev;
+        const next = new Set(prev);
+        next.delete(itemKey);
+        return next;
+      });
+      setTotal((prev) => Math.max(0, prev - 1));
+    } else {
+      setItems((prev) =>
+        prev.map((entry) =>
+          entry.provider === item.provider && entry.product_id === item.product_id
+            ? {
+                ...entry,
+                liked: action === "like" ? nextValue : entry.liked,
+                removed: action === "remove" ? nextValue : entry.removed,
+              }
+            : entry
+        )
+      );
+    }
 
     try {
       const response = await fetch("/api/discovery/actions", {
@@ -1747,29 +1938,70 @@ function DiscoveryPageInner() {
         throw new Error(t("discovery.error.actions"));
       }
       const payload = await response.json();
-      setItems((prev) =>
-        prev.map((entry) =>
-          entry.provider === item.provider && entry.product_id === item.product_id
-            ? {
-                ...entry,
-                liked: Boolean(payload.liked),
-                removed: Boolean(payload.removed),
-              }
-            : entry
-        )
-      );
+      if (!(action === "remove" && nextValue)) {
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.provider === item.provider && entry.product_id === item.product_id
+              ? {
+                  ...entry,
+                  liked: Boolean(payload.liked),
+                  removed: Boolean(payload.removed),
+                }
+              : entry
+          )
+        );
+      } else if (!Boolean(payload.removed) && removedSnapshot) {
+        // Server did not persist removal; restore row.
+        const snapshot = removedSnapshot as {
+          entry: DiscoveryItem;
+          index: number;
+        };
+        setItems((prev) => {
+          const exists = prev.some(
+            (entry) =>
+              entry.provider === snapshot.entry.provider &&
+              entry.product_id === snapshot.entry.product_id
+          );
+          if (exists) return prev;
+          const next = prev.slice();
+          const index = Math.min(Math.max(snapshot.index, 0), next.length);
+          next.splice(index, 0, snapshot.entry);
+          return next;
+        });
+        setTotal((prev) => prev + 1);
+      }
     } catch (err) {
-      setItems((prev) =>
-        prev.map((entry) =>
-          entry.provider === item.provider && entry.product_id === item.product_id
-            ? {
-                ...entry,
-                liked: item.liked,
-                removed: item.removed,
-              }
-            : entry
-        )
-      );
+      if (action === "remove" && nextValue && removedSnapshot) {
+        const snapshot = removedSnapshot as {
+          entry: DiscoveryItem;
+          index: number;
+        };
+        setItems((prev) => {
+          const exists = prev.some(
+            (entry) =>
+              entry.provider === snapshot.entry.provider &&
+              entry.product_id === snapshot.entry.product_id
+          );
+          if (exists) return prev;
+          const next = prev.slice();
+          const index = Math.min(Math.max(snapshot.index, 0), next.length);
+          next.splice(index, 0, snapshot.entry);
+          return next;
+        });
+        setTotal((prev) => prev + 1);
+      } else {
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.provider === item.provider && entry.product_id === item.product_id
+              ? {
+                  ...entry,
+                  liked: item.liked,
+                  removed: item.removed,
+                }
+              : entry
+          )
+        );
+      }
       setError((err as Error).message);
     }
   };
@@ -2777,6 +3009,11 @@ function DiscoveryPageInner() {
             const sold7d = item.sold_7d ?? 0;
             const soldAll = item.sold_all_time ?? 0;
             const itemKey = `${item.provider}:${item.product_id}`;
+            const trendingMeta = trendingMetaByItemKey.get(itemKey) ?? computeTrendingMetrics(item);
+            const isTrending = trendingMeta.isTrending;
+            const trendAllRank = trendingRanksByItemKey.allRank.get(itemKey) ?? null;
+            const trendRecentRank =
+              trendingRanksByItemKey.recentRank.get(itemKey) ?? null;
             const isSelected = selectedIds.has(itemKey);
             const wishlistNames = item.wishlist_names ?? [];
             const isWishlisted = wishlistNames.length > 0;
@@ -2815,15 +3052,72 @@ function DiscoveryPageInner() {
                 )}
                 onClick={() => toggleSelected(itemKey)}
               >
-                <div className={styles.cardImageWrap}>
-                  {imageSrc ? (
-                    <Image
-                      src={imageSrc}
-                      alt={title}
-                      className={styles.cardImage}
-                    />
-                  ) : null}
-                </div>
+                {isTrending ? (
+                  <Tooltip
+                    relationship="label"
+                    content={
+                      <div className={styles.trendingTooltip}>
+                        <span className={styles.trendingTooltipTitle}>
+                          Hot score: {trendingMeta.score}/100
+                        </span>
+                        <span className={styles.trendingTooltipMeta}>
+                          Trend days (est): {trendingMeta.trendDaysEstimate}
+                        </span>
+                        {trendRecentRank ? (
+                          <span className={styles.trendingTooltipMeta}>
+                            Last 30d rank (view): #{trendRecentRank}/
+                            {trendingRanksByItemKey.recentTotal}
+                          </span>
+                        ) : null}
+                        {trendAllRank ? (
+                          <span className={styles.trendingTooltipMeta}>
+                            Trending rank (view): #{trendAllRank}/
+                            {trendingRanksByItemKey.allTotal}
+                          </span>
+                        ) : null}
+                        <span className={styles.trendingTooltipMeta}>
+                          {trendingMeta.reason}
+                        </span>
+                      </div>
+                    }
+                  >
+                    <div className={styles.cardImageWrap}>
+                      <span className={styles.trendingBadge} aria-label="Trending">
+                        <svg
+                          className={styles.trendingIcon}
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          focusable="false"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 17l6 -6l4 4l8 -8" />
+                          <path d="M14 7l7 0l0 7" />
+                        </svg>
+                      </span>
+                      {imageSrc ? (
+                        <Image
+                          src={imageSrc}
+                          alt={title}
+                          className={styles.cardImage}
+                        />
+                      ) : null}
+                    </div>
+                  </Tooltip>
+                ) : (
+                  <div className={styles.cardImageWrap}>
+                    {imageSrc ? (
+                      <Image
+                        src={imageSrc}
+                        alt={title}
+                        className={styles.cardImage}
+                      />
+                    ) : null}
+                  </div>
+                )}
                 <div className={styles.imageDivider} />
                 <div className={styles.rowBetween}>
                   <div className={styles.rowLeft}>
