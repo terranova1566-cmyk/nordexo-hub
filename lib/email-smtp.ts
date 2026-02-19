@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 
-type SmtpConfig = {
+export type SmtpConfig = {
   host: string;
   port: number;
   secure: boolean;
@@ -89,8 +89,17 @@ export type SenderIdentity = {
   name: string;
 };
 
+export function getEnvSmtpConfig(): SmtpConfig | null {
+  try {
+    return getSmtpConfig();
+  } catch {
+    return null;
+  }
+}
+
 export function listConfiguredSenders(): SenderIdentity[] {
-  const config = getSmtpConfig();
+  const config = getEnvSmtpConfig();
+  if (!config) return [];
   return [
     {
       email: config.defaultFromEmail,
@@ -107,8 +116,8 @@ export async function sendEmailViaSmtp(input: {
   fromEmail?: string;
   fromName?: string;
   replyTo?: string;
-}) {
-  const config = getSmtpConfig();
+}, smtpConfig?: SmtpConfig) {
+  const config = smtpConfig ?? getSmtpConfig();
   const transporter = getTransporter(config);
   const fromEmail = (input.fromEmail || config.defaultFromEmail).trim();
   const fromName = (input.fromName || config.defaultFromName || fromEmail).trim();

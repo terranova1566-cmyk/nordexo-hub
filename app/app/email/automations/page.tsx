@@ -40,6 +40,7 @@ type AutomationRule = {
   salesChannelId: string;
   templateId: string;
   templateQuery: string;
+  deliveryProvider: "sendpulse" | "smtp";
   senderEmail: string;
   subject: string;
   deliveryTime: string;
@@ -163,6 +164,7 @@ const createRule = (): AutomationRule => {
     salesChannelId: "",
     templateId: "",
     templateQuery: "",
+    deliveryProvider: "sendpulse",
     senderEmail: "",
     subject: "",
     deliveryTime: "",
@@ -176,7 +178,8 @@ export default function EmailAutomationsPage() {
   const styles = useStyles();
   const { t } = useI18n();
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [senders, setSenders] = useState<SenderOption[]>([]);
+  const [smtpSenders, setSmtpSenders] = useState<SenderOption[]>([]);
+  const [sendpulseSenders, setSendpulseSenders] = useState<SenderOption[]>([]);
   const [rules, setRules] = useState<AutomationRule[]>([createRule()]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [isLoadingSenders, setIsLoadingSenders] = useState(false);
@@ -198,6 +201,7 @@ export default function EmailAutomationsPage() {
               marketplace?: string;
               includeCustomerOrder?: boolean;
               includeUpick?: boolean;
+              deliveryProvider?: "sendpulse" | "smtp";
             };
             const normalizedChannel =
               rule.salesChannelId === "any" ? "" : rule.salesChannelId;
@@ -209,6 +213,8 @@ export default function EmailAutomationsPage() {
                 normalizedChannel ??
                 legacyRule.marketplace ??
                 base.salesChannelId,
+              deliveryProvider:
+                legacyRule.deliveryProvider === "smtp" ? "smtp" : "sendpulse",
               includeOrderNumber:
                 legacyRule.includeCustomerOrder ??
                 rule.includeOrderNumber ??
@@ -249,13 +255,27 @@ export default function EmailAutomationsPage() {
     const loadSenders = async () => {
       setIsLoadingSenders(true);
       try {
-        const response = await fetch("/api/email/senders");
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || "Unable to load senders.");
+        const [smtpResponse, sendpulseResponse] = await Promise.all([
+          fetch("/api/email/senders"),
+          fetch("/api/sendpulse/senders"),
+        ]);
+
+        if (!smtpResponse.ok) {
+          const errorText = await smtpResponse.text();
+          throw new Error(errorText || "Unable to load SMTP senders.");
         }
-        const payload = await response.json();
-        setSenders(payload.senders ?? []);
+        if (!sendpulseResponse.ok) {
+          const errorText = await sendpulseResponse.text();
+          throw new Error(errorText || "Unable to load SendPulse senders.");
+        }
+
+        const smtpPayload = await smtpResponse.json();
+        const sendpulsePayload = await sendpulseResponse.json();
+
+        setSmtpSenders(Array.isArray(smtpPayload.senders) ? smtpPayload.senders : []);
+        setSendpulseSenders(
+          Array.isArray(sendpulsePayload.senders) ? sendpulsePayload.senders : []
+        );
       } catch (error) {
         setMessage({
           type: "error",
@@ -445,31 +465,52 @@ export default function EmailAutomationsPage() {
                       </Field>
                     </TableCell>
                     <TableCell className={styles.rowCell}>
-                      <Field className={styles.comboField}>
-                        <Dropdown
-                          value={
-                            rule.senderEmail ||
-                            (isLoadingSenders ? t("email.senders.loading") : "")
-                          }
-                          selectedOptions={
-                            rule.senderEmail ? [rule.senderEmail] : []
-                          }
-                          placeholder={t("email.sender.placeholder")}
-                          onOptionSelect={(_, data) =>
-                            updateRule(rule.id, {
-                              senderEmail: String(data.optionValue ?? ""),
-                            })
-                          }
-                        >
-                          {senders.map((sender) => (
-                            <Option key={sender.email} value={sender.email}>
-                              {sender.name
-                                ? `${sender.name} (${sender.email})`
-                                : sender.email}
-                            </Option>
-                          ))}
-                        </Dropdown>
-                      </Field>
+                      <div className={styles.stackedCell}>
+                        <Field className={styles.comboField}>
+                          <Dropdown
+                            value={rule.deliveryProvider === "smtp" ? "SMTP" : "SendPulse API"}
+                            selectedOptions={[rule.deliveryProvider]}
+                            onOptionSelect={(_, data) =>
+                              updateRule(rule.id, {
+                                deliveryProvider:
+                                  String(data.optionValue) === "smtp"
+                                    ? "smtp"
+                                    : "sendpulse",
+                                senderEmail: "",
+                              })
+                            }
+                          >
+                            <Option value="sendpulse">SendPulse API</Option>
+                            <Option value="smtp">SMTP (server)</Option>
+                          </Dropdown>
+                        </Field>
+                        <Field className={styles.comboField}>
+                          <Dropdown
+                            value={
+                              rule.senderEmail ||
+                              (isLoadingSenders ? t("email.senders.loading") : "")
+                            }
+                            selectedOptions={rule.senderEmail ? [rule.senderEmail] : []}
+                            placeholder={t("email.sender.placeholder")}
+                            onOptionSelect={(_, data) =>
+                              updateRule(rule.id, {
+                                senderEmail: String(data.optionValue ?? ""),
+                              })
+                            }
+                          >
+                            {(rule.deliveryProvider === "smtp"
+                              ? smtpSenders
+                              : sendpulseSenders
+                            ).map((sender) => (
+                              <Option key={sender.email} value={sender.email}>
+                                {sender.name
+                                  ? `${sender.name} (${sender.email})`
+                                  : sender.email}
+                              </Option>
+                            ))}
+                          </Dropdown>
+                        </Field>
+                      </div>
                     </TableCell>
                     <TableCell
                       className={mergeClasses(styles.rowCell, styles.stackedCell)}

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-admin";
 import { renderTemplate, stripHtml } from "@/lib/email-templates";
-import { sendEmailViaSmtp } from "@/lib/email-smtp";
+import { getEnvSmtpConfig, sendEmailViaSmtp } from "@/lib/email-smtp";
+import {
+  getEmailSmtpAccountById,
+  listEmailSmtpAccounts,
+  smtpConfigFromAccount,
+} from "@/lib/email-smtp-accounts";
 
 export const runtime = "nodejs";
 
@@ -32,6 +37,7 @@ export async function POST(request: Request) {
 
   const toRaw = String(payload.to ?? "").trim();
   const templateId = String(payload.templateId ?? "").trim();
+  const senderId = String(payload.senderId ?? "").trim();
   const senderEmail = String(payload.senderEmail ?? "").trim();
   const senderName = String(payload.senderName ?? "").trim() || null;
   const replyTo = String(payload.replyTo ?? "").trim() || undefined;
@@ -89,16 +95,75 @@ export async function POST(request: Request) {
   let responsePayload: unknown = null;
   let errorMessage: string | null = null;
 
+  let senderConfig: ReturnType<typeof getEnvSmtpConfig> = null;
+  let resolvedSenderEmail = senderEmail || null;
+  let resolvedSenderName = senderName;
+  try {
+    if (senderId && senderId !== "env-default") {
+      const { account, missingTable } = await getEmailSmtpAccountById(
+        auth.supabase,
+        senderId,
+        { includeSecret: true }
+      );
+      if (missingTable) {
+        return NextResponse.json(
+          {
+            error:
+              "SMTP settings table is missing. Run the latest Supabase migration before sending.",
+          },
+          { status: 500 }
+        );
+      }
+      if (!account || !account.isActive) {
+        return NextResponse.json({ error: "Selected sender was not found." }, { status: 404 });
+      }
+      senderConfig = smtpConfigFromAccount(account);
+      resolvedSenderEmail = account.fromEmail;
+      resolvedSenderName = account.fromName || account.name;
+    } else if (senderEmail) {
+      const { accounts, missingTable } = await listEmailSmtpAccounts(auth.supabase, {
+        activeOnly: true,
+        includeSecret: true,
+      });
+      if (!missingTable) {
+        const matched = accounts.find(
+          (entry) => entry.fromEmail.toLowerCase() === senderEmail.toLowerCase()
+        );
+        if (matched) {
+          senderConfig = smtpConfigFromAccount(matched);
+          resolvedSenderEmail = matched.fromEmail;
+          resolvedSenderName = matched.fromName || matched.name;
+        }
+      }
+    }
+
+    if (!senderConfig) {
+      senderConfig = getEnvSmtpConfig();
+    }
+
+    if (!senderConfig) {
+      return NextResponse.json(
+        {
+          error:
+            "No SMTP sender is configured. Add an SMTP account under Email > Email settings.",
+        },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
+
   try {
     responsePayload = await sendEmailViaSmtp({
       subject: renderedSubject,
       html: renderedBody,
       text: stripHtml(renderedBody),
       to: recipients,
-      fromEmail: senderEmail || undefined,
-      fromName: senderName || undefined,
+      fromEmail: resolvedSenderEmail || undefined,
+      fromName: resolvedSenderName || undefined,
       replyTo,
-    });
+    }, senderConfig);
   } catch (error) {
     status = "failed";
     errorMessage = (error as Error).message;
@@ -106,8 +171,8 @@ export async function POST(request: Request) {
 
   const logEntry = {
     user_id: auth.userId,
-    sender_email: senderEmail || null,
-    sender_name: senderName,
+    sender_email: resolvedSenderEmail,
+    sender_name: resolvedSenderName,
     template_id: templateId,
     subject: manualSubject || template.subject_template || null,
     to_emails: recipients.map((recipient) => recipient.email),

@@ -7,50 +7,67 @@ import {
   Input,
   MessageBar,
   Spinner,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableHeaderCell,
   TableRow,
-  Tab,
-  TabList,
   Text,
-  Textarea,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type EmailTemplate = {
-  template_id: string;
+type SmtpAccount = {
+  id: string;
   name: string;
-  description?: string | null;
-  subject_template: string;
-  body_template: string;
-  macros: string[];
-  updated_at?: string | null;
+  fromEmail: string;
+  fromName: string | null;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  hasPassword: boolean;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
-type TemplateVersion = {
-  id: string;
-  template_id: string;
-  subject_template: string;
-  body_template: string;
-  macros: string[];
-  created_at: string;
+type SendpulseSender = {
+  email: string;
+  name: string | null;
+  status: string | null;
 };
 
-type PublicFileEntry = {
+type SettingsPayload = {
+  smtpAccounts?: SmtpAccount[];
+  smtpSettingsTableMissing?: boolean;
+  envSender?: {
+    email: string;
+    name: string;
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+  } | null;
+  sendpulseSenders?: SendpulseSender[];
+  sendpulseError?: string | null;
+  error?: string;
+};
+
+type FormState = {
   id: string;
-  token: string;
-  file_path: string;
-  original_name: string | null;
-  created_at: string;
-  expires_at: string;
-  retain_until: string;
-  download_count: number;
-  url: string;
+  name: string;
+  fromEmail: string;
+  fromName: string;
+  host: string;
+  port: string;
+  secure: boolean;
+  user: string;
+  password: string;
+  isActive: boolean;
 };
 
 const useStyles = makeStyles({
@@ -59,13 +76,8 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "16px",
   },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "280px minmax(0, 1fr)",
-    gap: "16px",
-    "@media (max-width: 980px)": {
-      gridTemplateColumns: "minmax(0, 1fr)",
-    },
+  helper: {
+    color: tokens.colorNeutralForeground3,
   },
   card: {
     padding: "16px",
@@ -74,267 +86,187 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "12px",
   },
-  templateList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    maxHeight: "560px",
-    overflowY: "auto",
+  split: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
+    gap: "16px",
+    "@media (max-width: 1080px)": {
+      gridTemplateColumns: "minmax(0, 1fr)",
+    },
   },
-  selectedBtn: {
-    border: `1px solid ${tokens.colorBrandStroke1}`,
-    boxShadow: `inset 0 0 0 1px ${tokens.colorBrandStroke1}`,
-  },
-  helper: {
-    color: tokens.colorNeutralForeground3,
+  row: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+    "@media (max-width: 700px)": {
+      gridTemplateColumns: "minmax(0, 1fr)",
+    },
   },
   actions: {
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
+    alignItems: "center",
   },
   tableWrap: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "10px",
     overflow: "hidden",
   },
+  clickableRow: {
+    cursor: "pointer",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
 });
 
-const emptyTemplate: EmailTemplate = {
-  template_id: "",
+const emptyForm: FormState = {
+  id: "",
   name: "",
-  description: "",
-  subject_template: "",
-  body_template: "",
-  macros: [],
+  fromEmail: "",
+  fromName: "",
+  host: "",
+  port: "587",
+  secure: false,
+  user: "",
+  password: "",
+  isActive: true,
 };
 
-const formatDate = (value?: string | null) => {
+const formatDate = (value: string | null | undefined) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
 };
 
-export default function EmailSettingsPage() {
+export default function EmailConfigPage() {
   const styles = useStyles();
 
-  const [activeTab, setActiveTab] = useState<"templates" | "files">("templates");
-  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [draft, setDraft] = useState<EmailTemplate>(emptyTemplate);
-  const [versions, setVersions] = useState<TemplateVersion[]>([]);
+  const [accounts, setAccounts] = useState<SmtpAccount[]>([]);
+  const [sendpulseSenders, setSendpulseSenders] = useState<SendpulseSender[]>([]);
+  const [sendpulseError, setSendpulseError] = useState<string | null>(null);
+  const [tableMissing, setTableMissing] = useState(false);
+  const [envSender, setEnvSender] = useState<SettingsPayload["envSender"]>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
     null
   );
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const [sourcePath, setSourcePath] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [files, setFiles] = useState<PublicFileEntry[]>([]);
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-
-  const selectedTemplate = useMemo(
-    () => templates.find((item) => item.template_id === selectedId) ?? null,
-    [templates, selectedId]
+  const selectedAccount = useMemo(
+    () => accounts.find((entry) => entry.id === form.id) ?? null,
+    [accounts, form.id]
   );
 
-  const loadTemplates = useCallback(async () => {
-    setIsLoadingTemplates(true);
+  const loadSettings = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch("/api/email/templates");
-      const payload = await response.json();
+      const response = await fetch("/api/email/settings");
+      const payload = (await response.json()) as SettingsPayload;
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load templates.");
+        throw new Error(payload?.error || "Unable to load email settings.");
       }
-      const next = Array.isArray(payload.templates) ? payload.templates : [];
-      setTemplates(next);
-      setSelectedId((prev) => prev || next[0]?.template_id || "");
+      setAccounts(Array.isArray(payload.smtpAccounts) ? payload.smtpAccounts : []);
+      setTableMissing(Boolean(payload.smtpSettingsTableMissing));
+      setEnvSender(payload.envSender ?? null);
+      setSendpulseSenders(Array.isArray(payload.sendpulseSenders) ? payload.sendpulseSenders : []);
+      setSendpulseError(payload.sendpulseError ?? null);
     } catch (error) {
       setMessage({ type: "error", text: (error as Error).message });
     } finally {
-      setIsLoadingTemplates(false);
-    }
-  }, []);
-
-  const loadVersions = useCallback(async (templateId: string) => {
-    if (!templateId) {
-      setVersions([]);
-      return;
-    }
-    try {
-      const response = await fetch(
-        `/api/email/templates/versions?template_id=${encodeURIComponent(templateId)}`
-      );
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load versions.");
-      }
-      setVersions(Array.isArray(payload.versions) ? payload.versions : []);
-    } catch {
-      setVersions([]);
-    }
-  }, []);
-
-  const loadFiles = useCallback(async () => {
-    setIsLoadingFiles(true);
-    try {
-      const response = await fetch("/api/public/files");
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load files.");
-      }
-      setFiles(Array.isArray(payload.files) ? payload.files : []);
-    } catch (error) {
-      setMessage({ type: "error", text: (error as Error).message });
-    } finally {
-      setIsLoadingFiles(false);
+      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadTemplates();
-    loadFiles();
-  }, [loadFiles, loadTemplates]);
+    loadSettings();
+  }, [loadSettings]);
 
-  useEffect(() => {
-    if (!selectedTemplate) return;
-    setDraft(selectedTemplate);
-    loadVersions(selectedTemplate.template_id);
-  }, [loadVersions, selectedTemplate]);
+  const resetForm = () => {
+    setForm(emptyForm);
+  };
 
-  const saveTemplate = async () => {
-    setIsSavingTemplate(true);
+  const selectAccount = (account: SmtpAccount) => {
+    setForm({
+      id: account.id,
+      name: account.name,
+      fromEmail: account.fromEmail,
+      fromName: account.fromName || "",
+      host: account.host,
+      port: String(account.port || 587),
+      secure: Boolean(account.secure),
+      user: account.user,
+      password: "",
+      isActive: account.isActive,
+    });
+  };
+
+  const saveAccount = async () => {
+    setIsSaving(true);
     setMessage(null);
 
     try {
-      const macros = draft.macros?.length
-        ? draft.macros
-        : Array.from(
-            new Set(
-              `${draft.subject_template}\n${draft.body_template}`
-                .match(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)
-                ?.map((entry) => entry.replace(/[{}\s]/g, "")) ?? []
-            )
-          );
-
       const payload = {
-        template_id: draft.template_id,
-        name: draft.name,
-        description: draft.description,
-        subject_template: draft.subject_template,
-        body_template: draft.body_template,
-        macros,
+        id: form.id || undefined,
+        name: form.name,
+        fromEmail: form.fromEmail,
+        fromName: form.fromName,
+        host: form.host,
+        port: form.port,
+        secure: form.secure,
+        user: form.user,
+        password: form.password,
+        isActive: form.isActive,
       };
 
-      const isNew = !selectedId;
-      const response = await fetch(
-        isNew ? "/api/email/templates" : `/api/email/templates/${encodeURIComponent(selectedId)}`,
-        {
-          method: isNew ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.error || "Unable to save template.");
-      }
-
-      const nextId = String(result.template_id || draft.template_id);
-      await loadTemplates();
-      setSelectedId(nextId);
-      setMessage({ type: "success", text: "Template saved." });
-    } catch (error) {
-      setMessage({ type: "error", text: (error as Error).message });
-    } finally {
-      setIsSavingTemplate(false);
-    }
-  };
-
-  const deleteTemplate = async () => {
-    if (!selectedId) return;
-    if (!window.confirm(`Delete template ${selectedId}?`)) return;
-
-    try {
-      const response = await fetch(
-        `/api/email/templates/${encodeURIComponent(selectedId)}`,
-        { method: "DELETE" }
-      );
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.error || "Unable to delete template.");
-      }
-
-      const remaining = templates.filter((item) => item.template_id !== selectedId);
-      setTemplates(remaining);
-      setSelectedId(remaining[0]?.template_id || "");
-      setDraft(remaining[0] || emptyTemplate);
-      setMessage({ type: "success", text: "Template deleted." });
-    } catch (error) {
-      setMessage({ type: "error", text: (error as Error).message });
-    }
-  };
-
-  const createNewTemplateDraft = () => {
-    setSelectedId("");
-    setDraft({
-      ...emptyTemplate,
-      template_id: "new_products",
-      name: "New products",
-      subject_template: "New products for {{partner_name}} ({{date_range}})",
-      body_template:
-        "<p>Hey {{partner_name}},</p><p>Here are the latest products:</p><p><a href='{{products_csv_url}}'>Download product file</a></p>",
-      macros: [
-        "partner_name",
-        "products_csv_url",
-        "top_sellers_url",
-        "date_range",
-        "PARTNER_CONTACT_NAME",
-      ],
-    });
-    setVersions([]);
-  };
-
-  const publishFile = async () => {
-    setIsPublishing(true);
-    try {
-      const response = await fetch("/api/public/files/link", {
-        method: "POST",
+      const method = form.id ? "PATCH" : "POST";
+      const response = await fetch("/api/email/settings", {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourcePath, fileName }),
+        body: JSON.stringify(payload),
       });
-      const payload = await response.json();
+      const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to publish file.");
+        throw new Error(result?.error || "Unable to save SMTP account.");
       }
-      setMessage({ type: "success", text: `Public URL created: ${payload.url}` });
-      setSourcePath("");
-      setFileName("");
-      await loadFiles();
+
+      setMessage({ type: "success", text: form.id ? "SMTP account updated." : "SMTP account created." });
+      await loadSettings();
+      resetForm();
     } catch (error) {
       setMessage({ type: "error", text: (error as Error).message });
     } finally {
-      setIsPublishing(false);
+      setIsSaving(false);
     }
   };
 
-  const runCleanup = async () => {
+  const deleteAccount = async () => {
+    if (!form.id) return;
+    if (!window.confirm("Delete this SMTP account?")) return;
+
+    setIsDeleting(true);
+    setMessage(null);
     try {
-      const response = await fetch("/api/public/files/cleanup", { method: "POST" });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error || "Cleanup failed.");
-      }
-      setMessage({
-        type: "success",
-        text: `Cleanup complete. Deleted ${payload.deleted} old files.`,
+      const response = await fetch("/api/email/settings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: form.id }),
       });
-      await loadFiles();
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result?.error || "Unable to delete SMTP account.");
+      }
+      setMessage({ type: "success", text: "SMTP account deleted." });
+      await loadSettings();
+      resetForm();
     } catch (error) {
       setMessage({ type: "error", text: (error as Error).message });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -344,211 +276,212 @@ export default function EmailSettingsPage() {
         Email settings
       </Text>
       <Text className={styles.helper}>
-        Manage reusable email templates and generate secure public file links.
+        Manage SMTP sender accounts and review authenticated SendPulse senders.
       </Text>
 
       {message ? <MessageBar intent={message.type}>{message.text}</MessageBar> : null}
 
-      <TabList
-        selectedValue={activeTab}
-        onTabSelect={(_, data) => setActiveTab(String(data.value) as "templates" | "files")}
-      >
-        <Tab value="templates">Template manager</Tab>
-        <Tab value="files">Public files</Tab>
-      </TabList>
+      {tableMissing ? (
+        <MessageBar intent="warning">
+          SMTP settings table is missing. Run migration `0052_partner_email_smtp_accounts.sql` to enable account management.
+        </MessageBar>
+      ) : null}
 
-      {activeTab === "templates" ? (
-        <div className={styles.row}>
-          <Card className={styles.card}>
-            <Text weight="semibold">Templates</Text>
-            <Button appearance="primary" onClick={createNewTemplateDraft}>
-              New template
+      <div className={styles.split}>
+        <Card className={styles.card}>
+          <Text weight="semibold">SMTP accounts</Text>
+          <Text className={styles.helper}>
+            These accounts are used by Email send and can be reused in automations.
+          </Text>
+
+          {isLoading ? <Spinner label="Loading settings" /> : null}
+
+          <div className={styles.tableWrap}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Sender</TableHeaderCell>
+                  <TableHeaderCell>SMTP host</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((account) => (
+                  <TableRow
+                    key={account.id}
+                    className={styles.clickableRow}
+                    onClick={() => selectAccount(account)}
+                  >
+                    <TableCell>
+                      <div>{account.name}</div>
+                      <div>{account.fromEmail}</div>
+                    </TableCell>
+                    <TableCell>
+                      {account.host}:{account.port}
+                    </TableCell>
+                    <TableCell>{account.isActive ? "Active" : "Inactive"}</TableCell>
+                  </TableRow>
+                ))}
+                {accounts.length === 0 ? (
+                  <TableRow>
+                    <TableCell>No SMTP accounts</TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>-</TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+
+          {envSender ? (
+            <MessageBar>
+              Environment fallback sender active: {envSender.name} ({envSender.email})
+            </MessageBar>
+          ) : (
+            <MessageBar intent="warning">
+              No SMTP fallback in environment variables.
+            </MessageBar>
+          )}
+        </Card>
+
+        <Card className={styles.card}>
+          <Text weight="semibold">{form.id ? "Edit SMTP account" : "New SMTP account"}</Text>
+
+          <div className={styles.row}>
+            <Field label="Account name">
+              <Input
+                value={form.name}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, name: data.value }))}
+                placeholder="Partner mailbox"
+              />
+            </Field>
+            <Field label="From email">
+              <Input
+                value={form.fromEmail}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, fromEmail: data.value }))}
+                placeholder="partner@nordexo.se"
+              />
+            </Field>
+          </div>
+
+          <div className={styles.row}>
+            <Field label="From name">
+              <Input
+                value={form.fromName}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, fromName: data.value }))}
+                placeholder="Nordexo Partner"
+              />
+            </Field>
+            <Field label="SMTP host">
+              <Input
+                value={form.host}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, host: data.value }))}
+                placeholder="mail.yourhost.com"
+              />
+            </Field>
+          </div>
+
+          <div className={styles.row}>
+            <Field label="SMTP port">
+              <Input
+                value={form.port}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, port: data.value }))}
+                placeholder="587"
+              />
+            </Field>
+            <Field label="SMTP user">
+              <Input
+                value={form.user}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, user: data.value }))}
+                placeholder="partner@nordexo.se"
+              />
+            </Field>
+          </div>
+
+          <Field label={selectedAccount?.hasPassword ? "SMTP password (leave blank to keep current)" : "SMTP password"}>
+            <Input
+              type="password"
+              value={form.password}
+              onChange={(_, data) => setForm((prev) => ({ ...prev, password: data.value }))}
+              placeholder={selectedAccount?.hasPassword ? "••••••••" : "password"}
+            />
+          </Field>
+
+          <div className={styles.actions}>
+            <Switch
+              checked={form.secure}
+              onChange={(_, data) => setForm((prev) => ({ ...prev, secure: data.checked }))}
+              label="Use SSL/TLS"
+            />
+            <Switch
+              checked={form.isActive}
+              onChange={(_, data) => setForm((prev) => ({ ...prev, isActive: data.checked }))}
+              label="Account active"
+            />
+          </div>
+
+          <div className={styles.actions}>
+            <Button appearance="primary" onClick={saveAccount} disabled={isSaving || tableMissing}>
+              {isSaving ? "Saving..." : form.id ? "Update" : "Create"}
             </Button>
-            {isLoadingTemplates ? <Spinner label="Loading templates" /> : null}
-            <div className={styles.templateList}>
-              {templates.map((item) => (
-                <Button
-                  key={item.template_id}
-                  appearance="secondary"
-                  className={item.template_id === selectedId ? styles.selectedBtn : undefined}
-                  onClick={() => setSelectedId(item.template_id)}
-                >
-                  {item.name} ({item.template_id})
-                </Button>
-              ))}
-            </div>
-          </Card>
+            <Button appearance="secondary" onClick={resetForm}>
+              New
+            </Button>
+            <Button
+              appearance="secondary"
+              onClick={deleteAccount}
+              disabled={!form.id || isDeleting || tableMissing}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
 
-          <Card className={styles.card}>
-            <Field label="Template ID">
-              <Input
-                value={draft.template_id}
-                onChange={(_, data) => setDraft((prev) => ({ ...prev, template_id: data.value }))}
-                placeholder="new_products"
-              />
-            </Field>
-            <Field label="Name">
-              <Input
-                value={draft.name}
-                onChange={(_, data) => setDraft((prev) => ({ ...prev, name: data.value }))}
-              />
-            </Field>
-            <Field label="Description">
-              <Input
-                value={draft.description || ""}
-                onChange={(_, data) =>
-                  setDraft((prev) => ({ ...prev, description: data.value }))
-                }
-              />
-            </Field>
-            <Field label="Subject template">
-              <Input
-                value={draft.subject_template}
-                onChange={(_, data) =>
-                  setDraft((prev) => ({ ...prev, subject_template: data.value }))
-                }
-                placeholder="New products for {{partner_name}}"
-              />
-            </Field>
-            <Field label="Body template (HTML)">
-              <Textarea
-                rows={12}
-                value={draft.body_template}
-                onChange={(_, data) =>
-                  setDraft((prev) => ({ ...prev, body_template: data.value }))
-                }
-              />
-            </Field>
-            <Field label="Macros (comma-separated)">
-              <Input
-                value={(draft.macros || []).join(", ")}
-                onChange={(_, data) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    macros: data.value
-                      .split(",")
-                      .map((entry) => entry.trim())
-                      .filter(Boolean),
-                  }))
-                }
-                placeholder="partner_name, products_csv_url, top_sellers_url, date_range"
-              />
-            </Field>
-
-            <div className={styles.actions}>
-              <Button appearance="primary" onClick={saveTemplate} disabled={isSavingTemplate}>
-                {isSavingTemplate ? "Saving..." : "Save"}
-              </Button>
-              <Button appearance="secondary" onClick={deleteTemplate} disabled={!selectedId}>
-                Delete
-              </Button>
-            </div>
-
-            <Text size={200} className={styles.helper}>
-              Last updated: {formatDate(draft.updated_at)}
-            </Text>
-
-            <Text weight="semibold">Version history</Text>
-            <div className={styles.tableWrap}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>Created</TableHeaderCell>
-                    <TableHeaderCell>Macros</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {versions.map((version) => (
-                    <TableRow key={version.id}>
-                      <TableCell>{formatDate(version.created_at)}</TableCell>
-                      <TableCell>{(version.macros || []).join(", ") || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                  {versions.length === 0 ? (
-                    <TableRow>
-                      <TableCell>No versions</TableCell>
-                      <TableCell>-</TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </div>
-      ) : (
-        <div className={styles.page}>
-          <Card className={styles.card}>
-            <Text weight="semibold">Create public file URL</Text>
+          {selectedAccount ? (
             <Text className={styles.helper}>
-              Links expire in 30 days. Files are retained for 90 days.
+              Created: {formatDate(selectedAccount.createdAt)} · Updated: {formatDate(selectedAccount.updatedAt)}
             </Text>
-            <Field label="Source path (from /srv/nordexo-hub/exports or public root)">
-              <Input
-                value={sourcePath}
-                onChange={(_, data) => setSourcePath(data.value)}
-                placeholder="digideal/my-export.xlsx"
-              />
-            </Field>
-            <Field label="Optional download filename">
-              <Input
-                value={fileName}
-                onChange={(_, data) => setFileName(data.value)}
-                placeholder="partner-products.xlsx"
-              />
-            </Field>
-            <div className={styles.actions}>
-              <Button appearance="primary" onClick={publishFile} disabled={isPublishing}>
-                {isPublishing ? "Publishing..." : "Publish file"}
-              </Button>
-              <Button appearance="secondary" onClick={runCleanup}>
-                Run retention cleanup
-              </Button>
-            </div>
-          </Card>
+          ) : null}
+        </Card>
+      </div>
 
-          <Card className={styles.card}>
-            <Text weight="semibold">Recent public files</Text>
-            {isLoadingFiles ? <Spinner label="Loading files" /> : null}
-            <div className={styles.tableWrap}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>File</TableHeaderCell>
-                    <TableHeaderCell>URL</TableHeaderCell>
-                    <TableHeaderCell>Expires</TableHeaderCell>
-                    <TableHeaderCell>Retention</TableHeaderCell>
-                    <TableHeaderCell>Downloads</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {files.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.original_name || item.file_path}</TableCell>
-                      <TableCell>
-                        <a href={item.url} target="_blank" rel="noreferrer">
-                          {item.url}
-                        </a>
-                      </TableCell>
-                      <TableCell>{formatDate(item.expires_at)}</TableCell>
-                      <TableCell>{formatDate(item.retain_until)}</TableCell>
-                      <TableCell>{item.download_count ?? 0}</TableCell>
-                    </TableRow>
-                  ))}
-                  {files.length === 0 ? (
-                    <TableRow>
-                      <TableCell>No files</TableCell>
-                      <TableCell>-</TableCell>
-                      <TableCell>-</TableCell>
-                      <TableCell>-</TableCell>
-                      <TableCell>-</TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
+      <Card className={styles.card}>
+        <Text weight="semibold">SendPulse authenticated senders</Text>
+        {sendpulseError ? (
+          <MessageBar intent="warning">{sendpulseError}</MessageBar>
+        ) : (
+          <Text className={styles.helper}>
+            Used for SendPulse API channel in automations and transactional mail flows.
+          </Text>
+        )}
+
+        <div className={styles.tableWrap}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Email</TableHeaderCell>
+                <TableHeaderCell>Name</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sendpulseSenders.map((sender) => (
+                <TableRow key={sender.email}>
+                  <TableCell>{sender.email}</TableCell>
+                  <TableCell>{sender.name || "-"}</TableCell>
+                  <TableCell>{sender.status || "-"}</TableCell>
+                </TableRow>
+              ))}
+              {sendpulseSenders.length === 0 ? (
+                <TableRow>
+                  <TableCell>No senders found</TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>-</TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
         </div>
-      )}
+      </Card>
     </div>
   );
 }

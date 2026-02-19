@@ -130,8 +130,19 @@ export default function OrdersImportPage() {
         body: formData,
       });
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || "Import failed.");
+        let message = "Import failed.";
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = String(payload.error);
+          }
+        } catch {
+          const text = await response.text();
+          if (text) {
+            message = text;
+          }
+        }
+        throw new Error(message);
       }
       const payload = await response.json();
       setMessage(

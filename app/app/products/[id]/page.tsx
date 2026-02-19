@@ -2246,13 +2246,7 @@ export default function ProductDetailPage() {
                               value={variant.sku_norm}
                               size="small"
                               className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "sku_norm",
-                                  data.value
-                                )
-                              }
+                              readOnly
                             />
                           </TableCell>
                           <TableCell>

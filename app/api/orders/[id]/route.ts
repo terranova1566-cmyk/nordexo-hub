@@ -4,6 +4,98 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
 
+type DbError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatYmdUTC(date: Date) {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(
+    date.getUTCDate()
+  )}`;
+}
+
+function excelSerialToYmd(value: number) {
+  const safe = Math.floor(value);
+  if (!Number.isFinite(safe) || safe <= 0) return null;
+  const baseUtcMs = Date.UTC(1899, 11, 30);
+  const utcMs = baseUtcMs + safe * 24 * 60 * 60 * 1000;
+  return formatYmdUTC(new Date(utcMs));
+}
+
+function normalizeDateForDb(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const isoSlash = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (isoSlash) return `${isoSlash[1]}-${isoSlash[2]}-${isoSlash[3]}`;
+
+  const isoTimestamp = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s].*$/);
+  if (isoTimestamp) return isoTimestamp[1];
+
+  const serialLike = raw.match(/^-?\d+(?:[.,]\d+)?$/);
+  if (serialLike) {
+    const numeric = Number(raw.replace(",", "."));
+    if (Number.isFinite(numeric) && numeric >= 1 && numeric < 100000) {
+      return excelSerialToYmd(numeric);
+    }
+  }
+
+  return null;
+}
+
+function chooseDate(current: string | null | undefined, incoming: string | null) {
+  if (!incoming) return current ?? null;
+  if (!current) return incoming;
+  return incoming > current ? incoming : current;
+}
+
+function resolveDbErrorMessage(error: unknown, fallback: string) {
+  const dbError = (error ?? {}) as DbError;
+  const message = String(dbError.message ?? "").trim();
+  const details = String(dbError.details ?? "").trim();
+  const hint = String(dbError.hint ?? "").trim();
+  const code = String(dbError.code ?? "").trim();
+  const generic =
+    typeof error === "string"
+      ? error.trim()
+      : error instanceof Error
+        ? String(error.message ?? "").trim()
+        : "";
+
+  return (
+    message ||
+    details ||
+    hint ||
+    generic ||
+    (code ? `Database error (${code}).` : fallback)
+  );
+}
+
+async function hasTrackingSentDateColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "order_tracking_numbers_global")
+    .eq("column_name", "sent_date")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -79,33 +171,130 @@ export async function GET(
     .maybeSingle();
 
   if (orderError) {
-    return NextResponse.json({ error: orderError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: resolveDbErrorMessage(orderError, "Unable to load order.") },
+      { status: 500 }
+    );
   }
 
   const { data: items, error: itemsError } = await adminClient
     .from("order_items_global")
     .select(
-      "id,sku,quantity,sales_value_eur,transaction_date,date_shipped,marketplace_order_number,sales_channel_order_number"
+      "id,sku,quantity,sales_value_eur,transaction_date,date_shipped,marketplace_order_number,sales_channel_order_number,raw_row"
     )
     .eq("order_id", id)
     .order("sku", { ascending: true });
 
   if (itemsError) {
-    return NextResponse.json({ error: itemsError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: resolveDbErrorMessage(itemsError, "Unable to load order items.") },
+      { status: 500 }
+    );
   }
 
-  const { data: trackingRows, error: trackingError } = await adminClient
-    .from("order_tracking_numbers_global")
-    .select("tracking_number")
-    .eq("order_id", id);
-
-  if (trackingError) {
-    return NextResponse.json({ error: trackingError.message }, { status: 500 });
+  const includeTrackingSentDate = await hasTrackingSentDateColumn(adminClient);
+  let trackingRows: Array<{
+    tracking_number: string | null;
+    sent_date?: string | null;
+    created_at?: string | null;
+  }> = [];
+  if (includeTrackingSentDate) {
+    const { data, error } = await adminClient
+      .from("order_tracking_numbers_global")
+      .select("tracking_number,sent_date,created_at")
+      .eq("order_id", id);
+    if (error) {
+      return NextResponse.json(
+        {
+          error: resolveDbErrorMessage(
+            error,
+            "Unable to load tracking numbers."
+          ),
+        },
+        { status: 500 }
+      );
+    }
+    trackingRows = (data ?? []) as Array<{
+      tracking_number: string | null;
+      sent_date?: string | null;
+      created_at?: string | null;
+    }>;
+  } else {
+    const { data, error } = await adminClient
+      .from("order_tracking_numbers_global")
+      .select("tracking_number,created_at")
+      .eq("order_id", id);
+    if (error) {
+      return NextResponse.json(
+        {
+          error: resolveDbErrorMessage(
+            error,
+            "Unable to load tracking numbers."
+          ),
+        },
+        { status: 500 }
+      );
+    }
+    trackingRows = (data ?? []) as Array<{
+      tracking_number: string | null;
+      created_at?: string | null;
+    }>;
   }
 
-  const trackingNumbers = Array.from(
-    new Set((trackingRows ?? []).map((row) => row.tracking_number).filter(Boolean))
-  );
+  const itemTrackingDateMap = new Map<string, string>();
+  (items ?? []).forEach((item) => {
+    const rawRow =
+      typeof item.raw_row === "object" && item.raw_row !== null
+        ? (item.raw_row as Record<string, unknown>)
+        : null;
+    const trackingNumber = String(rawRow?.["Tracking number"] ?? "").trim();
+    if (!trackingNumber) return;
+    const shippedDate =
+      normalizeDateForDb(rawRow?.["Date shipped"]) ??
+      normalizeDateForDb(item.date_shipped);
+    if (!shippedDate) return;
+    const current = itemTrackingDateMap.get(trackingNumber) ?? null;
+    itemTrackingDateMap.set(trackingNumber, chooseDate(current, shippedDate) ?? "");
+  });
+
+  const trackingMap = new Map<string, string | null>();
+  (trackingRows ?? []).forEach((row) => {
+    const trackingNumber = String(row.tracking_number ?? "").trim();
+    if (!trackingNumber) return;
+    const sentDateFromDb = normalizeDateForDb((row as { sent_date?: unknown }).sent_date);
+    const sentDateFromItems = itemTrackingDateMap.get(trackingNumber) ?? null;
+    const sentDateFromCreatedAt = normalizeDateForDb(row.created_at);
+    trackingMap.set(
+      trackingNumber,
+      chooseDate(
+        chooseDate(sentDateFromDb, sentDateFromItems),
+        sentDateFromCreatedAt
+      )
+    );
+  });
+
+  itemTrackingDateMap.forEach((sentDate, trackingNumber) => {
+    if (!trackingMap.has(trackingNumber)) {
+      trackingMap.set(trackingNumber, sentDate || null);
+    }
+  });
+
+  const trackingNumbers = Array.from(trackingMap.entries())
+    .map(([tracking_number, sent_date]) => ({
+      tracking_number,
+      sent_date,
+    }))
+    .sort((a, b) => {
+      if (a.sent_date && b.sent_date) {
+        if (a.sent_date < b.sent_date) return -1;
+        if (a.sent_date > b.sent_date) return 1;
+      } else if (a.sent_date) {
+        return -1;
+      } else if (b.sent_date) {
+        return 1;
+      }
+      return a.tracking_number.localeCompare(b.tracking_number);
+    });
 
   const skus = Array.from(
     new Set((items ?? []).map((item) => item.sku).filter(Boolean))
@@ -192,9 +381,13 @@ export async function GET(
   }
 
   const enrichedItems = (items ?? []).map((item) => {
+    const itemWithoutRawRow = { ...(item as typeof item & {
+      raw_row?: unknown;
+    }) };
+    delete itemWithoutRawRow.raw_row;
     const product = item.sku ? skuToProduct.get(item.sku) : null;
     return {
-      ...item,
+      ...itemWithoutRawRow,
       product_title: product?.title ?? null,
       product_spu: product?.spu ?? null,
     };

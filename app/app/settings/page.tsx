@@ -40,6 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { useI18n } from "@/components/i18n-provider";
 import { formatDateTime } from "@/lib/format";
+import ShopifySyncerPanel from "./shopify-syncer-panel";
 
 type CategoryNode = {
   name: string;
@@ -2099,6 +2100,7 @@ export default function SettingsPage() {
           <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
           <Tab value="ai-image-edit">{t("settings.aiImage.tab")}</Tab>
+          <Tab value="shopify-syncer">Shopify Syncer</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
         </TabList>
       </Card>
@@ -3259,6 +3261,12 @@ export default function SettingsPage() {
               </DialogBody>
             </DialogSurface>
           </Dialog>
+        </div>
+      ) : null}
+
+      {activeTab === "shopify-syncer" ? (
+        <div className={styles.sectionGrid}>
+          <ShopifySyncerPanel />
         </div>
       ) : null}
 

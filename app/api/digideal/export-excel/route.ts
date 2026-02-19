@@ -26,6 +26,11 @@ type ExportItem = {
   weight_kg?: number | null;
   purchase_price?: number | null;
   estimated_rerun_price?: number | null;
+  shipping_class?: string | null;
+  displayed_price?: number | null;
+  estimated_total_cost?: number | null;
+  margin_percent?: number | null;
+  margin_kr?: number | null;
   primary_image_url?: string | null;
   image_urls?: string[] | null;
 };
@@ -165,6 +170,11 @@ export async function POST(request: Request) {
       weight_kg: asNumber(row.weight_kg),
       purchase_price: asNumber(row.purchase_price),
       estimated_rerun_price: asNumber(row.estimated_rerun_price),
+      shipping_class: asString(row.shipping_class) || null,
+      displayed_price: asNumber(row.displayed_price),
+      estimated_total_cost: asNumber(row.estimated_total_cost),
+      margin_percent: asNumber(row.margin_percent),
+      margin_kr: asNumber(row.margin_kr),
       primary_image_url: asString(row.primary_image_url) || null,
       image_urls: Array.isArray(row.image_urls)
         ? row.image_urls.map((v) => asString(v)).filter(Boolean)
@@ -204,6 +214,11 @@ export async function POST(request: Request) {
     { header: "Supplier Weight (g)", key: "supplier_weight_g", width: 18 },
     { header: "Purchase Price (RMB)", key: "purchase_price", width: 20 },
     { header: "Calculated Rerun Price", key: "rerun_price", width: 22 },
+    { header: "Shipping Class", key: "shipping_class", width: 16 },
+    { header: "Displayed Price (SEK)", key: "displayed_price", width: 20 },
+    { header: "Estimated Total Cost (SEK)", key: "estimated_total_cost", width: 24 },
+    { header: "Expected Profit (SEK)", key: "expected_profit_kr", width: 20 },
+    { header: "Expected Profit (%)", key: "expected_profit_percent", width: 20 },
   ];
 
   const header = sheet.getRow(1);
@@ -249,6 +264,11 @@ export async function POST(request: Request) {
           : ""),
       purchase_price: item.purchase_price ?? "",
       rerun_price: item.estimated_rerun_price ?? "",
+      shipping_class: item.shipping_class || "",
+      displayed_price: item.displayed_price ?? "",
+      estimated_total_cost: item.estimated_total_cost ?? "",
+      expected_profit_kr: item.margin_kr ?? "",
+      expected_profit_percent: item.margin_percent ?? "",
     });
 
     const row = sheet.getRow(rowIndex);

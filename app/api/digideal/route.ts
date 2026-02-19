@@ -112,6 +112,14 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const SHIPPING_CLASSES = new Set(["NOR", "BAT", "PBA", "LIQ"]);
+
+const normalizeShippingClass = (value: unknown) => {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!normalized) return null;
+  return SHIPPING_CLASSES.has(normalized) ? normalized : null;
+};
+
 const DIGIDEAL_FAKE_SALES_OFFSET = 30;
 
 const normalizeDisplayedSales = (value: unknown) => {
@@ -148,6 +156,12 @@ type DigidealDetailRow = {
   purchase_price: number | null;
   weight_kg: number | null;
   weight_grams: number | null;
+  shipping_class?: string | null;
+  shipping_class_confidence?: number | null;
+  shipping_class_source?: string | null;
+  shipping_class_model?: string | null;
+  shipping_class_reason?: string | null;
+  shipping_class_classified_at?: string | null;
   "1688_URL"?: string | null;
   "1688_url"?: string | null;
 };
@@ -220,9 +234,9 @@ const loadManualSupplierStateProductIds = async (
   if (productIds && productIds.length === 0) return { ids: [] as string[], error: null as any };
 
   const primarySelect =
-    'product_id, purchase_price, weight_kg, weight_grams, "1688_URL"';
+    'product_id, purchase_price, weight_kg, weight_grams, shipping_class, shipping_class_confidence, shipping_class_source, shipping_class_model, shipping_class_reason, shipping_class_classified_at, "1688_URL"';
   const fallbackSelect =
-    "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
+    "product_id, purchase_price, weight_kg, weight_grams, shipping_class, shipping_class_confidence, shipping_class_source, shipping_class_model, shipping_class_reason, shipping_class_classified_at, 1688_url";
 
   const loadPrimary = () =>
     loadAllRows<DigidealDetailRow>((from, to) => {
@@ -1137,9 +1151,9 @@ export async function GET(request: NextRequest) {
         | null = null;
 
       const primarySelect =
-        'product_id, purchase_price, weight_kg, weight_grams, "1688_URL"';
+        'product_id, purchase_price, weight_kg, weight_grams, shipping_class, shipping_class_confidence, shipping_class_source, shipping_class_model, shipping_class_reason, shipping_class_classified_at, "1688_URL"';
       const fallbackSelect =
-        "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
+        "product_id, purchase_price, weight_kg, weight_grams, shipping_class, shipping_class_confidence, shipping_class_source, shipping_class_model, shipping_class_reason, shipping_class_classified_at, 1688_url";
 
       const primaryResponse = await supabase
         .from("digideal_products")
@@ -1190,6 +1204,7 @@ export async function GET(request: NextRequest) {
         variant_available_count: number | null;
         variant_selected_count: number | null;
         variant_packs_text: string | null;
+        shipping_class: string | null;
         price_override_price: number | null;
         price_override_mode: string | null;
         price_override_margin_percent: number | null;
@@ -1280,6 +1295,12 @@ export async function GET(request: NextRequest) {
               : null,
             variant_packs_text:
               toText((offer as any)._production_variant_packs_text) || null,
+            shipping_class:
+              normalizeShippingClass((offer as any)._digideal_shipping_class) ||
+              normalizeShippingClass((offer as any)._production_shipping_class) ||
+              normalizeShippingClass((offer as any).shipping_class) ||
+              normalizeShippingClass((offer as any).product_shiptype) ||
+              normalizeShippingClass((offer as any)._production_product_shiptype),
             price_override_price: toNumber(
               (offer as any)._digideal_price_override_price
             ),
@@ -1493,7 +1514,13 @@ export async function GET(request: NextRequest) {
           weightKg !== null &&
           Boolean(selectedSupplierUrl) &&
           marketConfig !== null;
-        const shippingClass = "NOR";
+        const classifiedShippingClass = normalizeShippingClass(detail?.shipping_class);
+        const shippingClass = classifiedShippingClass || supplierMeta?.shipping_class || "NOR";
+        const shippingClassConfidence = toNumber(detail?.shipping_class_confidence);
+        const shippingClassSource = toText(detail?.shipping_class_source) || null;
+        const shippingClassModel = toText(detail?.shipping_class_model) || null;
+        const shippingClassReason = toText(detail?.shipping_class_reason) || null;
+        const shippingClassifiedAt = toText(detail?.shipping_class_classified_at) || null;
         const classConfig = marketConfig
           ? resolveClassConfig(classMap, shippingClass)
           : null;
@@ -1577,6 +1604,12 @@ export async function GET(request: NextRequest) {
           supplier_payload_saved_at: supplierMeta?.payload_saved_at ?? null,
           supplier_payload_file_name: supplierMeta?.payload_file_name ?? null,
           supplier_payload_file_path: supplierMeta?.payload_file_path ?? null,
+          shipping_class: shippingClass,
+          shipping_class_confidence: shippingClassConfidence,
+          shipping_class_source: shippingClassSource,
+          shipping_class_model: shippingClassModel,
+          shipping_class_reason: shippingClassReason,
+          shipping_class_classified_at: shippingClassifiedAt,
           supplier_variant_available_count:
             supplierMeta?.variant_available_count ?? null,
           supplier_variant_selected_count:

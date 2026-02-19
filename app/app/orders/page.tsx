@@ -53,6 +53,11 @@ type OrderItem = {
   product_spu: string | null;
 };
 
+type TrackingNumberEntry = {
+  tracking_number: string;
+  sent_date: string | null;
+};
+
 type OrderDetails = {
   order?: {
     sales_channel_id: string | null;
@@ -68,7 +73,7 @@ type OrderDetails = {
     date_shipped: string | null;
   } | null;
   items: OrderItem[];
-  tracking_numbers: string[];
+  tracking_numbers: TrackingNumberEntry[];
   loading: boolean;
   error?: string;
 };
@@ -398,6 +403,32 @@ const createEmptyResendRow = (): ResendItemDraft => ({
   isPlaceholder: true,
 });
 
+const normalizeTrackingEntries = (value: unknown): TrackingNumberEntry[] => {
+  if (!Array.isArray(value)) return [];
+  const entries: TrackingNumberEntry[] = [];
+  value.forEach((entry) => {
+    if (typeof entry === "string") {
+      const tracking = entry.trim();
+      if (!tracking) return;
+      entries.push({ tracking_number: tracking, sent_date: null });
+      return;
+    }
+    if (typeof entry === "object" && entry !== null) {
+      const tracking = String(
+        (entry as { tracking_number?: unknown }).tracking_number ?? ""
+      ).trim();
+      if (!tracking) return;
+      const sentDateRaw = (entry as { sent_date?: unknown }).sent_date;
+      const sentDate = sentDateRaw ? String(sentDateRaw).trim() : null;
+      entries.push({
+        tracking_number: tracking,
+        sent_date: sentDate || null,
+      });
+    }
+  });
+  return entries;
+};
+
 export default function OrdersPage() {
   const styles = useStyles();
   const { t } = useI18n();
@@ -513,7 +544,7 @@ export default function OrdersPage() {
         [orderId]: {
           order: payload.order ?? null,
           items: payload.items ?? [],
-          tracking_numbers: payload.tracking_numbers ?? [],
+          tracking_numbers: normalizeTrackingEntries(payload.tracking_numbers),
           loading: false,
           error: undefined,
         },
@@ -682,7 +713,7 @@ export default function OrdersPage() {
       const loaded: OrderDetails = {
         order: payload.order ?? null,
         items: payload.items ?? [],
-        tracking_numbers: payload.tracking_numbers ?? [],
+        tracking_numbers: normalizeTrackingEntries(payload.tracking_numbers),
         loading: false,
         error: undefined,
       };
@@ -1319,10 +1350,10 @@ export default function OrdersPage() {
                                                 <div className={styles.trackingList}>
                                                   {details.tracking_numbers.map((tracking) => (
                                                     <a
-                                                      key={tracking}
+                                                      key={tracking.tracking_number}
                                                       className={styles.trackingLink}
                                                       href={`https://t.17track.net/en#nums=${encodeURIComponent(
-                                                        tracking
+                                                        tracking.tracking_number
                                                       )}`}
                                                       target="_blank"
                                                       rel="noreferrer"
@@ -1330,7 +1361,10 @@ export default function OrdersPage() {
                                                         "orders.details.trackExternal"
                                                       )}
                                                     >
-                                                      {tracking}
+                                                      ({tracking.sent_date
+                                                        ? formatDate(tracking.sent_date)
+                                                        : "-"}){" "}
+                                                      {tracking.tracking_number}
                                                     </a>
                                                   ))}
                                                 </div>

@@ -632,7 +632,7 @@ export async function PATCH(
         variantUpdates[field] = normalizeBoolean(entry[field]);
       };
 
-      setVariantText("sku_norm");
+      // sku_norm is database-managed and cannot be directly updated.
       setVariantText("sku_bak");
       setVariantText("option1");
       setVariantText("option2");

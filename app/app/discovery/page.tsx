@@ -431,6 +431,9 @@ const useStyles = makeStyles({
       pointerEvents: "none",
     },
   },
+  cardInProduction: {
+    border: `3px dashed ${tokens.colorBrandForeground1}`,
+  },
   cardImageWrap: {
     width: "100%",
     aspectRatio: "1 / 1",
@@ -3048,6 +3051,7 @@ function DiscoveryPageInner() {
                 key={itemKey}
                 className={mergeClasses(
                   styles.card,
+                  item.in_production ? styles.cardInProduction : undefined,
                   isSelected ? styles.cardSelected : undefined
                 )}
                 onClick={() => toggleSelected(itemKey)}

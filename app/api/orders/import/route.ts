@@ -8,6 +8,20 @@ import path from "path";
 
 const EXPECTED_HEADERS = [...ORDER_IMPORT_HEADERS];
 
+type ParsedOrderItem = {
+  sales_channel_id: string;
+  order_number: string;
+  sku: string;
+  quantity: number | null;
+  sales_value_eur: number | null;
+  marketplace_order_number: string;
+  sales_channel_order_number: string;
+  transaction_date: string | null;
+  date_shipped: string | null;
+  raw_row: Record<string, string>;
+  tracking_number: string;
+};
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -52,6 +66,114 @@ function readCellText(cell: ExcelJS.Cell) {
     }
   }
   return cell.text?.trim?.() ?? String(cell.value ?? "").trim();
+}
+
+function buildItemUniquenessKey(orderId: unknown, sku: unknown) {
+  const orderPart = String(orderId ?? "").trim().toLowerCase();
+  const skuPart = String(sku ?? "").trim().toLowerCase();
+  return `${orderPart}::${skuPart}`;
+}
+
+function chunkList<T>(list: T[], size: number) {
+  const result: T[][] = [];
+  for (let i = 0; i < list.length; i += size) {
+    result.push(list.slice(i, i + size));
+  }
+  return result;
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatYmdUTC(date: Date) {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(
+    date.getUTCDate()
+  )}`;
+}
+
+function excelSerialToYmd(value: number) {
+  const safe = Math.floor(value);
+  if (!Number.isFinite(safe) || safe <= 0) return null;
+  // Excel date serial base (1900 date system): 1899-12-30
+  const baseUtcMs = Date.UTC(1899, 11, 30);
+  const utcMs = baseUtcMs + safe * 24 * 60 * 60 * 1000;
+  return formatYmdUTC(new Date(utcMs));
+}
+
+function normalizeDateForDb(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const isoSlash = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (isoSlash) return `${isoSlash[1]}-${isoSlash[2]}-${isoSlash[3]}`;
+
+  const isoTimestamp = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s].*$/);
+  if (isoTimestamp) return isoTimestamp[1];
+
+  const serialLike = raw.match(/^-?\d+(?:[.,]\d+)?$/);
+  if (serialLike) {
+    const numeric = Number(raw.replace(",", "."));
+    if (Number.isFinite(numeric) && numeric >= 1 && numeric < 100000) {
+      return excelSerialToYmd(numeric);
+    }
+  }
+
+  return null;
+}
+
+function pickTrackingSentDate(
+  current: string | null | undefined,
+  incoming: string | null
+) {
+  if (!incoming) return current ?? null;
+  if (!current) return incoming;
+  return incoming > current ? incoming : current;
+}
+
+async function hasTrackingSentDateColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "order_tracking_numbers_global")
+    .eq("column_name", "sent_date")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+type DbError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function buildDbErrorPayload(error: unknown, fallback: string) {
+  const dbError = (error ?? {}) as DbError;
+  const message = String(dbError.message ?? "").trim();
+  const details = String(dbError.details ?? "").trim();
+  const hint = String(dbError.hint ?? "").trim();
+  const code = String(dbError.code ?? "").trim();
+  const resolvedMessage =
+    message ||
+    details ||
+    hint ||
+    (code ? `Database error (${code}).` : fallback);
+
+  return {
+    error: resolvedMessage,
+    code: code || null,
+    details: details || null,
+    hint: hint || null,
+  };
 }
 
 export async function POST(request: Request) {
@@ -126,8 +248,8 @@ export async function POST(request: Request) {
   }
 
   const ordersMap = new Map<string, Record<string, unknown>>();
-  const trackingMap = new Map<string, Set<string>>();
-  const items: Record<string, unknown>[] = [];
+  const trackingMap = new Map<string, Map<string, string | null>>();
+  const items: ParsedOrderItem[] = [];
 
   for (let rowIndex = 2; rowIndex <= sheet.rowCount; rowIndex += 1) {
     const row = sheet.getRow(rowIndex);
@@ -168,8 +290,11 @@ export async function POST(request: Request) {
     mergeField("customer_city", rowData["Customer city"]);
     mergeField("customer_phone", rowData["Customer cell phone"]);
     mergeField("customer_email", rowData["Customer email"]);
-    mergeField("transaction_date", rowData["Transaction Date"]);
-    mergeField("date_shipped", rowData["Date shipped"]);
+    const transactionDate = normalizeDateForDb(rowData["Transaction Date"]);
+    const dateShipped = normalizeDateForDb(rowData["Date shipped"]);
+
+    mergeField("transaction_date", transactionDate ?? "");
+    mergeField("date_shipped", dateShipped ?? "");
     existing.raw_row = rowData;
 
     ordersMap.set(key, existing);
@@ -177,9 +302,16 @@ export async function POST(request: Request) {
     const trackingNumber = rowData["Tracking number"].trim();
     if (trackingNumber) {
       if (!trackingMap.has(key)) {
-        trackingMap.set(key, new Set());
+        trackingMap.set(key, new Map());
       }
-      trackingMap.get(key)?.add(trackingNumber);
+      const trackingByNumber = trackingMap.get(key);
+      if (trackingByNumber) {
+        const currentSentDate = trackingByNumber.get(trackingNumber) ?? null;
+        trackingByNumber.set(
+          trackingNumber,
+          pickTrackingSentDate(currentSentDate, dateShipped)
+        );
+      }
     }
 
     const quantity = normalizeNumber(rowData["Quantity"]);
@@ -193,9 +325,10 @@ export async function POST(request: Request) {
       sales_value_eur: salesValue,
       marketplace_order_number: rowData["Marketplace order number"],
       sales_channel_order_number: rowData["Sales channel order number"],
-      transaction_date: rowData["Transaction Date"],
-      date_shipped: rowData["Date shipped"],
+      transaction_date: transactionDate,
+      date_shipped: dateShipped,
       raw_row: rowData,
+      tracking_number: trackingNumber,
     });
   }
 
@@ -204,38 +337,64 @@ export async function POST(request: Request) {
   }
 
   const orders = Array.from(ordersMap.values());
-  const { error: orderError } = await adminClient
-    .from("orders_global")
-    .upsert(orders, { onConflict: "sales_channel_id,order_number" });
-
-  if (orderError) {
-    return NextResponse.json({ error: orderError.message }, { status: 500 });
-  }
-
-  const salesChannelIds = Array.from(
-    new Set(orders.map((order) => String(order.sales_channel_id)))
-  );
-  const orderNumbers = Array.from(
-    new Set(orders.map((order) => String(order.order_number)))
-  );
-
-  const { data: orderRows, error: orderRowsError } = await adminClient
-    .from("orders_global")
-    .select("id,sales_channel_id,order_number")
-    .in("sales_channel_id", salesChannelIds)
-    .in("order_number", orderNumbers);
-
-  if (orderRowsError) {
-    return NextResponse.json({ error: orderRowsError.message }, { status: 500 });
-  }
-
   const orderIdMap = new Map<string, string>();
-  (orderRows ?? []).forEach((row) => {
-    const key = `${row.sales_channel_id}::${row.order_number}`;
-    if (row.id) {
-      orderIdMap.set(key, row.id as string);
+  for (const orderChunk of chunkList(orders, 500)) {
+    const { data: upsertedOrderRows, error: orderError } = await adminClient
+      .from("orders_global")
+      .upsert(orderChunk, { onConflict: "sales_channel_id,order_number" })
+      .select("id,sales_channel_id,order_number");
+
+    if (orderError) {
+      return NextResponse.json(
+        buildDbErrorPayload(orderError, "Unable to upsert orders."),
+        { status: 500 }
+      );
     }
-  });
+
+    (upsertedOrderRows ?? []).forEach((row) => {
+      const key = `${row.sales_channel_id}::${row.order_number}`;
+      if (row.id) {
+        orderIdMap.set(key, row.id as string);
+      }
+    });
+  }
+
+  if (orderIdMap.size < orders.length) {
+    for (const orderChunk of chunkList(orders, 200)) {
+      const orderNumbers = Array.from(
+        new Set(orderChunk.map((order) => String(order.order_number ?? "").trim()))
+      ).filter(Boolean);
+      const salesChannelIds = Array.from(
+        new Set(
+          orderChunk.map((order) => String(order.sales_channel_id ?? "").trim())
+        )
+      ).filter(Boolean);
+
+      if (orderNumbers.length === 0 || salesChannelIds.length === 0) {
+        continue;
+      }
+
+      const { data: fallbackRows, error: fallbackError } = await adminClient
+        .from("orders_global")
+        .select("id,sales_channel_id,order_number")
+        .in("sales_channel_id", salesChannelIds)
+        .in("order_number", orderNumbers);
+
+      if (fallbackError) {
+        return NextResponse.json(
+          buildDbErrorPayload(fallbackError, "Unable to fetch imported orders."),
+          { status: 500 }
+        );
+      }
+
+      (fallbackRows ?? []).forEach((row) => {
+        const key = `${row.sales_channel_id}::${row.order_number}`;
+        if (row.id) {
+          orderIdMap.set(key, row.id as string);
+        }
+      });
+    }
+  }
 
   const itemsWithIds = items
     .map((item) => {
@@ -244,37 +403,101 @@ export async function POST(request: Request) {
       if (!orderId) return null;
       return { ...item, order_id: orderId };
     })
-    .filter(Boolean) as Record<string, unknown>[];
+    .filter(Boolean) as (ParsedOrderItem & { order_id: string })[];
 
-  const chunk = <T,>(list: T[], size: number) => {
-    const result: T[][] = [];
-    for (let i = 0; i < list.length; i += size) {
-      result.push(list.slice(i, i + size));
-    }
-    return result;
-  };
+  const orderIdsForItems = Array.from(
+    new Set(itemsWithIds.map((item) => item.order_id).filter(Boolean))
+  );
+  const existingItemKeys = new Set<string>();
+  if (orderIdsForItems.length > 0) {
+    for (const orderChunk of chunkList(orderIdsForItems, 200)) {
+      const { data: existingItems, error: existingItemsError } = await adminClient
+        .from("order_items_global")
+        .select("order_id,sku")
+        .in("order_id", orderChunk);
 
-  for (const batch of chunk(itemsWithIds, 500)) {
-    const { error: itemsError } = await adminClient
-      .from("order_items_global")
-      .insert(batch);
-    if (itemsError) {
-      return NextResponse.json({ error: itemsError.message }, { status: 500 });
+      if (existingItemsError) {
+        return NextResponse.json(
+          buildDbErrorPayload(
+            existingItemsError,
+            "Unable to read existing items for dedupe."
+          ),
+          { status: 500 }
+        );
+      }
+
+      (existingItems ?? []).forEach((row) => {
+        if (!row.order_id || !row.sku) return;
+        existingItemKeys.add(buildItemUniquenessKey(row.order_id, row.sku));
+      });
     }
   }
 
-  const trackingRows: Record<string, unknown>[] = [];
+  const incomingItemKeys = new Set<string>();
+  const itemsToInsert = itemsWithIds.filter((item) => {
+    const key = buildItemUniquenessKey(item.order_id, item.sku);
+    if (existingItemKeys.has(key)) return false;
+    if (incomingItemKeys.has(key)) return false;
+    incomingItemKeys.add(key);
+    return true;
+  });
+
+  for (const batch of chunkList(itemsToInsert, 500)) {
+    const payload = batch.map((item) => ({
+      order_id: item.order_id,
+      sales_channel_id: item.sales_channel_id,
+      order_number: item.order_number,
+      sku: item.sku,
+      quantity: item.quantity,
+      sales_value_eur: item.sales_value_eur,
+      marketplace_order_number: item.marketplace_order_number,
+      sales_channel_order_number: item.sales_channel_order_number,
+      transaction_date: item.transaction_date,
+      date_shipped: item.date_shipped,
+      raw_row: item.raw_row,
+    }));
+    const { error: itemsError } = await adminClient
+      .from("order_items_global")
+      .insert(payload);
+    if (itemsError) {
+      return NextResponse.json(
+        buildDbErrorPayload(itemsError, "Unable to insert imported items."),
+        { status: 500 }
+      );
+    }
+  }
+
+  const trackingRows: Array<{
+    sales_channel_id: string;
+    order_number: string;
+    tracking_number: string;
+    order_id: string;
+  }> = [];
+  const trackingRowsWithSentDate: Array<{
+    sales_channel_id: string;
+    order_number: string;
+    tracking_number: string;
+    order_id: string;
+    sent_date: string;
+  }> = [];
   trackingMap.forEach((values, key) => {
     const orderId = orderIdMap.get(key);
     if (!orderId) return;
     const [sales_channel_id, order_number] = key.split("::");
-    values.forEach((tracking) => {
-      trackingRows.push({
+    values.forEach((sentDate, tracking) => {
+      const baseRow = {
         sales_channel_id,
         order_number,
         tracking_number: tracking,
         order_id: orderId,
-      });
+      };
+      trackingRows.push(baseRow);
+      if (sentDate) {
+        trackingRowsWithSentDate.push({
+          ...baseRow,
+          sent_date: sentDate,
+        });
+      }
     });
   });
 
@@ -286,7 +509,34 @@ export async function POST(request: Request) {
       });
 
     if (trackingError) {
-      return NextResponse.json({ error: trackingError.message }, { status: 500 });
+      return NextResponse.json(
+        buildDbErrorPayload(
+          trackingError,
+          "Unable to upsert tracking numbers."
+        ),
+        { status: 500 }
+      );
+    }
+  }
+
+  if (trackingRowsWithSentDate.length > 0) {
+    const canWriteTrackingSentDate = await hasTrackingSentDateColumn(adminClient);
+    if (canWriteTrackingSentDate) {
+      const { error: trackingDateError } = await adminClient
+        .from("order_tracking_numbers_global")
+        .upsert(trackingRowsWithSentDate, {
+          onConflict: "sales_channel_id,order_number,tracking_number",
+        });
+
+      if (trackingDateError) {
+        return NextResponse.json(
+          buildDbErrorPayload(
+            trackingDateError,
+            "Unable to upsert tracking sent dates."
+          ),
+          { status: 500 }
+        );
+      }
     }
   }
 
@@ -313,7 +563,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     ordersCount: orders.length,
-    itemsCount: itemsWithIds.length,
+    itemsCount: itemsToInsert.length,
+    duplicateItemsSkipped: itemsWithIds.length - itemsToInsert.length,
     trackingCount: trackingRows.length,
   });
 }

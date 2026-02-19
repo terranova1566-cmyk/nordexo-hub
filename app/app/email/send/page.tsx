@@ -29,9 +29,12 @@ type TemplateOption = {
 };
 
 type SenderOption = {
+  id?: string;
   email: string;
   name?: string | null;
   status?: string | null;
+  channel?: string | null;
+  source?: string | null;
 };
 
 type VariableRow = {
@@ -140,9 +143,11 @@ export default function ManualEmailSenderPage() {
         }
         const nextSenders = payload.senders ?? [];
         setSenders(nextSenders);
-        if (!selectedSender && nextSenders.length > 0) {
-          setSelectedSender(nextSenders[0].email);
-        }
+        setSelectedSender((prev) => {
+          if (prev) return prev;
+          const first = nextSenders[0];
+          return first ? String(first.id ?? first.email) : "";
+        });
       } catch (error) {
         setMessage({ type: "error", text: (error as Error).message });
       } finally {
@@ -152,11 +157,19 @@ export default function ManualEmailSenderPage() {
 
     loadTemplates();
     loadSenders();
-  }, [selectedSender, selectedTemplateId]);
+  }, []);
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.template_id === selectedTemplateId),
     [templates, selectedTemplateId]
+  );
+
+  const selectedSenderOption = useMemo(
+    () =>
+      senders.find(
+        (sender) => String(sender.id ?? sender.email) === selectedSender
+      ) ?? null,
+    [senders, selectedSender]
   );
 
   const addVariable = () => {
@@ -186,7 +199,8 @@ export default function ManualEmailSenderPage() {
         to: toValue,
         subject,
         templateId: selectedTemplateId,
-        senderEmail: selectedSender,
+        senderId: selectedSenderOption?.id || undefined,
+        senderEmail: selectedSenderOption?.email || "",
         variables: variables.reduce<Record<string, string>>((acc, row) => {
           acc[row.key] = row.value;
           return acc;
@@ -273,7 +287,13 @@ export default function ManualEmailSenderPage() {
           <Field label="Sender" className={styles.grow}>
             <Dropdown
               value={
-                selectedSender || (isLoadingSenders ? "Loading senders..." : "")
+                selectedSenderOption
+                  ? selectedSenderOption.name
+                    ? `${selectedSenderOption.name} (${selectedSenderOption.email})`
+                    : selectedSenderOption.email
+                  : isLoadingSenders
+                    ? "Loading senders..."
+                    : ""
               }
               selectedOptions={selectedSender ? [selectedSender] : []}
               placeholder="Select sender"
@@ -281,8 +301,8 @@ export default function ManualEmailSenderPage() {
             >
               {senders.map((sender) => (
                 <Option
-                  key={sender.email}
-                  value={sender.email}
+                  key={String(sender.id ?? sender.email)}
+                  value={String(sender.id ?? sender.email)}
                   text={sender.name ? `${sender.name} (${sender.email})` : sender.email}
                 >
                   {sender.name ? `${sender.name} (${sender.email})` : sender.email}
@@ -293,6 +313,11 @@ export default function ManualEmailSenderPage() {
         </div>
 
         {isLoadingTemplates || isLoadingSenders ? <Spinner label="Loading" /> : null}
+        {!isLoadingSenders && senders.length === 0 ? (
+          <MessageBar intent="warning">
+            No SMTP sender is configured. Add one under Email settings.
+          </MessageBar>
+        ) : null}
 
         <div>
           <Text weight="semibold">Template variables</Text>
@@ -380,7 +405,7 @@ export default function ManualEmailSenderPage() {
             appearance="primary"
             onClick={handleSend}
             disabled={
-              isSending || !toValue.trim() || !selectedTemplateId || !selectedSender
+              isSending || !toValue.trim() || !selectedTemplateId || !selectedSenderOption
             }
           >
             {isSending ? "Sending..." : "Send email"}

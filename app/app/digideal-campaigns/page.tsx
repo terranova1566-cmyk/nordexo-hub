@@ -108,6 +108,7 @@ type DigidealItem = {
   digideal_extreme_ratio_confirmed?: boolean | null;
   digideal_extreme_ratio_confirmed_at?: string | null;
   shipping_cost: number | null;
+  shipping_class?: string | null;
   estimated_rerun_price: number | null;
   report_exists: boolean;
 };
@@ -2966,7 +2967,8 @@ export default function DigidealCampaignsPage() {
 
   type PricingSeConfig = {
     market: PricingMarket;
-    shippingClass: PricingShippingClass;
+    shippingClassesByCode: Record<string, PricingShippingClass>;
+    defaultShippingClass: PricingShippingClass;
   };
 
   const pricingSeConfigRef = useRef<PricingSeConfig | null>(null);
@@ -2986,21 +2988,36 @@ export default function DigidealCampaignsPage() {
 
       const pickSeRow = (row: any) => String(row?.market ?? "").trim().toUpperCase() === "SE";
       const marketRow = markets.find(pickSeRow) ?? null;
-      const shippingRow =
-        shippingClasses.find(
-          (row: any) =>
-            pickSeRow(row) &&
-            String(row?.shipping_class ?? "").trim().toUpperCase() === "NOR"
-        ) ??
-        shippingClasses.find(pickSeRow) ??
-        null;
+      const seShippingRows = shippingClasses.filter((row: any) => pickSeRow(row));
 
       const toNumber = (value: unknown, fallback = 0) => {
         const n = typeof value === "string" ? Number(value) : (value as number);
         return Number.isFinite(n) ? Number(n) : fallback;
       };
 
-      if (!marketRow || !shippingRow) return null;
+      if (!marketRow || seShippingRows.length === 0) return null;
+
+      const shippingClassesByCode: Record<string, PricingShippingClass> = {};
+      for (const row of seShippingRows as any[]) {
+        const code =
+          String(row?.shipping_class ?? "NOR").trim().toUpperCase() || "NOR";
+        shippingClassesByCode[code] = {
+          market: "SE",
+          shipping_class: code,
+          rate_low: toNumber(row?.rate_low),
+          rate_high: toNumber(row?.rate_high),
+          base_low: toNumber(row?.base_low),
+          base_high: toNumber(row?.base_high),
+          mult_low: toNumber(row?.mult_low, 1),
+          mult_high: toNumber(row?.mult_high, 1),
+        };
+      }
+
+      const defaultShippingClass =
+        shippingClassesByCode.NOR ??
+        Object.values(shippingClassesByCode)[0] ??
+        null;
+      if (!defaultShippingClass) return null;
 
       const config: PricingSeConfig = {
         market: {
@@ -3012,16 +3029,8 @@ export default function DigidealCampaignsPage() {
           markup_percent: toNumber(marketRow.markup_percent),
           markup_fixed: toNumber(marketRow.markup_fixed),
         },
-        shippingClass: {
-          market: "SE",
-          shipping_class: String(shippingRow.shipping_class ?? "NOR").trim().toUpperCase() || "NOR",
-          rate_low: toNumber(shippingRow.rate_low),
-          rate_high: toNumber(shippingRow.rate_high),
-          base_low: toNumber(shippingRow.base_low),
-          base_high: toNumber(shippingRow.base_high),
-          mult_low: toNumber(shippingRow.mult_low, 1),
-          mult_high: toNumber(shippingRow.mult_high, 1),
-        },
+        shippingClassesByCode,
+        defaultShippingClass,
       };
 
       pricingSeConfigRef.current = config;
@@ -3033,15 +3042,24 @@ export default function DigidealCampaignsPage() {
   }, []);
 
   const computeEstimatedPriceSe = useCallback(
-    (purchaseCny: number, weightKg: number, config: PricingSeConfig): number | null => {
+    (
+      purchaseCny: number,
+      weightKg: number,
+      config: PricingSeConfig,
+      shippingClassCode?: string | null
+    ): number | null => {
       if (!Number.isFinite(purchaseCny) || purchaseCny <= 0) return null;
       if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
 
+      const normalizedClass = String(shippingClassCode ?? "NOR").trim().toUpperCase();
+      const shippingClass =
+        config.shippingClassesByCode[normalizedClass] ?? config.defaultShippingClass;
+
       const weightG = weightKg * 1000;
       const useLow = weightG <= config.market.weight_threshold_g;
-      const rate = useLow ? config.shippingClass.rate_low : config.shippingClass.rate_high;
-      const base = useLow ? config.shippingClass.base_low : config.shippingClass.base_high;
-      const mult = useLow ? config.shippingClass.mult_low : config.shippingClass.mult_high;
+      const rate = useLow ? shippingClass.rate_low : shippingClass.rate_high;
+      const base = useLow ? shippingClass.base_low : shippingClass.base_high;
+      const mult = useLow ? shippingClass.mult_low : shippingClass.mult_high;
       const shippingCny = weightG * mult * rate + base;
       const shippingLocal = shippingCny * config.market.fx_rate_cny + config.market.packing_fee;
       const stockLocal = purchaseCny * config.market.fx_rate_cny;
@@ -3093,7 +3111,12 @@ export default function DigidealCampaignsPage() {
           ? Number(item.estimated_rerun_price)
           : null;
       const market = pricingSeConfigSnapshot?.market ?? null;
-      const shippingClass = pricingSeConfigSnapshot?.shippingClass ?? null;
+      const normalizedClassCode =
+        typeof item.shipping_class === "string" ? item.shipping_class.trim().toUpperCase() : "NOR";
+      const shippingClass =
+        pricingSeConfigSnapshot?.shippingClassesByCode?.[normalizedClassCode] ??
+        pricingSeConfigSnapshot?.defaultShippingClass ??
+        null;
       const shippingCost =
         typeof item.shipping_cost === "number" && Number.isFinite(item.shipping_cost)
           ? Number(item.shipping_cost)
@@ -5287,6 +5310,15 @@ export default function DigidealCampaignsPage() {
       const payload = {
         name: "digideal-deals-selected",
         items: selected.map((item) => ({
+          ...(() => {
+            const pricing = computePriceComputation(item);
+            return {
+              displayed_price: pricing.displayedPrice,
+              estimated_total_cost: pricing.totalCost,
+              margin_percent: pricing.marginPercent,
+              margin_kr: pricing.marginKr,
+            };
+          })(),
           product_id: item.product_id,
           listing_title: item.listing_title,
           title_h1: item.title_h1,
@@ -5309,6 +5341,7 @@ export default function DigidealCampaignsPage() {
           weight_kg: item.weight_kg,
           purchase_price: item.purchase_price,
           estimated_rerun_price: item.estimated_rerun_price,
+          shipping_class: item.shipping_class ?? null,
           primary_image_url: item.primary_image_url,
           image_urls: item.image_urls,
         })),
@@ -5348,7 +5381,7 @@ export default function DigidealCampaignsPage() {
     } finally {
       setBulkExportingExcel(false);
     }
-  }, [bulkExportingExcel, items, selectedIds]);
+  }, [bulkExportingExcel, computePriceComputation, items, selectedIds]);
 
   const openBulkRerunDialog = () => {
     const selected = items.filter(
@@ -6855,6 +6888,10 @@ export default function DigidealCampaignsPage() {
         const soldTodayRaw = Math.max(0, item.sold_today ?? 0);
         const sold7dRaw = Math.max(0, item.sold_7d ?? 0);
         const soldAllRaw = Math.max(0, item.sold_all_time ?? 0);
+        const shippingClassCode =
+          typeof item.shipping_class === "string" && item.shipping_class.trim()
+            ? item.shipping_class.trim().toUpperCase()
+            : "NOR";
         const firstSeenTime = item.first_seen_at
           ? Date.parse(item.first_seen_at)
           : Number.NaN;
@@ -7096,7 +7133,9 @@ export default function DigidealCampaignsPage() {
 	                    <div className={styles.metaInlineRow}>
 	                      <span>
 	                        {item.first_seen_at ? formatDate(item.first_seen_at) : "-"} /{" "}
-	                        {item.last_seen_at ? formatDate(item.last_seen_at) : "-"}
+	                        {item.last_seen_at ? formatDate(item.last_seen_at) : "-"} (
+                          {shippingClassCode}
+                        )
 	                      </span>
 	                      {item.digideal_group_id &&
 	                      typeof item.digideal_group_count === "number" &&
