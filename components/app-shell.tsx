@@ -167,6 +167,7 @@ const discoveryMenuItems = [
 
 const digidealMenuItems = [
   { label: "nav.digidealDealsManager", href: "/app/digideal/deals-manager" },
+  { label: "nav.letsdealDealsManager", href: "/app/letsdeal/deals-manager" },
   { label: "nav.digidealProductDelivery", href: "/app/digideal/product-delivery" },
   {
     label: "nav.digidealProductSuggestions",
@@ -182,6 +183,7 @@ const ordersMenuItems = [
 
 const emailMenuItems = [
   { label: "nav.sendEmail", href: "/app/email/send" },
+  { label: "nav.emailChatwoot", href: "/app/email/chatwoot", adminOnly: true },
   { label: "nav.emailTemplates", href: "/app/email/templates", adminOnly: true },
   { label: "nav.emailSettings", href: "/app/email/settings", adminOnly: true },
   { label: "nav.emailAutomations", href: "/app/email/automations" },
@@ -277,7 +279,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     [pathname]
   );
   const isDigidealActive = useMemo(
-    () => pathname.startsWith("/app/digideal") || pathname.startsWith("/app/digideal-campaigns"),
+    () =>
+      pathname.startsWith("/app/digideal") ||
+      pathname.startsWith("/app/letsdeal") ||
+      pathname.startsWith("/app/digideal-campaigns"),
     [pathname]
   );
   const isEmailActive = useMemo(

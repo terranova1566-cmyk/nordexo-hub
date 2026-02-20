@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 type ViewRow = {
   id: string;
@@ -7,7 +11,10 @@ type ViewRow = {
   created_at: string | null;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const provider = resolveDealsProvider(searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -18,7 +25,7 @@ export async function GET() {
   }
 
   const { data, error } = await supabase
-    .from("digideal_views")
+    .from(providerConfig.viewsTable)
     .select("id, name, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
@@ -34,7 +41,7 @@ export async function GET() {
 
   const viewIds = views.map((view) => view.id);
   const { data: items, error: itemsError } = await supabase
-    .from("digideal_view_items")
+    .from(providerConfig.viewItemsTable)
     .select("view_id")
     .in("view_id", viewIds);
 
@@ -58,6 +65,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const rawUrl = new URL(request.url);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -67,12 +75,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let payload: { name?: string };
+  let payload: { name?: string; provider?: string };
   try {
-    payload = (await request.json()) as { name?: string };
+    payload = (await request.json()) as { name?: string; provider?: string };
   } catch {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
+  const provider = resolveDealsProvider(
+    payload?.provider ?? rawUrl.searchParams.get("provider")
+  );
+  const providerConfig = getDealsProviderConfig(provider);
 
   const name = payload?.name?.trim();
   if (!name) {
@@ -80,7 +92,7 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await supabase
-    .from("digideal_views")
+    .from(providerConfig.viewsTable)
     .insert({ user_id: user.id, name })
     .select("id, name, created_at")
     .single();
@@ -93,6 +105,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const rawUrl = new URL(request.url);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -102,12 +115,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let payload: { id?: string };
+  let payload: { id?: string; provider?: string };
   try {
-    payload = (await request.json()) as { id?: string };
+    payload = (await request.json()) as { id?: string; provider?: string };
   } catch {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
+  const provider = resolveDealsProvider(
+    payload?.provider ?? rawUrl.searchParams.get("provider")
+  );
+  const providerConfig = getDealsProviderConfig(provider);
 
   const id = payload?.id?.trim();
   if (!id) {
@@ -115,7 +132,7 @@ export async function DELETE(request: Request) {
   }
 
   const { data, error } = await supabase
-    .from("digideal_views")
+    .from(providerConfig.viewsTable)
     .delete()
     .eq("id", id)
     .eq("user_id", user.id)
@@ -132,4 +149,3 @@ export async function DELETE(request: Request) {
 
   return NextResponse.json({ ok: true });
 }
-

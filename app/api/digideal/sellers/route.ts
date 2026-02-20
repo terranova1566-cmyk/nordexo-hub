@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 const SELLER_GROUPS = [
   {
@@ -62,7 +67,24 @@ const normalizeSellerName = (value?: string | null) => {
   return group ? group.display : value.trim();
 };
 
-export async function GET(_request: NextRequest) {
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) return null;
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
+
+export async function GET(request: NextRequest) {
+  const provider = resolveDealsProvider(request.nextUrl.searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -72,8 +94,11 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let query = supabase
-    .from("digideal_seller_counts")
+  const readClient =
+    provider === "letsdeal" ? getAdminClient() ?? supabase : supabase;
+
+  let query = readClient
+    .from(providerConfig.sellerCountsView)
     .select("seller_name, product_count");
 
   query = query.not("seller_name", "ilike", "%digideal%");

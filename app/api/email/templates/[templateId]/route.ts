@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-admin";
 import { collectMacros } from "@/lib/email-templates";
+import { sanitizeEmailHtml } from "@/lib/email-html";
+import {
+  listEmailMacroDefinitions,
+  validateTemplateMacroUsage,
+} from "@/lib/email-macro-registry";
 
 export const runtime = "nodejs";
 
@@ -9,6 +14,18 @@ const TABLE = "partner_email_templates";
 type RouteContext = {
   params: Promise<{ templateId: string }>;
 };
+
+function parseTags(value: unknown) {
+  const rawList = Array.isArray(value)
+    ? value.map((entry) => String(entry ?? ""))
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  return Array.from(
+    new Set(rawList.map((entry) => entry.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+}
 
 export async function GET(_: Request, context: RouteContext) {
   const auth = await requireAdmin();
@@ -23,7 +40,7 @@ export async function GET(_: Request, context: RouteContext) {
   const { data, error } = await auth.supabase
     .from(TABLE)
     .select(
-      "template_id,name,description,subject_template,body_template,macros,created_at,updated_at"
+      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
     )
     .eq("template_id", id)
     .maybeSingle();
@@ -70,26 +87,73 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.description = value || null;
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload, "category")) {
+    const value = String(payload.category ?? "").trim();
+    updates.category = value || null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "owner_user_id") ||
+    Object.prototype.hasOwnProperty.call(payload, "ownerUserId")
+  ) {
+    const value = String(payload.owner_user_id ?? payload.ownerUserId ?? "").trim();
+    updates.owner_user_id = value || null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "owner_team") ||
+    Object.prototype.hasOwnProperty.call(payload, "ownerTeam")
+  ) {
+    const value = String(payload.owner_team ?? payload.ownerTeam ?? "").trim();
+    updates.owner_team = value || null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "tags") ||
+    Object.prototype.hasOwnProperty.call(payload, "tag_list") ||
+    Object.prototype.hasOwnProperty.call(payload, "tagList")
+  ) {
+    updates.tags = parseTags(payload.tags ?? payload.tag_list ?? payload.tagList);
+  }
+
   if (typeof payload.subject_template === "string") {
     updates.subject_template = payload.subject_template;
   }
 
   if (typeof payload.body_template === "string") {
-    updates.body_template = payload.body_template;
+    updates.body_template = sanitizeEmailHtml(payload.body_template);
   }
 
-  const subjectTemplate =
-    typeof updates.subject_template === "string"
-      ? String(updates.subject_template)
-      : typeof payload.subject_template === "string"
-        ? payload.subject_template
-        : "";
-  const bodyTemplate =
-    typeof updates.body_template === "string"
-      ? String(updates.body_template)
-      : typeof payload.body_template === "string"
-        ? payload.body_template
-        : "";
+  const hasSubjectUpdate = Object.prototype.hasOwnProperty.call(updates, "subject_template");
+  const hasBodyUpdate = Object.prototype.hasOwnProperty.call(updates, "body_template");
+  const needsMacroRecalc =
+    typeof payload.macros === "object" || hasSubjectUpdate || hasBodyUpdate;
+
+  let existingTemplateBody: { subject_template: string; body_template: string } | null = null;
+  if (needsMacroRecalc) {
+    const { data: existingData, error: existingError } = await auth.supabase
+      .from(TABLE)
+      .select("subject_template,body_template")
+      .eq("template_id", id)
+      .maybeSingle();
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+    if (!existingData) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+    existingTemplateBody = {
+      subject_template: String(existingData.subject_template ?? ""),
+      body_template: String(existingData.body_template ?? ""),
+    };
+  }
+
+  const subjectTemplate = hasSubjectUpdate
+    ? String(updates.subject_template ?? "")
+    : String(existingTemplateBody?.subject_template ?? "");
+  const bodyTemplate = hasBodyUpdate
+    ? String(updates.body_template ?? "")
+    : String(existingTemplateBody?.body_template ?? "");
 
   if (typeof payload.macros === "object") {
     const provided = Array.isArray(payload.macros)
@@ -117,7 +181,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .update(updates)
     .eq("template_id", id)
     .select(
-      "template_id,name,description,subject_template,body_template,macros,created_at,updated_at"
+      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
     )
     .maybeSingle();
 
@@ -148,7 +212,37 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  return NextResponse.json(data);
+  const { macros: macroDefinitions } = await listEmailMacroDefinitions(auth.supabase, {
+    includeInactive: true,
+    includeDeprecated: true,
+  });
+  const macroValidation = validateTemplateMacroUsage({
+    subjectTemplate: String(data.subject_template ?? ""),
+    bodyTemplate: String(data.body_template ?? ""),
+    existingMacros: Array.isArray(data.macros) ? data.macros : [],
+    definitions: macroDefinitions,
+  });
+  const warnings: string[] = [];
+  if (macroValidation.unknownMacros.length > 0) {
+    warnings.push(
+      `Unknown macros: ${macroValidation.unknownMacros
+        .map((key) => `{{${key}}}`)
+        .join(", ")}`
+    );
+  }
+  if (macroValidation.deprecatedMacros.length > 0) {
+    warnings.push(
+      `Deprecated macros: ${macroValidation.deprecatedMacros
+        .map((key) => `{{${key}}}`)
+        .join(", ")}`
+    );
+  }
+
+  return NextResponse.json({
+    ...data,
+    macro_validation: macroValidation,
+    warnings,
+  });
 }
 
 export async function DELETE(_: Request, context: RouteContext) {

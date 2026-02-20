@@ -192,6 +192,9 @@ const QUEUE_COMMENT_OPTIONS = [
   { value: "without", label: "No comments" },
 ] as const;
 
+// Automatic background supplier prefetch should stay enabled for newly added queue items.
+const ENABLE_AUTO_SUPPLIER_PREFETCH = true;
+
 const useStyles = makeStyles({
   card: {
     padding: "16px",
@@ -745,10 +748,25 @@ const useStyles = makeStyles({
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
   },
   supplierDialog: {
+    width: "min(980px, calc(100vw - 32px))",
     minWidth: "680px",
     maxWidth: "980px",
     maxHeight: "min(84vh, 820px)",
-    position: "relative",
+    "@media (max-width: 760px)": {
+      minWidth: "calc(100vw - 24px)",
+    },
+  },
+  supplierDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    maxHeight: "min(84vh, 820px)",
+    minHeight: 0,
+  },
+  supplierDialogContent: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
   },
   supplierHeaderRow: {
     display: "flex",
@@ -781,7 +799,7 @@ const useStyles = makeStyles({
   },
   supplierDialogContentWrap: {
     position: "relative",
-    minHeight: "220px",
+    minHeight: 0,
   },
   supplierBusyLayer: {
     position: "absolute",
@@ -803,7 +821,8 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxHeight: "624px",
+    flex: 1,
+    minHeight: 0,
     overflowY: "auto",
     padding: "2px",
   },
@@ -3367,6 +3386,7 @@ export default function ProductionPage() {
   // Background supplier searching: silently hydrate supplier counts so the user can open production
   // and see cached suppliers without waiting for a click.
   useEffect(() => {
+    if (!ENABLE_AUTO_SUPPLIER_PREFETCH) return;
     if (!adminLoaded || !isAdmin) return;
     if (items.length === 0) return;
     const started = new Set(Object.entries(supplierBgStatus).filter(([, v]) => v === "searching").map(([k]) => k));
@@ -4257,6 +4277,14 @@ export default function ProductionPage() {
               typeof item.production_assigned_spu === "string"
                 ? item.production_assigned_spu.trim()
                 : "";
+            const isSpuAssignedStatus = Boolean(
+              producedSpu &&
+                (spuAssignedAt || queueStatus === "spu_assigned") &&
+                !(productionDoneAt || queueStatus === "production_done")
+            );
+            const draftExplorerSpuHref = producedSpu
+              ? `/app/production/draft-explorer?open_spu=${encodeURIComponent(producedSpu)}`
+              : "";
             const isProductionLocked = isItemLockedForProduction(item);
             const isQueuedForProduction = isItemQueuedForProduction(item);
             const rowStatusClass = productionDoneAt || queueStatus === "production_done"
@@ -4731,6 +4759,16 @@ export default function ProductionPage() {
                         {latestStatusLabel === t("production.status.productionDone") && producedSpu ? (
                           <a
                             href={`/app/products/spu/${encodeURIComponent(producedSpu)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.statusSpuLink}
+                          >
+                            {producedSpu}
+                          </a>
+                        ) : null}
+                        {isSpuAssignedStatus ? (
+                          <a
+                            href={draftExplorerSpuHref}
                             target="_blank"
                             rel="noreferrer"
                             className={styles.statusSpuLink}
@@ -5395,9 +5433,15 @@ export default function ProductionPage() {
         }}
       >
       <DialogSurface className={styles.supplierDialog}>
-          <DialogBody>
+          <DialogBody className={styles.supplierDialogBody}>
             <DialogTitle>{t("production.suppliers.title")}</DialogTitle>
-            <DialogContent className={mergeClasses(styles.commentSection, styles.supplierDialogContentWrap)}>
+            <DialogContent
+              className={mergeClasses(
+                styles.commentSection,
+                styles.supplierDialogContentWrap,
+                styles.supplierDialogContent
+              )}
+            >
               {supplierBusy ? (
                 <div className={styles.supplierBusyLayer}>
                   <div className={styles.supplierBusyInner}>

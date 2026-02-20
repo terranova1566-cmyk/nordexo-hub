@@ -58,7 +58,7 @@
     },
     {
       "key": "nav.digideal",
-      "text": "DigiDeal",
+      "text": "Deals",
       "context": "Main navigation item"
     },
     {
@@ -218,8 +218,8 @@
     },
     {
       "key": "nav.digidealDealsManager",
-      "text": "Deals manager",
-      "context": "DigiDeal menu item"
+      "text": "DigiDeal",
+      "context": "Deals menu item"
     },
     {
       "key": "nav.digidealProductDelivery",
@@ -299,6 +299,11 @@
     {
       "key": "nav.sendEmail",
       "text": "Send email",
+      "context": "Email menu item"
+    },
+    {
+      "key": "nav.emailChatwoot",
+      "text": "Chatwoot",
       "context": "Email menu item"
     },
     {
@@ -5180,8 +5185,7 @@
       "key": "lists.share.usersError",
       "text": "Unable to load users.",
       "context": "Share list users error"
-    }
-    ,
+    },
     {
       "key": "production.title",
       "text": "Production Queue",
@@ -7146,6 +7150,11 @@
       "key": "nav.b2bImports",
       "text": "Imports",
       "context": "B2B sourcing menu item"
+    },
+    {
+      "key": "nav.letsdealDealsManager",
+      "text": "LetsDeal",
+      "context": "Deals menu item"
     }
   ]
 }

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 type CategoryNode = {
   name: string;
@@ -12,7 +17,25 @@ const splitGooglePath = (value: string) =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-export async function GET() {
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) return null;
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const provider = resolveDealsProvider(searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -22,11 +45,14 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const readClient =
+    provider === "letsdeal" ? getAdminClient() ?? supabase : supabase;
+
   const tree = new Map<string, Map<string, Set<string>>>();
 
   try {
-    const { data, error } = await supabase
-      .from("digideal_products")
+    const { data, error } = await readClient
+      .from(providerConfig.productsTable)
       .select("google_taxonomy_path")
       .not("google_taxonomy_path", "is", null)
       .neq("google_taxonomy_path", "");
@@ -35,8 +61,8 @@ export async function GET() {
       throw new Error(error.message);
     }
 
-    (data ?? []).forEach((row) => {
-      const path = String((row as any).google_taxonomy_path ?? "").trim();
+    (data ?? []).forEach((row: { google_taxonomy_path?: string | null }) => {
+      const path = String(row.google_taxonomy_path ?? "").trim();
       if (!path) return;
       const parts = splitGooglePath(path);
       const l1 = parts[0];
@@ -75,4 +101,3 @@ export async function GET() {
     );
   }
 }
-

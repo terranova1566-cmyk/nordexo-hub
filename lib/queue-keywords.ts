@@ -1,0 +1,517 @@
+import fs from "node:fs";
+import path from "node:path";
+import { EXTRACTOR_UPLOAD_DIR } from "@/lib/1688-extractor";
+
+export type QueueKeywordResult = {
+  sourceMtimeMs: number;
+  updatedAt: string;
+  keywords: string[];
+  label: string;
+  source: "openai" | "fallback" | "empty";
+  cacheVersion?: number;
+};
+
+const KEYWORD_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_keyword_cache");
+const KEYWORD_CACHE_VERSION = 3;
+
+const TITLE_KEYS = [
+  "title_1688",
+  "title_cn",
+  "title_zh",
+  "title",
+  "product_title",
+  "productTitle",
+  "listing_title",
+  "name",
+  "subject",
+  "subject_cn",
+  "subject_zh",
+  "item_title",
+  "offer_title",
+];
+
+const CLEAN_LINE_BLOCKLIST = [
+  "客服",
+  "回头率",
+  "商品评价",
+  "查看全部评价",
+  "登录查看全部",
+  "服务",
+  "物流",
+  "发货",
+  "品牌",
+  "货号",
+  "材质",
+  "功能",
+  "颜色",
+  "上市年份",
+  "商品",
+  "全部",
+];
+
+const LATIN_STOP_WORDS = new Set([
+  "and",
+  "for",
+  "with",
+  "from",
+  "the",
+  "this",
+  "that",
+  "your",
+  "you",
+  "med",
+  "och",
+  "för",
+  "utan",
+  "som",
+  "till",
+  "den",
+  "det",
+  "ett",
+  "en",
+  "att",
+  "hemma",
+  "stor",
+  "stora",
+  "small",
+  "large",
+  "new",
+  "set",
+  "pack",
+  "st",
+  "pcs",
+  "piece",
+  "pieces",
+  "usb",
+  "wifi",
+  "hd",
+  "led",
+  "smart",
+  "portable",
+  "trådlös",
+  "justerbar",
+  "kapacitet",
+  "färg",
+  "color",
+  "white",
+  "black",
+  "blue",
+  "red",
+]);
+
+const asText = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const extractEntries = (payload: unknown): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const record = payload as Record<string, unknown>;
+  if (Array.isArray(record.items)) return record.items;
+  if (Array.isArray(record.urls)) return record.urls;
+  if (Array.isArray(record.data)) return record.data;
+  if (Array.isArray(record.products)) return record.products;
+  if (Array.isArray(record.results)) return record.results;
+  return [];
+};
+
+const containsChinese = (value: string) => /[\u4e00-\u9fff]/.test(value);
+
+const cleanTitle = (value: string) =>
+  value
+    .replace(/\s+/g, " ")
+    .replace(/[|｜•·]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const extractReadableChineseTitle = (readable: unknown) => {
+  const raw = asText(readable);
+  if (!raw) return "";
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => cleanTitle(line))
+    .filter(Boolean);
+
+  const scored = lines
+    .filter((line) => containsChinese(line))
+    .filter((line) => line.length >= 4 && line.length <= 48)
+    .filter((line) => !/^\d+([.,]\d+)?$/.test(line))
+    .filter(
+      (line) =>
+        !CLEAN_LINE_BLOCKLIST.some((needle) => line.includes(needle)) &&
+        !line.includes("分") &&
+        !line.includes("评价")
+    )
+    .map((line) => {
+      const punctuationPenalty = /[\t]/.test(line) ? 2 : 0;
+      const hasCommaListPenalty = line.includes(",") || line.includes("，") ? 1 : 0;
+      const score = line.length - punctuationPenalty - hasCommaListPenalty;
+      return { line, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.line ?? "";
+};
+
+const extractMainTitle = (entry: Record<string, unknown>) => {
+  const competitor = entry.competitor_data;
+  if (competitor && typeof competitor === "object") {
+    const title = cleanTitle(asText((competitor as Record<string, unknown>).title));
+    if (title) return title;
+  }
+
+  for (const key of TITLE_KEYS) {
+    const candidate = cleanTitle(asText(entry[key]));
+    if (candidate) return candidate;
+  }
+
+  const readableTitle = extractReadableChineseTitle(entry.readable_1688);
+  if (readableTitle) return readableTitle;
+
+  return "";
+};
+
+const extractJsonFromText = (text: string) => {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {}
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+};
+
+const normalizeKeywords = (input: unknown) => {
+  if (!Array.isArray(input)) return [] as string[];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of input) {
+    const keyword = cleanTitle(asText(value))
+      .replace(/^[-*•\d.\s]+/, "")
+      .replace(/[，,、]+$/g, "")
+      .slice(0, 24);
+    if (!keyword) continue;
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(keyword);
+    if (out.length >= 5) break;
+  }
+  return out;
+};
+
+const hasLatin = (value: string) => /[A-Za-z]/.test(value);
+
+const normalizeSingleEnglishKeyword = (raw: string) => {
+  const value = cleanTitle(raw);
+  if (!value) return "";
+  if (hasLatin(value) && !containsChinese(value)) {
+    return toTitleCase(value.toLowerCase());
+  }
+
+  if (/耳|otoscope|ear/i.test(value)) return "Ear Cleaner";
+  if (/狗|猫|宠物|paw|pet/i.test(value)) return "Pet Accessory";
+  if (/包|袋|bag/i.test(value)) return "Bag";
+  if (/检测|一氧化碳|气体|报警|detector|co/i.test(value)) return "Gas Detector";
+  if (/剪|修|刨|剃|trimmer|groom/i.test(value)) return "Grooming Tool";
+  if (/指甲|美甲|nail/i.test(value)) return "Nail Tool";
+  if (/工具|tool|organizer|holder/i.test(value)) return "Tool Accessory";
+  if (/玩具|陀螺|spinner|toy/i.test(value)) return "Toy";
+  if (/灯|照明|light/i.test(value)) return "Light";
+  if (/相机|摄像|camera/i.test(value)) return "Camera Tool";
+
+  return "";
+};
+
+const toTitleCase = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+const KNOWN_TERM_MAP: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /(fidget|spinner)/i, label: "Fidget Spinner" },
+  { pattern: /(verktygsbälte|tool belt|organizer)/i, label: "Tool Belt" },
+  { pattern: /(hundtrimmer|dog trimmer|pet trimmer|tasstrimmer)/i, label: "Pet Trimmer" },
+  { pattern: /(öronreng|otoskop|ear cleaner|ear wax)/i, label: "Ear Cleaner" },
+  { pattern: /(kolmonoxid|co[-\s]?mätare|co detector|gas detector)/i, label: "CO Detector" },
+  { pattern: /(magträn|resistance|expander|elastic band)/i, label: "Resistance Trainer" },
+  { pattern: /(bag|väska|belt bag|crossbody)/i, label: "Utility Bag" },
+  { pattern: /(nail|nagelfil|nageltrimmer)/i, label: "Nail Trimmer" },
+  { pattern: /(radio|fm)/i, label: "Portable Radio" },
+];
+
+const deriveFallbackKeywordFromTitle = (title: string) => {
+  const cleaned = cleanTitle(title)
+    .replace(/[（(].*?[)）]/g, " ")
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/[_]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+
+  for (const mapping of KNOWN_TERM_MAP) {
+    if (mapping.pattern.test(cleaned)) return mapping.label;
+  }
+
+  const latinPart = cleaned
+    .split(/[|/,:;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .find((part) => /[A-Za-zÅÄÖåäö]/.test(part));
+
+  if (latinPart) {
+    const tokenized = latinPart
+      .toLowerCase()
+      .replace(/[^a-z0-9åäöéüßæø\s-]/gi, " ")
+      .split(/[\s-]+/)
+      .map((token) => token.trim())
+      .filter(
+        (token) =>
+          token.length >= 2 &&
+          !LATIN_STOP_WORDS.has(token) &&
+          !/^\d+$/.test(token)
+      )
+      .slice(0, 3);
+    if (tokenized.length) {
+      return toTitleCase(tokenized.join(" "));
+    }
+  }
+
+  if (containsChinese(cleaned)) {
+    if (/耳/.test(cleaned)) return "Ear Cleaner";
+    if (/狗|猫|宠物/.test(cleaned)) return "Pet Accessory";
+    if (/修|剪|刀|刨/.test(cleaned)) return "Grooming Tool";
+    if (/包|袋/.test(cleaned)) return "Bag";
+    if (/检测|报警|气体|一氧化碳/.test(cleaned)) return "Gas Detector";
+  }
+
+  return "";
+};
+
+const fallbackKeywords = (titles: string[]) => {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  for (const title of titles) {
+    const keyword = deriveFallbackKeywordFromTitle(title);
+    if (!keyword) continue;
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(keyword);
+    if (unique.length >= 5) break;
+  }
+
+  while (unique.length < 5) {
+    unique.push(
+      ["Home Accessory", "Personal Care Tool", "Utility Product", "Household Item", "Portable Device"][
+        unique.length
+      ]
+    );
+  }
+
+  return unique.slice(0, 5);
+};
+
+const mergeEnglishKeywords = (aiKeywords: string[] | null, titles: string[]) => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  if (Array.isArray(aiKeywords)) {
+    for (const keyword of aiKeywords) {
+      const normalized = normalizeSingleEnglishKeyword(keyword);
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+      if (out.length >= 5) return out;
+    }
+  }
+
+  for (const keyword of fallbackKeywords(titles)) {
+    const normalized = normalizeSingleEnglishKeyword(keyword) || keyword;
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= 5) return out;
+  }
+
+  while (out.length < 5) {
+    const fill = [
+      "Home Accessory",
+      "Personal Care Tool",
+      "Utility Product",
+      "Household Item",
+      "Portable Device",
+    ][out.length];
+    const key = fill.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(fill);
+    } else {
+      out.push(fill);
+    }
+  }
+
+  return out.slice(0, 5);
+};
+
+const requestOpenAiKeywords = async (titles: string[]) => {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) return null;
+
+  const models = Array.from(
+    new Set(
+      [
+        process.env.BULK_QUEUE_KEYWORDS_MODEL,
+        "gpt-5",
+        "gpt-5.2",
+        "gpt-5-mini",
+        "gpt-4o-mini",
+      ]
+        .map((value) => asText(value))
+        .filter(Boolean)
+    )
+  );
+
+  if (models.length === 0) return null;
+
+  const prompt = [
+    "You receive product titles in mixed languages (Chinese, Swedish, English).",
+    "Return exactly 5 short ENGLISH product-noun keywords for this batch.",
+    "Rules:",
+    "1) Each keyword must describe what the product is (noun), not usage or marketing text.",
+    "2) Keep each keyword specific and reusable (1-3 words).",
+    "3) No duplicates.",
+    "4) Cover distinct products in the batch; do not output generic terms.",
+    "5) Output must be English only.",
+    '6) Output JSON only: {"keywords":["k1","k2","k3","k4","k5"]}',
+    "",
+    "Titles:",
+    ...titles.slice(0, 100).map((title, index) => `${index + 1}. ${title.slice(0, 180)}`),
+  ].join("\n");
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => null);
+      const content = asText(payload?.choices?.[0]?.message?.content);
+      const parsed = extractJsonFromText(content);
+      const keywords = normalizeKeywords(
+        parsed?.keywords ?? parsed?.items ?? parsed?.result ?? null
+      );
+      if (keywords.length > 0) return keywords.slice(0, 5);
+    } catch {
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return null;
+};
+
+const sanitizeFileName = (fileName: string) => {
+  const safe = path.basename(fileName);
+  return safe === fileName ? safe : "";
+};
+
+const cacheFilePathFor = (fileName: string) =>
+  path.join(KEYWORD_CACHE_DIR, `${fileName}.json`);
+
+export const generateQueueKeywordsForFile = async (
+  fileName: string,
+  options?: { force?: boolean }
+): Promise<QueueKeywordResult> => {
+  const safeName = sanitizeFileName(fileName);
+  if (!safeName) {
+    throw new Error("Invalid file name.");
+  }
+  const filePath = path.join(EXTRACTOR_UPLOAD_DIR, safeName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error("File not found.");
+  }
+
+  const stat = fs.statSync(filePath);
+  fs.mkdirSync(KEYWORD_CACHE_DIR, { recursive: true });
+  const cachePath = cacheFilePathFor(safeName);
+
+  if (!options?.force && fs.existsSync(cachePath)) {
+    try {
+      const rawCache = fs.readFileSync(cachePath, "utf8");
+      const cache = JSON.parse(rawCache) as QueueKeywordResult;
+      if (
+        Number(cache?.cacheVersion || 0) === KEYWORD_CACHE_VERSION &&
+        Number(cache?.sourceMtimeMs) === Number(stat.mtimeMs) &&
+        Array.isArray(cache?.keywords) &&
+        typeof cache?.label === "string"
+      ) {
+        return cache;
+      }
+    } catch {
+      // ignore cache read errors
+    }
+  }
+
+  const raw = fs.readFileSync(filePath, "utf8");
+  const payload = JSON.parse(raw);
+  const entries = extractEntries(payload);
+  const titles = entries
+    .map((entry) =>
+      entry && typeof entry === "object"
+        ? extractMainTitle(entry as Record<string, unknown>)
+        : ""
+    )
+    .filter(Boolean);
+
+  if (titles.length === 0) {
+    const emptyResult: QueueKeywordResult = {
+      sourceMtimeMs: stat.mtimeMs,
+      updatedAt: new Date().toISOString(),
+      keywords: [],
+      label: "",
+      source: "empty",
+      cacheVersion: KEYWORD_CACHE_VERSION,
+    };
+    fs.writeFileSync(cachePath, JSON.stringify(emptyResult, null, 2), "utf8");
+    return emptyResult;
+  }
+
+  const aiKeywords = await requestOpenAiKeywords(titles);
+  const finalKeywords = mergeEnglishKeywords(aiKeywords, titles);
+  const result: QueueKeywordResult = {
+    sourceMtimeMs: stat.mtimeMs,
+    updatedAt: new Date().toISOString(),
+    keywords: finalKeywords,
+    label: finalKeywords.join(", "),
+    source: aiKeywords?.length ? "openai" : "fallback",
+    cacheVersion: KEYWORD_CACHE_VERSION,
+  };
+  fs.writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf8");
+  return result;
+};

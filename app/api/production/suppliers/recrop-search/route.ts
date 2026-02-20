@@ -290,6 +290,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
+  if (provider.toLowerCase() === "letsdeal") {
+    return NextResponse.json(
+      { error: "Supplier fetching is disabled for LetsDeal." },
+      { status: 409 }
+    );
+  }
+
   const cropPx: CropPixels = {
     x: clampInt(Number(crop.x), 0, 100000),
     y: clampInt(Number(crop.y), 0, 100000),

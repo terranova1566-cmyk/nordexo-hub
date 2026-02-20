@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 export const runtime = "nodejs";
 
@@ -45,6 +49,7 @@ const requireAdmin = async () => {
 type Payload = {
   product_id?: string;
   identical_spu?: string | null;
+  provider?: string;
 };
 
 export async function POST(request: Request) {
@@ -72,6 +77,8 @@ export async function POST(request: Request) {
   }
 
   const productId = String(payload?.product_id ?? "").trim();
+  const provider = resolveDealsProvider(payload?.provider);
+  const providerConfig = getDealsProviderConfig(provider);
   if (!productId) {
     return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
   }
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await adminClient
-    .from("digideal_products")
+    .from(providerConfig.productsTable)
     .update({ identical_spu: normalizedSpu && normalizedSpu.length ? normalizedSpu : null })
     .eq("product_id", productId)
     .select("product_id, identical_spu")

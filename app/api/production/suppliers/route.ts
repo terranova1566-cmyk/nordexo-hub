@@ -119,7 +119,10 @@ const isImageFetchError = (error: string) => {
   return (
     msg.includes("handle image error") ||
     msg.includes("image_fetch_error") ||
-    msg.includes("image fetch error")
+    msg.includes("image fetch error") ||
+    // Some providers return image URLs that are not directly fetchable by 1688.
+    // In those cases we should fall back to the next candidate (e.g. local mirror URL).
+    msg.includes("invalid image url")
   );
 };
 
@@ -485,6 +488,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
+  if (provider.toLowerCase() === "letsdeal") {
+    return NextResponse.json(
+      { error: "Supplier fetching is disabled for LetsDeal." },
+      { status: 409 }
+    );
+  }
+
   let lockedSupplierUrl: string | null = null;
   if (provider === "digideal") {
     const { data: manualRow, error: manualError } = await adminClient
@@ -536,14 +546,13 @@ export async function GET(request: NextRequest) {
     });
     const meta = (searchRow as any).meta ?? null;
     const input = (searchRow as any).input ?? null;
-    const fetchedAtRaw = typeof (searchRow as any).fetched_at === "string" ? (searchRow as any).fetched_at : null;
-    const fetchedAtMs = fetchedAtRaw ? Date.parse(fetchedAtRaw) : Number.NaN;
-    const isStale = !Number.isFinite(fetchedAtMs) ? true : Date.now() - fetchedAtMs > 6 * 60 * 60 * 1000;
 
     // Previously we cached tool failures as empty offers (tool returns { ok:false, offers:[] } with no meta).
     // That makes the UI look like "no suppliers found" forever. If we see that shape, rerun once.
     const looksLikeFailure = normalizedOffers.length === 0 && meta === null;
-    if (!looksLikeFailure && !isStale) {
+    // Always return cached suppliers immediately unless caller explicitly requests refresh=1.
+    // This keeps the supplier dialog fast when we already have results.
+    if (!looksLikeFailure) {
       const selected = selectionRow ?? null;
       return NextResponse.json({
         provider,
@@ -745,6 +754,13 @@ export async function POST(request: NextRequest) {
 
   if (!provider || !productId || (!offerId && !detailUrl)) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
+  }
+
+  if (provider.toLowerCase() === "letsdeal") {
+    return NextResponse.json(
+      { error: "Supplier fetching is disabled for LetsDeal." },
+      { status: 409 }
+    );
   }
 
   if (provider === "digideal") {

@@ -98,6 +98,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
+  if (provider.toLowerCase() === "letsdeal") {
+    return NextResponse.json(
+      { error: "Supplier fetching is disabled for LetsDeal." },
+      { status: 409 }
+    );
+  }
+
   const { data: searchRow, error: searchError } = await adminClient
     .from("discovery_production_supplier_searches")
     .select("offers")

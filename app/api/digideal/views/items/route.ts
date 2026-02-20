@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 type AddItemsPayload = {
   viewId?: string;
   productIds?: string[];
+  provider?: string;
 };
 
 type RemoveItemsPayload = {
   viewId?: string;
   productIds?: string[];
+  provider?: string;
 };
 
 const normalizeProductIds = (value: unknown) => {
@@ -22,9 +28,14 @@ const normalizeProductIds = (value: unknown) => {
   );
 };
 
-const getOwnedView = async (supabase: any, userId: string, viewId: string) => {
+const getOwnedView = async (
+  supabase: any,
+  viewsTable: string,
+  userId: string,
+  viewId: string
+) => {
   return supabase
-    .from("digideal_views")
+    .from(viewsTable)
     .select("id")
     .eq("id", viewId)
     .eq("user_id", userId)
@@ -32,6 +43,9 @@ const getOwnedView = async (supabase: any, userId: string, viewId: string) => {
 };
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const provider = resolveDealsProvider(searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -41,7 +55,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
   const rawProductIds = searchParams.get("productIds") ?? "";
   const productIds = Array.from(
     new Set(
@@ -57,7 +70,7 @@ export async function GET(request: Request) {
   }
 
   const { data: views, error: viewsError } = await supabase
-    .from("digideal_views")
+    .from(providerConfig.viewsTable)
     .select("id")
     .eq("user_id", user.id);
 
@@ -79,7 +92,7 @@ export async function GET(request: Request) {
   }
 
   const { data: rows, error } = await supabase
-    .from("digideal_view_items")
+    .from(providerConfig.viewItemsTable)
     .select("product_id, view_id")
     .in("view_id", viewIds)
     .in("product_id", productIds);
@@ -109,6 +122,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const rawUrl = new URL(request.url);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -127,6 +141,10 @@ export async function POST(request: Request) {
 
   const viewId = String(payload?.viewId ?? "").trim();
   const productIds = normalizeProductIds(payload?.productIds);
+  const provider = resolveDealsProvider(
+    payload?.provider ?? rawUrl.searchParams.get("provider")
+  );
+  const providerConfig = getDealsProviderConfig(provider);
 
   if (!viewId || productIds.length === 0) {
     return NextResponse.json({ error: "Missing fields." }, { status: 400 });
@@ -134,6 +152,7 @@ export async function POST(request: Request) {
 
   const { data: view, error: viewError } = await getOwnedView(
     supabase,
+    providerConfig.viewsTable,
     user.id,
     viewId
   );
@@ -151,7 +170,7 @@ export async function POST(request: Request) {
     product_id: productId,
   }));
 
-  const { error } = await supabase.from("digideal_view_items").upsert(rows, {
+  const { error } = await supabase.from(providerConfig.viewItemsTable).upsert(rows, {
     onConflict: "view_id,product_id",
     ignoreDuplicates: true,
   });
@@ -164,6 +183,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const rawUrl = new URL(request.url);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -182,6 +202,10 @@ export async function DELETE(request: Request) {
 
   const viewId = String(payload?.viewId ?? "").trim();
   const productIds = normalizeProductIds(payload?.productIds);
+  const provider = resolveDealsProvider(
+    payload?.provider ?? rawUrl.searchParams.get("provider")
+  );
+  const providerConfig = getDealsProviderConfig(provider);
 
   if (!viewId || productIds.length === 0) {
     return NextResponse.json({ error: "Missing fields." }, { status: 400 });
@@ -189,6 +213,7 @@ export async function DELETE(request: Request) {
 
   const { data: view, error: viewError } = await getOwnedView(
     supabase,
+    providerConfig.viewsTable,
     user.id,
     viewId
   );
@@ -202,7 +227,7 @@ export async function DELETE(request: Request) {
   }
 
   const { data: removedRows, error } = await supabase
-    .from("digideal_view_items")
+    .from(providerConfig.viewItemsTable)
     .delete()
     .eq("view_id", viewId)
     .in("product_id", productIds)

@@ -30,9 +30,13 @@ export async function POST(request: Request) {
   }
 
   const shareWithAll = Boolean(payload?.shareWithAll);
-  const emails = (payload?.emails ?? [])
-    .map((email) => String(email).trim())
-    .filter((email) => email.length > 0);
+  const emails = Array.from(
+    new Set(
+      (payload?.emails ?? [])
+        .map((email) => String(email).trim().toLowerCase())
+        .filter((email) => email.length > 0)
+    )
+  );
 
   if (!shareWithAll && emails.length === 0) {
     return NextResponse.json(
@@ -79,6 +83,9 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.from("discovery_wishlist_shares").upsert(rows, {
     onConflict: "wishlist_id,shared_with_email,is_public",
+    // RLS allows insert/delete for owners, but not update. Ignore duplicates
+    // so re-sharing the same list/email remains idempotent without UPDATE.
+    ignoreDuplicates: true,
   });
 
   if (error) {

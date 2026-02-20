@@ -2403,7 +2403,9 @@ export default function DraftExplorerPage() {
     key: null,
     direction: "asc",
   });
+  const [initialOpenSpu, setInitialOpenSpu] = useState("");
   const pendingFolderOpenPathRef = useRef<string | null>(null);
+  const initialOpenSpuHandledRef = useRef(false);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
 
   const imageExtensions = useMemo(
@@ -4475,6 +4477,26 @@ export default function DraftExplorerPage() {
     },
     [resolveSpuImageExplorerPath]
   );
+
+  useEffect(() => {
+    if (initialOpenSpuHandledRef.current) return;
+    const requestedSpu = String(initialOpenSpu || "").trim().toUpperCase();
+    if (!requestedSpu) return;
+    if (draftLoading) return;
+
+    const targetRow = spuRows.find(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === requestedSpu
+    );
+
+    if (!targetRow) {
+      initialOpenSpuHandledRef.current = true;
+      setError(`SPU ${requestedSpu} was not found in Draft Explorer.`);
+      return;
+    }
+
+    openSpuImagesInExplorer(targetRow);
+    initialOpenSpuHandledRef.current = true;
+  }, [draftLoading, initialOpenSpu, openSpuImagesInExplorer, spuRows]);
 
   const fetchVariantEditorThumbs = useCallback(
     async (spu: string) => {

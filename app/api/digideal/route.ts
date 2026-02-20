@@ -1,12 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
 const SUPABASE_RANGE_PAGE_SIZE = 1000;
 const PRODUCT_SELECT =
   "product_id, listing_title, title_h1, product_url, product_slug, prodno, seller_name, seller_orgnr, status, last_price, last_original_price, last_discount_percent, last_you_save_kr, last_purchased_count, last_instock_qty, last_available_qty, last_reserved_qty, primary_image_url, image_urls, first_seen_at, last_seen_at, description_html, bullet_points_text, google_taxonomy_id, google_taxonomy_path, sold_today, sold_7d, digideal_rerun_added, digideal_rerun_partner_comment, digideal_rerun_status, digideal_add_rerun, digideal_add_rerun_at, digideal_add_rerun_comment, shipping_cost_kr, identical_spu, digideal_group_id, digideal_group_count";
+const PRODUCT_SELECT_LETSDEAL = `${PRODUCT_SELECT}, subtitle`;
 
 const SELLER_GROUPS = [
   {
@@ -120,16 +125,58 @@ const normalizeShippingClass = (value: unknown) => {
   return SHIPPING_CLASSES.has(normalized) ? normalized : null;
 };
 
-const DIGIDEAL_FAKE_SALES_OFFSET = 30;
-
-const normalizeDisplayedSales = (value: unknown) => {
+const normalizeDisplayedSales = (value: unknown, fakeSalesOffset: number) => {
   const numeric = toNumber(value) ?? 0;
   if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.round(numeric - DIGIDEAL_FAKE_SALES_OFFSET));
+  return Math.max(0, Math.round(numeric - fakeSalesOffset));
 };
 
-const toRawSalesThreshold = (displayedThreshold: number) =>
-  Math.max(0, Math.ceil(displayedThreshold + DIGIDEAL_FAKE_SALES_OFFSET));
+const toRawSalesThreshold = (
+  displayedThreshold: number,
+  fakeSalesOffset: number
+) => Math.max(0, Math.ceil(displayedThreshold + fakeSalesOffset));
+
+const DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX = 0.47;
+const DIGIDEAL_SUPPLIER_SHARE_FLOOR = 0.4;
+const DIGIDEAL_MAX_MARGIN_PERCENT = 50;
+
+type NumericRange = { min: number | null; max: number | null };
+
+const normalizeNumericRange = (
+  minValue: number | null,
+  maxValue: number | null,
+  options?: { clampMin?: number; clampMax?: number }
+): NumericRange | null => {
+  const clampMin =
+    typeof options?.clampMin === "number" ? options.clampMin : null;
+  const clampMax =
+    typeof options?.clampMax === "number" ? options.clampMax : null;
+
+  let min = minValue;
+  let max = maxValue;
+
+  if (min !== null && Number.isFinite(min) && clampMin !== null) {
+    min = Math.max(clampMin, min);
+  }
+  if (max !== null && Number.isFinite(max) && clampMin !== null) {
+    max = Math.max(clampMin, max);
+  }
+  if (min !== null && Number.isFinite(min) && clampMax !== null) {
+    min = Math.min(clampMax, min);
+  }
+  if (max !== null && Number.isFinite(max) && clampMax !== null) {
+    max = Math.min(clampMax, max);
+  }
+
+  if (min === null && max === null) return null;
+  if (min !== null && max !== null && min > max) {
+    return { min: max, max: min };
+  }
+  return { min, max };
+};
+
+const clampNumber = (value: number, minValue: number, maxValue: number) =>
+  Math.min(Math.max(value, minValue), maxValue);
 
 type MarketConfig = {
   market: string;
@@ -181,6 +228,58 @@ type SupplierSelectionRow = {
 const toText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
+const parseImageUrls = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => toText(entry))
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry) => toText(entry))
+          .filter(Boolean);
+      }
+    } catch {
+      return [raw];
+    }
+    return [raw];
+  }
+  return [];
+};
+
+const isLetsDealFavoriteIcon = (url: string) => {
+  const normalized = toText(url).toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("/compiled/js/components/favourite-button/") ||
+    normalized.includes("ld-favorite-outline")
+  );
+};
+
+const sanitizeDealImageFields = (product: Record<string, unknown>) => {
+  const primaryRaw = toText(product.primary_image_url);
+  const parsedImages = parseImageUrls(product.image_urls);
+  const fallbackCandidates = [
+    toText(product.product_image_url),
+    toText(product.listing_image_url),
+  ].filter(Boolean);
+
+  const allCandidates = [primaryRaw, ...parsedImages, ...fallbackCandidates].filter(Boolean);
+  const deduped = Array.from(new Set(allCandidates));
+  const usable = deduped.filter((url) => !isLetsDealFavoriteIcon(url));
+  const finalPrimary = usable[0] ?? deduped[0] ?? null;
+
+  return {
+    primaryImageUrl: finalPrimary,
+    imageUrls: usable.length > 0 ? usable : deduped,
+  };
+};
+
 const loadAllRows = async <T,>(
   fetchPage: (
     from: number,
@@ -205,10 +304,10 @@ const loadAllRows = async <T,>(
   return { data: rows, error: null as any };
 };
 
-const loadPricedProductIds = async (supabase: any) => {
+const loadPricedProductIds = async (supabase: any, productsTable: string) => {
   const { data, error } = await loadAllRows<{ product_id?: string | null }>((from, to) =>
     supabase
-      .from("digideal_products")
+      .from(productsTable)
       .select("product_id")
       .gt("purchase_price", 0)
       .order("product_id", { ascending: true })
@@ -229,6 +328,7 @@ const loadPricedProductIds = async (supabase: any) => {
 
 const loadManualSupplierStateProductIds = async (
   supabase: any,
+  productsTable: string,
   productIds: string[] | null
 ) => {
   if (productIds && productIds.length === 0) return { ids: [] as string[], error: null as any };
@@ -240,7 +340,7 @@ const loadManualSupplierStateProductIds = async (
 
   const loadPrimary = () =>
     loadAllRows<DigidealDetailRow>((from, to) => {
-      let query = supabase.from("digideal_products").select(primarySelect);
+      let query = supabase.from(productsTable).select(primarySelect);
       if (productIds) {
         query = query.in("product_id", productIds);
       }
@@ -249,7 +349,7 @@ const loadManualSupplierStateProductIds = async (
 
   const loadFallback = () =>
     loadAllRows<DigidealDetailRow>((from, to) => {
-      let query = supabase.from("digideal_products").select(fallbackSelect);
+      let query = supabase.from(productsTable).select(fallbackSelect);
       if (productIds) {
         query = query.in("product_id", productIds);
       }
@@ -372,12 +472,21 @@ const extractShippingCost = (value?: string | null) => {
   return null;
 };
 
-const computeEstimatedPrice = (
+type RerunCostBreakdown = {
+  productCostKr: number;
+  shippingCostKr: number;
+  totalCost: number;
+};
+
+const computeRerunCostBreakdown = (
   purchaseCny: number,
   weightKg: number,
   market: MarketConfig,
   classConfig: ShippingConfig
-) => {
+): RerunCostBreakdown | null => {
+  if (!Number.isFinite(purchaseCny) || purchaseCny <= 0) return null;
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
+
   const weightG = weightKg * 1000;
   const useLow = weightG <= market.weight_threshold_g;
   const rate = useLow ? classConfig.rate_low : classConfig.rate_high;
@@ -387,6 +496,34 @@ const computeEstimatedPrice = (
   const shippingLocal = shippingCny * market.fx_rate_cny + market.packing_fee;
   const stockLocal = purchaseCny * market.fx_rate_cny;
   const totalCost = stockLocal + shippingLocal;
+
+  if (!Number.isFinite(stockLocal) || !Number.isFinite(shippingLocal) || !Number.isFinite(totalCost)) {
+    return null;
+  }
+  if (totalCost <= 0) return null;
+
+  return {
+    productCostKr: stockLocal,
+    shippingCostKr: shippingLocal,
+    totalCost,
+  };
+};
+
+const computeEstimatedPrice = (
+  purchaseCny: number,
+  weightKg: number,
+  market: MarketConfig,
+  classConfig: ShippingConfig
+) => {
+  const breakdown = computeRerunCostBreakdown(
+    purchaseCny,
+    weightKg,
+    market,
+    classConfig
+  );
+  if (!breakdown) return null;
+
+  const totalCost = breakdown.totalCost;
   const rawPrice = totalCost * (1 + market.markup_percent) + market.markup_fixed;
   const price =
     market.currency === "EUR"
@@ -395,7 +532,11 @@ const computeEstimatedPrice = (
   return Number.isFinite(price) ? price : null;
 };
 
-const loadLastSoldAtMap = async (supabase: any) => {
+const loadLastSoldAtMap = async (
+  supabase: any,
+  productDailyTable: string,
+  dailyCountColumn: "purchased_count" | "bought_count"
+) => {
   const lastSoldAt = new Map<string, string | null>();
   const chunkSize = 1000;
   let offset = 0;
@@ -406,8 +547,8 @@ const loadLastSoldAtMap = async (supabase: any) => {
 
   while (true) {
     const { data, error } = await supabase
-      .from("digideal_product_daily")
-      .select("product_id, scrape_date, purchased_count")
+      .from(productDailyTable)
+      .select(`product_id, scrape_date, ${dailyCountColumn}`)
       .order("product_id", { ascending: true })
       .order("scrape_date", { ascending: true })
       .range(offset, offset + chunkSize - 1);
@@ -420,6 +561,7 @@ const loadLastSoldAtMap = async (supabase: any) => {
       product_id?: string | null;
       scrape_date?: string | null;
       purchased_count?: number | null;
+      bought_count?: number | null;
     }>;
 
     if (rows.length === 0) break;
@@ -429,11 +571,12 @@ const loadLastSoldAtMap = async (supabase: any) => {
       const scrapeDate =
         typeof row.scrape_date === "string" ? row.scrape_date : null;
       const purchased =
-        typeof row.purchased_count === "number"
-          ? row.purchased_count
-          : row.purchased_count === null || row.purchased_count === undefined
+        typeof (row as any)[dailyCountColumn] === "number"
+          ? Number((row as any)[dailyCountColumn])
+          : (row as any)[dailyCountColumn] === null ||
+              (row as any)[dailyCountColumn] === undefined
             ? null
-            : Number(row.purchased_count);
+            : Number((row as any)[dailyCountColumn]);
 
       if (!productId) continue;
 
@@ -468,7 +611,159 @@ const loadLastSoldAtMap = async (supabase: any) => {
   return { map: lastSoldAt, error: null };
 };
 
-const loadPriceMatchIds = async (supabase: any) => {
+type LetsDealFallbackPrice = {
+  currentPrice: number;
+  previousPrice: number;
+  scrapeDate: string | null;
+  scrapedAt: string | null;
+};
+
+const loadLetsDealFallbackPriceMap = async (
+  supabase: any,
+  productIds: string[]
+) => {
+  const map = new Map<string, LetsDealFallbackPrice>();
+  const uniqueProductIds = Array.from(
+    new Set(
+      productIds
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (uniqueProductIds.length === 0) {
+    return { map, error: null };
+  }
+
+  const chunkSize = 50;
+  const pageSize = 1000;
+  const maxPagesPerChunk = 20;
+
+  for (let start = 0; start < uniqueProductIds.length; start += chunkSize) {
+    const chunk = uniqueProductIds.slice(start, start + chunkSize);
+    const unresolved = new Set(chunk);
+    let offset = 0;
+    let pagesRead = 0;
+
+    while (unresolved.size > 0) {
+      const { data, error } = await supabase
+        .from("letsdeal_product_daily")
+        .select(
+          "product_id, current_price_kr, previous_price_kr, scrape_date, scraped_at"
+        )
+        .in("product_id", chunk)
+        .not("current_price_kr", "is", null)
+        .not("previous_price_kr", "is", null)
+        .order("product_id", { ascending: true })
+        .order("scraped_at", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        return { map, error };
+      }
+
+      const rows = (data ?? []) as Array<{
+        product_id?: string | null;
+        current_price_kr?: number | string | null;
+        previous_price_kr?: number | string | null;
+        scrape_date?: string | null;
+        scraped_at?: string | null;
+      }>;
+
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const productId =
+          typeof row.product_id === "string" ? row.product_id.trim() : "";
+        if (!productId || !unresolved.has(productId) || map.has(productId)) continue;
+        const currentPrice = toNumber(row.current_price_kr);
+        const previousPrice = toNumber(row.previous_price_kr);
+        if (currentPrice === null || previousPrice === null) continue;
+        if (previousPrice <= currentPrice) continue;
+        map.set(productId, {
+          currentPrice,
+          previousPrice,
+          scrapeDate:
+            typeof row.scrape_date === "string" ? row.scrape_date : null,
+          scrapedAt: typeof row.scraped_at === "string" ? row.scraped_at : null,
+        });
+        unresolved.delete(productId);
+      }
+
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+      pagesRead += 1;
+      if (pagesRead >= maxPagesPerChunk) break;
+    }
+  }
+
+  return { map, error: null };
+};
+
+const resolveDealPriceFields = ({
+  provider,
+  rawPrice,
+  rawOriginalPrice,
+  rawDiscountPercent,
+  rawSaveKr,
+  fallbackPrice,
+}: {
+  provider: "digideal" | "letsdeal";
+  rawPrice: number | null;
+  rawOriginalPrice: number | null;
+  rawDiscountPercent: number | null;
+  rawSaveKr: number | null;
+  fallbackPrice?: LetsDealFallbackPrice | null;
+}) => {
+  let price = rawPrice;
+  let originalPrice = rawOriginalPrice;
+  let discountPercent = rawDiscountPercent;
+  let saveKr = rawSaveKr;
+
+  if (provider === "letsdeal") {
+    if (price !== null && originalPrice !== null && originalPrice < price) {
+      [price, originalPrice] = [originalPrice, price];
+    }
+
+    const needsFallback =
+      price !== null &&
+      (originalPrice === null || originalPrice <= price) &&
+      discountPercent !== null &&
+      discountPercent > 0;
+
+    if (needsFallback && fallbackPrice) {
+      price = fallbackPrice.currentPrice;
+      originalPrice = fallbackPrice.previousPrice;
+    }
+  }
+
+  if (
+    saveKr === null &&
+    price !== null &&
+    originalPrice !== null &&
+    originalPrice > price
+  ) {
+    saveKr = Number((originalPrice - price).toFixed(2));
+  }
+
+  if (
+    discountPercent === null &&
+    price !== null &&
+    originalPrice !== null &&
+    originalPrice > 0 &&
+    originalPrice > price
+  ) {
+    discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100);
+  }
+
+  return {
+    price,
+    originalPrice,
+    discountPercent,
+    saveKr,
+  };
+};
+
+const loadPriceMatchIds = async (supabase: any, productsTable: string) => {
   const baseFilters = (query: any) =>
     query
       .not("purchase_price", "is", null)
@@ -481,14 +776,14 @@ const loadPriceMatchIds = async (supabase: any) => {
     "product_id, purchase_price, weight_kg, weight_grams, 1688_url";
 
   let response = await baseFilters(
-    supabase.from("digideal_products").select(primarySelect)
+    supabase.from(productsTable).select(primarySelect)
   );
   if (
     response.error?.message &&
     response.error.message.toLowerCase().includes("1688")
   ) {
     response = await baseFilters(
-      supabase.from("digideal_products").select(fallbackSelect)
+      supabase.from(productsTable).select(fallbackSelect)
     );
   }
 
@@ -546,6 +841,16 @@ const requireAdmin = async () => {
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const debug = searchParams.get("debug") === "1";
+  const provider = resolveDealsProvider(searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
+  const productsTable = providerConfig.productsTable;
+  const productsSearchView = providerConfig.productsSearchView;
+  const productDailyTable = providerConfig.productDailyTable;
+  const dailyCountColumn = providerConfig.dailyCountColumn;
+  const viewsTable = providerConfig.viewsTable;
+  const viewItemsTable = providerConfig.viewItemsTable;
+  const contentAnalysisTable = providerConfig.contentAnalysisTable;
+  const fakeSalesOffset = providerConfig.fakeSalesOffset;
 
   try {
     const supabase = await createServerSupabase();
@@ -557,6 +862,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Keep endpoint auth-bound to a signed-in user, but read campaign/pricing
+    // inputs via service role when available so non-admin users still get
+    // complete rerun pricing data even if RLS on internal supplier tables
+    // blocks direct reads.
+    const readClient = getAdminClient() ?? supabase;
+
     const q = searchParams.get("q")?.trim();
     const category = searchParams.get("category")?.trim();
     const categoriesParam = searchParams.get("categories")?.trim() ?? null;
@@ -566,6 +877,15 @@ export async function GET(request: NextRequest) {
     const sellersParam = searchParams.get("sellers")?.trim();
     const firstSeenFrom = searchParams.get("firstSeenFrom")?.trim();
     const firstSeenTo = searchParams.get("firstSeenTo")?.trim();
+    const priceRange = normalizeNumericRange(
+      toNumber(searchParams.get("priceMin")?.trim()),
+      toNumber(searchParams.get("priceMax")?.trim()),
+      { clampMin: 0 }
+    );
+    const rerunMarginRange = normalizeNumericRange(
+      toNumber(searchParams.get("rerunMarginMin")?.trim()),
+      toNumber(searchParams.get("rerunMarginMax")?.trim())
+    );
     const status = (searchParams.get("status") ?? "online").toLowerCase();
     const sort = (searchParams.get("sort") ?? "last_seen_desc").toLowerCase();
     const priceMatch = searchParams.get("priceMatch")?.trim().toLowerCase();
@@ -599,12 +919,17 @@ export async function GET(request: NextRequest) {
     const needsActivityFilter =
       inactiveDays > 0 &&
       (inactiveMode === "no_sales" || inactiveMode === "offline");
+    const needsComputedRangeFilter = Boolean(priceRange || rerunMarginRange);
+    const needsAllRows = needsActivityFilter || needsComputedRangeFilter;
     const effectiveStatus =
       needsActivityFilter && inactiveMode === "offline" ? "all" : status;
 
-    let query = supabase
-      .from("digideal_products_search")
-      .select(PRODUCT_SELECT, { count: "exact" });
+    const productSelect =
+      provider === "letsdeal" ? PRODUCT_SELECT_LETSDEAL : PRODUCT_SELECT;
+
+    let query = readClient
+      .from(productsSearchView)
+      .select(productSelect, { count: "exact" });
 
     if (effectiveStatus !== "all") {
       query = query.eq("status", effectiveStatus);
@@ -635,7 +960,7 @@ export async function GET(request: NextRequest) {
 
     if (viewId) {
       const { data: view, error: viewError } = await supabase
-        .from("digideal_views")
+        .from(viewsTable)
         .select("id")
         .eq("id", viewId)
         .eq("user_id", user.id)
@@ -650,7 +975,7 @@ export async function GET(request: NextRequest) {
       }
 
       const { data: viewItems, error: viewItemsError } = await supabase
-        .from("digideal_view_items")
+        .from(viewItemsTable)
         .select("product_id")
         .eq("view_id", viewId);
 
@@ -703,7 +1028,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (priceMatch === "have" || priceMatch === "none") {
-      const { ids, error: priceMatchError } = await loadPriceMatchIds(supabase);
+      const { ids, error: priceMatchError } = await loadPriceMatchIds(
+        readClient,
+        productsTable
+      );
       if (priceMatchError) {
         console.error("digideal price match error", {
           message: priceMatchError.message,
@@ -736,22 +1064,22 @@ export async function GET(request: NextRequest) {
     if (supplierWorkflowMode) {
       const [searchRowsResponse, selectionRowsResponse, pricedIdsResponse] = await Promise.all([
         loadAllRows<SupplierSearchRow>((from, to) =>
-          supabase
+          readClient
             .from("discovery_production_supplier_searches")
             .select("provider, product_id, offers")
-            .eq("provider", "digideal")
+            .eq("provider", provider)
             .order("product_id", { ascending: true })
             .range(from, to)
         ),
         loadAllRows<SupplierSelectionRow>((from, to) =>
-          supabase
+          readClient
             .from("discovery_production_supplier_selection")
             .select("provider, product_id, selected_offer")
-            .eq("provider", "digideal")
+            .eq("provider", provider)
             .order("product_id", { ascending: true })
             .range(from, to)
         ),
-        loadPricedProductIds(supabase),
+        loadPricedProductIds(readClient, productsTable),
       ]);
 
       if (searchRowsResponse.error) {
@@ -831,7 +1159,11 @@ export async function GET(request: NextRequest) {
           (productId) => !supplierSelectedIds.has(productId)
         );
         const { ids: manualStateIds, error: manualStateError } =
-          await loadManualSupplierStateProductIds(supabase, candidates);
+          await loadManualSupplierStateProductIds(
+            readClient,
+            productsTable,
+            candidates
+          );
         if (manualStateError) {
           console.error("digideal supplier workflow manual supplier state error", {
             message: manualStateError.message,
@@ -857,7 +1189,11 @@ export async function GET(request: NextRequest) {
           (productId) => !supplierPickedVariantsIds.has(productId)
         );
         const { ids: manualStateIds, error: manualStateError } =
-          await loadManualSupplierStateProductIds(supabase, candidates);
+          await loadManualSupplierStateProductIds(
+            readClient,
+            productsTable,
+            candidates
+          );
         if (manualStateError) {
           console.error("digideal supplier workflow manual supplier state error", {
             message: manualStateError.message,
@@ -880,7 +1216,11 @@ export async function GET(request: NextRequest) {
         query = query.in("product_id", ids);
       } else if (supplierWorkflowMode === "no_supplier") {
         const { ids: manualStateIds, error: manualStateError } =
-          await loadManualSupplierStateProductIds(supabase, null);
+          await loadManualSupplierStateProductIds(
+            readClient,
+            productsTable,
+            null
+          );
         if (manualStateError) {
           console.error("digideal supplier workflow manual supplier state error", {
             message: manualStateError.message,
@@ -907,7 +1247,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (minSold !== null && minSold > 0) {
-      const rawSalesThreshold = toRawSalesThreshold(minSold);
+      const rawSalesThreshold = toRawSalesThreshold(minSold, fakeSalesOffset);
       switch (minSoldMetric) {
         case "sold_today":
           query = query.gte("sold_today", rawSalesThreshold);
@@ -922,18 +1262,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+  const searchColumns =
+    provider === "letsdeal"
+      ? [
+          "listing_title",
+          "title_h1",
+          "subtitle",
+          "product_slug",
+          "prodno",
+          "seller_name",
+        ]
+      : ["listing_title", "title_h1", "product_slug", "prodno", "seller_name"];
+  const categorySearchColumns =
+    provider === "letsdeal"
+      ? ["listing_title", "title_h1", "subtitle", "product_slug"]
+      : ["listing_title", "title_h1", "product_slug"];
+
   if (q) {
     const tokens = buildSearchTokens(q);
     tokens.forEach((like) => {
-      query = query.or(
-        [
-          `listing_title.ilike.${like}`,
-          `title_h1.ilike.${like}`,
-          `product_slug.ilike.${like}`,
-          `prodno.ilike.${like}`,
-          `seller_name.ilike.${like}`,
-        ].join(",")
-      );
+      query = query.or(searchColumns.map((column) => `${column}.ilike.${like}`).join(","));
     });
   }
 
@@ -941,11 +1289,7 @@ export async function GET(request: NextRequest) {
     const tokens = buildSearchTokens(category);
     tokens.forEach((like) => {
       query = query.or(
-        [
-          `listing_title.ilike.${like}`,
-          `title_h1.ilike.${like}`,
-          `product_slug.ilike.${like}`,
-        ].join(",")
+        categorySearchColumns.map((column) => `${column}.ilike.${like}`).join(",")
       );
     });
   }
@@ -1000,7 +1344,7 @@ export async function GET(request: NextRequest) {
   let products: any[] | null = null;
   let count: number | null = null;
 
-  if (needsActivityFilter) {
+  if (needsAllRows) {
     const all: any[] = [];
     const chunkSize = 1000;
     let offset = 0;
@@ -1031,69 +1375,78 @@ export async function GET(request: NextRequest) {
       offset += chunkSize;
     }
 
-    const toKey = (row: any) => {
-      const sellerKey =
-        typeof row?.seller_name === "string" ? row.seller_name.trim() : "";
-      const prodnoKey = typeof row?.prodno === "string" ? row.prodno.trim() : "";
-      const titleKey =
-        (typeof row?.listing_title === "string" ? row.listing_title.trim() : "") ||
-        (typeof row?.title_h1 === "string" ? row.title_h1.trim() : "") ||
-        (typeof row?.product_slug === "string" ? row.product_slug.trim() : "") ||
-        (typeof row?.product_id === "string" ? row.product_id.trim() : "");
-      const idKey = prodnoKey || titleKey;
-      return `${sellerKey}::${idKey}`;
-    };
+    let filteredRows: any[] = all;
 
-    let filtered: any[] = all;
+    if (needsActivityFilter) {
+      const toKey = (row: any) => {
+        const sellerKey =
+          typeof row?.seller_name === "string" ? row.seller_name.trim() : "";
+        const prodnoKey = typeof row?.prodno === "string" ? row.prodno.trim() : "";
+        const titleKey =
+          (typeof row?.listing_title === "string" ? row.listing_title.trim() : "") ||
+          (typeof row?.title_h1 === "string" ? row.title_h1.trim() : "") ||
+          (typeof row?.product_slug === "string" ? row.product_slug.trim() : "") ||
+          (typeof row?.product_id === "string" ? row.product_id.trim() : "");
+        const idKey = prodnoKey || titleKey;
+        return `${sellerKey}::${idKey}`;
+      };
 
-    if (inactiveMode === "offline") {
-      const onlineKeys = new Set(
-        all
-          .filter((row) => String(row?.status ?? "").toLowerCase() === "online")
-          .map(toKey)
-      );
+      if (inactiveMode === "offline") {
+        const onlineKeys = new Set(
+          all
+            .filter((row) => String(row?.status ?? "").toLowerCase() === "online")
+            .map(toKey)
+        );
 
-      filtered = all.filter((row) => {
-        if (String(row?.status ?? "").toLowerCase() !== "offline") return false;
-        if (daysSinceTimestamp(row?.last_seen_at ?? null) < inactiveDays) return false;
-        const key = toKey(row);
-        return key.length > 2 && !onlineKeys.has(key);
-      });
-    } else {
-      const { map: lastSoldMap, error: lastSoldError } = await loadLastSoldAtMap(
-        supabase
-      );
-      if (lastSoldError) {
-        console.error("digideal last sold map error", {
-          message: lastSoldError.message,
-          details: lastSoldError.details,
-          hint: lastSoldError.hint,
-          code: lastSoldError.code,
+        filteredRows = all.filter((row) => {
+          if (String(row?.status ?? "").toLowerCase() !== "offline") return false;
+          if (daysSinceTimestamp(row?.last_seen_at ?? null) < inactiveDays) return false;
+          const key = toKey(row);
+          return key.length > 2 && !onlineKeys.has(key);
+        });
+      } else {
+        const { map: lastSoldMap, error: lastSoldError } = await loadLastSoldAtMap(
+          readClient,
+          productDailyTable,
+          dailyCountColumn
+        );
+        if (lastSoldError) {
+          console.error("digideal last sold map error", {
+            message: lastSoldError.message,
+            details: lastSoldError.details,
+            hint: lastSoldError.hint,
+            code: lastSoldError.code,
+          });
+        }
+
+        filteredRows = all.filter((row) => {
+          const productId =
+            typeof row?.product_id === "string" ? row.product_id.trim() : "";
+          if (!productId) return false;
+          const lastSoldAt = lastSoldMap.get(productId) ?? null;
+          return daysSinceDate(lastSoldAt) >= inactiveDays;
         });
       }
 
-      filtered = all.filter((row) => {
-        const productId =
-          typeof row?.product_id === "string" ? row.product_id.trim() : "";
-        if (!productId) return false;
-        const lastSoldAt = lastSoldMap.get(productId) ?? null;
-        return daysSinceDate(lastSoldAt) >= inactiveDays;
-      });
+      const seenKeys = new Set<string>();
+      const deduped: any[] = [];
+      for (const row of filteredRows) {
+        const key = toKey(row);
+        if (!key || seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        deduped.push(row);
+      }
+      filteredRows = deduped;
     }
 
-    const seenKeys = new Set<string>();
-    const deduped: any[] = [];
-    for (const row of filtered) {
-      const key = toKey(row);
-      if (!key || seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      deduped.push(row);
+    count = filteredRows.length;
+    if (needsComputedRangeFilter) {
+      products = filteredRows;
+    } else {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize;
+      products = filteredRows.slice(from, to);
     }
-
-    count = deduped.length;
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize;
-    products = deduped.slice(from, to);
   } else {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -1123,10 +1476,45 @@ export async function GET(request: NextRequest) {
 
     const productIds =
       products?.map((product) => product.product_id).filter(Boolean) ?? [];
+    let letsDealFallbackPriceMap = new Map<string, LetsDealFallbackPrice>();
+    if (provider === "letsdeal" && productIds.length > 0) {
+      const needsFallbackIds = (products ?? [])
+        .map((product) => {
+          const productId =
+            typeof product?.product_id === "string" ? product.product_id.trim() : "";
+          if (!productId) return "";
+          const price = toNumber(product?.last_price);
+          const originalPrice = toNumber(product?.last_original_price);
+          const discountPercent = toNumber(product?.last_discount_percent);
+          if (price === null) return "";
+          if (originalPrice !== null && originalPrice > price) return "";
+          if (discountPercent === null || discountPercent <= 0) return "";
+          return productId;
+        })
+        .filter(Boolean);
+
+      if (needsFallbackIds.length > 0) {
+        const { map, error } = await loadLetsDealFallbackPriceMap(
+          readClient,
+          needsFallbackIds
+        );
+        if (error) {
+          console.error("letsdeal fallback price map error", {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          });
+        } else {
+          letsDealFallbackPriceMap = map;
+        }
+      }
+    }
+
     let reportExistsMap = new Map<string, boolean>();
-    if (productIds.length) {
-      const { data: analysisRows, error: analysisError } = await supabase
-        .from("digideal_content_analysis")
+    if (contentAnalysisTable && productIds.length) {
+      const { data: analysisRows, error: analysisError } = await readClient
+        .from(contentAnalysisTable)
         .select("product_id, report_exists")
         .in("product_id", productIds);
       if (analysisError) {
@@ -1155,8 +1543,8 @@ export async function GET(request: NextRequest) {
       const fallbackSelect =
         "product_id, purchase_price, weight_kg, weight_grams, shipping_class, shipping_class_confidence, shipping_class_source, shipping_class_model, shipping_class_reason, shipping_class_classified_at, 1688_url";
 
-      const primaryResponse = await supabase
-        .from("digideal_products")
+      const primaryResponse = await readClient
+        .from(productsTable)
         .select(primarySelect)
         .in("product_id", productIds);
       detailRows = primaryResponse.data as DigidealDetailRow[] | null;
@@ -1166,8 +1554,8 @@ export async function GET(request: NextRequest) {
         detailError?.message &&
         detailError.message.toLowerCase().includes("1688")
       ) {
-        const fallbackResponse = await supabase
-          .from("digideal_products")
+        const fallbackResponse = await readClient
+          .from(productsTable)
           .select(fallbackSelect)
           .in("product_id", productIds);
         detailRows = fallbackResponse.data as DigidealDetailRow[] | null;
@@ -1217,15 +1605,15 @@ export async function GET(request: NextRequest) {
     >();
     if (productIds.length) {
       const [supplierSearchResponse, supplierSelectionResponse] = await Promise.all([
-        supabase
+        readClient
           .from("discovery_production_supplier_searches")
           .select("provider, product_id, offers")
-          .eq("provider", "digideal")
+          .eq("provider", provider)
           .in("product_id", productIds),
-        supabase
+        readClient
           .from("discovery_production_supplier_selection")
           .select("provider, product_id, selected_offer")
-          .eq("provider", "digideal")
+          .eq("provider", provider)
           .in("product_id", productIds),
       ]);
 
@@ -1327,7 +1715,7 @@ export async function GET(request: NextRequest) {
     let marketConfig: MarketConfig | null = null;
     let classMap = new Map<string, ShippingConfig>();
     if (productIds.length) {
-      const { data: marketRow, error: marketError } = await supabase
+      const { data: marketRow, error: marketError } = await readClient
         .from("b2b_pricing_markets")
         .select(
           "market, currency, fx_rate_cny, weight_threshold_g, packing_fee, markup_percent, markup_fixed"
@@ -1348,7 +1736,7 @@ export async function GET(request: NextRequest) {
         };
       }
 
-      const { data: classRows, error: classError } = await supabase
+      const { data: classRows, error: classError } = await readClient
         .from("b2b_pricing_shipping_classes")
         .select(
           "shipping_class, rate_low, rate_high, base_low, base_high, mult_low, mult_high"
@@ -1482,6 +1870,7 @@ export async function GET(request: NextRequest) {
 
     const items =
       products?.map((product) => {
+        const imageFields = sanitizeDealImageFields(product as Record<string, unknown>);
         const detail = detailMap.get(product.product_id);
         const purchasePrice = toNumber(detail?.purchase_price);
         const weightKgValue = toNumber(detail?.weight_kg);
@@ -1524,6 +1913,20 @@ export async function GET(request: NextRequest) {
         const classConfig = marketConfig
           ? resolveClassConfig(classMap, shippingClass)
           : null;
+        const directCost =
+          purchasePrice !== null &&
+          purchasePrice > 0 &&
+          weightKg !== null &&
+          weightKg > 0 &&
+          marketConfig &&
+          classConfig
+            ? computeRerunCostBreakdown(
+                purchasePrice,
+                weightKg,
+                marketConfig,
+                classConfig
+              )
+            : null;
         let estimatedPrice =
           canEstimate && classConfig && marketConfig
             ? computeEstimatedPrice(purchasePrice, weightKg, marketConfig, classConfig)
@@ -1550,10 +1953,75 @@ export async function GET(request: NextRequest) {
             );
           }
         }
+        const resolvedPriceFields = resolveDealPriceFields({
+          provider,
+          rawPrice: toNumber(product.last_price),
+          rawOriginalPrice: toNumber(product.last_original_price),
+          rawDiscountPercent: toNumber(product.last_discount_percent),
+          rawSaveKr: toNumber(product.last_you_save_kr),
+          fallbackPrice:
+            provider === "letsdeal"
+              ? letsDealFallbackPriceMap.get(String(product.product_id ?? "")) ?? null
+              : null,
+        });
+        const overridePrice =
+          supplierMeta?.price_override_price !== null &&
+          supplierMeta?.price_override_price !== undefined &&
+          Number.isFinite(Number(supplierMeta?.price_override_price)) &&
+          Number(supplierMeta?.price_override_price) > 0
+            ? Number(supplierMeta?.price_override_price)
+            : null;
+        const marketPrice = resolvedPriceFields.price;
+        const benchmarkTotal =
+          marketPrice !== null ? marketPrice + Math.max(0, shippingCost ?? 0) : null;
+        const benchmarkPriceRaw =
+          estimatedPrice !== null &&
+          benchmarkTotal !== null &&
+          Number.isFinite(benchmarkTotal) &&
+          benchmarkTotal > 0
+            ? clampNumber(
+                estimatedPrice,
+                benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_FLOOR,
+                benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX
+              )
+            : estimatedPrice;
+        const fallbackTotalCost =
+          estimatedPrice !== null &&
+          marketConfig &&
+          Number.isFinite(marketConfig.markup_percent) &&
+          Number.isFinite(marketConfig.markup_fixed)
+            ? (() => {
+                const divisor = 1 + Number(marketConfig.markup_percent);
+                if (!Number.isFinite(divisor) || divisor <= 0) return null;
+                const result =
+                  (estimatedPrice - Number(marketConfig.markup_fixed)) / divisor;
+                return Number.isFinite(result) && result > 0 ? result : null;
+              })()
+            : null;
+        const totalCost = directCost?.totalCost ?? fallbackTotalCost;
+        const maxAllowedByMargin =
+          totalCost !== null && totalCost > 0
+            ? totalCost / (1 - DIGIDEAL_MAX_MARGIN_PERCENT / 100)
+            : null;
+        const benchmarkPrice =
+          benchmarkPriceRaw !== null && maxAllowedByMargin !== null
+            ? Math.min(benchmarkPriceRaw, maxAllowedByMargin)
+            : benchmarkPriceRaw;
+        const displayedPrice = overridePrice ?? benchmarkPrice;
+        const rerunMarginPercent =
+          displayedPrice !== null &&
+          totalCost !== null &&
+          displayedPrice > 0
+            ? ((displayedPrice - totalCost) / displayedPrice) * 100
+            : null;
         return {
           product_id: product.product_id,
           listing_title: product.listing_title ?? null,
           title_h1: product.title_h1 ?? null,
+          subtitle:
+            typeof (product as any).subtitle === "string"
+              ? String((product as any).subtitle).trim() || null
+              : null,
           identical_spu: linkedSpu || null,
           digideal_group_id: groupId || null,
           digideal_group_count: groupCount,
@@ -1568,16 +2036,16 @@ export async function GET(request: NextRequest) {
           seller_name: normalizeSellerName(product.seller_name),
           seller_orgnr: product.seller_orgnr ?? null,
           status: product.status ?? null,
-          last_price: toNumber(product.last_price),
-          last_original_price: toNumber(product.last_original_price),
-          last_discount_percent: toNumber(product.last_discount_percent),
-          last_you_save_kr: toNumber(product.last_you_save_kr),
+          last_price: resolvedPriceFields.price,
+          last_original_price: resolvedPriceFields.originalPrice,
+          last_discount_percent: resolvedPriceFields.discountPercent,
+          last_you_save_kr: resolvedPriceFields.saveKr,
           last_purchased_count: toNumber(product.last_purchased_count),
           last_instock_qty: toNumber(product.last_instock_qty),
           last_available_qty: toNumber(product.last_available_qty),
           last_reserved_qty: toNumber(product.last_reserved_qty),
-          primary_image_url: product.primary_image_url ?? null,
-          image_urls: product.image_urls ?? null,
+          primary_image_url: imageFields.primaryImageUrl,
+          image_urls: imageFields.imageUrls,
           first_seen_at: product.first_seen_at ?? null,
           last_seen_at: product.last_seen_at ?? null,
           digideal_rerun_added: product.digideal_rerun_added ?? null,
@@ -1633,18 +2101,51 @@ export async function GET(request: NextRequest) {
             supplierMeta?.extreme_ratio_confirmed_at ?? null,
           shipping_cost: shippingCost,
           estimated_rerun_price: estimatedPrice,
-          sold_today: normalizeDisplayedSales(product.sold_today),
-          sold_7d: normalizeDisplayedSales(product.sold_7d),
-          sold_all_time: normalizeDisplayedSales(product.last_purchased_count),
+          rerun_margin_percent: rerunMarginPercent,
+          sold_today: normalizeDisplayedSales(product.sold_today, fakeSalesOffset),
+          sold_7d: normalizeDisplayedSales(product.sold_7d, fakeSalesOffset),
+          sold_all_time: normalizeDisplayedSales(
+            product.last_purchased_count,
+            fakeSalesOffset
+          ),
           report_exists: reportExistsMap.get(product.product_id) ?? false,
         };
       }) ?? [];
 
+    let filteredItems = items;
+    if (needsComputedRangeFilter) {
+      filteredItems = filteredItems.filter((item) => {
+        const rowPrice = toNumber((item as any).last_price);
+        const rowMargin = toNumber((item as any).rerun_margin_percent);
+
+        if (priceRange) {
+          if (rowPrice === null) return false;
+          if (priceRange.min !== null && rowPrice < priceRange.min) return false;
+          if (priceRange.max !== null && rowPrice > priceRange.max) return false;
+        }
+
+        if (rerunMarginRange) {
+          if (rowMargin === null) return false;
+          if (rerunMarginRange.min !== null && rowMargin < rerunMarginRange.min) return false;
+          if (rerunMarginRange.max !== null && rowMargin > rerunMarginRange.max) return false;
+        }
+
+        return true;
+      });
+    }
+
+    const finalItems = needsComputedRangeFilter
+      ? filteredItems.slice((page - 1) * pageSize, page * pageSize)
+      : filteredItems;
+    const finalTotal = needsComputedRangeFilter
+      ? filteredItems.length
+      : count ?? filteredItems.length;
+
     return NextResponse.json({
-      items,
+      items: finalItems,
       page,
       pageSize,
-      total: count ?? items.length,
+      total: finalTotal,
     });
   } catch (err) {
     console.error("digideal api unexpected error", err);
@@ -1673,6 +2174,7 @@ export async function POST(request: Request) {
     comment?: string;
     add_to_pipeline?: boolean;
     add_directly?: boolean;
+    provider?: string;
   };
   try {
     payload = (await request.json()) as typeof payload;
@@ -1681,6 +2183,9 @@ export async function POST(request: Request) {
   }
 
   const productId = String(payload?.product_id ?? "").trim();
+  const provider = resolveDealsProvider(payload?.provider);
+  const providerConfig = getDealsProviderConfig(provider);
+  const productsTable = providerConfig.productsTable;
   if (!productId) {
     return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
   }
@@ -1709,7 +2214,7 @@ export async function POST(request: Request) {
         [
           {
             user_id: user.id,
-            provider: "digideal",
+            provider,
             product_id: productId,
           },
         ],
@@ -1723,7 +2228,7 @@ export async function POST(request: Request) {
   }
 
   const { data: updated, error: updateError } = await supabase
-    .from("digideal_products")
+    .from(productsTable)
     .update(updates)
     .eq("product_id", productId)
     .select(
@@ -1737,7 +2242,7 @@ export async function POST(request: Request) {
         .from("discovery_production_items")
         .delete()
         .eq("user_id", user.id)
-        .eq("provider", "digideal")
+        .eq("provider", provider)
         .eq("product_id", productId);
     }
     return NextResponse.json({ error: updateError.message }, { status: 500 });
@@ -1749,7 +2254,7 @@ export async function POST(request: Request) {
         .from("discovery_production_items")
         .delete()
         .eq("user_id", user.id)
-        .eq("provider", "digideal")
+        .eq("provider", provider)
         .eq("product_id", productId);
     }
     return NextResponse.json({ error: "Product not found." }, { status: 404 });
@@ -1769,7 +2274,7 @@ export async function POST(request: Request) {
     const { error: commentError } = await supabase
       .from("discovery_production_comments")
       .insert({
-        provider: "digideal",
+        provider,
         product_id: productId,
         user_id: user.id,
         user_label: userLabel,
@@ -1809,6 +2314,7 @@ export async function PATCH(request: Request) {
 
   let payload: {
     product_id?: string;
+    provider?: string;
     supplier_url?: string;
     weight_grams?: number;
     purchase_price?: number;
@@ -1827,6 +2333,9 @@ export async function PATCH(request: Request) {
   }
 
   const productId = String(payload?.product_id ?? "").trim();
+  const provider = resolveDealsProvider(payload?.provider);
+  const providerConfig = getDealsProviderConfig(provider);
+  const productsTable = providerConfig.productsTable;
   const removeSupplier = payload?.remove_supplier === true;
   const priceOverrideAction =
     payload?.price_override_action === "set" || payload?.price_override_action === "clear"
@@ -1853,7 +2362,7 @@ export async function PATCH(request: Request) {
     const { data: existingSelection, error: selectionFetchError } = await adminClient
       .from("discovery_production_supplier_selection")
       .select("selected_offer")
-      .eq("provider", "digideal")
+      .eq("provider", provider)
       .eq("product_id", productId)
       .maybeSingle();
 
@@ -1915,7 +2424,7 @@ export async function PATCH(request: Request) {
       .from("discovery_production_supplier_selection")
       .upsert(
         {
-          provider: "digideal",
+          provider,
           product_id: productId,
           selected_offer: selectedOfferBase,
           updated_at: nowIso,
@@ -1961,7 +2470,7 @@ export async function PATCH(request: Request) {
 
   if (removeSupplier) {
     const { data, error } = await adminClient
-      .from("digideal_products")
+      .from(productsTable)
       .update({
         purchase_price: null,
         weight_grams: null,
@@ -2009,7 +2518,7 @@ export async function PATCH(request: Request) {
   const weightKg = Number((weightGrams / 1000).toFixed(3));
 
   const { data, error } = await adminClient
-    .from("digideal_products")
+    .from(productsTable)
     .update({
       purchase_price: purchasePrice,
       weight_grams: weightGrams,

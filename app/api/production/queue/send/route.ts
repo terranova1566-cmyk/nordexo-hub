@@ -18,6 +18,7 @@ import {
   safeExtractorJsonPath,
   upsertProductionStatuses,
 } from "@/lib/production-queue-status";
+import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
 
 export const runtime = "nodejs";
 
@@ -380,6 +381,9 @@ export async function POST(request: Request) {
   const extractorFilePath = path.join(EXTRACTOR_UPLOAD_DIR, fileName);
   await fs.mkdir(EXTRACTOR_UPLOAD_DIR, { recursive: true });
   await fs.writeFile(extractorFilePath, JSON.stringify(mergedItems, null, 2), "utf8");
+  void generateQueueKeywordsForFile(fileName).catch((error) => {
+    console.error("Queue keyword precompute failed:", error);
+  });
 
   const workerCount = resolveWorkerCount(itemCount, null);
   const jobId = crypto.randomUUID();

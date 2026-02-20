@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-admin";
 import { renderTemplate, stripHtml } from "@/lib/email-templates";
+import { sanitizeEmailHtml } from "@/lib/email-html";
+import {
+  listEmailMacroDefinitions,
+  resolveTemplateMacros,
+} from "@/lib/email-macro-registry";
 import { getEnvSmtpConfig, sendEmailViaSmtp } from "@/lib/email-smtp";
 import {
   getEmailSmtpAccountById,
@@ -45,12 +50,11 @@ export async function POST(request: Request) {
 
   const variables =
     payload.variables && typeof payload.variables === "object"
-      ? Object.entries(payload.variables as Record<string, unknown>).reduce<
-          Record<string, string>
-        >((acc, [key, value]) => {
-          acc[key] = String(value ?? "");
-          return acc;
-        }, {})
+      ? (payload.variables as Record<string, unknown>)
+      : {};
+  const macroContext =
+    payload.context && typeof payload.context === "object"
+      ? (payload.context as Record<string, unknown>)
       : {};
 
   if (!toRaw || !templateId) {
@@ -70,7 +74,7 @@ export async function POST(request: Request) {
 
   const { data: template, error: templateError } = await auth.supabase
     .from("partner_email_templates")
-    .select("template_id,name,subject_template,body_template")
+    .select("template_id,name,subject_template,body_template,macros")
     .eq("template_id", templateId)
     .maybeSingle();
 
@@ -81,8 +85,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Template not found." }, { status: 404 });
   }
 
-  const renderedSubject = manualSubject || renderTemplate(template.subject_template || "", variables);
-  const renderedBody = renderTemplate(template.body_template || "", variables);
+  const { macros: macroDefinitions } = await listEmailMacroDefinitions(auth.supabase, {
+    includeInactive: true,
+    includeDeprecated: true,
+  });
+
+  const macroResolution = resolveTemplateMacros({
+    subjectTemplate: manualSubject ? "" : String(template.subject_template ?? ""),
+    bodyTemplate: String(template.body_template ?? ""),
+    definitions: macroDefinitions,
+    variables,
+    context: macroContext,
+  });
+
+  if (macroResolution.missingRequiredMacros.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Missing required macro values.",
+        missing_macros: macroResolution.missingRequiredMacros,
+        unknown_macros: macroResolution.unknownMacros,
+        deprecated_macros: macroResolution.deprecatedMacros,
+      },
+      { status: 400 }
+    );
+  }
+
+  const renderVariables: Record<string, string> = {};
+  Object.entries(variables).forEach(([key, value]) => {
+    renderVariables[key] = String(value ?? "");
+  });
+  Object.entries(macroResolution.values).forEach(([key, value]) => {
+    renderVariables[key] = String(value ?? "");
+  });
+
+  const renderedSubject =
+    manualSubject || renderTemplate(template.subject_template || "", renderVariables);
+  const renderedBodyRaw = renderTemplate(template.body_template || "", renderVariables);
+  const renderedBody = sanitizeEmailHtml(renderedBodyRaw);
 
   if (!renderedSubject) {
     return NextResponse.json(
@@ -193,5 +232,10 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, response: responsePayload });
+  return NextResponse.json({
+    ok: true,
+    response: responsePayload,
+    unknown_macros: macroResolution.unknownMacros,
+    deprecated_macros: macroResolution.deprecatedMacros,
+  });
 }

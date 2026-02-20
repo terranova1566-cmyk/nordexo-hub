@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, safeRemoveDraftPath } from "@/lib/drafts";
+import { resetProductionQueueForDeletedSpus } from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -118,6 +119,25 @@ export async function POST(
     return NextResponse.json({ ok: true, deleted_products: 0, deleted_variants: 0, removed_folders: [] });
   }
 
+  let queueReset: {
+    refs_found: number;
+    statuses_reset: number;
+    spu_links_removed: number;
+  } = { refs_found: 0, statuses_reset: 0, spu_links_removed: 0 };
+  try {
+    queueReset = await resetProductionQueueForDeletedSpus(adminClient, requested);
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? `Unable to reset production queue status: ${err.message}`
+            : "Unable to reset production queue status.",
+      },
+      { status: 500 }
+    );
+  }
+
   let deletedVariants = 0;
   const chunkSize = 200;
   for (let i = 0; i < requested.length; i += chunkSize) {
@@ -159,6 +179,6 @@ export async function POST(
     deleted_products: deletedProducts ?? 0,
     deleted_variants: deletedVariants,
     removed_folders: removedFolders,
+    production_queue_reset: queueReset,
   });
 }
-

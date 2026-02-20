@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-admin";
 import { collectMacros } from "@/lib/email-templates";
+import { sanitizeEmailHtml } from "@/lib/email-html";
+import {
+  listEmailMacroDefinitions,
+  validateTemplateMacroUsage,
+} from "@/lib/email-macro-registry";
 
 export const runtime = "nodejs";
 
@@ -22,6 +27,18 @@ function validateTemplateId(value: string): string | null {
   return null;
 }
 
+function parseTags(value: unknown) {
+  const rawList = Array.isArray(value)
+    ? value.map((entry) => String(entry ?? ""))
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  return Array.from(
+    new Set(rawList.map((entry) => entry.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+}
+
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
@@ -29,7 +46,7 @@ export async function GET() {
   const { data, error } = await auth.supabase
     .from(TABLE)
     .select(
-      "template_id,name,description,subject_template,body_template,macros,created_at,updated_at"
+      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
     )
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
@@ -65,8 +82,13 @@ export async function POST(request: Request) {
 
   const descriptionRaw = String(payload.description ?? "").trim();
   const description = descriptionRaw || null;
+  const category = String(payload.category ?? "").trim() || null;
+  const ownerUserId =
+    String(payload.owner_user_id ?? payload.ownerUserId ?? "").trim() || null;
+  const ownerTeam = String(payload.owner_team ?? payload.ownerTeam ?? "").trim() || null;
+  const tags = parseTags(payload.tags ?? payload.tag_list ?? payload.tagList);
   const subjectTemplate = String(payload.subject_template ?? "");
-  const bodyTemplate = String(payload.body_template ?? "");
+  const bodyTemplate = sanitizeEmailHtml(String(payload.body_template ?? ""));
 
   const suppliedMacros = Array.isArray(payload.macros)
     ? payload.macros
@@ -76,6 +98,31 @@ export async function POST(request: Request) {
 
   const inferredMacros = collectMacros(`${subjectTemplate}\n${bodyTemplate}`);
   const macros = Array.from(new Set([...suppliedMacros, ...inferredMacros]));
+  const { macros: macroDefinitions } = await listEmailMacroDefinitions(auth.supabase, {
+    includeInactive: true,
+    includeDeprecated: true,
+  });
+  const macroValidation = validateTemplateMacroUsage({
+    subjectTemplate,
+    bodyTemplate,
+    existingMacros: macros,
+    definitions: macroDefinitions,
+  });
+  const warnings: string[] = [];
+  if (macroValidation.unknownMacros.length > 0) {
+    warnings.push(
+      `Unknown macros: ${macroValidation.unknownMacros
+        .map((key) => `{{${key}}}`)
+        .join(", ")}`
+    );
+  }
+  if (macroValidation.deprecatedMacros.length > 0) {
+    warnings.push(
+      `Deprecated macros: ${macroValidation.deprecatedMacros
+        .map((key) => `{{${key}}}`)
+        .join(", ")}`
+    );
+  }
 
   const { data, error } = await auth.supabase
     .from(TABLE)
@@ -83,6 +130,10 @@ export async function POST(request: Request) {
       template_id: templateId,
       name,
       description,
+      category,
+      tags,
+      owner_user_id: ownerUserId,
+      owner_team: ownerTeam,
       subject_template: subjectTemplate,
       body_template: bodyTemplate,
       macros,
@@ -90,7 +141,7 @@ export async function POST(request: Request) {
       updated_by: auth.userId,
     })
     .select(
-      "template_id,name,description,subject_template,body_template,macros,created_at,updated_at"
+      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
     )
     .single();
 
@@ -112,5 +163,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: versionError.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({
+    ...data,
+    macro_validation: macroValidation,
+    warnings,
+  });
 }

@@ -64,6 +64,10 @@ type ExtractorPreviewItem = {
   imageUrl: string | null;
   spu: string;
   variantCount: number;
+  titleZh?: string;
+  titleEn?: string;
+  supplierUrl?: string;
+  platformLabel?: string;
 };
 
 type ExtractorPreview = {
@@ -74,6 +78,25 @@ type ExtractorPreview = {
   missingSpuCount: number;
   items: ExtractorPreviewItem[];
   previewItems?: ExtractorPreviewItem[];
+};
+
+type QueueKeywordPayload = {
+  label?: string;
+  keywords?: string[];
+};
+
+type DeckHoverPreview = {
+  fileName: string;
+  index: number;
+  imageUrl: string;
+  x: number;
+  y: number;
+};
+
+const toImageProxyUrl = (rawUrl: string | null | undefined) => {
+  const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!value) return "";
+  return `/api/1688-extractor/image-proxy?url=${encodeURIComponent(value)}`;
 };
 
 const useStyles = makeStyles({
@@ -119,11 +142,21 @@ const useStyles = makeStyles({
   chromeColProducts: {
     width: "75px",
   },
+  chromeColDeck: {
+    width: "190px",
+  },
+  chromeColKeywords: {
+    minWidth: "260px",
+    maxWidth: "360px",
+  },
+  chromeColJson: {
+    width: "108px",
+  },
   chromeColActions: {
-    width: "450px",
+    width: "280px",
   },
   chromeActionsCell: {
-    width: "450px",
+    width: "280px",
   },
   chromeButton: {
     minWidth: "120px",
@@ -144,8 +177,73 @@ const useStyles = makeStyles({
   chromeEmpty: {
     color: tokens.colorNeutralForeground2,
   },
+  queueDeckWrap: {
+    position: "relative",
+    width: "155px",
+    height: "95px",
+    paddingBlock: "10px",
+  },
+  queueDeckThumb: {
+    position: "absolute",
+    top: "10px",
+    width: "75px",
+    height: "75px",
+    borderRadius: "10px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    cursor: "default",
+    boxShadow: tokens.shadow4,
+  },
+  queueDeckImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  queueDeckPlaceholder: {
+    width: "75px",
+    height: "75px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+  },
+  queueKeywords: {
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  queueKeywordsLoading: {
+    color: tokens.colorNeutralForeground3,
+  },
+  queueZoomPreview: {
+    position: "fixed",
+    width: "300px",
+    height: "300px",
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow16,
+    overflow: "hidden",
+    pointerEvents: "none",
+    zIndex: 2000,
+  },
+  queueZoomImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
   previewDialog: {
-    maxWidth: "720px",
+    maxWidth: "960px",
+    width: "min(960px, 92vw)",
   },
   mergeDialog: {
     maxWidth: "520px",
@@ -169,31 +267,86 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
     color: tokens.colorNeutralForeground2,
   },
-  previewList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    maxHeight: "420px",
+  previewTableWrap: {
+    maxHeight: "560px",
     overflow: "auto",
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    padding: "10px",
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  previewTable: {
+    width: "100%",
   },
   previewRow: {
-    display: "grid",
-    gridTemplateColumns: "80px 48px 1fr",
-    gap: "10px",
+    minHeight: "72px",
+  },
+  previewCell: {
+    verticalAlign: "middle",
+    paddingTop: "8px",
+    paddingBottom: "8px",
+  },
+  previewColImage: {
+    width: "92px",
+  },
+  previewColSpu: {
+    width: "88px",
+  },
+  previewColCn: {
+    minWidth: "150px",
+  },
+  previewColEn: {
+    minWidth: "170px",
+  },
+  previewColPlatform: {
+    width: "130px",
+  },
+  previewColLink: {
+    width: "118px",
+    textAlign: "right",
+  },
+  previewColAction: {
+    width: "92px",
+    textAlign: "right",
+  },
+  previewImageCell: {
+    textAlign: "center",
+  },
+  previewImageInner: {
+    display: "flex",
+    justifyContent: "center",
     alignItems: "center",
   },
-  previewDelete: {
+  previewActionCell: {
+    textAlign: "right",
+  },
+  previewLinkCell: {
+    textAlign: "right",
+  },
+  previewLinkInner: {
     display: "flex",
+    justifyContent: "flex-end",
     alignItems: "center",
-    justifyContent: "center",
+  },
+  previewActionInner: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  previewWhiteButton: {
+    whiteSpace: "nowrap",
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground1,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    "&:active": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
   },
   previewThumb: {
-    width: "48px",
-    height: "48px",
+    width: "56px",
+    height: "56px",
     borderRadius: "8px",
     backgroundColor: tokens.colorNeutralBackground3,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -210,6 +363,24 @@ const useStyles = makeStyles({
   previewPlaceholder: {
     fontSize: tokens.fontSizeBase100,
     color: tokens.colorNeutralForeground3,
+  },
+  previewChineseTitle: {
+    lineHeight: tokens.lineHeightBase300,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    wordBreak: "break-word",
+  },
+  previewEnglishTitle: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase300,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    wordBreak: "break-word",
   },
   header: {
     display: "flex",
@@ -330,6 +501,27 @@ export default function BulkProcessingPage() {
     null
   );
   const [error, setError] = useState<string | null>(null);
+  const [queuePreviewByFile, setQueuePreviewByFile] = useState<
+    Record<string, ExtractorPreviewItem[]>
+  >({});
+  const [queuePreviewLoadingByFile, setQueuePreviewLoadingByFile] = useState<
+    Record<string, boolean>
+  >({});
+  const [queueKeywordsByFile, setQueueKeywordsByFile] = useState<
+    Record<string, string>
+  >({});
+  const [queueKeywordsLoadingByFile, setQueueKeywordsLoadingByFile] = useState<
+    Record<string, boolean>
+  >({});
+  const [deckHoverPreview, setDeckHoverPreview] = useState<DeckHoverPreview | null>(
+    null
+  );
+  const [autoAssignFailedNames, setAutoAssignFailedNames] = useState<Set<string>>(
+    new Set()
+  );
+  const autoAssignRunningRef = useRef(false);
+  const queuePreviewRequestRef = useRef<Set<string>>(new Set());
+  const queueKeywordRequestRef = useRef<Set<string>>(new Set());
   const logSourcesRef = useRef<EventSource[]>([]);
 
   const loadSpuSummary = useCallback(async () => {
@@ -437,6 +629,115 @@ export default function BulkProcessingPage() {
       ),
     [extractorFiles]
   );
+
+  useEffect(() => {
+    const allowed = new Set(productionQueueFiles.map((entry) => entry.name));
+    const knownFileNames = new Set(extractorFiles.map((entry) => entry.name));
+    setQueuePreviewByFile((prev) => {
+      const next = Object.entries(prev).filter(([name]) => allowed.has(name));
+      if (next.length === Object.keys(prev).length) return prev;
+      return Object.fromEntries(next);
+    });
+    setQueuePreviewLoadingByFile((prev) => {
+      const next = Object.entries(prev).filter(([name]) => allowed.has(name));
+      if (next.length === Object.keys(prev).length) return prev;
+      return Object.fromEntries(next);
+    });
+    setQueueKeywordsByFile((prev) => {
+      const next = Object.entries(prev).filter(([name]) => allowed.has(name));
+      if (next.length === Object.keys(prev).length) return prev;
+      return Object.fromEntries(next);
+    });
+    setQueueKeywordsLoadingByFile((prev) => {
+      const next = Object.entries(prev).filter(([name]) => allowed.has(name));
+      if (next.length === Object.keys(prev).length) return prev;
+      return Object.fromEntries(next);
+    });
+    setAutoAssignFailedNames((prev) => {
+      const next = new Set([...prev].filter((name) => knownFileNames.has(name)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [productionQueueFiles, extractorFiles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadQueuePreviews = async () => {
+      for (const entry of productionQueueFiles) {
+        if (cancelled) return;
+        if (queuePreviewByFile[entry.name]) continue;
+        if (queuePreviewRequestRef.current.has(entry.name)) continue;
+        queuePreviewRequestRef.current.add(entry.name);
+        setQueuePreviewLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
+        try {
+          const response = await fetch(
+            `/api/1688-extractor/files/${encodeURIComponent(entry.name)}`
+          );
+          if (!response.ok) continue;
+          const payload = (await response.json()) as ExtractorPreview;
+          const items =
+            (payload.items ?? payload.previewItems ?? []).filter(
+              (item) => Boolean(item?.imageUrl)
+            ) as ExtractorPreviewItem[];
+          if (cancelled) return;
+          setQueuePreviewByFile((prev) => ({ ...prev, [entry.name]: items }));
+        } catch {
+          continue;
+        } finally {
+          queuePreviewRequestRef.current.delete(entry.name);
+          if (!cancelled) {
+            setQueuePreviewLoadingByFile((prev) => ({
+              ...prev,
+              [entry.name]: false,
+            }));
+          }
+        }
+      }
+    };
+    void loadQueuePreviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [productionQueueFiles, queuePreviewByFile]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadQueueKeywords = async () => {
+      for (const entry of productionQueueFiles) {
+        if (cancelled) return;
+        if (queueKeywordsByFile[entry.name]) continue;
+        if (queueKeywordRequestRef.current.has(entry.name)) continue;
+        queueKeywordRequestRef.current.add(entry.name);
+        setQueueKeywordsLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
+        try {
+          const response = await fetch(
+            `/api/1688-extractor/files/${encodeURIComponent(entry.name)}/keywords?v=${encodeURIComponent(entry.receivedAt || "")}`,
+            { cache: "no-store" }
+          );
+          if (!response.ok) continue;
+          const payload = (await response.json()) as QueueKeywordPayload;
+          const label =
+            typeof payload?.label === "string" ? payload.label.trim() : "";
+          if (!label) continue;
+          if (cancelled) return;
+          setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: label }));
+        } catch {
+          continue;
+        } finally {
+          queueKeywordRequestRef.current.delete(entry.name);
+          if (!cancelled) {
+            setQueueKeywordsLoadingByFile((prev) => ({
+              ...prev,
+              [entry.name]: false,
+            }));
+          }
+        }
+      }
+    };
+    void loadQueueKeywords();
+    return () => {
+      cancelled = true;
+    };
+  }, [productionQueueFiles, queueKeywordsByFile]);
 
   const selectedProductTotal = useMemo(
     () =>
@@ -602,15 +903,34 @@ export default function BulkProcessingPage() {
     setPreviewError(null);
     try {
       const response = await fetch(
-        `/api/1688-extractor/files/${encodeURIComponent(entry.name)}`
+        `/api/1688-extractor/files/${encodeURIComponent(entry.name)}/preview-table`
       );
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || "Unable to load file.");
       }
       const payload = (await response.json()) as ExtractorPreview;
-      const items =
-        (payload.items ?? payload.previewItems ?? []) as ExtractorPreviewItem[];
+      const items = (
+        Array.isArray(payload.items) ? payload.items : payload.previewItems ?? []
+      ).map((item) => ({
+        ...item,
+        titleZh:
+          typeof item?.titleZh === "string" && item.titleZh.trim()
+            ? item.titleZh.trim()
+            : "",
+        titleEn:
+          typeof item?.titleEn === "string" && item.titleEn.trim()
+            ? item.titleEn.trim()
+            : "",
+        supplierUrl:
+          typeof item?.supplierUrl === "string" && item.supplierUrl.trim()
+            ? item.supplierUrl.trim()
+            : "",
+        platformLabel:
+          typeof item?.platformLabel === "string" && item.platformLabel.trim()
+            ? item.platformLabel.trim()
+            : "",
+      })) as ExtractorPreviewItem[];
       setPreview({ ...payload, items });
     } catch (err) {
       setPreviewError((err as Error).message);
@@ -702,31 +1022,64 @@ export default function BulkProcessingPage() {
     }
   };
 
-  const handleAssignSpus = async (entry: ExtractorFileSummary) => {
-    setAssigningName(entry.name);
+  useEffect(() => {
+    if (assigningName) return;
+    if (autoAssignRunningRef.current) return;
+
+    const nextEntry = extractorFiles.find(
+      (entry) =>
+        entry.missingSpuCount > 0 &&
+        !autoAssignFailedNames.has(entry.name) &&
+        !assignedNames.includes(entry.name)
+    );
+    if (!nextEntry) return;
+
+    autoAssignRunningRef.current = true;
+    setAssigningName(nextEntry.name);
     setExtractorError(null);
-    try {
-      const response = await fetch(
-        `/api/1688-extractor/files/${encodeURIComponent(entry.name)}/assign-spus`,
-        { method: "POST" }
-      );
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Unable to assign SPUs.");
+
+    const runAutoAssign = async () => {
+      try {
+        const response = await fetch(
+          `/api/1688-extractor/files/${encodeURIComponent(nextEntry.name)}/assign-spus`,
+          { method: "POST" }
+        );
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Unable to assign SPUs.");
+        }
+        setAssignedNames((prev) =>
+          prev.includes(nextEntry.name) ? prev : [...prev, nextEntry.name]
+        );
+        setAutoAssignFailedNames((prev) => {
+          if (!prev.has(nextEntry.name)) return prev;
+          const next = new Set(prev);
+          next.delete(nextEntry.name);
+          return next;
+        });
+        await loadExtractorFiles();
+      } catch (err) {
+        setAutoAssignFailedNames((prev) => {
+          if (prev.has(nextEntry.name)) return prev;
+          const next = new Set(prev);
+          next.add(nextEntry.name);
+          return next;
+        });
+        setExtractorError((err as Error).message);
+      } finally {
+        autoAssignRunningRef.current = false;
+        setAssigningName(null);
       }
-      setAssignedNames((prev) =>
-        prev.includes(entry.name) ? prev : [...prev, entry.name]
-      );
-      await loadExtractorFiles();
-      if (preview?.name === entry.name) {
-        await handlePreview(entry);
-      }
-    } catch (err) {
-      setExtractorError((err as Error).message);
-    } finally {
-      setAssigningName(null);
-    }
-  };
+    };
+
+    void runAutoAssign();
+  }, [
+    assigningName,
+    autoAssignFailedNames,
+    assignedNames,
+    extractorFiles,
+    loadExtractorFiles,
+  ]);
 
   useEffect(() => {
     if (!job) return;
@@ -805,7 +1158,15 @@ export default function BulkProcessingPage() {
           <Table size="small" className={styles.chromeTable}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>{t("bulkProcessing.chrome.file")}</TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColDeck}>
+                  Image explorer
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColKeywords}>
+                  Batch Content
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColJson}>
+                  {t("bulkProcessing.chrome.file")}
+                </TableHeaderCell>
                 <TableHeaderCell className={styles.chromeColProducts}>
                   {t("bulkProcessing.chrome.products")}
                 </TableHeaderCell>
@@ -820,13 +1181,100 @@ export default function BulkProcessingPage() {
             <TableBody>
               {productionQueueFiles.map((entry) => (
                 <TableRow key={entry.name}>
-                  <TableCell>
-                    <Button
-                      appearance="transparent"
-                      className={styles.chromeLink}
-                      onClick={() => handlePreview(entry)}
-                    >
-                      {entry.name}
+                  <TableCell className={styles.chromeColDeck}>
+                    {(() => {
+                      const deckItems = (queuePreviewByFile[entry.name] ?? [])
+                        .filter((item) => Boolean(item.imageUrl))
+                        .slice(0, 5);
+                      if (deckItems.length === 0) {
+                        if (queuePreviewLoadingByFile[entry.name]) {
+                          return <Spinner size="tiny" />;
+                        }
+                        return (
+                          <div className={styles.queueDeckPlaceholder}>No image</div>
+                        );
+                      }
+                      const deckCount = deckItems.length;
+                      return (
+                        <div className={styles.queueDeckWrap}>
+                          {deckItems.map((item, index) => {
+                            const imageUrl = toImageProxyUrl(item.imageUrl);
+                            if (!imageUrl) return null;
+                            const isHovered =
+                              deckHoverPreview?.fileName === entry.name &&
+                              deckHoverPreview?.index === index;
+                            return (
+                              <div
+                                key={`${entry.name}-${item.index}-${index}`}
+                                className={styles.queueDeckThumb}
+                                style={{
+                                  left: `${index * 20}px`,
+                                  zIndex: isHovered ? 30 : index + 1,
+                                }}
+                                onMouseEnter={(ev) => {
+                                  setDeckHoverPreview({
+                                    fileName: entry.name,
+                                    index,
+                                    imageUrl,
+                                    x: ev.clientX,
+                                    y: ev.clientY,
+                                  });
+                                }}
+                                onMouseMove={(ev) => {
+                                  setDeckHoverPreview((prev) => {
+                                    if (!prev) return prev;
+                                    if (
+                                      prev.fileName !== entry.name ||
+                                      prev.index !== index
+                                    ) {
+                                      return prev;
+                                    }
+                                    return { ...prev, x: ev.clientX, y: ev.clientY };
+                                  });
+                                }}
+                                onMouseLeave={() => {
+                                  setDeckHoverPreview((prev) => {
+                                    if (!prev) return prev;
+                                    if (
+                                      prev.fileName !== entry.name ||
+                                      prev.index !== index
+                                    ) {
+                                      return prev;
+                                    }
+                                    return null;
+                                  });
+                                }}
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt=""
+                                  className={styles.queueDeckImage}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell className={styles.chromeColKeywords}>
+                    {queueKeywordsByFile[entry.name] ? (
+                      <Text size={200} className={styles.queueKeywords}>
+                        {queueKeywordsByFile[entry.name]}
+                      </Text>
+                    ) : queueKeywordsLoadingByFile[entry.name] ? (
+                      <Text size={200} className={styles.queueKeywordsLoading}>
+                        Building batch content...
+                      </Text>
+                    ) : (
+                      <Text size={200} color="neutral">
+                        -
+                      </Text>
+                    )}
+                  </TableCell>
+                  <TableCell className={styles.chromeColJson}>
+                    <Button appearance="primary" size="small" onClick={() => handlePreview(entry)}>
+                      JSON file
                     </Button>
                   </TableCell>
                   <TableCell className={styles.chromeColProducts}>
@@ -837,32 +1285,8 @@ export default function BulkProcessingPage() {
                   </TableCell>
                   <TableCell className={styles.chromeActionsCell}>
                     <div className={styles.chromeActions}>
-                      {(() => {
-                        const spusAdded =
-                          assignedNames.includes(entry.name) ||
-                          entry.missingSpuCount === 0;
-                        return (
-                          <Button
-                            appearance={spusAdded ? "outline" : "primary"}
-                            className={
-                              spusAdded
-                                ? `${styles.assignedButton} ${styles.chromeButton}`
-                                : styles.chromeButton
-                            }
-                            onClick={() => handleAssignSpus(entry)}
-                            disabled={spusAdded || assigningName === entry.name}
-                            size="small"
-                          >
-                            {assigningName === entry.name
-                              ? t("bulkProcessing.chrome.assigning")
-                              : spusAdded
-                              ? t("bulkProcessing.chrome.assignDone")
-                              : t("bulkProcessing.chrome.assign")}
-                          </Button>
-                        );
-                      })()}
                       <Button
-                        appearance="outline"
+                        appearance="primary"
                         onClick={() => handleLoadExtractor(entry.name)}
                         disabled={extractorLoadingName === entry.name}
                         size="small"
@@ -870,7 +1294,7 @@ export default function BulkProcessingPage() {
                         {extractorLoadingName === entry.name ? (
                           <Spinner size="tiny" />
                         ) : (
-                          t("bulkProcessing.chrome.load")
+                          "Run this batch"
                         )}
                       </Button>
                       <Button
@@ -983,33 +1407,6 @@ export default function BulkProcessingPage() {
                   </TableCell>
                   <TableCell className={styles.chromeActionsCell}>
                     <div className={styles.chromeActions}>
-                      {(() => {
-                        const spusAdded =
-                          assignedNames.includes(entry.name) ||
-                          entry.missingSpuCount === 0;
-                        return (
-                      <Button
-                        appearance={spusAdded ? "outline" : "primary"}
-                        className={
-                          spusAdded
-                            ? `${styles.assignedButton} ${styles.chromeButton}`
-                            : styles.chromeButton
-                        }
-                        onClick={() => handleAssignSpus(entry)}
-                        disabled={
-                          spusAdded ||
-                          assigningName === entry.name
-                        }
-                        size="small"
-                      >
-                        {assigningName === entry.name
-                          ? t("bulkProcessing.chrome.assigning")
-                          : spusAdded
-                          ? t("bulkProcessing.chrome.assignDone")
-                          : t("bulkProcessing.chrome.assign")}
-                      </Button>
-                        );
-                      })()}
                       <Button
                         appearance="outline"
                         onClick={() => handleLoadExtractor(entry.name)}
@@ -1177,6 +1574,22 @@ export default function BulkProcessingPage() {
         )}
       </Card>
 
+      {deckHoverPreview ? (
+        <div
+          className={styles.queueZoomPreview}
+          style={{
+            left: `${deckHoverPreview.x + 24}px`,
+            top: `${Math.max(16, deckHoverPreview.y - 150)}px`,
+          }}
+        >
+          <img
+            src={deckHoverPreview.imageUrl}
+            alt=""
+            className={styles.queueZoomImage}
+          />
+        </div>
+      ) : null}
+
       <Dialog
         open={Boolean(preview)}
         onOpenChange={(_, data) => {
@@ -1210,70 +1623,146 @@ export default function BulkProcessingPage() {
                   </Text>
                   <Text size={200}>{formatDateTime(preview.receivedAt)}</Text>
                 </div>
-                <div className={styles.previewList}>
-                  {(Array.isArray(preview.items) ? preview.items : []).map(
-                    (item, index) => (
-                      <div
-                        key={
-                          item.index ?? (item.url || `${item.title}-${index}`)
-                        }
-                        className={styles.previewRow}
-                      >
-                        <div className={styles.previewDelete}>
-                          <Button
-                            appearance="outline"
-                            size="small"
-                            onClick={() =>
-                              setPreview((current) => {
-                                if (!current) return current;
-                                const nextItems = current.items.filter(
-                                  (currentItem) =>
-                                    currentItem.index !== item.index
-                                );
-                                setPreviewRemovedIndexes((prev) => {
-                                  const next = new Set(prev);
-                                  next.add(item.index);
-                                  return next;
-                                });
-                                return { ...current, items: nextItems };
-                              })
+                <div className={styles.previewTableWrap}>
+                  <Table size="small" className={styles.previewTable}>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHeaderCell className={styles.previewColImage}>
+                          Images
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColSpu}>
+                          SPU
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColCn}>
+                          Product Title (Chinese)
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColEn}>
+                          Working / Translated English Title
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColPlatform}>
+                          Platform
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColLink}>
+                          Supplier Link
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColAction}>
+                          Action
+                        </TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(Array.isArray(preview.items) ? preview.items : []).map(
+                        (item, index) => (
+                          <TableRow
+                            className={styles.previewRow}
+                            key={
+                              item.index ?? (item.url || `${item.title}-${index}`)
                             }
                           >
-                            {t("bulkProcessing.chrome.delete")}
-                          </Button>
-                        </div>
-                        <div className={styles.previewThumb}>
-                          {item.imageUrl ? (
-                            <img
-                              src={item.imageUrl}
-                              alt=""
-                              className={styles.previewImage}
-                            />
-                          ) : (
-                            <span className={styles.previewPlaceholder}>N/A</span>
-                          )}
-                        </div>
-                        <div>
-                          <Text size={200}>{item.title}</Text>
-                          {item.url ? (
-                            <a href={item.url} target="_blank" rel="noreferrer">
-                              {item.url}
-                            </a>
-                          ) : null}
-                          <Text size={100} color="neutral">
-                            {item.spu
-                              ? `SPU ${item.spu}`
-                              : t("bulkProcessing.chrome.spuEmpty")}
-                          </Text>
-                          <Text size={100} color="neutral">
-                            {t("bulkProcessing.chrome.previewVariants", {
-                              count: item.variantCount ?? 0,
-                            })}
-                          </Text>
-                        </div>
-                      </div>
-                    )
-                  )}
+                            <TableCell
+                              className={`${styles.previewCell} ${styles.previewImageCell}`}
+                            >
+                              <div className={styles.previewImageInner}>
+                                <div className={styles.previewThumb}>
+                                  {item.imageUrl ? (
+                                    <img
+                                      src={toImageProxyUrl(item.imageUrl)}
+                                      alt=""
+                                      className={styles.previewImage}
+                                    />
+                                  ) : (
+                                    <span className={styles.previewPlaceholder}>
+                                      N/A
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className={styles.previewCell}>
+                              <Text size={200}>
+                                {item.spu || t("bulkProcessing.chrome.spuEmpty")}
+                              </Text>
+                            </TableCell>
+                            <TableCell className={styles.previewCell}>
+                              <Text
+                                size={200}
+                                className={styles.previewChineseTitle}
+                              >
+                                {item.titleZh || "-"}
+                              </Text>
+                            </TableCell>
+                            <TableCell className={styles.previewCell}>
+                              <Text
+                                size={200}
+                                className={styles.previewEnglishTitle}
+                              >
+                                {item.titleEn || "-"}
+                              </Text>
+                            </TableCell>
+                            <TableCell className={styles.previewCell}>
+                              <Text size={200} color="neutral">
+                                {item.platformLabel || "1688 only"}
+                              </Text>
+                            </TableCell>
+                            <TableCell
+                              className={`${styles.previewCell} ${styles.previewLinkCell}`}
+                            >
+                              <div className={styles.previewLinkInner}>
+                                {item.supplierUrl || item.url ? (
+                                  <Button
+                                    appearance="outline"
+                                    size="small"
+                                    className={styles.previewWhiteButton}
+                                    onClick={() =>
+                                      window.open(
+                                        item.supplierUrl || item.url,
+                                        "_blank",
+                                        "noopener,noreferrer"
+                                      )
+                                    }
+                                  >
+                                    Supplier Link
+                                  </Button>
+                                ) : (
+                                  <Text size={100} color="neutral">
+                                    -
+                                  </Text>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell
+                              className={`${styles.previewCell} ${styles.previewActionCell}`}
+                            >
+                              <div className={styles.previewActionInner}>
+                                <Button
+                                  appearance="outline"
+                                  size="small"
+                                  className={styles.previewWhiteButton}
+                                  onClick={() =>
+                                    setPreview((current) => {
+                                      if (!current) return current;
+                                      const nextItems = current.items.filter(
+                                        (currentItem) =>
+                                          currentItem.index !== item.index
+                                      );
+                                      setPreviewRemovedIndexes((prev) => {
+                                        const next = new Set(prev);
+                                        next.add(item.index);
+                                        return next;
+                                      });
+                                      return { ...current, items: nextItems };
+                                    })
+                                  }
+                                >
+                                  {t("bulkProcessing.chrome.delete")}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </>
             ) : null}

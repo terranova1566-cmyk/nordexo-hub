@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveDraftPath, safeRemoveDraftPath } from "@/lib/drafts";
+import { resetProductionQueueForDeletedSpus } from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -90,6 +91,27 @@ export async function DELETE(
     )
   );
 
+  let queueReset: {
+    refs_found: number;
+    statuses_reset: number;
+    spu_links_removed: number;
+  } = { refs_found: 0, statuses_reset: 0, spu_links_removed: 0 };
+  if (spus.length > 0) {
+    try {
+      queueReset = await resetProductionQueueForDeletedSpus(adminClient, spus);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? `Unable to reset production queue status: ${err.message}`
+              : "Unable to reset production queue status.",
+        },
+        { status: 500 }
+      );
+    }
+  }
+
   let deletedVariants = 0;
   if (spus.length > 0) {
     const chunkSize = 100;
@@ -124,5 +146,6 @@ export async function DELETE(
     ok: true,
     deleted_products: deletedProducts ?? 0,
     deleted_variants: deletedVariants,
+    production_queue_reset: queueReset,
   });
 }

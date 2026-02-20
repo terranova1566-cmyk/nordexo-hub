@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 const SELLER_GROUPS = [
   {
@@ -59,6 +63,8 @@ const normalizeSellerName = (value?: string | null) => {
 };
 
 export async function GET(request: NextRequest) {
+  const provider = resolveDealsProvider(request.nextUrl.searchParams.get("provider"));
+  const providerConfig = getDealsProviderConfig(provider);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -75,22 +81,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing productId" }, { status: 400 });
   }
 
-  const { data: product, error: productError } = await supabase
-    .from("digideal_products")
-    .select(
-      [
-        "product_id",
-        "listing_title",
-        "title_h1",
-        "product_slug",
-        "prodno",
-        "seller_name",
-        "status",
-        "primary_image_url",
-        "image_urls",
-        "description_html",
-      ].join(",")
-    )
+  const productSelect =
+    provider === "letsdeal"
+      ? [
+          "product_id",
+          "title",
+          "subtitle",
+          "product_slug",
+          "seller_name",
+          "status",
+          "listing_image_url",
+          "product_image_url",
+          "deal_url",
+        ].join(",")
+      : [
+          "product_id",
+          "listing_title",
+          "title_h1",
+          "product_slug",
+          "prodno",
+          "seller_name",
+          "status",
+          "primary_image_url",
+          "image_urls",
+          "description_html",
+        ].join(",");
+
+  const { data: rawProduct, error: productError } = await supabase
+    .from(providerConfig.productsTable)
+    .select(productSelect)
     .eq("product_id", productId)
     .maybeSingle();
 
@@ -98,43 +117,67 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: productError.message }, { status: 500 });
   }
 
-  const { data: analysis, error: analysisError } = await supabase
-    .from("digideal_content_analysis")
-    .select(
-      [
-        "product_id",
-        "status",
-        "text_analysis",
-        "main_image_analysis",
-        "contact_sheet_analysis",
-        "images",
-        "main_image_local_url",
-        "main_image_url",
-        "contact_sheet_local_url",
-        "last_run_at",
-        "attempts",
-        "last_error",
-      ].join(",")
-    )
-    .eq("product_id", productId)
-    .maybeSingle();
+  let analysis: Record<string, unknown> | null = null;
+  if (providerConfig.contentAnalysisTable) {
+    const { data, error: analysisError } = await supabase
+      .from(providerConfig.contentAnalysisTable)
+      .select(
+        [
+          "product_id",
+          "status",
+          "text_analysis",
+          "main_image_analysis",
+          "contact_sheet_analysis",
+          "images",
+          "main_image_local_url",
+          "main_image_url",
+          "contact_sheet_local_url",
+          "last_run_at",
+          "attempts",
+          "last_error",
+        ].join(",")
+      )
+      .eq("product_id", productId)
+      .maybeSingle();
 
-  if (analysisError) {
-    return NextResponse.json({ error: analysisError.message }, { status: 500 });
+    if (analysisError) {
+      return NextResponse.json({ error: analysisError.message }, { status: 500 });
+    }
+    analysis = (data as Record<string, unknown> | null) ?? null;
   }
 
-  const normalizedProduct =
-    product && typeof product === "object"
+  const mappedProduct =
+    provider === "letsdeal" && rawProduct && typeof rawProduct === "object"
       ? {
-          ...(product as Record<string, unknown>),
+          ...(rawProduct as Record<string, unknown>),
+          listing_title: (rawProduct as any).title ?? null,
+          title_h1: (rawProduct as any).title ?? null,
+          prodno: null,
+          primary_image_url:
+            (rawProduct as any).listing_image_url ??
+            (rawProduct as any).product_image_url ??
+            null,
+          image_urls: [
+            (rawProduct as any).listing_image_url ?? null,
+            (rawProduct as any).product_image_url ?? null,
+          ].filter(Boolean),
+          description_html: null,
+          product_url: (rawProduct as any).deal_url ?? null,
+        }
+      : rawProduct;
+
+  const normalizedProduct =
+    mappedProduct && typeof mappedProduct === "object"
+      ? {
+          ...(mappedProduct as Record<string, unknown>),
           seller_name: normalizeSellerName(
-            (product as { seller_name?: string | null }).seller_name
+            (mappedProduct as { seller_name?: string | null }).seller_name
           ),
         }
       : null;
 
   return NextResponse.json({
     product: normalizedProduct,
-    analysis: analysis ?? null,
+    analysis,
   });
 }

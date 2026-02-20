@@ -408,7 +408,16 @@ export default function MyListsPage() {
         }),
       });
       if (!response.ok) {
-        throw new Error(t("lists.error.share"));
+        let message = t("lists.error.share");
+        try {
+          const payload = (await response.json()) as { error?: string };
+          if (payload?.error) {
+            message = payload.error;
+          }
+        } catch {
+          // Keep generic message when response body is not JSON.
+        }
+        throw new Error(message);
       }
       setShareDialogOpen(false);
       await loadLists();

@@ -42,9 +42,11 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { usePathname } from "next/navigation";
 import { useDebouncedValue } from "@/hooks/use-debounced";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useI18n } from "@/components/i18n-provider";
+import { buildDefaultSellerFilters } from "@/lib/deals/default-seller-exclusions";
 
 type DigidealItem = {
   product_id: string;
@@ -53,6 +55,7 @@ type DigidealItem = {
   digideal_group_count?: number | null;
   listing_title: string | null;
   title_h1: string | null;
+  subtitle?: string | null;
   product_url: string | null;
   product_slug: string | null;
   prodno: string | null;
@@ -138,8 +141,11 @@ type CropRectNorm = { x: number; y: number; w: number; h: number };
 
 const DEFAULT_CROP_MARGIN_PX = 15;
 const DEFAULT_CROP_RECT_FALLBACK: CropRectNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
-const DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX = 0.47;
-const DIGIDEAL_SUPPLIER_SHARE_FLOOR = 0.4;
+const DIGIDEAL_VAT_GROSS_SHARE = 0.2;
+const DIGIDEAL_PARTNER_TARGET_SHARE = 0.33;
+const DIGIDEAL_PARTNER_SOFT_FLOOR_SHARE = 0.25;
+const DIGIDEAL_PARTNER_HARD_FLOOR_SHARE = 0.2;
+const DIGIDEAL_PARTNER_MIN_PROFIT_KR = 50;
 const DIGIDEAL_MIN_MARGIN_PERCENT = 20;
 const DIGIDEAL_MAX_MARGIN_PERCENT = 50;
 // Strong quantity indicators only (explicitly excluding ambiguous words like "delar"/"bitar").
@@ -225,9 +231,6 @@ type PriceComputationResult = {
   ignored: boolean;
 };
 
-const clampNumber = (value: number, minValue: number, maxValue: number) =>
-  Math.min(Math.max(value, minValue), maxValue);
-
 const splitStrongQuantitySegments = (value: string) => {
   const text = String(value ?? "");
   if (!text) return [] as Array<{ text: string; highlight: boolean }>;
@@ -253,6 +256,25 @@ const splitStrongQuantitySegments = (value: string) => {
   }
 
   return segments.length > 0 ? segments : [{ text, highlight: false }];
+};
+
+const normalizeComparableTitle = (value: string) =>
+  String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const stripTrailingSubtitleFromTitle = (title: string, subtitle: string) => {
+  const normalizedTitle = String(title ?? "").trim();
+  const normalizedSubtitle = String(subtitle ?? "").trim();
+  if (!normalizedTitle || !normalizedSubtitle) return normalizedTitle;
+  if (!normalizedTitle.toLowerCase().endsWith(normalizedSubtitle.toLowerCase())) {
+    return normalizedTitle;
+  }
+  const stripped = normalizedTitle
+    .slice(0, normalizedTitle.length - normalizedSubtitle.length)
+    .trim();
+  return stripped || normalizedTitle;
 };
 
 type DigidealResponse = {
@@ -754,7 +776,7 @@ const useStyles = makeStyles({
   sellerList: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "3px",
     maxHeight: "340px",
     overflowY: "auto",
     paddingRight: "4px",
@@ -762,6 +784,8 @@ const useStyles = makeStyles({
   sellerActions: {
     display: "flex",
     justifyContent: "flex-end",
+    gap: "6px",
+    flexWrap: "wrap",
   },
   fieldLabelRow: {
     display: "flex",
@@ -2294,6 +2318,11 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
       backgroundColor: "transparent",
+      color: tokens.colorBrandForeground1,
+      textDecorationLine: "underline",
+    },
+    "&:focus-visible": {
+      color: tokens.colorBrandForeground1,
       textDecorationLine: "underline",
     },
   },
@@ -2688,9 +2717,21 @@ const toStringValue = (value: unknown) =>
 const toArray = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : [];
 
+// Auto-run supplier lookup for incoming products only.
+const ENABLE_AUTO_SUPPLIER_LOOKUP = true;
+const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<"digideal" | "letsdeal", string> = {
+  digideal: "2026-02-20T00:00:00.000Z",
+  letsdeal: "2026-02-20T00:00:00.000Z",
+};
+
 export default function DigidealCampaignsPage() {
   const styles = useStyles();
   const { t } = useI18n();
+  const pathname = usePathname();
+  const provider = pathname.startsWith("/app/letsdeal") ? "letsdeal" : "digideal";
+  const providerLabel = provider === "letsdeal" ? "LetsDeal" : "DigiDeal";
+  const loadingCampaignsLabel =
+    provider === "letsdeal" ? "Loading LetsDeal Campaigns..." : t("digideal.loading");
 
   const [items, setItems] = useState<DigidealItem[]>([]);
   const [page, setPage] = useState(1);
@@ -2726,11 +2767,22 @@ export default function DigidealCampaignsPage() {
   const [sort, setSort] = useState("first_seen_desc");
   const [minSoldMetric, setMinSoldMetric] = useState("sold_all_time");
   const [minSold, setMinSold] = useState("");
+  const [rerunMarginMin, setRerunMarginMin] = useState("");
+  const [rerunMarginMax, setRerunMarginMax] = useState("");
+  const [rerunMarginDraftMin, setRerunMarginDraftMin] = useState("");
+  const [rerunMarginDraftMax, setRerunMarginDraftMax] = useState("");
+  const [rerunMarginPopoverOpen, setRerunMarginPopoverOpen] = useState(false);
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [priceDraftMin, setPriceDraftMin] = useState("");
+  const [priceDraftMax, setPriceDraftMax] = useState("");
+  const [pricePopoverOpen, setPricePopoverOpen] = useState(false);
   const [inactiveMode, setInactiveMode] = useState("any");
   const [inactiveDays, setInactiveDays] = useState("");
   const [groupIdFilter, setGroupIdFilter] = useState<string | null>(null);
   // Empty = no seller filtering (all sellers).
   const [sellerFilters, setSellerFilters] = useState<string[]>([]);
+  const [sellerFiltersUserModified, setSellerFiltersUserModified] = useState(false);
   const [sellerPopoverOpen, setSellerPopoverOpen] = useState(false);
   const [sellerDraft, setSellerDraft] = useState<Set<string>>(new Set());
   const [priceMatch, setPriceMatch] = useState("all");
@@ -3127,18 +3179,28 @@ export default function DigidealCampaignsPage() {
           : null;
       const benchmarkTotal =
         marketPrice !== null ? marketPrice + Math.max(0, shippingCost ?? 0) : null;
-
-      const benchmarkPriceRaw =
-        automaticPrice !== null &&
+      const partnerPriceCaps =
         benchmarkTotal !== null &&
         Number.isFinite(benchmarkTotal) &&
         benchmarkTotal > 0
-          ? clampNumber(
-              automaticPrice,
-              benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_FLOOR,
-              benchmarkTotal * DIGIDEAL_SUPPLIER_SHARE_TARGET_MAX
-            )
-          : automaticPrice;
+          ? {
+              // Price that gives DigiDeal the target/minimum percentage shares
+              // (shares are measured from gross sales price, VAT included).
+              atPartnerTarget:
+                benchmarkTotal *
+                (1 - DIGIDEAL_VAT_GROSS_SHARE - DIGIDEAL_PARTNER_TARGET_SHARE),
+              atPartnerSoftFloor:
+                benchmarkTotal *
+                (1 - DIGIDEAL_VAT_GROSS_SHARE - DIGIDEAL_PARTNER_SOFT_FLOOR_SHARE),
+              atPartnerHardFloor:
+                benchmarkTotal *
+                (1 - DIGIDEAL_VAT_GROSS_SHARE - DIGIDEAL_PARTNER_HARD_FLOOR_SHARE),
+              // Hard floor: DigiDeal should keep at least 50 SEK when possible.
+              byPartnerMinProfit:
+                benchmarkTotal * (1 - DIGIDEAL_VAT_GROSS_SHARE) -
+                DIGIDEAL_PARTNER_MIN_PROFIT_KR,
+            }
+          : null;
 
       const overridePriceRaw =
         typeof item.digideal_price_override_price === "number" &&
@@ -3208,6 +3270,47 @@ export default function DigidealCampaignsPage() {
           : null;
       const totalCost = directCost?.totalCost ?? fallbackTotalCost;
 
+      const computeMarginPercentForPrice = (price: number | null) => {
+        if (price === null || totalCost === null || price <= 0) return null;
+        const pct = ((price - totalCost) / price) * 100;
+        return Number.isFinite(pct) ? pct : null;
+      };
+
+      let benchmarkPriceRaw = automaticPrice;
+      if (automaticPrice !== null && automaticPrice > 0 && partnerPriceCaps) {
+        // Start by aiming to keep DigiDeal at 33% share.
+        let partnerCap = partnerPriceCaps.atPartnerTarget;
+
+        // If that cap is too tight, allow DigiDeal to go down to 25% first.
+        if (automaticPrice > partnerPriceCaps.atPartnerTarget) {
+          partnerCap = partnerPriceCaps.atPartnerSoftFloor;
+
+          // If our margin is still below 20% at the 25% DigiDeal floor,
+          // allow DigiDeal down to 20%.
+          const ourMarginAtSoftFloor = computeMarginPercentForPrice(
+            partnerPriceCaps.atPartnerSoftFloor
+          );
+          if (
+            ourMarginAtSoftFloor !== null &&
+            ourMarginAtSoftFloor < DIGIDEAL_MIN_MARGIN_PERCENT
+          ) {
+            partnerCap = partnerPriceCaps.atPartnerHardFloor;
+          }
+        }
+
+        // Absolute DigiDeal floor: they should keep at least 50 SEK whenever feasible.
+        if (
+          Number.isFinite(partnerPriceCaps.byPartnerMinProfit) &&
+          partnerPriceCaps.byPartnerMinProfit > 0
+        ) {
+          partnerCap = Math.min(partnerCap, partnerPriceCaps.byPartnerMinProfit);
+        }
+
+        if (Number.isFinite(partnerCap) && partnerCap > 0) {
+          benchmarkPriceRaw = Math.min(automaticPrice, partnerCap);
+        }
+      }
+
       const maxAllowedByMargin =
         totalCost !== null && totalCost > 0
           ? totalCost / (1 - DIGIDEAL_MAX_MARGIN_PERCENT / 100)
@@ -3220,9 +3323,7 @@ export default function DigidealCampaignsPage() {
       const displayedPrice = hasOverride ? overridePriceRaw : benchmarkPrice;
 
       const computeMarginPercent = (price: number | null) => {
-        if (price === null || totalCost === null || price <= 0) return null;
-        const pct = ((price - totalCost) / price) * 100;
-        return Number.isFinite(pct) ? pct : null;
+        return computeMarginPercentForPrice(price);
       };
       const computeMarginKr = (price: number | null) => {
         if (price === null || totalCost === null) return null;
@@ -3284,7 +3385,7 @@ export default function DigidealCampaignsPage() {
     setPriceDialogSaving(false);
     setPriceDialogError(null);
     setPriceDialogIgnoreDraft(false);
-  }, []);
+  }, [provider]);
 
   const openPriceDialog = useCallback(
     (item: DigidealItem, pricing: PriceComputationResult) => {
@@ -3323,6 +3424,7 @@ export default function DigidealCampaignsPage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            provider,
             product_id: productId,
             price_override_action: action,
             price_override_price: payload?.price,
@@ -3397,7 +3499,7 @@ export default function DigidealCampaignsPage() {
 
       try {
         const params = new URLSearchParams({
-          provider: "digideal",
+          provider,
           product_id: productId,
         });
         params.set("skipTranslation", "1");
@@ -3440,7 +3542,7 @@ export default function DigidealCampaignsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            provider: "digideal",
+            provider,
             product_id: productId,
             selected_combo_indexes: [0],
             packs_text: typeof (payload as any)?.packs_text === "string" ? (payload as any).packs_text : "",
@@ -3541,8 +3643,13 @@ export default function DigidealCampaignsPage() {
   }, [attemptAutoPickDigidealVariant, isAdmin, items, variantsDialogOpen, variantsTarget]);
 
   useEffect(() => {
+    if (!ENABLE_AUTO_SUPPLIER_LOOKUP) return;
     if (!isAdmin) return;
     if (bulkFindingSuppliers) return;
+
+    const providerRollout = AUTO_SUPPLIER_INCOMING_ROLLOUT_AT[provider];
+    const providerRolloutTs = Date.parse(providerRollout);
+    if (!Number.isFinite(providerRolloutTs)) return;
 
     const candidates = items.filter((item) => {
       const productId = String(item?.product_id ?? "").trim();
@@ -3571,6 +3678,11 @@ export default function DigidealCampaignsPage() {
       const hasSuggestions = supplierCount !== null && supplierCount > 0;
       if (hasSuggestions) return false;
 
+      // Incoming-only auto-run. No historical backfill.
+      const firstSeenTs = item.first_seen_at ? Date.parse(item.first_seen_at) : NaN;
+      if (!Number.isFinite(firstSeenTs)) return false;
+      if (firstSeenTs < providerRolloutTs) return false;
+
       return true;
     });
 
@@ -3597,7 +3709,7 @@ export default function DigidealCampaignsPage() {
         if (!productId) continue;
         try {
           const params = new URLSearchParams({
-            provider: "digideal",
+            provider,
             product_id: productId,
           });
           const imageUrls = normalizeImageUrls(item.image_urls);
@@ -3644,7 +3756,7 @@ export default function DigidealCampaignsPage() {
     return () => {
       cancelled = true;
     };
-  }, [bulkFindingSuppliers, isAdmin, items]);
+  }, [bulkFindingSuppliers, isAdmin, items, provider]);
 
   const supplierPayloadPollersRef = useRef<Map<string, { stop: () => void }>>(new Map());
 
@@ -3659,7 +3771,7 @@ export default function DigidealCampaignsPage() {
       }
       supplierPayloadPollersRef.current.clear();
     };
-  }, []);
+  }, [provider]);
 
   const openRerunDialog = (title: string, productIds: string | string[]) => {
     const ids = Array.isArray(productIds) ? productIds : [productIds];
@@ -3721,7 +3833,7 @@ export default function DigidealCampaignsPage() {
       }
       return next;
     });
-  }, []);
+  }, [provider]);
 
   const isRowSelectionBackgroundClick = useCallback(
     (event: MouseEvent<HTMLElement>) => {
@@ -3784,7 +3896,7 @@ export default function DigidealCampaignsPage() {
         controller = new AbortController();
         try {
           const params = new URLSearchParams({
-            provider: "digideal",
+            provider,
             product_id: safeProductId,
           });
           const response = await fetch(
@@ -3933,7 +4045,7 @@ export default function DigidealCampaignsPage() {
     cropTouchedRef.current = false;
     dragRef.current = null;
     setRecropSearching(false);
-  }, []);
+  }, [provider]);
 
   const closeVariantsDialog = useCallback(() => {
     setVariantsDialogOpen(false);
@@ -4248,7 +4360,7 @@ export default function DigidealCampaignsPage() {
       setRecropSearching(false);
       try {
         const params = new URLSearchParams({
-          provider: "digideal",
+          provider,
           product_id: item.product_id,
         });
         const imageUrls = normalizeImageUrls(item.image_urls);
@@ -4295,7 +4407,7 @@ export default function DigidealCampaignsPage() {
         setSupplierSelected(
           selectedPayload && typeof selectedPayload === "object"
             ? {
-                provider: "digideal",
+                provider,
                 product_id: item.product_id,
                 selected_offer_id:
                   typeof selectedPayload.selected_offer_id === "string"
@@ -4330,7 +4442,7 @@ export default function DigidealCampaignsPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              provider: "digideal",
+              provider,
               product_id: item.product_id,
             }),
           })
@@ -4533,7 +4645,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: "digideal",
+          provider,
           product_id: supplierSearchTarget.product_id,
           image_url: cropImageUrl,
           crop: { x, y, width, height },
@@ -4558,7 +4670,7 @@ export default function DigidealCampaignsPage() {
       setSupplierSelected(
         selectedPayload && typeof selectedPayload === "object"
           ? {
-              provider: "digideal",
+              provider,
               product_id: supplierSearchTarget.product_id,
               selected_offer_id:
                 typeof selectedPayload.selected_offer_id === "string"
@@ -4606,7 +4718,7 @@ export default function DigidealCampaignsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            provider: "digideal",
+            provider,
             product_id: supplierSearchTarget.product_id,
           }),
           signal: controller.signal,
@@ -4658,7 +4770,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: "digideal",
+          provider,
           product_id: supplierSearchTarget.product_id,
           offer_id: offerId,
         }),
@@ -4761,7 +4873,7 @@ export default function DigidealCampaignsPage() {
     setVariantsHeroZoomReady(false);
     try {
       const params = new URLSearchParams({
-        provider: "digideal",
+        provider,
         product_id: item.product_id,
       });
       const response = await fetch(`/api/production/suppliers/variants?${params.toString()}`);
@@ -4849,7 +4961,7 @@ export default function DigidealCampaignsPage() {
         return;
       }
       if (selected.length > 1) {
-        setVariantsError("Pick only one variant for DigiDeal.");
+        setVariantsError(`Pick only one variant for ${providerLabel}.`);
         return;
       }
 
@@ -4902,7 +5014,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: "digideal",
+          provider,
           product_id: variantsTarget.product_id,
           selected_combo_indexes: selected,
           packs_text: variantsPacksText,
@@ -5104,6 +5216,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: productId,
           comment: options.comment ?? null,
           add_to_pipeline: options.addToPipeline,
@@ -5148,7 +5261,7 @@ export default function DigidealCampaignsPage() {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: "digideal",
+          provider,
           product_id: productId,
         }),
       });
@@ -5177,6 +5290,7 @@ export default function DigidealCampaignsPage() {
   };
 
   const bulkFindSuppliers = useCallback(async () => {
+    if (provider === "letsdeal") return;
     if (!isAdmin || bulkFindingSuppliers) return;
 
     const needsSupplier = items.filter((item) => {
@@ -5223,7 +5337,7 @@ export default function DigidealCampaignsPage() {
       const item = needsSupplier[idx];
       try {
         const params = new URLSearchParams({
-          provider: "digideal",
+          provider,
           product_id: item.product_id,
         });
         const imageUrls = normalizeImageUrls(item.image_urls);
@@ -5270,7 +5384,7 @@ export default function DigidealCampaignsPage() {
     if (failed.length > 0) {
       setError(`Find Supplier failed for ${failed.length} item(s).`);
     }
-  }, [bulkFindingSuppliers, isAdmin, items, selectedIds]);
+  }, [bulkFindingSuppliers, isAdmin, items, provider, selectedIds]);
 
   const bulkAddSelectedDirect = async () => {
     if (bulkAdding) return;
@@ -5308,7 +5422,8 @@ export default function DigidealCampaignsPage() {
     setError(null);
     try {
       const payload = {
-        name: "digideal-deals-selected",
+        provider,
+        name: `${provider}-deals-selected`,
         items: selected.map((item) => ({
           ...(() => {
             const pricing = computePriceComputation(item);
@@ -5365,7 +5480,7 @@ export default function DigidealCampaignsPage() {
       const blob = await response.blob();
       const contentDisposition = response.headers.get("content-disposition") || "";
       const filenameMatch = contentDisposition.match(/filename\*?=(?:UTF-8''|\"?)([^\";]+)/i);
-      const rawFilename = filenameMatch?.[1] || "digideal-deals-selected.xlsx";
+      const rawFilename = filenameMatch?.[1] || `${provider}-deals-selected.xlsx`;
       const filename = decodeURIComponent(rawFilename.replace(/\"/g, "").trim());
 
       const blobUrl = window.URL.createObjectURL(blob);
@@ -5381,7 +5496,7 @@ export default function DigidealCampaignsPage() {
     } finally {
       setBulkExportingExcel(false);
     }
-  }, [bulkExportingExcel, computePriceComputation, items, selectedIds]);
+  }, [bulkExportingExcel, computePriceComputation, items, provider, selectedIds]);
 
   const openBulkRerunDialog = () => {
     const selected = items.filter(
@@ -5404,7 +5519,7 @@ export default function DigidealCampaignsPage() {
     const response = await fetch("/api/digideal/views/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ viewId, productIds: unique }),
+      body: JSON.stringify({ provider, viewId, productIds: unique }),
     });
 
     if (!response.ok) {
@@ -5434,7 +5549,7 @@ export default function DigidealCampaignsPage() {
     const response = await fetch("/api/digideal/views/items", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ viewId, productIds: unique }),
+      body: JSON.stringify({ provider, viewId, productIds: unique }),
     });
 
     if (!response.ok) {
@@ -5500,7 +5615,7 @@ export default function DigidealCampaignsPage() {
       const response = await fetch("/api/digideal/views", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ provider, name }),
       });
       if (!response.ok) {
         const text = await response.text();
@@ -5547,7 +5662,7 @@ export default function DigidealCampaignsPage() {
       const response = await fetch("/api/digideal/views", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: view.id }),
+        body: JSON.stringify({ provider, id: view.id }),
       });
 
       if (!response.ok) {
@@ -5579,19 +5694,35 @@ export default function DigidealCampaignsPage() {
     setPriceMatch("all");
     setSupplierWorkflowFilter("all");
     setGroupIdFilter(null);
-    setSellerFilters([]);
+    setSellerFilters(buildDefaultSellerFilters(allSellerNames));
+    setSellerFiltersUserModified(false);
     setSellerPopoverOpen(false);
     setSort("first_seen_desc");
     setPage(1);
     setPageSize(25);
     setMinSoldMetric("sold_all_time");
     setMinSold("");
+    setRerunMarginMin("");
+    setRerunMarginMax("");
+    setRerunMarginDraftMin("");
+    setRerunMarginDraftMax("");
+    setRerunMarginPopoverOpen(false);
+    setPriceMin("");
+    setPriceMax("");
+    setPriceDraftMin("");
+    setPriceDraftMax("");
+    setPricePopoverOpen(false);
     setInactiveMode("any");
     setInactiveDays("");
     setSelectedIds(new Set());
     setError(null);
     setRefreshToken((prev) => prev + 1);
   };
+
+  useEffect(() => {
+    setSellerFilters([]);
+    setSellerFiltersUserModified(false);
+  }, [provider]);
 
   const handleRerunSave = async () => {
     const ids = rerunTargetIds.filter(Boolean);
@@ -5658,6 +5789,7 @@ export default function DigidealCampaignsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: supplierTarget.product_id,
           supplier_url: supplierUrl,
           weight_grams: weightValue,
@@ -5730,6 +5862,7 @@ export default function DigidealCampaignsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: supplierTarget.product_id,
           remove_supplier: true,
         }),
@@ -5795,6 +5928,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: linkedTarget.product_id,
           identical_spu: spu,
         }),
@@ -5838,6 +5972,7 @@ export default function DigidealCampaignsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: linkedTarget.product_id,
           identical_spu: null,
         }),
@@ -5880,6 +6015,20 @@ export default function DigidealCampaignsPage() {
     return `${t("products.filters.rangeTo")} ${firstSeenTo}`;
   }, [firstSeenFrom, firstSeenTo, t]);
 
+  const rerunPricingSummary = useMemo(() => {
+    if (!rerunMarginMin && !rerunMarginMax) return "All margins";
+    if (rerunMarginMin && rerunMarginMax) return `${rerunMarginMin}% - ${rerunMarginMax}%`;
+    if (rerunMarginMin) return `From ${rerunMarginMin}%`;
+    return `To ${rerunMarginMax}%`;
+  }, [rerunMarginMin, rerunMarginMax]);
+
+  const priceRangeSummary = useMemo(() => {
+    if (!priceMin && !priceMax) return "All prices";
+    if (priceMin && priceMax) return `${priceMin} - ${priceMax} SEK`;
+    if (priceMin) return `From ${priceMin} SEK`;
+    return `To ${priceMax} SEK`;
+  }, [priceMin, priceMax]);
+
   useEffect(() => {
     setPage(1);
   }, [
@@ -5887,6 +6036,10 @@ export default function DigidealCampaignsPage() {
     categorySelections,
     firstSeenFrom,
     firstSeenTo,
+    rerunMarginMin,
+    rerunMarginMax,
+    priceMin,
+    priceMax,
     status,
     sort,
     pageSize,
@@ -5898,6 +6051,21 @@ export default function DigidealCampaignsPage() {
     () => sellerOptions.map((seller) => seller.seller_name),
     [sellerOptions]
   );
+
+  useEffect(() => {
+    if (allSellerNames.length === 0) return;
+    if (sellerFiltersUserModified) return;
+    const defaults = buildDefaultSellerFilters(allSellerNames);
+    setSellerFilters((prev) => {
+      if (
+        prev.length === defaults.length &&
+        prev.every((value, index) => value === defaults[index])
+      ) {
+        return prev;
+      }
+      return defaults;
+    });
+  }, [allSellerNames, sellerFiltersUserModified]);
 
   const sellerSummary = useMemo(() => {
     if (sellerFilters.length === 0) return t("digideal.seller.all");
@@ -6029,6 +6197,18 @@ export default function DigidealCampaignsPage() {
   }, [filteredCategories, filteredL2Nodes]);
 
   useEffect(() => {
+    if (!rerunMarginPopoverOpen) return;
+    setRerunMarginDraftMin(rerunMarginMin);
+    setRerunMarginDraftMax(rerunMarginMax);
+  }, [rerunMarginPopoverOpen, rerunMarginMin, rerunMarginMax]);
+
+  useEffect(() => {
+    if (!pricePopoverOpen) return;
+    setPriceDraftMin(priceMin);
+    setPriceDraftMax(priceMax);
+  }, [pricePopoverOpen, priceMin, priceMax]);
+
+  useEffect(() => {
     if (!sellerPopoverOpen) return;
     const base = sellerFilters.length > 0 ? sellerFilters : allSellerNames;
     setSellerDraft(new Set(base));
@@ -6039,9 +6219,11 @@ export default function DigidealCampaignsPage() {
       .map((value) => String(value ?? "").trim())
       .filter(Boolean);
     const unique = Array.from(new Set(selected));
+    const defaultFilters = buildDefaultSellerFilters(allSellerNames);
+    let nextFilters: string[] = [];
 
     if (unique.length === 0 || unique.length === allSellerNames.length) {
-      setSellerFilters([]);
+      nextFilters = [];
     } else {
       const order = new Map(allSellerNames.map((name, index) => [name, index]));
       unique.sort(
@@ -6049,10 +6231,86 @@ export default function DigidealCampaignsPage() {
           (order.get(a) ?? 9999) - (order.get(b) ?? 9999) ||
           a.localeCompare(b)
       );
-      setSellerFilters(unique);
+      nextFilters = unique;
     }
 
+    setSellerFilters(nextFilters);
+    const isDefaultSelection =
+      nextFilters.length === defaultFilters.length &&
+      nextFilters.every((value, index) => value === defaultFilters[index]);
+    setSellerFiltersUserModified(!isDefaultSelection);
+
     setSellerPopoverOpen(false);
+    setPage(1);
+  };
+
+  const quickFilterBySeller = useCallback(
+    (sellerName: string) => {
+      const normalized = String(sellerName ?? "").trim();
+      if (!normalized) return;
+      const nextFilters = [normalized];
+      const defaultFilters = buildDefaultSellerFilters(allSellerNames);
+      const isDefaultSelection =
+        nextFilters.length === defaultFilters.length &&
+        nextFilters.every((value, index) => value === defaultFilters[index]);
+      setSellerFilters(nextFilters);
+      setSellerDraft(new Set(nextFilters));
+      setSellerFiltersUserModified(!isDefaultSelection);
+      setSellerPopoverOpen(false);
+      setPage(1);
+    },
+    [allSellerNames]
+  );
+
+  const selectAllSellerDraft = () => {
+    setSellerDraft(new Set(allSellerNames));
+  };
+
+  const unselectAllSellerDraft = () => {
+    setSellerDraft(new Set());
+  };
+
+  const invertSellerDraft = () => {
+    setSellerDraft((prev) => {
+      const next = new Set<string>();
+      for (const sellerName of allSellerNames) {
+        if (!prev.has(sellerName)) {
+          next.add(sellerName);
+        }
+      }
+      return next;
+    });
+  };
+
+  const applyRerunMarginFilter = () => {
+    setRerunMarginMin(rerunMarginDraftMin.trim());
+    setRerunMarginMax(rerunMarginDraftMax.trim());
+    setRerunMarginPopoverOpen(false);
+    setPage(1);
+  };
+
+  const clearRerunMarginFilter = () => {
+    setRerunMarginMin("");
+    setRerunMarginMax("");
+    setRerunMarginDraftMin("");
+    setRerunMarginDraftMax("");
+    setRerunMarginPopoverOpen(false);
+    setPage(1);
+  };
+
+  const applyPriceFilter = () => {
+    setPriceMin(priceDraftMin.trim());
+    setPriceMax(priceDraftMax.trim());
+    setPricePopoverOpen(false);
+    setPage(1);
+  };
+
+  const clearPriceFilter = () => {
+    setPriceMin("");
+    setPriceMax("");
+    setPriceDraftMin("");
+    setPriceDraftMax("");
+    setPricePopoverOpen(false);
     setPage(1);
   };
 
@@ -6061,9 +6319,12 @@ export default function DigidealCampaignsPage() {
 
     const loadSellers = async () => {
       try {
-        const response = await fetch("/api/digideal/sellers", {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/digideal/sellers?provider=${encodeURIComponent(provider)}`,
+          {
+            signal: controller.signal,
+          }
+        );
         if (!response.ok) return;
         const payload = (await response.json()) as { sellers?: SellerOption[] };
         setSellerOptions(payload.sellers ?? []);
@@ -6075,7 +6336,7 @@ export default function DigidealCampaignsPage() {
     loadSellers();
 
     return () => controller.abort();
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -6083,9 +6344,12 @@ export default function DigidealCampaignsPage() {
       setCategoriesLoading(true);
       setCategoriesError(null);
       try {
-        const response = await fetch("/api/digideal/categories", {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/digideal/categories?provider=${encodeURIComponent(provider)}`,
+          {
+            signal: controller.signal,
+          }
+        );
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || "Failed to load categories.");
@@ -6112,9 +6376,12 @@ export default function DigidealCampaignsPage() {
       setViewsLoading(true);
       setViewsError(null);
       try {
-        const response = await fetch("/api/digideal/views", {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/digideal/views?provider=${encodeURIComponent(provider)}`,
+          {
+            signal: controller.signal,
+          }
+        );
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || "Failed to load views.");
@@ -6133,7 +6400,7 @@ export default function DigidealCampaignsPage() {
     loadViews();
 
     return () => controller.abort();
-  }, [viewsRefreshToken]);
+  }, [provider, viewsRefreshToken]);
 
   useEffect(() => {
     const ids = Array.from(
@@ -6164,6 +6431,7 @@ export default function DigidealCampaignsPage() {
           const params = new URLSearchParams({
             productIds: chunk.join(","),
           });
+          params.set("provider", provider);
           const response = await fetch(`/api/digideal/views/items?${params.toString()}`, {
             signal: controller.signal,
           });
@@ -6201,7 +6469,7 @@ export default function DigidealCampaignsPage() {
       active = false;
       controller.abort();
     };
-  }, [items, viewsRefreshToken]);
+  }, [items, provider, viewsRefreshToken]);
 
   useEffect(() => {
     if (!isOptimizeDialogOpen || !optimizeTargetId) {
@@ -6216,9 +6484,9 @@ export default function DigidealCampaignsPage() {
       setAnalysisError(null);
       try {
         const response = await fetch(
-          `/api/digideal/analysis?productId=${encodeURIComponent(
-            optimizeTargetId
-          )}`,
+          `/api/digideal/analysis?provider=${encodeURIComponent(
+            provider
+          )}&productId=${encodeURIComponent(optimizeTargetId)}`,
           { signal: controller.signal }
         );
         if (!response.ok) {
@@ -6240,7 +6508,7 @@ export default function DigidealCampaignsPage() {
     loadAnalysis();
 
     return () => controller.abort();
-  }, [isOptimizeDialogOpen, optimizeTargetId, t]);
+  }, [isOptimizeDialogOpen, optimizeTargetId, provider, t]);
 
   useEffect(() => {
     if (!linkedDialogOpen || !linkedTarget) {
@@ -6371,6 +6639,26 @@ export default function DigidealCampaignsPage() {
         if (categoryParam) params.set("categories", categoryParam);
         if (firstSeenFrom) params.set("firstSeenFrom", firstSeenFrom);
         if (firstSeenTo) params.set("firstSeenTo", firstSeenTo);
+        const priceMinValue = priceMin.trim() ? Number(priceMin.trim()) : Number.NaN;
+        if (Number.isFinite(priceMinValue) && priceMinValue >= 0) {
+          params.set("priceMin", String(priceMinValue));
+        }
+        const priceMaxValue = priceMax.trim() ? Number(priceMax.trim()) : Number.NaN;
+        if (Number.isFinite(priceMaxValue) && priceMaxValue >= 0) {
+          params.set("priceMax", String(priceMaxValue));
+        }
+        const rerunMarginMinValue = rerunMarginMin.trim()
+          ? Number(rerunMarginMin.trim())
+          : Number.NaN;
+        if (Number.isFinite(rerunMarginMinValue)) {
+          params.set("rerunMarginMin", String(rerunMarginMinValue));
+        }
+        const rerunMarginMaxValue = rerunMarginMax.trim()
+          ? Number(rerunMarginMax.trim())
+          : Number.NaN;
+        if (Number.isFinite(rerunMarginMaxValue)) {
+          params.set("rerunMarginMax", String(rerunMarginMaxValue));
+        }
         if (sellerFilters.length > 0) {
           params.set("sellers", sellerFilters.join("|"));
         }
@@ -6398,6 +6686,7 @@ export default function DigidealCampaignsPage() {
         }
         if (status) params.set("status", status);
         if (sort) params.set("sort", sort);
+        params.set("provider", provider);
         params.set("page", String(page));
         params.set("pageSize", String(pageSize));
 
@@ -6451,6 +6740,10 @@ export default function DigidealCampaignsPage() {
     categorySelections,
     firstSeenFrom,
     firstSeenTo,
+    priceMin,
+    priceMax,
+    rerunMarginMin,
+    rerunMarginMax,
     status,
     sort,
     minSoldMetric,
@@ -6464,6 +6757,7 @@ export default function DigidealCampaignsPage() {
     supplierWorkflowFilter,
     page,
     pageSize,
+    provider,
     refreshToken,
     t,
   ]);
@@ -6818,11 +7112,25 @@ export default function DigidealCampaignsPage() {
           typeof item.listing_title === "string" ? item.listing_title.trim() : "";
         const h1Title =
           typeof item.title_h1 === "string" ? item.title_h1.trim() : "";
-        const title = listingTitle || h1Title || item.product_slug || item.product_id;
-        const secondaryTitleCandidate = title === listingTitle ? h1Title : listingTitle;
+        const subtitleTitle =
+          typeof item.subtitle === "string" ? item.subtitle.trim() : "";
+        const fallbackTitle = listingTitle || h1Title || item.product_slug || item.product_id;
+        const mainTitle =
+          provider === "letsdeal"
+            ? stripTrailingSubtitleFromTitle(listingTitle || fallbackTitle, subtitleTitle) ||
+              fallbackTitle
+            : fallbackTitle;
+        const title = mainTitle;
+        const secondaryTitleCandidate =
+          provider === "letsdeal"
+            ? subtitleTitle || (title === listingTitle ? h1Title : listingTitle)
+            : title === listingTitle
+              ? h1Title
+              : listingTitle;
         const secondaryTitle =
           secondaryTitleCandidate &&
-          secondaryTitleCandidate.toLowerCase() !== String(title).trim().toLowerCase()
+          normalizeComparableTitle(secondaryTitleCandidate) !==
+            normalizeComparableTitle(String(title))
             ? secondaryTitleCandidate
             : null;
         const secondaryTitleSegments = secondaryTitle
@@ -6936,7 +7244,8 @@ export default function DigidealCampaignsPage() {
           hoveredRemoveId === item.product_id || isRemoving;
         const priceComputation = computePriceComputation(item);
         const hidePriceForPartner =
-          !isAdmin && priceComputation.state === "red" && !priceComputation.hasOverride;
+          !isAdmin &&
+          (priceComputation.state === "red" || priceComputation.state === "gray");
         const estimatedPriceValue = hidePriceForPartner
           ? null
           : priceComputation.displayedPrice;
@@ -6961,6 +7270,26 @@ export default function DigidealCampaignsPage() {
                 priceComputation.marginPercent < 20
               ? styles.estimatedPriceHintCritical
               : styles.estimatedPriceHintText;
+        const totalSalesAmount =
+          priceValue !== null
+            ? priceValue + Math.max(0, shippingCost ?? 0)
+            : null;
+        const partnerProfitPercent =
+          !isAdmin &&
+          estimatedPriceValue !== null &&
+          totalSalesAmount !== null &&
+          totalSalesAmount > 0
+            ? ((totalSalesAmount - estimatedPriceValue - totalSalesAmount * 0.2) /
+                totalSalesAmount) *
+              100
+            : null;
+        const partnerProfitHintClass =
+          partnerProfitPercent !== null && partnerProfitPercent < 0
+            ? mergeClasses(
+                styles.estimatedPriceHintText,
+                styles.estimatedPriceHintCritical
+              )
+            : styles.estimatedPriceHintText;
         const canManageSupplier = isAdmin && !isNordexo;
         const hasManualSupplierData =
           item.purchase_price !== null ||
@@ -7060,6 +7389,29 @@ export default function DigidealCampaignsPage() {
                     {`\u00A0(ID: ${productId})`}
                   </span>
                 </Text>
+                {googleBreadcrumbs.length > 0 ? (
+                  <div className={styles.breadcrumbRow}>
+                    {googleBreadcrumbs.map((crumb, index) => (
+                      <span key={`${crumb.level}-${crumb.value}`}>
+                        <button
+                          type="button"
+                          className={styles.breadcrumbLink}
+                          onClick={() => {
+                            setCategorySelections([
+                              { level: crumb.level, value: crumb.value },
+                            ]);
+                            setPage(1);
+                          }}
+                        >
+                          {crumb.label}
+                        </button>
+                        {index < googleBreadcrumbs.length - 1 ? (
+                          <span className={styles.breadcrumbDivider}> / </span>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {secondaryTitle ? (
                   <Tooltip
                     relationship="label"
@@ -7100,29 +7452,6 @@ export default function DigidealCampaignsPage() {
                   </Tooltip>
                 ) : null}
                 <div className={styles.metaStack}>
-                  {googleBreadcrumbs.length > 0 ? (
-                    <div className={styles.breadcrumbRow}>
-                      {googleBreadcrumbs.map((crumb, index) => (
-                        <span key={`${crumb.level}-${crumb.value}`}>
-                          <button
-                            type="button"
-                            className={styles.breadcrumbLink}
-                            onClick={() => {
-                              setCategorySelections([
-                                { level: crumb.level, value: crumb.value },
-                              ]);
-                              setPage(1);
-                            }}
-                          >
-                            {crumb.label}
-                          </button>
-                          {index < googleBreadcrumbs.length - 1 ? (
-                            <span className={styles.breadcrumbDivider}> / </span>
-                          ) : null}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
                   <div
                     className={mergeClasses(
                       styles.metaText,
@@ -7183,8 +7512,7 @@ export default function DigidealCampaignsPage() {
                   className={styles.sellerLink}
                   onClick={() => {
                     if (!seller || seller === "-") return;
-                    setSellerFilters([seller]);
-                    setPage(1);
+                    quickFilterBySeller(seller);
                   }}
                 >
                   {seller}
@@ -7581,6 +7909,13 @@ export default function DigidealCampaignsPage() {
                       </Text>
                     ) : null
                   ) : null}
+                  {!isAdmin &&
+                  partnerProfitPercent !== null &&
+                  hasEstimatedPrice ? (
+                    <Text className={partnerProfitHintClass}>
+                      {`Partner Profit ${partnerProfitPercent.toFixed(1)}%`}
+                    </Text>
+                  ) : null}
 	                {canManageSupplier &&
 	                !supplierHasVariantSelection &&
 	                (supplierPayloadLoading || supplierPayloadReady || supplierPayloadFailed) ? (
@@ -7805,6 +8140,7 @@ export default function DigidealCampaignsPage() {
       openRerunDialog,
       openSupplierDialog,
       openSupplierSearchDialog,
+      quickFilterBySeller,
       openLinkedDialog,
       openCreateViewDialog,
       addProductsToView,
@@ -7821,6 +8157,7 @@ export default function DigidealCampaignsPage() {
       supplierFindingIds,
       toggleRowSelected,
       isRowSelectionBackgroundClick,
+      provider,
     ]
   );
 
@@ -7915,6 +8252,7 @@ export default function DigidealCampaignsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           product_id: productId,
           extreme_ratio_action: "confirm",
         }),
@@ -7981,6 +8319,9 @@ export default function DigidealCampaignsPage() {
 	  return (
 	    <div className={styles.layout}>
 	      <Card className={styles.controlsCard}>
+          <Text weight="semibold" size={500} style={{ marginBottom: "8px" }}>
+            {providerLabel}
+          </Text>
 	        <div className={styles.topRow}>
 	          <Field label={<span className={styles.filterLabel}>{t("digideal.filters.search")}</span>}>
 	            <Input
@@ -8325,7 +8666,7 @@ export default function DigidealCampaignsPage() {
 	            <Button appearance="outline" size="medium" onClick={resetAllFilters}>
 	              {t("digideal.filters.resetAll")}
 	            </Button>
-              {isAdmin ? (
+              {isAdmin && provider !== "letsdeal" ? (
                 <Button
                   appearance="outline"
                   size="medium"
@@ -8539,6 +8880,90 @@ export default function DigidealCampaignsPage() {
               />
             </div>
           </Field>
+          <Field
+            label={<span className={styles.filterLabel}>Rerun Pricing</span>}
+            className={styles.filterField}
+          >
+            <Popover
+              positioning={{ position: "below", align: "start" }}
+              open={rerunMarginPopoverOpen}
+              onOpenChange={(_, data) => setRerunMarginPopoverOpen(data.open)}
+            >
+              <PopoverTrigger disableButtonEnhancement>
+                <Button appearance="outline" className={styles.rangeButton}>
+                  <span className={styles.filterButtonText}>{rerunPricingSummary}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.rangePopover}>
+                <Field label={t("products.filters.rangeFrom")}>
+                  <Input
+                    type="number"
+                    value={rerunMarginDraftMin}
+                    placeholder="0"
+                    onChange={(_, data) => setRerunMarginDraftMin(data.value)}
+                  />
+                </Field>
+                <Field label={t("products.filters.rangeTo")}>
+                  <Input
+                    type="number"
+                    value={rerunMarginDraftMax}
+                    placeholder="100"
+                    onChange={(_, data) => setRerunMarginDraftMax(data.value)}
+                  />
+                </Field>
+                <div className={styles.rangeActions}>
+                  <Button appearance="subtle" onClick={clearRerunMarginFilter}>
+                    {t("common.clear")}
+                  </Button>
+                  <Button appearance="primary" onClick={applyRerunMarginFilter}>
+                    Filter
+                  </Button>
+                </div>
+              </PopoverSurface>
+            </Popover>
+          </Field>
+          <Field
+            label={<span className={styles.filterLabel}>Price</span>}
+            className={styles.filterField}
+          >
+            <Popover
+              positioning={{ position: "below", align: "start" }}
+              open={pricePopoverOpen}
+              onOpenChange={(_, data) => setPricePopoverOpen(data.open)}
+            >
+              <PopoverTrigger disableButtonEnhancement>
+                <Button appearance="outline" className={styles.rangeButton}>
+                  <span className={styles.filterButtonText}>{priceRangeSummary}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.rangePopover}>
+                <Field label={t("products.filters.rangeFrom")}>
+                  <Input
+                    type="number"
+                    value={priceDraftMin}
+                    placeholder="0"
+                    onChange={(_, data) => setPriceDraftMin(data.value)}
+                  />
+                </Field>
+                <Field label={t("products.filters.rangeTo")}>
+                  <Input
+                    type="number"
+                    value={priceDraftMax}
+                    placeholder="1000"
+                    onChange={(_, data) => setPriceDraftMax(data.value)}
+                  />
+                </Field>
+                <div className={styles.rangeActions}>
+                  <Button appearance="subtle" onClick={clearPriceFilter}>
+                    {t("common.clear")}
+                  </Button>
+                  <Button appearance="primary" onClick={applyPriceFilter}>
+                    Filter
+                  </Button>
+                </div>
+              </PopoverSurface>
+            </Popover>
+          </Field>
           <Field label={<span className={styles.filterLabel}>{t("digideal.filters.seller")}</span>}>
             <Popover
               positioning={{ position: "below", align: "start" }}
@@ -8577,6 +9002,30 @@ export default function DigidealCampaignsPage() {
                   })}
                 </div>
                 <div className={styles.sellerActions}>
+                  <Button
+                    appearance="secondary"
+                    size="small"
+                    onClick={invertSellerDraft}
+                    disabled={sellerOptions.length === 0}
+                  >
+                    Invert selection
+                  </Button>
+                  <Button
+                    appearance="secondary"
+                    size="small"
+                    onClick={unselectAllSellerDraft}
+                    disabled={sellerOptions.length === 0}
+                  >
+                    Unselect all
+                  </Button>
+                  <Button
+                    appearance="secondary"
+                    size="small"
+                    onClick={selectAllSellerDraft}
+                    disabled={sellerOptions.length === 0}
+                  >
+                    Select all
+                  </Button>
                   <Button
                     appearance="primary"
                     size="small"
@@ -8636,7 +9085,7 @@ export default function DigidealCampaignsPage() {
       <Card className={styles.tableCard}>
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
         {isLoading ? (
-          <Spinner label={t("digideal.loading")} />
+          <Spinner label={loadingCampaignsLabel} />
         ) : items.length === 0 ? (
           <Text>{t("digideal.empty")}</Text>
         ) : (
@@ -9032,7 +9481,7 @@ export default function DigidealCampaignsPage() {
 
                     <div className={styles.linkedRight}>
                       {linkedLoading ? (
-                        <Spinner label={t("digideal.loading")} />
+                        <Spinner label={loadingCampaignsLabel} />
                       ) : (
                         <div className={styles.linkedResultsWrap}>
                           {linkedResults.length === 0 ? (
@@ -9328,7 +9777,7 @@ export default function DigidealCampaignsPage() {
                             <div className={styles.variantsHeroThumbFrame}>
                               <img
                                 src={supplierSearchHeroImageSrc}
-                                alt="DigiDeal product"
+                                alt={`${providerLabel} product`}
                                 className={styles.variantsHeroThumbImage}
                                 referrerPolicy="no-referrer"
                                 loading="eager"
@@ -9339,7 +9788,7 @@ export default function DigidealCampaignsPage() {
                           <PopoverSurface className={styles.variantsHeroPopoverSurface}>
                             <img
                               src={supplierSearchHeroImageSrc}
-                              alt="DigiDeal product zoom"
+                              alt={`${providerLabel} product zoom`}
                               className={styles.variantsHeroZoomImage}
                               referrerPolicy="no-referrer"
                               loading="eager"
@@ -9368,7 +9817,7 @@ export default function DigidealCampaignsPage() {
               </div>
               {supplierLockedUrl ? (
                 <MessageBar>
-                  A supplier is already set in DigiDeal EST rerun price. Saving here will replace
+                  {`A supplier is already set in ${providerLabel} EST rerun price. Saving here will replace`}
                   it with the selected supplier.
                 </MessageBar>
               ) : null}
@@ -9735,7 +10184,7 @@ export default function DigidealCampaignsPage() {
 
                   {cropImageUrl ? (
                     <div className={styles.cropBodyRow}>
-                      <div className={styles.cropGallery} aria-label="DigiDeal images">
+                      <div className={styles.cropGallery} aria-label={`${providerLabel} images`}>
                         <div className={styles.cropGalleryGrid}>
                           {cropGalleryUrls.map((url) => (
                             <button
@@ -9751,7 +10200,7 @@ export default function DigidealCampaignsPage() {
                               <div className={styles.cropGalleryThumb}>
                                 <img
                                   src={url}
-                                  alt="DigiDeal image"
+                                  alt={`${providerLabel} image`}
                                   className={styles.cropGalleryImage}
                                   referrerPolicy="no-referrer"
                                   loading="lazy"
@@ -9897,7 +10346,7 @@ export default function DigidealCampaignsPage() {
                               <div className={styles.variantsHeroThumbFrame}>
                                 <img
                                   src={variantsHeroImageSrc}
-                                  alt="DigiDeal product"
+                                  alt={`${providerLabel} product`}
                                   className={styles.variantsHeroThumbImage}
                                   referrerPolicy="no-referrer"
                                   loading="eager"
@@ -9908,7 +10357,7 @@ export default function DigidealCampaignsPage() {
                             <PopoverSurface className={styles.variantsHeroPopoverSurface}>
                               <img
                                 src={variantsHeroImageSrc}
-                                alt="DigiDeal product zoom"
+                                alt={`${providerLabel} product zoom`}
                                 className={styles.variantsHeroZoomImage}
                                 referrerPolicy="no-referrer"
                                 loading="eager"

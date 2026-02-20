@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { listExtractorFiles } from "@/lib/1688-extractor";
+import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
 
 export const runtime = "nodejs";
 
@@ -24,5 +25,14 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  return NextResponse.json({ items: listExtractorFiles() });
+  const items = listExtractorFiles();
+  items
+    .filter((item) => item.name.toLowerCase().startsWith("production_queue_incoming_"))
+    .forEach((item) => {
+      void generateQueueKeywordsForFile(item.name).catch(() => {
+        // background best-effort
+      });
+    });
+
+  return NextResponse.json({ items });
 }

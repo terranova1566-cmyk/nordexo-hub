@@ -264,3 +264,130 @@ export const getProductionRefsBySpus = async (
     }))
   );
 };
+
+const isProductionDone = (row: {
+  status?: string | null;
+  production_done_at?: string | null;
+}) => {
+  const status = asText(row.status).toLowerCase();
+  if (status === "production_done") return true;
+  return Boolean(asText(row.production_done_at));
+};
+
+export const resetProductionQueueForDeletedSpus = async (
+  adminClient: SupabaseClient,
+  spus: string[],
+  options: { timestamp?: string } = {}
+) => {
+  const uniqueSpus = Array.from(
+    new Set(spus.map((spu) => asText(spu).toUpperCase()).filter(Boolean))
+  );
+  if (uniqueSpus.length === 0) {
+    return { refs_found: 0, statuses_reset: 0, spu_links_removed: 0 };
+  }
+
+  const refs = await getProductionRefsBySpus(adminClient, uniqueSpus);
+  if (refs.length === 0) {
+    return { refs_found: 0, statuses_reset: 0, spu_links_removed: 0 };
+  }
+
+  const now = options.timestamp || new Date().toISOString();
+  const providers = Array.from(new Set(refs.map((row) => row.provider)));
+  const productIds = Array.from(new Set(refs.map((row) => row.product_id)));
+  const refKeySet = new Set(refs.map((row) => keyOf(row.provider, row.product_id)));
+  const uniqueSpuSet = new Set(uniqueSpus);
+
+  const { data: existingRows, error: existingError } = await adminClient
+    .from("discovery_production_status")
+    .select(
+      "provider, product_id, status, spu_assigned_at, production_started_at, production_done_at, last_file_name, last_job_id, created_at, updated_at"
+    )
+    .in("provider", providers)
+    .in("product_id", productIds);
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  const existingMap = new Map<string, ProductionStatusRow>();
+  (existingRows as ProductionStatusRow[] | null)?.forEach((row) => {
+    const key = keyOf(row.provider, row.product_id);
+    if (!refKeySet.has(key)) return;
+    existingMap.set(key, row);
+  });
+
+  const nonDoneRefKeys = new Set<string>();
+  const resetRows: Record<string, unknown>[] = [];
+  refs.forEach((ref) => {
+    const key = keyOf(ref.provider, ref.product_id);
+    const existing = existingMap.get(key);
+    if (existing && isProductionDone(existing)) return;
+    nonDoneRefKeys.add(key);
+    if (!existing) return;
+    resetRows.push({
+      provider: ref.provider,
+      product_id: ref.product_id,
+      status: null,
+      spu_assigned_at: null,
+      production_started_at: null,
+      production_done_at: null,
+      last_file_name: null,
+      last_job_id: null,
+      created_at: existing.created_at || now,
+      updated_at: now,
+    });
+  });
+
+  if (resetRows.length > 0) {
+    const { error: upsertError } = await adminClient
+      .from("discovery_production_status")
+      .upsert(resetRows, { onConflict: "provider,product_id" });
+    if (upsertError) {
+      throw new Error(upsertError.message);
+    }
+  }
+
+  let spuLinksRemoved = 0;
+  if (nonDoneRefKeys.size > 0) {
+    const { data: linkRows, error: linkError } = await adminClient
+      .from("discovery_production_item_spus")
+      .select("provider, product_id, spu")
+      .in("provider", providers)
+      .in("product_id", productIds)
+      .in("spu", uniqueSpus);
+    if (linkError) {
+      throw new Error(linkError.message);
+    }
+
+    const linksToRemove =
+      (linkRows as Array<{ provider: string; product_id: string; spu: string | null }> | null)
+        ?.filter((row) => {
+          const key = keyOf(row.provider, row.product_id);
+          if (!nonDoneRefKeys.has(key)) return false;
+          const spu = asText(row.spu).toUpperCase();
+          return uniqueSpuSet.has(spu);
+        }) ?? [];
+
+    for (const row of linksToRemove) {
+      const provider = asText(row.provider);
+      const productId = asText(row.product_id);
+      const spu = asText(row.spu);
+      if (!provider || !productId || !spu) continue;
+      const { error: deleteError } = await adminClient
+        .from("discovery_production_item_spus")
+        .delete()
+        .eq("provider", provider)
+        .eq("product_id", productId)
+        .eq("spu", spu);
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
+      spuLinksRemoved += 1;
+    }
+  }
+
+  return {
+    refs_found: refs.length,
+    statuses_reset: resetRows.length,
+    spu_links_removed: spuLinksRemoved,
+  };
+};

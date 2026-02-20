@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { resolveDealsProvider } from "@/lib/deals/provider";
 
 type ExportItem = {
   product_id: string;
@@ -125,6 +126,7 @@ const renderImageCell = async (
 };
 
 export async function POST(request: Request) {
+  const requestUrl = new URL(request.url);
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -133,13 +135,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { items?: unknown; name?: string } = {};
+  let body: { items?: unknown; name?: string; provider?: string } = {};
   try {
-    const parsed = (await request.json()) as { items?: unknown; name?: string } | null;
+    const parsed = (await request.json()) as {
+      items?: unknown;
+      name?: string;
+      provider?: string;
+    } | null;
     body = parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     body = {};
   }
+  const provider = resolveDealsProvider(
+    body.provider ?? requestUrl.searchParams.get("provider")
+  );
 
   const source = Array.isArray(body.items) ? body.items : [];
   const normalized: ExportItem[] = [];
@@ -187,9 +196,12 @@ export async function POST(request: Request) {
   }
 
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("DigiDeal Export", {
+  const sheet = workbook.addWorksheet(
+    provider === "letsdeal" ? "LetsDeal Export" : "DigiDeal Export",
+    {
     views: [{ state: "frozen", ySplit: 1 }],
-  });
+    }
+  );
 
   sheet.columns = [
     { header: "Image", key: "image", width: 24 },
@@ -226,16 +238,15 @@ export async function POST(request: Request) {
   header.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   header.height = 24;
 
-  const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
 
   for (let i = 0; i < normalized.length; i += 1) {
     const item = normalized[i];
     const rowIndex = i + 2;
     const title = item.listing_title || item.title_h1 || item.product_id;
-    const productDataLink = `${origin}/api/digideal/analysis?product_id=${encodeURIComponent(
-      item.product_id
-    )}`;
+    const productDataLink = `${origin}/api/digideal/analysis?provider=${encodeURIComponent(
+      provider
+    )}&product_id=${encodeURIComponent(item.product_id)}`;
 
     sheet.addRow({
       image: "",
@@ -299,7 +310,9 @@ export async function POST(request: Request) {
     to: { row: 1, column: sheet.columns.length },
   };
 
-  const fileLabel = sanitizeFilenamePart(asString(body.name) || "digideal-deals-selected");
+  const fileLabel = sanitizeFilenamePart(
+    asString(body.name) || `${provider}-deals-selected`
+  );
   const filename = `${fileLabel}_${formatTimestamp()}.xlsx`;
   const buffer = await workbook.xlsx.writeBuffer();
 

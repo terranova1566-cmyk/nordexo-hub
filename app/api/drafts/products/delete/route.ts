@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { removeSpuFolders } from "@/lib/drafts";
+import { resetProductionQueueForDeletedSpus } from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing spus." }, { status: 400 });
   }
 
+  let queueReset: {
+    refs_found: number;
+    statuses_reset: number;
+    spu_links_removed: number;
+  } = { refs_found: 0, statuses_reset: 0, spu_links_removed: 0 };
+  try {
+    queueReset = await resetProductionQueueForDeletedSpus(adminClient, spus);
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? `Unable to reset production queue status: ${err.message}`
+            : "Unable to reset production queue status.",
+      },
+      { status: 500 }
+    );
+  }
+
   let deletedVariants = 0;
   const chunkSize = 200;
   for (let i = 0; i < spus.length; i += chunkSize) {
@@ -93,5 +113,6 @@ export async function POST(request: Request) {
     deleted_products: deletedProducts ?? 0,
     deleted_variants: deletedVariants,
     removed_folders: removedFolders,
+    production_queue_reset: queueReset,
   });
 }
