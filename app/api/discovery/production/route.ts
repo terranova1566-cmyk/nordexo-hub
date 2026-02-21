@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { spawn } from "node:child_process";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  PARTNER_SUGGESTION_PROVIDER,
+  loadSuggestionRecord,
+} from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
 
@@ -344,6 +348,83 @@ export async function GET() {
       continue;
     }
 
+    if (provider === PARTNER_SUGGESTION_PROVIDER) {
+      const suggestionRows = await Promise.all(
+        ids.map(async (id) => {
+          const record = await loadSuggestionRecord(id);
+          const external =
+            record?.externalData && typeof record.externalData === "object"
+              ? (record.externalData as Record<string, unknown>)
+              : null;
+          const taxonomy =
+            record?.googleTaxonomy && typeof record.googleTaxonomy === "object"
+              ? (record.googleTaxonomy as Record<string, unknown>)
+              : null;
+
+          const title =
+            firstString((record as any)?.title) ||
+            firstString((external as any)?.title) ||
+            firstString((external as any)?.rawTitle) ||
+            id;
+          const productUrl =
+            firstString((record as any)?.crawlFinalUrl) ||
+            firstString((external as any)?.finalUrl) ||
+            firstString((external as any)?.inputUrl) ||
+            firstString((record as any)?.sourceUrl);
+          const sourceUrl =
+            firstString((record as any)?.sourceUrl) ||
+            firstString((external as any)?.inputUrl) ||
+            firstString((external as any)?.finalUrl) ||
+            firstString((record as any)?.crawlFinalUrl);
+          const imageUrl =
+            firstString((record as any)?.mainImageUrl) ||
+            firstString((external as any)?.mainImageUrl) ||
+            firstString((external as any)?.rawMainImageUrl);
+          const createdAt =
+            firstString((record as any)?.createdAt) ??
+            createdAtMap.get(`${provider}:${id}`) ??
+            null;
+          const taxonomyPath =
+            firstString((taxonomy as any)?.path) ||
+            [firstString((taxonomy as any)?.l1), firstString((taxonomy as any)?.l2), firstString((taxonomy as any)?.l3)]
+              .filter(Boolean)
+              .join(" > ") ||
+            null;
+
+          return {
+            provider: PARTNER_SUGGESTION_PROVIDER,
+            product_id: id,
+            title: title ?? null,
+            product_url: productUrl,
+            image_url: imageUrl,
+            image_local_path: null,
+            image_local_url: null,
+            source_url: sourceUrl,
+            taxonomy_l1: firstString((taxonomy as any)?.l1),
+            taxonomy_l2: firstString((taxonomy as any)?.l2),
+            taxonomy_l3: firstString((taxonomy as any)?.l3),
+            taxonomy_path: taxonomyPath,
+            first_seen_at: createdAt,
+            last_seen_at: createdAt,
+            sold_today: null,
+            sold_7d: null,
+            sold_all_time: null,
+            price: null,
+            previous_price: null,
+            last_price: null,
+            last_previous_price: null,
+            reviews: null,
+            last_reviews: null,
+            delivery_time: null,
+            last_delivery_time: null,
+            identical_spu: null,
+          };
+        })
+      );
+      items = items.concat(suggestionRows);
+      continue;
+    }
+
     const { data: rows, error: rowsError } = await readClient
       .from("discovery_products")
       .select(PRODUCT_SELECT)
@@ -625,7 +706,19 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({ items: withSuppliers });
+  const visibleItems = withSuppliers.filter((item) => {
+    if (item.provider !== PARTNER_SUGGESTION_PROVIDER) return true;
+    const hasProductionLifecycle = Boolean(
+      firstString((item as any).production_status) ||
+        firstString((item as any).production_status_updated_at) ||
+        firstString((item as any).production_status_spu_assigned_at) ||
+        firstString((item as any).production_status_started_at) ||
+        firstString((item as any).production_status_done_at)
+    );
+    return hasProductionLifecycle;
+  });
+
+  return NextResponse.json({ items: visibleItems });
 }
 
 export async function POST(request: Request) {
@@ -710,6 +803,31 @@ export async function DELETE(request: Request) {
   const productId = String(payload?.product_id ?? "").trim();
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
+  }
+
+  if (provider === PARTNER_SUGGESTION_PROVIDER) {
+    const statusClient = adminClient ?? supabase;
+    const [{ error: statusError }, { error: spuError }] = await Promise.all([
+      statusClient
+        .from("discovery_production_status")
+        .delete()
+        .eq("provider", provider)
+        .eq("product_id", productId),
+      statusClient
+        .from("discovery_production_item_spus")
+        .delete()
+        .eq("provider", provider)
+        .eq("product_id", productId),
+    ]);
+
+    if (statusError || spuError) {
+      return NextResponse.json(
+        { error: statusError?.message || spuError?.message || "Failed to clear production status." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   const deleteClient = adminClient ?? supabase;

@@ -2,6 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { loadJsonFile, safeExtractorJsonPath } from "@/lib/production-queue-status";
+import { isAllowedQueueImageHost } from "@/lib/queue-image-cache";
+import {
+  PARTNER_SUGGESTION_PROVIDER,
+  loadSuggestionRecord,
+  saveSuggestionRecord,
+} from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
 
@@ -17,6 +23,9 @@ type VariantCombo = {
   t3_zh?: string;
   t3_en?: string;
   image_url?: string;
+  image_thumb_url?: string;
+  image_zoom_url?: string;
+  image_full_url?: string;
   price_raw: string;
   price: number | null;
   weight_raw?: string;
@@ -27,6 +36,24 @@ type ComboOverride = {
   index: number;
   price: number | null;
   weight_grams: number | null;
+};
+
+type VariantGalleryImage = {
+  thumb_url: string;
+  full_url: string;
+  url: string;
+  url_full: string;
+};
+
+type VariantCachePayload = {
+  cached_at: string;
+  payload_file_path: string | null;
+  available_count: number;
+  type1_label: string;
+  type2_label: string;
+  type3_label: string;
+  combos: VariantCombo[];
+  gallery_images: VariantGalleryImage[];
 };
 
 const variantTranslationCache = new Map<string, string>();
@@ -55,7 +82,11 @@ const asOptionalPrice = (value: unknown) => {
   return asPriceNumber(raw);
 };
 
-const asWeightGrams = (value: unknown) => {
+const asWeightGrams = (
+  value: unknown,
+  options?: { allowUnitless?: boolean }
+) => {
+  const allowUnitless = Boolean(options?.allowUnitless);
   const raw = asText(value);
   if (!raw) return null;
   const normalized = raw.replace(/,/g, ".").trim();
@@ -75,10 +106,16 @@ const asWeightGrams = (value: unknown) => {
   if (unit.includes("g") || unit.includes("克")) {
     return Math.round(num);
   }
-  if (num <= 20 && normalized.includes(".")) {
+  if (unit.includes("斤")) {
+    return null;
+  }
+  if (allowUnitless && num <= 20 && normalized.includes(".")) {
     return Math.round(num * 1000);
   }
-  return Math.round(num);
+  if (allowUnitless) {
+    return Math.round(num);
+  }
+  return null;
 };
 
 const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value);
@@ -97,14 +134,217 @@ const normalizeNameStrict = (value: unknown) =>
 const normalizeNameLoose = (value: unknown) =>
   normalizeNameStrict(value).replace(/[（(].*?[）)]/g, "");
 
-const pickFallbackWeightGrams = (candidates: unknown[]) => {
+type VariantImageTarget = {
+  thumbUrl: string;
+  zoomUrl: string;
+  fullUrl: string;
+};
+
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
+
+const normalizeRemoteImageUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  if (raw.startsWith("//")) return `https:${raw}`;
+  return raw;
+};
+
+const toSumVariantImageUrl = (value: unknown) => {
+  const normalized = normalizeRemoteImageUrl(value);
+  if (!normalized) return "";
+  if (!isHttpUrl(normalized)) return "";
+  if (/_sum\.(jpg|jpeg|png|webp|gif|bmp|avif)(?:[?#]|$)/i.test(normalized)) {
+    return normalized;
+  }
+  const [withoutHash, hash = ""] = normalized.split("#");
+  const [pathname, query = ""] = withoutHash.split("?");
+  if (!/\.(jpg|jpeg|png|webp|gif|bmp|avif)$/i.test(pathname)) {
+    return "";
+  }
+  const withSum = `${pathname}_sum.jpg`;
+  const withQuery = query ? `${withSum}?${query}` : withSum;
+  return hash ? `${withQuery}#${hash}` : withQuery;
+};
+
+const buildCachedImageProxyUrl = (
+  sourceUrl: string,
+  width: number,
+  height: number
+) => {
+  const normalized = normalizeRemoteImageUrl(sourceUrl);
+  if (!normalized || !isHttpUrl(normalized)) return "";
+  try {
+    const parsed = new URL(normalized);
+    if (!isAllowedQueueImageHost(parsed.hostname)) return "";
+    const params = new URLSearchParams({
+      url: parsed.toString(),
+      w: String(width),
+      h: String(height),
+    });
+    return `/api/1688-extractor/image-proxy?${params.toString()}`;
+  } catch {
+    return "";
+  }
+};
+
+const buildVariantImageTarget = (input: {
+  thumbCandidate?: unknown;
+  fullCandidate?: unknown;
+}): VariantImageTarget => {
+  const fullSource = normalizeRemoteImageUrl(input.fullCandidate);
+  const thumbSource =
+    normalizeRemoteImageUrl(input.thumbCandidate) ||
+    toSumVariantImageUrl(fullSource) ||
+    fullSource;
+  const resolvedFull = fullSource || thumbSource;
+  const thumbUrl =
+    buildCachedImageProxyUrl(thumbSource, 88, 88) || thumbSource || "";
+  const zoomUrl =
+    buildCachedImageProxyUrl(resolvedFull || thumbSource, 300, 300) ||
+    resolvedFull ||
+    thumbSource ||
+    "";
+  return {
+    thumbUrl,
+    zoomUrl,
+    fullUrl: resolvedFull || thumbSource || "",
+  };
+};
+
+const buildVariantGalleryImage = (
+  fullCandidate: unknown,
+  thumbCandidate?: unknown
+): VariantGalleryImage | null => {
+  const fullSource =
+    normalizeRemoteImageUrl(fullCandidate) ||
+    normalizeRemoteImageUrl(thumbCandidate);
+  if (!fullSource || !isHttpUrl(fullSource)) return null;
+  const thumbSource =
+    normalizeRemoteImageUrl(thumbCandidate) ||
+    toSumVariantImageUrl(fullSource) ||
+    fullSource;
+  const thumbUrl =
+    buildCachedImageProxyUrl(thumbSource, 112, 112) || thumbSource;
+  const fullUrl =
+    buildCachedImageProxyUrl(fullSource, 760, 760) || fullSource;
+  return {
+    thumb_url: thumbUrl,
+    full_url: fullUrl,
+    url: thumbUrl,
+    url_full: fullUrl,
+  };
+};
+
+const normalizeCachedVariantGalleryImage = (value: unknown) => {
+  const row =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return buildVariantGalleryImage(
+    asText(row.full_url) ||
+      asText(row.url_full) ||
+      asText(row.url) ||
+      asText(row.image_full_url) ||
+      asText(row.image_url) ||
+      asText(row.image),
+    asText(row.thumb_url) ||
+      asText(row.url) ||
+      asText(row.image_thumb_url) ||
+      asText(row.image_url) ||
+      asText(row.image)
+  );
+};
+
+const collectPayloadGalleryImages = (
+  item: Record<string, unknown>,
+  combos: VariantCombo[]
+) => {
+  const out: VariantGalleryImage[] = [];
+  const seen = new Set<string>();
+  const push = (fullCandidate: unknown, thumbCandidate?: unknown) => {
+    const next = buildVariantGalleryImage(fullCandidate, thumbCandidate);
+    if (!next) return;
+    const key = `${next.url_full}::${next.url}`;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(next);
+  };
+
+  push(item.main_image_1688);
+
+  const imageRows = Array.isArray(item.image_urls_1688)
+    ? (item.image_urls_1688 as unknown[])
+    : [];
+  imageRows.forEach((row) => {
+    if (typeof row === "string") {
+      push(row, row);
+      return;
+    }
+    if (!row || typeof row !== "object") return;
+    const rec = row as Record<string, unknown>;
+    push(
+      asText(rec.url_full) ||
+        asText(rec.full_url) ||
+        asText(rec.url) ||
+        asText(rec.image_url) ||
+        asText(rec.imageUrl) ||
+        asText(rec.src) ||
+        asText(rec.image),
+      asText(rec.thumb_url) ||
+        asText(rec.thumbnail) ||
+        asText(rec.thumb) ||
+        asText(rec.url) ||
+        asText(rec.image_url) ||
+        asText(rec.imageUrl) ||
+        asText(rec.src) ||
+        asText(rec.image)
+    );
+  });
+
+  const variantRows = Array.isArray(item.variant_images_1688)
+    ? (item.variant_images_1688 as unknown[])
+    : [];
+  variantRows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const rec = row as Record<string, unknown>;
+    push(
+      asText(rec.url_full) || asText(rec.full_url) || asText(rec.url),
+      asText(rec.url) || asText(rec.thumb_url) || asText(rec.thumb)
+    );
+  });
+
+  combos.forEach((combo) => {
+    push(
+      combo.image_full_url || combo.image_zoom_url || combo.image_url,
+      combo.image_thumb_url || combo.image_url
+    );
+  });
+
+  return out.slice(0, 160);
+};
+
+const pickFallbackWeightGrams = (
+  candidates: unknown[],
+  options?: { allowUnitless?: boolean }
+) => {
   const values = candidates
-    .map((candidate) => asWeightGrams(candidate))
+    .map((candidate) => asWeightGrams(candidate, options))
     .filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry) && entry > 0);
   if (values.length === 0) return null;
   const plausible = values.filter((entry) => entry >= 20 && entry <= 200_000);
-  if (plausible.length > 0) return Math.max(...plausible);
-  return Math.max(...values);
+  if (plausible.length === 0) return null;
+
+  const sorted = [...plausible].sort((a, b) => a - b);
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  if (
+    sorted.length >= 3 &&
+    min > 0 &&
+    Number.isFinite(min) &&
+    Number.isFinite(max) &&
+    max / min >= 8
+  ) {
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+  return max;
 };
 
 const parseVariantWeightTableFromReadableText = (value: unknown) => {
@@ -118,53 +358,65 @@ const parseVariantWeightTableFromReadableText = (value: unknown) => {
     .filter(Boolean);
   if (lines.length === 0) return out;
 
-  let headerIndex = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line.includes("\t")) continue;
-    const lower = line.toLowerCase();
-    const hasWeight = line.includes("重量") || lower.includes("weight");
-    if (!hasWeight) continue;
-    // Packaging/size tables typically include cm columns and volume.
-    const looksLikeSizeTable =
-      line.includes("体积") ||
-      line.includes("长(") ||
-      line.includes("宽(") ||
-      line.includes("高(") ||
-      lower.includes("cm");
-    if (!looksLikeSizeTable) continue;
-    headerIndex = i;
-    break;
-  }
-  if (headerIndex === -1) return out;
+  const toGramsFromHeaderUnit = (rawCell: string, unit: "g" | "kg") => {
+    const match = rawCell.replace(/,/g, ".").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const num = Number(match[0]);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    return unit === "kg" ? Math.round(num * 1000) : Math.round(num);
+  };
 
-  let started = false;
-  for (let i = headerIndex + 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line) continue;
-    if (/^【/.test(line)) break;
+  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
+    const headerLine = lines[headerIndex];
+    if (!headerLine) continue;
+    if (!/(重量|weight)/i.test(headerLine)) continue;
+    const unitMatch = headerLine.match(/(?:重量|weight)\s*[（(]?\s*(kg|g)\s*[)）]?/i);
+    if (!unitMatch?.[1]) continue;
+    const unit = unitMatch[1].toLowerCase() as "g" | "kg";
+    const hasTabs = headerLine.includes("\t");
+    const headerCells = hasTabs
+      ? headerLine.split("\t").map((part) => part.trim()).filter(Boolean)
+      : headerLine.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+    const weightIdx = Math.max(
+      0,
+      headerCells.findIndex((cell) => /(重量|weight)/i.test(cell))
+    );
 
-    if (!line.includes("\t")) {
-      if (started) break;
-      continue;
+    let started = false;
+    for (let i = headerIndex + 1; i < Math.min(lines.length, headerIndex + 45); i += 1) {
+      const line = lines[i];
+      if (!line) break;
+      if (/^【/.test(line)) break;
+      if (/登录查看全部|展开全部|内容声明/i.test(line)) break;
+
+      if (hasTabs && !line.includes("\t")) {
+        if (started) break;
+        continue;
+      }
+      if (
+        !hasTabs &&
+        !/^-?\d+(?:[.,]\d+)?(?:\s*(?:kg|g|公斤|千克|克))?$/i.test(line)
+      ) {
+        if (started) break;
+        continue;
+      }
+
+      const parts = hasTabs
+        ? line.split(/\t+/).map((part) => part.trim())
+        : line.split(/\s+/).map((part) => part.trim());
+      if (parts.length <= weightIdx) continue;
+
+      const grams = toGramsFromHeaderUnit(parts[weightIdx], unit);
+      if (!grams) continue;
+
+      started = true;
+      out.weights.push(grams);
+      const name = hasTabs ? asText(parts[0]) : "";
+      const strictName = normalizeNameStrict(name);
+      const looseName = normalizeNameLoose(name);
+      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
+      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
     }
-
-    const parts = line
-      .split(/\t+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length < 2) continue;
-
-    const name = parts[0];
-    const grams = asWeightGrams(parts[parts.length - 1]);
-    if (!grams) continue;
-
-    started = true;
-    out.weights.push(grams);
-    const strictName = normalizeNameStrict(name);
-    const looseName = normalizeNameLoose(name);
-    if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
-    if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
   }
 
   return out;
@@ -247,7 +499,7 @@ async function requireAdmin() {
 
 const normalizeCombos = (
   variations: unknown,
-  variantImageByName: Map<string, string>,
+  variantImageByName: Map<string, VariantImageTarget>,
   fallbackWeightGrams: number | null,
   variantWeightByName: Map<string, number>
 ): VariantCombo[] => {
@@ -291,13 +543,35 @@ const normalizeCombos = (
     const comboNamesLoose = comboNameCandidates
       .map((entry) => normalizeNameLoose(entry))
       .filter(Boolean);
-    const imageUrl =
+    const matchedImage =
       comboNamesStrict
-        .map((key) => variantImageByName.get(key) || "")
+        .map((key) => variantImageByName.get(key))
         .find(Boolean) ||
       comboNamesLoose
-        .map((key) => variantImageByName.get(key) || "")
-        .find(Boolean) || "";
+        .map((key) => variantImageByName.get(key))
+        .find(Boolean) ||
+      null;
+    const rowImageTarget = buildVariantImageTarget({
+      thumbCandidate: pickText(
+        row.image_thumb_url,
+        row.imageThumbUrl,
+        row.image_url,
+        row.imageUrl,
+        row.img,
+        row.image
+      ),
+      fullCandidate: pickText(
+        row.image_full_url,
+        row.imageFullUrl,
+        row.image_zoom_url,
+        row.imageZoomUrl,
+        row.image_url,
+        row.imageUrl,
+        row.img,
+        row.image
+      ),
+    });
+    const imageTarget = matchedImage || rowImageTarget;
 
     const details =
       row.details && typeof row.details === "object"
@@ -323,7 +597,9 @@ const normalizeCombos = (
         .find((entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0) ??
       null;
     const weightGrams =
-      tableWeight ?? asWeightGrams(weightRaw) ?? fallbackWeightGrams;
+      tableWeight ??
+      asWeightGrams(weightRaw, { allowUnitless: true }) ??
+      fallbackWeightGrams;
     const effectiveWeightRaw =
       weightRaw || (tableWeight ? `${tableWeight}g` : "");
 
@@ -338,7 +614,10 @@ const normalizeCombos = (
       t2_en: t2.en || undefined,
       t3_zh: t3.zh || undefined,
       t3_en: t3.en || undefined,
-      image_url: imageUrl || undefined,
+      image_url: imageTarget.fullUrl || undefined,
+      image_thumb_url: imageTarget.thumbUrl || undefined,
+      image_zoom_url: imageTarget.zoomUrl || undefined,
+      image_full_url: imageTarget.fullUrl || undefined,
       price_raw: pickText(
         row.priceRaw,
         row.price_raw,
@@ -405,7 +684,7 @@ const normalizeComboOverrides = (raw: unknown, comboCount: number) => {
     const weightRaw =
       (entry as any).weight_grams ?? (entry as any).weightGrams ?? (entry as any).weight;
     const price = asOptionalPrice(priceRaw);
-    const weightGrams = asWeightGrams(weightRaw);
+    const weightGrams = asWeightGrams(weightRaw, { allowUnitless: true });
 
     const normalizedPrice =
       typeof price === "number" && Number.isFinite(price) && price > 0
@@ -470,11 +749,23 @@ async function loadSelection(adminClient: NonNullable<ReturnType<typeof getAdmin
 async function loadPayloadCombos(selection: { selected_offer?: Record<string, unknown> | null }) {
   const selectedOffer = selection?.selected_offer;
   if (!selectedOffer || typeof selectedOffer !== "object") {
-    return { combos: [] as VariantCombo[], type1Label: "", type2Label: "", type3Label: "" };
+    return {
+      combos: [] as VariantCombo[],
+      type1Label: "",
+      type2Label: "",
+      type3Label: "",
+      galleryImages: [] as VariantGalleryImage[],
+    };
   }
   const payloadPath = safeExtractorJsonPath(selectedOffer._production_payload_file_path);
   if (!payloadPath) {
-    return { combos: [] as VariantCombo[], type1Label: "", type2Label: "", type3Label: "" };
+    return {
+      combos: [] as VariantCombo[],
+      type1Label: "",
+      type2Label: "",
+      type3Label: "",
+      galleryImages: [] as VariantGalleryImage[],
+    };
   }
   const payload = await loadJsonFile(payloadPath);
   const item =
@@ -487,12 +778,17 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
   const { weightByName: tableWeightByName, weights: tableWeights } =
     parseVariantWeightTableFromReadableText((item as any)?.readable_1688);
   const fallbackWeightGrams = (() => {
+    const tableDerived = pickFallbackWeightGrams(tableWeights, {
+      allowUnitless: true,
+    });
+    if (typeof tableDerived === "number" && Number.isFinite(tableDerived) && tableDerived > 0) {
+      return tableDerived;
+    }
     const weights = Array.isArray((item as any)?.product_weights_1688)
       ? ((item as any).product_weights_1688 as unknown[])
       : [];
     const candidates: unknown[] = [
       ...weights,
-      ...tableWeights,
       (item as any)?.weight_grams,
       (item as any)?.weight,
       (item as any)?.product_weight_1688,
@@ -505,32 +801,223 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
   const variantImages = Array.isArray((item as any)?.variant_images_1688)
     ? ((item as any).variant_images_1688 as Array<Record<string, unknown>>)
     : [];
-  const variantImageByName = new Map<string, string>();
+  const variantImageByName = new Map<string, VariantImageTarget>();
   for (const row of variantImages) {
     const strictName = normalizeNameStrict(row?.name);
     const looseName = normalizeNameLoose(row?.name);
-    const url = asText((row as any)?.url_full || (row as any)?.url);
-    if (!url) continue;
+    const imageTarget = buildVariantImageTarget({
+      thumbCandidate: (row as any)?.url,
+      fullCandidate: (row as any)?.url_full || (row as any)?.url,
+    });
+    if (!imageTarget.thumbUrl && !imageTarget.fullUrl && !imageTarget.zoomUrl) continue;
     if (strictName && !variantImageByName.has(strictName)) {
-      variantImageByName.set(strictName, url);
+      variantImageByName.set(strictName, imageTarget);
     }
     if (looseName && !variantImageByName.has(looseName)) {
-      variantImageByName.set(looseName, url);
+      variantImageByName.set(looseName, imageTarget);
     }
   }
 
+  const combos = normalizeCombos(
+    variations,
+    variantImageByName,
+    fallbackWeightGrams,
+    tableWeightByName
+  );
+  const galleryImages = collectPayloadGalleryImages(
+    item && typeof item === "object" ? (item as Record<string, unknown>) : {},
+    combos
+  );
+
   return {
-    combos: normalizeCombos(
-      variations,
-      variantImageByName,
-      fallbackWeightGrams,
-      tableWeightByName
-    ),
+    combos,
     type1Label: asText((variations as any)?.type1Label),
     type2Label: asText((variations as any)?.type2Label),
     type3Label: asText((variations as any)?.type3Label),
+    galleryImages,
   };
 }
+
+const normalizeCachedVariantCombo = (value: unknown, index: number): VariantCombo => {
+  const rec = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const imageTarget = buildVariantImageTarget({
+    thumbCandidate: pickText(rec.image_thumb_url, rec.imageThumbUrl, rec.image_url),
+    fullCandidate: pickText(
+      rec.image_full_url,
+      rec.imageFullUrl,
+      rec.image_zoom_url,
+      rec.imageZoomUrl,
+      rec.image_url
+    ),
+  });
+  return {
+    index:
+      Number.isInteger(Number(rec.index)) && Number(rec.index) >= 0
+        ? Number(rec.index)
+        : index,
+    t1: asText(rec.t1),
+    t2: asText(rec.t2),
+    t3: asText(rec.t3),
+    t1_zh: asText(rec.t1_zh) || undefined,
+    t1_en: asText(rec.t1_en) || undefined,
+    t2_zh: asText(rec.t2_zh) || undefined,
+    t2_en: asText(rec.t2_en) || undefined,
+    t3_zh: asText(rec.t3_zh) || undefined,
+    t3_en: asText(rec.t3_en) || undefined,
+    image_url: asText(rec.image_full_url) || asText(rec.image_url) || imageTarget.fullUrl || undefined,
+    image_thumb_url:
+      asText(rec.image_thumb_url) || asText(rec.imageThumbUrl) || imageTarget.thumbUrl || undefined,
+    image_zoom_url:
+      asText(rec.image_zoom_url) || asText(rec.imageZoomUrl) || imageTarget.zoomUrl || undefined,
+    image_full_url:
+      asText(rec.image_full_url) || asText(rec.imageFullUrl) || imageTarget.fullUrl || undefined,
+    price_raw: asText(rec.price_raw),
+    price: asNumber(rec.price),
+    weight_raw: asText(rec.weight_raw) || undefined,
+    weight_grams: asNumber(rec.weight_grams),
+  };
+};
+
+const hasMissingVariantEnglish = (combos: VariantCombo[]) =>
+  combos.some((combo) =>
+    (["t1", "t2", "t3"] as const).some((field) => {
+      const zh = asText((combo as any)[`${field}_zh`] || (combo as any)[field]);
+      const en = asText((combo as any)[`${field}_en`]);
+      return Boolean(zh) && hasCjk(zh) && !en;
+    })
+  );
+
+const hasSuspiciousCachedWeights = (combos: VariantCombo[]) => {
+  const weights = combos
+    .map((combo) =>
+      typeof combo.weight_grams === "number" && Number.isFinite(combo.weight_grams)
+        ? Math.round(combo.weight_grams)
+        : null
+    )
+    .filter((value): value is number => typeof value === "number" && value > 0);
+  if (weights.length < 3) return false;
+
+  const unique = Array.from(new Set(weights));
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+
+  // Common bad cache shape from noisy fallback extraction:
+  // many variants all set to the same large number (e.g. 1688g).
+  if (unique.length === 1 && weights.length >= 5 && unique[0] >= 1500) {
+    return true;
+  }
+
+  // Strong outlier spread usually means mixed noisy tokens were parsed as weight.
+  if (min > 0 && max / min >= 8 && weights.length >= 4) {
+    return true;
+  }
+
+  return false;
+};
+
+const loadVariantCacheFromSelectedOffer = (
+  selectedOfferRaw: unknown
+): VariantCachePayload | null => {
+  const selectedOffer =
+    selectedOfferRaw && typeof selectedOfferRaw === "object"
+      ? (selectedOfferRaw as Record<string, unknown>)
+      : null;
+  if (!selectedOffer) return null;
+  const cacheRaw =
+    selectedOffer._production_variant_cache &&
+    typeof selectedOffer._production_variant_cache === "object"
+      ? (selectedOffer._production_variant_cache as Record<string, unknown>)
+      : null;
+  if (!cacheRaw) return null;
+  const combosRaw = Array.isArray(cacheRaw.combos) ? cacheRaw.combos : [];
+  const combos = combosRaw.map((entry, idx) => normalizeCachedVariantCombo(entry, idx));
+  if (combos.length === 0) return null;
+  const galleryRaw = Array.isArray(cacheRaw.gallery_images)
+    ? cacheRaw.gallery_images
+    : [];
+  const gallery_images = galleryRaw
+    .map((entry) => normalizeCachedVariantGalleryImage(entry))
+    .filter((entry): entry is VariantGalleryImage => Boolean(entry));
+  if (gallery_images.length === 0) {
+    combos.forEach((combo) => {
+      const derived = buildVariantGalleryImage(
+        combo.image_full_url || combo.image_zoom_url || combo.image_url,
+        combo.image_thumb_url || combo.image_url
+      );
+      if (!derived) return;
+      const key = `${derived.url_full}::${derived.url}`;
+      const exists = gallery_images.some(
+        (entry) => `${entry.url_full}::${entry.url}` === key
+      );
+      if (!exists) gallery_images.push(derived);
+    });
+  }
+  return {
+    cached_at: asText(cacheRaw.cached_at) || new Date().toISOString(),
+    payload_file_path: asText(cacheRaw.payload_file_path) || null,
+    available_count:
+      Number.isInteger(Number(cacheRaw.available_count)) &&
+      Number(cacheRaw.available_count) >= 0
+        ? Number(cacheRaw.available_count)
+        : combos.length,
+    type1_label: asText(cacheRaw.type1_label),
+    type2_label: asText(cacheRaw.type2_label),
+    type3_label: asText(cacheRaw.type3_label),
+    combos,
+    gallery_images,
+  };
+};
+
+const persistVariantCacheOnSelection = async (
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>,
+  provider: string,
+  productId: string,
+  selectedOfferRaw: unknown,
+  cache: VariantCachePayload
+) => {
+  const selectedOffer =
+    selectedOfferRaw && typeof selectedOfferRaw === "object"
+      ? { ...(selectedOfferRaw as Record<string, unknown>) }
+      : {};
+  (selectedOffer as any)._production_variant_cache = cache;
+  const { error } = await adminClient
+    .from("discovery_production_supplier_selection")
+    .update({
+      selected_offer: selectedOffer,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("provider", provider)
+    .eq("product_id", productId);
+  if (error) throw new Error(error.message);
+};
+
+const persistVariantCacheOnSuggestionBestEffort = async (
+  provider: string,
+  productId: string,
+  cache: VariantCachePayload
+) => {
+  if (provider !== PARTNER_SUGGESTION_PROVIDER) return;
+  try {
+    const suggestion = await loadSuggestionRecord(productId);
+    if (!suggestion) return;
+    const next = {
+      ...suggestion,
+      variantCache: {
+        cachedAt: cache.cached_at,
+        payloadFilePath: cache.payload_file_path,
+        availableCount: cache.available_count,
+        type1Label: cache.type1_label,
+        type2Label: cache.type2_label,
+        type3Label: cache.type3_label,
+        combos: cache.combos,
+        galleryImages: cache.gallery_images,
+      },
+    } as any;
+    await saveSuggestionRecord(next);
+  } catch {
+    // Best effort only.
+  }
+};
 
 const extractJsonFromText = (text: string) => {
   const raw = String(text || "").trim();
@@ -605,6 +1092,7 @@ const translateVariantCombosBestEffort = async (combos: VariantCombo[]) => {
     new Set(
       [
         process.env.SUPPLIER_VARIANT_TRANSLATE_MODEL,
+        "gpt-4o-mini",
         "gpt-5-mini",
         "gpt-5-nano",
         process.env.SUPPLIER_TRANSLATE_MODEL,
@@ -704,18 +1192,87 @@ export async function GET(request: NextRequest) {
       selection.selected_offer && typeof selection.selected_offer === "object"
         ? selection.selected_offer
         : {};
-    const { combos, type1Label, type2Label, type3Label } = await loadPayloadCombos(selection);
-    const translatedCombos = skipTranslation
-      ? combos
-      : await translateVariantCombosBestEffort(combos);
+    const payloadFilePath = safeExtractorJsonPath(
+      (selectedOffer as any)?._production_payload_file_path
+    );
+    const cached = loadVariantCacheFromSelectedOffer(selectedOffer);
+    const cachedWeightsSuspicious = hasSuspiciousCachedWeights(cached?.combos || []);
+    const cacheMatchesPayload =
+      Boolean(cached) &&
+      asText(cached?.payload_file_path || "") === asText(payloadFilePath || "") &&
+      !cachedWeightsSuspicious;
+
+    const payloadLoaded = cacheMatchesPayload
+      ? null
+      : await loadPayloadCombos({ selected_offer: selectedOffer as Record<string, unknown> });
+    const sourceCombos =
+      cacheMatchesPayload && cached
+        ? cached.combos
+        : payloadLoaded?.combos && payloadLoaded.combos.length > 0
+          ? payloadLoaded.combos
+          : cached?.combos || [];
+    const type1Label =
+      (cacheMatchesPayload ? cached?.type1_label : payloadLoaded?.type1Label) ||
+      cached?.type1_label ||
+      "";
+    const type2Label =
+      (cacheMatchesPayload ? cached?.type2_label : payloadLoaded?.type2Label) ||
+      cached?.type2_label ||
+      "";
+    const type3Label =
+      (cacheMatchesPayload ? cached?.type3_label : payloadLoaded?.type3Label) ||
+      cached?.type3_label ||
+      "";
+    const galleryImages =
+      (cacheMatchesPayload ? cached?.gallery_images : payloadLoaded?.galleryImages) ||
+      cached?.gallery_images ||
+      [];
+
+    const translatedCombos =
+      skipTranslation || !hasMissingVariantEnglish(sourceCombos)
+        ? sourceCombos
+        : await translateVariantCombosBestEffort(sourceCombos);
+
+    const cachedGalleryCount = Array.isArray(cached?.gallery_images)
+      ? cached.gallery_images.length
+      : 0;
+    const shouldPersistCache =
+      translatedCombos.length > 0 &&
+      (!cacheMatchesPayload ||
+        translatedCombos !== sourceCombos ||
+        cachedGalleryCount !== galleryImages.length ||
+        asText(cached?.type1_label || "") !== asText(type1Label) ||
+        asText(cached?.type2_label || "") !== asText(type2Label) ||
+        asText(cached?.type3_label || "") !== asText(type3Label));
+    if (shouldPersistCache) {
+      const cachePayload: VariantCachePayload = {
+        cached_at: new Date().toISOString(),
+        payload_file_path: payloadFilePath || null,
+        available_count: translatedCombos.length,
+        type1_label: type1Label,
+        type2_label: type2Label,
+        type3_label: type3Label,
+        combos: translatedCombos,
+        gallery_images: galleryImages,
+      };
+      await persistVariantCacheOnSelection(
+        adminClient,
+        provider,
+        productId,
+        selectedOffer,
+        cachePayload
+      );
+      await persistVariantCacheOnSuggestionBestEffort(provider, productId, cachePayload);
+    }
+
     const saved = (selectedOffer as any)?._production_variant_selection;
     const savedIndexes = normalizeSelectionIndexes(
       saved && typeof saved === "object" ? (saved as any).selected_combo_indexes : [],
-      combos.length
+      translatedCombos.length
     );
     const savedOverrides = normalizeComboOverrides(
       saved && typeof saved === "object" ? (saved as any).combo_overrides : [],
-      combos.length
+      translatedCombos.length
     );
     const decoratedCombos = applyComboOverrides(translatedCombos, savedOverrides);
     const savedPacksText =
@@ -734,6 +1291,7 @@ export async function GET(request: NextRequest) {
       combos: decoratedCombos,
       selected_combo_indexes: savedIndexes,
       packs_text: packsText,
+      gallery_images: galleryImages,
     });
   } catch (error) {
     return NextResponse.json(
@@ -776,7 +1334,42 @@ export async function POST(request: NextRequest) {
       selection.selected_offer && typeof selection.selected_offer === "object"
         ? { ...selection.selected_offer }
         : {};
-    const { combos, type1Label, type2Label, type3Label } = await loadPayloadCombos(selection);
+    const payloadFilePath = safeExtractorJsonPath(
+      (selectedOffer as any)?._production_payload_file_path
+    );
+    const cached = loadVariantCacheFromSelectedOffer(selectedOffer);
+    const cachedWeightsSuspicious = hasSuspiciousCachedWeights(cached?.combos || []);
+    const cacheMatchesPayload =
+      Boolean(cached) &&
+      asText(cached?.payload_file_path || "") === asText(payloadFilePath || "") &&
+      !cachedWeightsSuspicious;
+    const payloadLoaded = cacheMatchesPayload
+      ? null
+      : await loadPayloadCombos({ selected_offer: selectedOffer as Record<string, unknown> });
+
+    const combos =
+      cacheMatchesPayload && cached
+        ? cached.combos
+        : payloadLoaded?.combos && payloadLoaded.combos.length > 0
+          ? payloadLoaded.combos
+          : cached?.combos || [];
+    const type1Label =
+      (cacheMatchesPayload ? cached?.type1_label : payloadLoaded?.type1Label) ||
+      cached?.type1_label ||
+      "";
+    const type2Label =
+      (cacheMatchesPayload ? cached?.type2_label : payloadLoaded?.type2Label) ||
+      cached?.type2_label ||
+      "";
+    const type3Label =
+      (cacheMatchesPayload ? cached?.type3_label : payloadLoaded?.type3Label) ||
+      cached?.type3_label ||
+      "";
+    const galleryImages =
+      (cacheMatchesPayload ? cached?.gallery_images : payloadLoaded?.galleryImages) ||
+      cached?.gallery_images ||
+      [];
+
     const selectedIndexes = normalizeSelectionIndexes(
       (body as any).selected_combo_indexes,
       combos.length
@@ -814,6 +1407,18 @@ export async function POST(request: NextRequest) {
     (selectedOffer as any)._production_variant_selected_count = selectedIndexes.length;
     (selectedOffer as any)._production_variant_packs = packs;
     (selectedOffer as any)._production_variant_packs_text = packsText;
+    if (combos.length > 0) {
+      (selectedOffer as any)._production_variant_cache = {
+        cached_at: new Date().toISOString(),
+        payload_file_path: payloadFilePath || null,
+        available_count: combos.length,
+        type1_label: type1Label,
+        type2_label: type2Label,
+        type3_label: type3Label,
+        combos,
+        gallery_images: galleryImages,
+      } satisfies VariantCachePayload;
+    }
 
     const { error: updateError } = await adminClient
       .from("discovery_production_supplier_selection")
@@ -826,6 +1431,19 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    if (combos.length > 0) {
+      await persistVariantCacheOnSuggestionBestEffort(provider, productId, {
+        cached_at: new Date().toISOString(),
+        payload_file_path: payloadFilePath || null,
+        available_count: combos.length,
+        type1_label: type1Label,
+        type2_label: type2Label,
+        type3_label: type3Label,
+        combos,
+        gallery_images: galleryImages,
+      });
     }
 
     // DigiDeal: when a variant is chosen, store purchase_price + weight on the deal so we can
@@ -873,45 +1491,59 @@ export async function POST(request: NextRequest) {
               };
             }
           } else {
-	            const chosenIndex = selectedIndexes[0];
-	            const chosen = combos[chosenIndex] ?? null;
-	            const override = overridesMap.get(chosenIndex);
-	            const overridePrice =
-	              override &&
-	              typeof override.price === "number" &&
-	              Number.isFinite(override.price) &&
-	              override.price > 0
-	                ? Number(override.price)
-	                : null;
-	            const basePrice =
-	              chosen &&
-	              typeof chosen.price === "number" &&
-	              Number.isFinite(chosen.price)
-	                ? Number(chosen.price)
-	                : asPriceNumber(chosen?.price_raw);
-	            const price = overridePrice ?? basePrice;
+            const chosenIndex = selectedIndexes[0];
+            const chosen = combos[chosenIndex] ?? null;
+            const override = overridesMap.get(chosenIndex);
+            const overridePrice =
+              override &&
+              typeof override.price === "number" &&
+              Number.isFinite(override.price) &&
+              override.price > 0
+                ? Number(override.price)
+                : null;
+            const basePrice =
+              chosen &&
+              typeof chosen.price === "number" &&
+              Number.isFinite(chosen.price)
+                ? Number(chosen.price)
+                : asPriceNumber(chosen?.price_raw);
+            const price = overridePrice ?? basePrice;
 
-	            const overrideWeight =
-	              override &&
-	              typeof override.weight_grams === "number" &&
-	              Number.isFinite(override.weight_grams) &&
-	              override.weight_grams > 0
-	                ? Number(override.weight_grams)
-	                : null;
-	            const baseWeight =
-	              chosen &&
-	              typeof chosen.weight_grams === "number" &&
-	              Number.isFinite(chosen.weight_grams)
-	                ? Number(chosen.weight_grams)
-	                : asWeightGrams(chosen?.weight_raw);
-	            const weightGramsRaw = overrideWeight ?? baseWeight;
-            if (price !== null && price > 0 && weightGramsRaw !== null && weightGramsRaw > 0) {
-              const weightGrams = Math.round(weightGramsRaw);
+            const overrideWeight =
+              override &&
+              typeof override.weight_grams === "number" &&
+              Number.isFinite(override.weight_grams) &&
+              override.weight_grams > 0
+                ? Number(override.weight_grams)
+                : null;
+            const baseWeight =
+              chosen &&
+              typeof chosen.weight_grams === "number" &&
+              Number.isFinite(chosen.weight_grams)
+                ? Number(chosen.weight_grams)
+                : asWeightGrams(chosen?.weight_raw, { allowUnitless: true });
+            const weightGramsRaw = overrideWeight ?? baseWeight;
+            const packMultiplier = packs.length > 0 ? Math.min(...packs) : 1;
+            const scaledPrice =
+              price !== null && price > 0
+                ? Number((price * packMultiplier).toFixed(4))
+                : null;
+            const scaledWeightGramsRaw =
+              weightGramsRaw !== null && weightGramsRaw > 0
+                ? weightGramsRaw * packMultiplier
+                : null;
+            if (
+              scaledPrice !== null &&
+              scaledPrice > 0 &&
+              scaledWeightGramsRaw !== null &&
+              scaledWeightGramsRaw > 0
+            ) {
+              const weightGrams = Math.round(scaledWeightGramsRaw);
               const weightKg = Number((weightGrams / 1000).toFixed(3));
               const { data: updatedRow, error: updateRowError } = await adminClient
                 .from("digideal_products")
                 .update({
-                  purchase_price: price,
+                  purchase_price: scaledPrice,
                   weight_grams: weightGrams,
                   weight_kg: weightKg,
                 })

@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
+import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
+import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
 
 export const runtime = "nodejs";
 
@@ -90,6 +92,14 @@ export async function POST(request: Request) {
   const safeName = path.basename(filename);
   const targetPath = path.join(UPLOAD_DIR, safeName);
   fs.writeFileSync(targetPath, JSON.stringify(items, null, 2), "utf8");
+  try {
+    await generateQueueKeywordsForFile(safeName, { force: true, mode: "fast" });
+  } catch {
+    // best effort for upload path
+  }
+  void warmQueueImageCacheForFile(safeName).catch(() => {
+    // best effort for upload path
+  });
 
   return NextResponse.json(
     {

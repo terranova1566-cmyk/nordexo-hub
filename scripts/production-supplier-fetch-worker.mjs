@@ -16,6 +16,9 @@ const OUTPUT_DIR =
     process.env.NODEXO_EXTRACTOR_UPLOAD_DIR || "/srv/node-files/1688-extractor",
     "_production_queue_payloads"
   );
+const PARTNER_SUGGESTION_DIR =
+  process.env.PARTNER_PRODUCT_SUGGESTIONS_DIR ||
+  "/srv/node-files/partner-product-suggestions";
 const REQUEST_TIMEOUT_MS = 25_000;
 
 const parseArgs = (argv) => {
@@ -129,7 +132,8 @@ const toPriceNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
-const toWeightGrams = (value) => {
+const toWeightGrams = (value, options = {}) => {
+  const { allowUnitless = false } = options || {};
   const raw = asText(value);
   if (!raw) return null;
   const normalized = raw.replace(/,/g, ".").trim();
@@ -145,10 +149,16 @@ const toWeightGrams = (value) => {
   if (unit.includes("g") || unit.includes("克")) {
     return Math.round(num);
   }
-  if (num <= 20 && normalized.includes(".")) {
+  if (unit.includes("斤")) {
+    return null;
+  }
+  if (allowUnitless && num <= 20 && normalized.includes(".")) {
     return Math.round(num * 1000);
   }
-  return Math.round(num);
+  if (allowUnitless) {
+    return Math.round(num);
+  }
+  return null;
 };
 
 const normalizeVariantNameStrict = (value) =>
@@ -170,51 +180,72 @@ const parseVariantWeightTableFromReadableText = (value) => {
     .filter(Boolean);
   if (lines.length === 0) return out;
 
-  let headerIndex = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line.includes("\t")) continue;
-    const lower = line.toLowerCase();
-    const hasWeight = line.includes("重量") || lower.includes("weight");
-    if (!hasWeight) continue;
-    const looksLikeSizeTable =
-      line.includes("体积") ||
-      line.includes("长(") ||
-      line.includes("宽(") ||
-      line.includes("高(") ||
-      lower.includes("cm");
-    if (!looksLikeSizeTable) continue;
-    headerIndex = i;
-    break;
-  }
-  if (headerIndex === -1) return out;
+  const toGramsFromHeaderUnit = (rawCell, unit) => {
+    const cell = asText(rawCell);
+    if (!cell) return null;
+    const match = cell.replace(/,/g, ".").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const num = Number(match[0]);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    if (unit === "kg") return Math.round(num * 1000);
+    return Math.round(num);
+  };
 
-  let started = false;
-  for (let i = headerIndex + 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line) continue;
-    if (/^【/.test(line)) break;
-    if (!line.includes("\t")) {
-      if (started) break;
-      continue;
+  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
+    const headerLine = lines[headerIndex];
+    if (!headerLine) continue;
+    if (!/(重量|weight)/i.test(headerLine)) continue;
+    const unitMatch = headerLine.match(/(?:重量|weight)\s*[（(]?\s*(kg|g)\s*[)）]?/i);
+    if (!unitMatch) continue;
+    const unit = String(unitMatch[1] || "").toLowerCase();
+
+    const hasTabs = headerLine.includes("\t");
+    const headerCells = hasTabs
+      ? headerLine.split("\t").map((part) => part.trim()).filter(Boolean)
+      : headerLine.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+    const weightIdx = Math.max(
+      0,
+      headerCells.findIndex((cell) => /(重量|weight)/i.test(cell))
+    );
+
+    let started = false;
+    for (let i = headerIndex + 1; i < Math.min(lines.length, headerIndex + 45); i += 1) {
+      const line = lines[i];
+      if (!line) break;
+      if (/^【/.test(line)) break;
+      if (/登录查看全部|展开全部|内容声明/i.test(line)) break;
+
+      if (hasTabs && !line.includes("\t")) {
+        if (started) break;
+        continue;
+      }
+
+      if (
+        !hasTabs &&
+        !/^-?\d+(?:[.,]\d+)?(?:\s*(?:kg|g|公斤|千克|克))?$/i.test(line)
+      ) {
+        if (started) break;
+        continue;
+      }
+
+      const parts = hasTabs
+        ? line.split(/\t+/).map((part) => part.trim())
+        : line.split(/\s+/).map((part) => part.trim());
+      if (parts.length <= weightIdx) continue;
+
+      const cell = parts[weightIdx];
+      const grams = toGramsFromHeaderUnit(cell, unit);
+      if (!grams) continue;
+
+      started = true;
+      out.weights.push(grams);
+
+      const name = hasTabs ? asText(parts[0]) : "";
+      const strictName = normalizeVariantNameStrict(name);
+      const looseName = normalizeVariantNameLoose(name);
+      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
+      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
     }
-
-    const parts = line
-      .split(/\t+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length < 2) continue;
-
-    const name = parts[0];
-    const grams = toWeightGrams(parts[parts.length - 1]);
-    if (!grams) continue;
-
-    started = true;
-    out.weights.push(grams);
-    const strictName = normalizeVariantNameStrict(name);
-    const looseName = normalizeVariantNameLoose(name);
-    if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
-    if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
   }
 
   return out;
@@ -233,7 +264,20 @@ const enrichVariantWeightsFromReadableText = (payload) => {
   if (!combos || combos.length === 0) return payload;
 
   const table = parseVariantWeightTableFromReadableText(extracted.readableText);
-  if (!table.weightByName || table.weightByName.size === 0) return payload;
+  const fallbackFromTable =
+    Array.isArray(table.weights) && table.weights.length > 0
+      ? Math.max(
+          ...table.weights.filter(
+            (entry) => Number.isFinite(Number(entry)) && Number(entry) > 0
+          )
+        )
+      : null;
+  if (
+    (!table.weightByName || table.weightByName.size === 0) &&
+    (!fallbackFromTable || !Number.isFinite(Number(fallbackFromTable)))
+  ) {
+    return payload;
+  }
 
   const nextCombos = combos.map((combo) => {
     if (!combo || typeof combo !== "object") return combo;
@@ -258,6 +302,9 @@ const enrichVariantWeightsFromReadableText = (payload) => {
     const grams =
       strictKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
       looseKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
+      (Number.isFinite(Number(fallbackFromTable)) && Number(fallbackFromTable) > 0
+        ? Number(fallbackFromTable)
+        : null) ??
       null;
     if (!grams) return row;
 
@@ -462,6 +509,7 @@ const translateVariantCombosBestEffort = async (payload) => {
     new Set(
       [
         process.env.SUPPLIER_VARIANT_TRANSLATE_MODEL,
+        "gpt-4o-mini",
         process.env.SUPPLIER_TRANSLATE_MODEL,
         process.env.OPENAI_EDIT_MODEL,
         "gpt-5-mini",
@@ -1087,6 +1135,55 @@ const updateSelectionOffer = async (admin, provider, productId, offer) => {
   if (error) throw new Error(error.message);
 };
 
+const isSafeSuggestionId = (value) =>
+  /^[a-z0-9][a-z0-9_-]{5,80}$/i.test(asText(value));
+
+const loadPartnerSuggestionSeed = async (productId) => {
+  const safeId = asText(productId);
+  if (!isSafeSuggestionId(safeId)) {
+    return { title: "", description: "", url: "", imageUrls: [] };
+  }
+
+  const filePath = path.join(PARTNER_SUGGESTION_DIR, `${safeId}.json`);
+  try {
+    const raw = await fsp.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    const external =
+      parsed?.externalData && typeof parsed.externalData === "object"
+        ? parsed.externalData
+        : null;
+
+    const title = firstString(
+      external?.title,
+      parsed?.title,
+      external?.rawTitle
+    );
+    const description = firstString(
+      external?.description,
+      parsed?.description,
+      external?.rawDescription
+    );
+    const url = firstString(
+      external?.finalUrl,
+      external?.inputUrl,
+      parsed?.crawlFinalUrl,
+      parsed?.sourceUrl
+    );
+    const imageUrls = uniqueUrls([
+      ...(Array.isArray(external?.galleryImageUrls) ? external.galleryImageUrls : []),
+      ...(Array.isArray(external?.rawGalleryImageUrls) ? external.rawGalleryImageUrls : []),
+      external?.mainImageUrl,
+      external?.rawMainImageUrl,
+      ...(Array.isArray(parsed?.galleryImageUrls) ? parsed.galleryImageUrls : []),
+      parsed?.mainImageUrl,
+    ]);
+
+    return { title, description, url, imageUrls };
+  } catch {
+    return { title: "", description: "", url: "", imageUrls: [] };
+  }
+};
+
 const loadCompetitorSeed = async (admin, provider, productId) => {
   if (provider === "digideal") {
     const { data, error } = await admin
@@ -1102,6 +1199,18 @@ const loadCompetitorSeed = async (admin, provider, productId) => {
       url: firstString(data?.product_url, data?.source_url),
       imageUrls: uniqueUrls([data?.primary_image_url, ...imageList]),
     };
+  }
+
+  if (provider === "partner_suggestions") {
+    const seeded = await loadPartnerSuggestionSeed(productId);
+    if (
+      asText(seeded?.title) ||
+      asText(seeded?.description) ||
+      asText(seeded?.url) ||
+      (Array.isArray(seeded?.imageUrls) && seeded.imageUrls.length > 0)
+    ) {
+      return seeded;
+    }
   }
 
   const { data, error } = await admin
@@ -1393,6 +1502,28 @@ const main = async () => {
   await updateSelectionOffer(admin, provider, productId, readyOffer);
 };
 
-main().catch(() => {
-  // Detached worker: intentionally silent.
+main().catch(async (error) => {
+  try {
+    const { provider, productId } = parseArgs(process.argv);
+    if (!provider || !productId) return;
+    const admin = getSupabaseAdmin();
+    if (!admin) return;
+
+    const selection = await loadSelection(admin, provider, productId);
+    if (!selection) return;
+    const payloadStatus = firstString(
+      selection?.selected_offer?._production_payload_status
+    ).toLowerCase();
+    if (payloadStatus !== "fetching") return;
+
+    await failSelection(
+      admin,
+      selection,
+      error instanceof Error && asText(error.message)
+        ? error.message
+        : "Supplier payload worker failed unexpectedly."
+    );
+  } catch {
+    // Detached worker: intentionally silent.
+  }
 });

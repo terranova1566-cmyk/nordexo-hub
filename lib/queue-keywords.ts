@@ -12,7 +12,7 @@ export type QueueKeywordResult = {
 };
 
 const KEYWORD_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_keyword_cache");
-const KEYWORD_CACHE_VERSION = 3;
+const KEYWORD_CACHE_VERSION = 8;
 
 const TITLE_KEYS = [
   "title_1688",
@@ -186,9 +186,9 @@ const extractJsonFromText = (text: string) => {
   }
 };
 
-const normalizeKeywords = (input: unknown) => {
+const normalizeKeywords = (input: unknown, maxCount: number) => {
+  const limit = Math.max(1, Math.min(20, Math.round(maxCount || 1)));
   if (!Array.isArray(input)) return [] as string[];
-  const seen = new Set<string>();
   const out: string[] = [];
   for (const value of input) {
     const keyword = cleanTitle(asText(value))
@@ -196,11 +196,8 @@ const normalizeKeywords = (input: unknown) => {
       .replace(/[，,、]+$/g, "")
       .slice(0, 24);
     if (!keyword) continue;
-    const key = keyword.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
     out.push(keyword);
-    if (out.length >= 5) break;
+    if (out.length >= limit) break;
   }
   return out;
 };
@@ -210,6 +207,19 @@ const hasLatin = (value: string) => /[A-Za-z]/.test(value);
 const normalizeSingleEnglishKeyword = (raw: string) => {
   const value = cleanTitle(raw);
   if (!value) return "";
+  const directMappings: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /(fidget|spinner|snurrande leksak)/i, label: "Fidget Spinner" },
+    { pattern: /(nagel|nail|nagelfil|nageltrimmer|nagelklipp)/i, label: "Nail Trimmer" },
+    { pattern: /(termometer|hygrometer|temperatur|thermometer)/i, label: "Thermometer" },
+    { pattern: /(öron|otoskop|ear|ear wax)/i, label: "Ear Cleaner" },
+    { pattern: /(hund|katt|pet|paw|dog|cat)/i, label: "Pet Trimmer" },
+    { pattern: /(kolmonoxid|co[-\\s]?mätare|co detector|gas detector)/i, label: "CO Detector" },
+    { pattern: /(magträn|resistance|expander|elastic band)/i, label: "Resistance Trainer" },
+    { pattern: /(verktyg|tool|organizer|holder)/i, label: "Tool Accessory" },
+  ];
+  for (const mapping of directMappings) {
+    if (mapping.pattern.test(value)) return mapping.label;
+  }
   if (hasLatin(value) && !containsChinese(value)) {
     return toTitleCase(value.toLowerCase());
   }
@@ -217,7 +227,9 @@ const normalizeSingleEnglishKeyword = (raw: string) => {
   if (/耳|otoscope|ear/i.test(value)) return "Ear Cleaner";
   if (/狗|猫|宠物|paw|pet/i.test(value)) return "Pet Accessory";
   if (/包|袋|bag/i.test(value)) return "Bag";
-  if (/检测|一氧化碳|气体|报警|detector|co/i.test(value)) return "Gas Detector";
+  if (/检测|一氧化碳|气体|报警|detector|carbon monoxide|\bco\b/i.test(value)) {
+    return "Gas Detector";
+  }
   if (/剪|修|刨|剃|trimmer|groom/i.test(value)) return "Grooming Tool";
   if (/指甲|美甲|nail/i.test(value)) return "Nail Tool";
   if (/工具|tool|organizer|holder/i.test(value)) return "Tool Accessory";
@@ -256,6 +268,9 @@ const deriveFallbackKeywordFromTitle = (title: string) => {
     .trim();
 
   if (!cleaned) return "";
+
+  const normalized = normalizeSingleEnglishKeyword(cleaned);
+  if (normalized) return normalized;
 
   for (const mapping of KNOWN_TERM_MAP) {
     if (mapping.pattern.test(cleaned)) return mapping.label;
@@ -296,80 +311,44 @@ const deriveFallbackKeywordFromTitle = (title: string) => {
   return "";
 };
 
-const fallbackKeywords = (titles: string[]) => {
-  const unique: string[] = [];
-  const seen = new Set<string>();
-
-  for (const title of titles) {
-    const keyword = deriveFallbackKeywordFromTitle(title);
-    if (!keyword) continue;
-    const key = keyword.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(keyword);
-    if (unique.length >= 5) break;
-  }
-
-  while (unique.length < 5) {
-    unique.push(
-      ["Home Accessory", "Personal Care Tool", "Utility Product", "Household Item", "Portable Device"][
-        unique.length
-      ]
-    );
-  }
-
-  return unique.slice(0, 5);
+const fallbackKeywordForTitle = (title: string, index: number) => {
+  const mapped = deriveFallbackKeywordFromTitle(title);
+  if (mapped) return mapped;
+  const normalized = normalizeSingleEnglishKeyword(title);
+  if (normalized) return normalized;
+  return `Product ${index + 1}`;
 };
 
-const mergeEnglishKeywords = (aiKeywords: string[] | null, titles: string[]) => {
+const mergeEnglishKeywords = (
+  aiKeywords: string[] | null,
+  titles: string[],
+  maxCount: number
+) => {
+  const limit = Math.max(1, Math.min(20, Math.round(maxCount || 1)));
   const out: string[] = [];
-  const seen = new Set<string>();
 
-  if (Array.isArray(aiKeywords)) {
-    for (const keyword of aiKeywords) {
-      const normalized = normalizeSingleEnglishKeyword(keyword);
-      if (!normalized) continue;
-      const key = normalized.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(normalized);
-      if (out.length >= 5) return out;
+  for (let index = 0; index < limit; index += 1) {
+    const aiCandidate =
+      Array.isArray(aiKeywords) && typeof aiKeywords[index] === "string"
+        ? aiKeywords[index]
+        : "";
+    const normalizedAi = normalizeSingleEnglishKeyword(aiCandidate);
+    if (normalizedAi) {
+      out.push(normalizedAi);
+      continue;
     }
+
+    const title = titles[index] ?? "";
+    out.push(fallbackKeywordForTitle(title, index));
   }
 
-  for (const keyword of fallbackKeywords(titles)) {
-    const normalized = normalizeSingleEnglishKeyword(keyword) || keyword;
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(normalized);
-    if (out.length >= 5) return out;
-  }
-
-  while (out.length < 5) {
-    const fill = [
-      "Home Accessory",
-      "Personal Care Tool",
-      "Utility Product",
-      "Household Item",
-      "Portable Device",
-    ][out.length];
-    const key = fill.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(fill);
-    } else {
-      out.push(fill);
-    }
-  }
-
-  return out.slice(0, 5);
+  return out;
 };
 
-const requestOpenAiKeywords = async (titles: string[]) => {
+const requestOpenAiKeywords = async (titles: string[], maxCount: number) => {
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
   if (!apiKey) return null;
+  const limit = Math.max(1, Math.min(20, Math.round(maxCount || 1)));
 
   const models = Array.from(
     new Set(
@@ -389,17 +368,19 @@ const requestOpenAiKeywords = async (titles: string[]) => {
 
   const prompt = [
     "You receive product titles in mixed languages (Chinese, Swedish, English).",
-    "Return exactly 5 short ENGLISH product-noun keywords for this batch.",
+    `Return exactly ${limit} short ENGLISH product-noun labels.`,
     "Rules:",
-    "1) Each keyword must describe what the product is (noun), not usage or marketing text.",
-    "2) Keep each keyword specific and reusable (1-3 words).",
-    "3) No duplicates.",
-    "4) Cover distinct products in the batch; do not output generic terms.",
-    "5) Output must be English only.",
-    '6) Output JSON only: {"keywords":["k1","k2","k3","k4","k5"]}',
+    "1) Each label must describe what the product is (noun), not usage or marketing text.",
+    "2) Keep each label specific and reusable (1-4 words).",
+    "3) One label per title, preserve title order.",
+    "4) Output must be English only.",
+    `5) Return exactly ${limit} labels.`,
+    '6) Output JSON only: {"keywords":["k1","k2"]}',
     "",
     "Titles:",
-    ...titles.slice(0, 100).map((title, index) => `${index + 1}. ${title.slice(0, 180)}`),
+    ...titles
+      .slice(0, limit)
+      .map((title, index) => `${index + 1}. ${title.slice(0, 180)}`),
   ].join("\n");
 
   for (const model of models) {
@@ -424,9 +405,10 @@ const requestOpenAiKeywords = async (titles: string[]) => {
       const content = asText(payload?.choices?.[0]?.message?.content);
       const parsed = extractJsonFromText(content);
       const keywords = normalizeKeywords(
-        parsed?.keywords ?? parsed?.items ?? parsed?.result ?? null
+        parsed?.keywords ?? parsed?.items ?? parsed?.result ?? null,
+        limit
       );
-      if (keywords.length > 0) return keywords.slice(0, 5);
+      if (keywords.length > 0) return keywords.slice(0, limit);
     } catch {
       continue;
     } finally {
@@ -444,9 +426,44 @@ const sanitizeFileName = (fileName: string) => {
 const cacheFilePathFor = (fileName: string) =>
   path.join(KEYWORD_CACHE_DIR, `${fileName}.json`);
 
+const isValidKeywordCache = (
+  cache: unknown,
+  sourceMtimeMs: number
+): cache is QueueKeywordResult => {
+  if (!cache || typeof cache !== "object") return false;
+  const record = cache as QueueKeywordResult;
+  if (Number(record?.cacheVersion || 0) !== KEYWORD_CACHE_VERSION) return false;
+  if (Number(record?.sourceMtimeMs) !== Number(sourceMtimeMs)) return false;
+  if (!Array.isArray(record?.keywords)) return false;
+  if (typeof record?.label !== "string") return false;
+  return true;
+};
+
+export const readQueueKeywordCacheForFile = (
+  fileName: string
+): QueueKeywordResult | null => {
+  const safeName = sanitizeFileName(fileName);
+  if (!safeName) return null;
+
+  const filePath = path.join(EXTRACTOR_UPLOAD_DIR, safeName);
+  if (!fs.existsSync(filePath)) return null;
+  const stat = fs.statSync(filePath);
+
+  const cachePath = cacheFilePathFor(safeName);
+  if (!fs.existsSync(cachePath)) return null;
+
+  try {
+    const rawCache = fs.readFileSync(cachePath, "utf8");
+    const cache = JSON.parse(rawCache) as unknown;
+    return isValidKeywordCache(cache, stat.mtimeMs) ? (cache as QueueKeywordResult) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const generateQueueKeywordsForFile = async (
   fileName: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; mode?: "fast" | "full" }
 ): Promise<QueueKeywordResult> => {
   const safeName = sanitizeFileName(fileName);
   if (!safeName) {
@@ -461,21 +478,9 @@ export const generateQueueKeywordsForFile = async (
   fs.mkdirSync(KEYWORD_CACHE_DIR, { recursive: true });
   const cachePath = cacheFilePathFor(safeName);
 
-  if (!options?.force && fs.existsSync(cachePath)) {
-    try {
-      const rawCache = fs.readFileSync(cachePath, "utf8");
-      const cache = JSON.parse(rawCache) as QueueKeywordResult;
-      if (
-        Number(cache?.cacheVersion || 0) === KEYWORD_CACHE_VERSION &&
-        Number(cache?.sourceMtimeMs) === Number(stat.mtimeMs) &&
-        Array.isArray(cache?.keywords) &&
-        typeof cache?.label === "string"
-      ) {
-        return cache;
-      }
-    } catch {
-      // ignore cache read errors
-    }
+  if (!options?.force) {
+    const cached = readQueueKeywordCacheForFile(safeName);
+    if (cached) return cached;
   }
 
   const raw = fs.readFileSync(filePath, "utf8");
@@ -488,6 +493,7 @@ export const generateQueueKeywordsForFile = async (
         : ""
     )
     .filter(Boolean);
+  const keywordTargetCount = Math.max(1, Math.min(20, titles.length));
 
   if (titles.length === 0) {
     const emptyResult: QueueKeywordResult = {
@@ -502,8 +508,16 @@ export const generateQueueKeywordsForFile = async (
     return emptyResult;
   }
 
-  const aiKeywords = await requestOpenAiKeywords(titles);
-  const finalKeywords = mergeEnglishKeywords(aiKeywords, titles);
+  const mode = options?.mode === "fast" ? "fast" : "full";
+  const aiKeywords =
+    mode === "full"
+      ? await requestOpenAiKeywords(titles, keywordTargetCount)
+      : null;
+  const finalKeywords = mergeEnglishKeywords(
+    aiKeywords,
+    titles,
+    keywordTargetCount
+  );
   const result: QueueKeywordResult = {
     sourceMtimeMs: stat.mtimeMs,
     updatedAt: new Date().toISOString(),

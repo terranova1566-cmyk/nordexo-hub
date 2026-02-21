@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { mergeExtractorFiles } from "@/lib/1688-extractor";
+import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
+import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
 
 export const runtime = "nodejs";
 
@@ -56,6 +58,17 @@ export async function POST(request: Request) {
     if (!result) {
       return NextResponse.json({ error: "Unable to merge files." }, { status: 400 });
     }
+    try {
+      await generateQueueKeywordsForFile(result.name, {
+        force: true,
+        mode: "fast",
+      });
+    } catch {
+      // best-effort post-merge metadata generation
+    }
+    void warmQueueImageCacheForFile(result.name).catch(() => {
+      // best-effort post-merge image cache warm
+    });
     return NextResponse.json({ item: result });
   } catch (err) {
     return NextResponse.json(

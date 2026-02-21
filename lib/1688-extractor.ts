@@ -12,6 +12,7 @@ export type ExtractorFileSummary = {
   urlCount: number;
   productCount: number;
   missingSpuCount: number;
+  deckItems: ExtractorPreviewItem[];
 };
 
 export type ExtractorPreviewItem = {
@@ -21,6 +22,15 @@ export type ExtractorPreviewItem = {
   imageUrl: string | null;
   spu: string;
   variantCount: number;
+};
+
+const FILE_SUMMARY_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_summary_cache");
+const FILE_SUMMARY_CACHE_VERSION = 1;
+
+type ExtractorFileSummaryCache = {
+  cacheVersion: number;
+  sourceMtimeMs: number;
+  summary: ExtractorFileSummary;
 };
 
 const asString = (value: unknown) =>
@@ -207,6 +217,67 @@ export const parseExtractorPayload = (payload: unknown) => {
 
 export const listExtractorFiles = (): ExtractorFileSummary[] => {
   if (!fs.existsSync(EXTRACTOR_UPLOAD_DIR)) return [];
+  fs.mkdirSync(FILE_SUMMARY_CACHE_DIR, { recursive: true });
+
+  const cachePathFor = (name: string) =>
+    path.join(FILE_SUMMARY_CACHE_DIR, `${name}.json`);
+
+  const readSummaryCache = (
+    name: string,
+    sourceMtimeMs: number
+  ): ExtractorFileSummary | null => {
+    const cachePath = cachePathFor(name);
+    if (!fs.existsSync(cachePath)) return null;
+    try {
+      const raw = fs.readFileSync(cachePath, "utf8");
+      const parsed = JSON.parse(raw) as ExtractorFileSummaryCache;
+      const validDeck =
+        parsed?.summary &&
+        Array.isArray(parsed.summary.deckItems) &&
+        parsed.summary.deckItems.every((item) => item && typeof item === "object");
+      if (
+        Number(parsed?.cacheVersion) === FILE_SUMMARY_CACHE_VERSION &&
+        Number(parsed?.sourceMtimeMs) === Number(sourceMtimeMs) &&
+        parsed?.summary &&
+        typeof parsed.summary.name === "string" &&
+        typeof parsed.summary.receivedAt === "string" &&
+        typeof parsed.summary.urlCount === "number" &&
+        typeof parsed.summary.productCount === "number" &&
+        typeof parsed.summary.missingSpuCount === "number" &&
+        validDeck
+      ) {
+        return parsed.summary;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const writeSummaryCache = (
+    name: string,
+    sourceMtimeMs: number,
+    summary: ExtractorFileSummary
+  ) => {
+    const cachePath = cachePathFor(name);
+    const payload: ExtractorFileSummaryCache = {
+      cacheVersion: FILE_SUMMARY_CACHE_VERSION,
+      sourceMtimeMs,
+      summary,
+    };
+    const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+      fs.renameSync(tempPath, cachePath);
+    } catch {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+  };
+
   const files = fs
     .readdirSync(EXTRACTOR_UPLOAD_DIR)
     .filter((name) => name.toLowerCase().endsWith(".json"))
@@ -224,21 +295,30 @@ export const listExtractorFiles = (): ExtractorFileSummary[] => {
       const fullPath = path.join(EXTRACTOR_UPLOAD_DIR, name);
       try {
         const stat = fs.statSync(fullPath);
+        const sourceMtimeMs = Number(stat.mtimeMs);
+        const cached = readSummaryCache(name, sourceMtimeMs);
+        if (cached) return cached;
+
         const raw = fs.readFileSync(fullPath, "utf8");
         const payload = JSON.parse(raw);
-        const { urlCount, productCount, missingSpuCount } =
-          parseExtractorPayload(payload);
+        const parsed = parseExtractorPayload(payload);
+        const deckItems = parsed.items
+          .filter((item) => Boolean(item.imageUrl))
+          .slice(0, 5);
         const createdAt =
           Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0
             ? stat.birthtime
             : stat.mtime;
-        return {
+        const summary: ExtractorFileSummary = {
           name,
           receivedAt: createdAt.toISOString(),
-          urlCount,
-          productCount,
-          missingSpuCount,
+          urlCount: parsed.urlCount,
+          productCount: parsed.productCount,
+          missingSpuCount: parsed.missingSpuCount,
+          deckItems,
         };
+        writeSummaryCache(name, sourceMtimeMs, summary);
+        return summary;
       } catch {
         return null;
       }

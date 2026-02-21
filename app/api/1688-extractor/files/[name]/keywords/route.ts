@@ -49,7 +49,9 @@ export async function GET(
   }
 
   try {
-    const result = await generateQueueKeywordsForFile(safeName);
+    const result = await generateQueueKeywordsForFile(safeName, {
+      mode: "fast",
+    });
     return NextResponse.json(
       {
         ...result,

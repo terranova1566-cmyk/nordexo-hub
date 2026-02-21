@@ -126,7 +126,7 @@ const parseWorkerCount = (value?: string | null) => {
 const WORKER_MIN = 1;
 const WORKER_MAX = parseWorkerCount(process.env.BULK_JOB_MAX_WORKERS) ?? 4;
 const WORKER_DEFAULT =
-  parseWorkerCount(process.env.BULK_JOB_DEFAULT_WORKERS) ?? WORKER_MIN;
+  parseWorkerCount(process.env.BULK_JOB_DEFAULT_WORKERS) ?? 2;
 
 export const resolveWorkerCount = (
   itemCount: number,

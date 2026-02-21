@@ -5,6 +5,8 @@ import {
   readExtractorFile,
   removeExtractorItems,
 } from "@/lib/1688-extractor";
+import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
+import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
 
 export const runtime = "nodejs";
 
@@ -69,6 +71,12 @@ export async function PATCH(
   if (auth.error) return auth.error;
 
   const { name } = await params;
+  let decodedName = "";
+  try {
+    decodedName = decodeURIComponent(name);
+  } catch {
+    return NextResponse.json({ error: "Invalid file name." }, { status: 400 });
+  }
   let payload: any = null;
   try {
     payload = await request.json();
@@ -84,7 +92,18 @@ export async function PATCH(
   }
 
   try {
-    const updated = removeExtractorItems(decodeURIComponent(name), indexes);
+    const updated = removeExtractorItems(decodedName, indexes);
+    try {
+      await generateQueueKeywordsForFile(decodedName, {
+        force: true,
+        mode: "fast",
+      });
+    } catch {
+      // best-effort metadata refresh after patch
+    }
+    void warmQueueImageCacheForFile(decodedName).catch(() => {
+      // best-effort image cache warm after patch
+    });
     return NextResponse.json(updated);
   } catch (err) {
     return NextResponse.json(

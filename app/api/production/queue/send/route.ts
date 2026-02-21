@@ -19,6 +19,7 @@ import {
   upsertProductionStatuses,
 } from "@/lib/production-queue-status";
 import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
+import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
 
 export const runtime = "nodejs";
 
@@ -381,8 +382,16 @@ export async function POST(request: Request) {
   const extractorFilePath = path.join(EXTRACTOR_UPLOAD_DIR, fileName);
   await fs.mkdir(EXTRACTOR_UPLOAD_DIR, { recursive: true });
   await fs.writeFile(extractorFilePath, JSON.stringify(mergedItems, null, 2), "utf8");
-  void generateQueueKeywordsForFile(fileName).catch((error) => {
+  try {
+    await generateQueueKeywordsForFile(fileName, {
+      force: true,
+      mode: "fast",
+    });
+  } catch (error) {
     console.error("Queue keyword precompute failed:", error);
+  }
+  void warmQueueImageCacheForFile(fileName).catch((error) => {
+    console.error("Queue image cache warm failed:", error);
   });
 
   const workerCount = resolveWorkerCount(itemCount, null);

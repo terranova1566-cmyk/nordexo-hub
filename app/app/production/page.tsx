@@ -185,6 +185,7 @@ const QUEUE_PROVIDER_OPTIONS = [
   { value: "fyndiq", label: "Fyndiq" },
   { value: "digideal", label: "DigiDeal" },
   { value: "cdon", label: "CDON" },
+  { value: "partner_suggestions", label: "Suggestions" },
 ] as const;
 
 const QUEUE_COMMENT_OPTIONS = [
@@ -4139,7 +4140,9 @@ export default function ProductionPage() {
 	            const providerLabel =
 	              item.provider === "digideal"
 	                ? "DigiDeal"
-	                : item.provider.toUpperCase();
+	                : item.provider === "partner_suggestions"
+	                  ? "Suggestions"
+	                  : item.provider.toUpperCase();
             const localImageUrl =
               item.image_local_url ||
               (item.image_local_path

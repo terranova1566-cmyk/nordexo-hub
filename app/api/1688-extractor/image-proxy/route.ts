@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
+import {
+  getQueueImageCache,
+  isAllowedQueueImageHost,
+} from "@/lib/queue-image-cache";
 
 export const runtime = "nodejs";
 
-const ALLOWED_HOSTS = [
-  "cbu01.alicdn.com",
-  "img.alicdn.com",
-  "gw.alicdn.com",
-  "images.sello.io",
-  "cdn.sello.io",
-];
-
-const isAllowedHost = (host: string) =>
-  ALLOWED_HOSTS.some(
-    (allowed) => host === allowed || host.endsWith(`.${allowed}`)
-  );
+const parseDimension = (raw: string | null) => {
+  if (raw === null || raw === undefined || raw.trim() === "") return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  if (rounded < 16 || rounded > 2048) return null;
+  return rounded;
+};
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const raw = String(searchParams.get("url") || "").trim();
+  const width = parseDimension(searchParams.get("w"));
+  const height = parseDimension(searchParams.get("h"));
   if (!raw) {
     return NextResponse.json({ error: "Missing url." }, { status: 400 });
   }
@@ -32,11 +34,27 @@ export async function GET(request: Request) {
   if (!["http:", "https:"].includes(parsed.protocol)) {
     return NextResponse.json({ error: "Invalid protocol." }, { status: 400 });
   }
-  if (!isAllowedHost(parsed.hostname)) {
+  if (!isAllowedQueueImageHost(parsed.hostname)) {
     return NextResponse.json({ error: "Host not allowed." }, { status: 403 });
   }
 
   try {
+    if (width || height) {
+      const resized = await getQueueImageCache({
+        sourceUrl: parsed.toString(),
+        width,
+        height,
+      });
+      return new NextResponse(new Uint8Array(resized.buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": resized.contentType,
+          "Cache-Control":
+            "public, max-age=604800, stale-while-revalidate=604800, immutable",
+        },
+      });
+    }
+
     const upstream = await fetch(parsed.toString(), {
       method: "GET",
       headers: {
@@ -64,7 +82,8 @@ export async function GET(request: Request) {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=86400",
+        "Cache-Control":
+          "public, max-age=86400, stale-while-revalidate=86400",
       },
     });
   } catch (error) {
@@ -74,4 +93,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

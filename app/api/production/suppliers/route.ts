@@ -5,6 +5,11 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import {
+  PARTNER_SUGGESTION_PROVIDER,
+  loadSuggestionRecord,
+  saveSuggestionRecord,
+} from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
 
@@ -256,6 +261,156 @@ const extractJsonFromText = (text: string) => {
   }
 };
 
+const pickFirstText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = typeof value === "string" ? value.trim() : "";
+    if (text) return text;
+  }
+  return "";
+};
+
+const cleanSuggestionTitle = (value: string) => {
+  const normalized = String(value || "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[|]/g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+  if (!normalized) return "";
+  return normalized.slice(0, 80);
+};
+
+const hasCjk = (value: unknown) => /[\u3400-\u9fff]/.test(String(value || ""));
+
+const extractSuggestionTitle = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") return "";
+  const rec = payload as Record<string, unknown>;
+  return cleanSuggestionTitle(
+    pickFirstText(
+      rec.title,
+      rec.product_title,
+      rec.productTitle,
+      rec.english_title,
+      rec.englishTitle,
+      rec.name
+    )
+  );
+};
+
+const generateSuggestionTitleWithOpenAi = async (sourceTitle: string) => {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) return "";
+
+  const prompt = [
+    "Convert this product title into a concise ENGLISH product noun title.",
+    "Return JSON only with format: { \"title\": \"...\" }",
+    "Rules:",
+    "1) 2-8 words.",
+    "2) Noun-focused product name only.",
+    "3) No marketing terms (best, premium, hot, etc).",
+    "4) Keep key attributes only when essential.",
+    "",
+    `Input title: ${sourceTitle}`,
+  ].join("\n");
+
+  const modelCandidates = Array.from(
+    new Set(
+      [
+        process.env.SUGGESTION_TITLE_MODEL,
+        "gpt-4o-mini",
+        process.env.SUPPLIER_TRANSLATE_MODEL,
+        process.env.OPENAI_EDIT_MODEL,
+        "gpt-5-mini",
+      ]
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  for (const model of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => null);
+      const content = String(payload?.choices?.[0]?.message?.content || "");
+      const parsed = extractJsonFromText(content);
+      const title = extractSuggestionTitle(parsed);
+      if (title) return title;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return "";
+};
+
+const updatePartnerSuggestionTitleBestEffort = async (
+  provider: string,
+  productId: string,
+  selectedOffer: Offer
+) => {
+  if (provider !== PARTNER_SUGGESTION_PROVIDER) return "";
+  if (!productId) return "";
+
+  try {
+    const suggestion = await loadSuggestionRecord(productId);
+    if (!suggestion) return "";
+    const selectedOfferRecord =
+      selectedOffer && typeof selectedOffer === "object"
+        ? (selectedOffer as Record<string, unknown>)
+        : {};
+
+    const sourceTitle = pickFirstText(
+      selectedOfferRecord.subject_en,
+      selectedOffer?.subject,
+      selectedOfferRecord.title,
+      suggestion.title
+    );
+    if (!sourceTitle) return "";
+
+    const aiTitle = await generateSuggestionTitleWithOpenAi(sourceTitle);
+    const fallbackTitle = hasCjk(sourceTitle) ? "" : cleanSuggestionTitle(sourceTitle);
+    const nextTitle = aiTitle || fallbackTitle;
+    if (!nextTitle) return "";
+
+    if ((suggestion.title || "") === nextTitle) return nextTitle;
+    await saveSuggestionRecord({
+      ...suggestion,
+      title: nextTitle,
+    });
+    return nextTitle;
+  } catch {
+    return "";
+  }
+};
+
+const hasMissingOfferEnglish = (offers: Offer[]) =>
+  offers.some((offer) => {
+    const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
+    const english =
+      typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
+    return Boolean(subject) && (!english || hasCjk(english));
+  });
+
 const translateOffersBestEffort = async (offers: Offer[]) => {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return offers;
@@ -266,7 +421,7 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
     const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
     const existingEn =
       typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
-    if (!subject || existingEn) continue;
+    if (!subject || (existingEn && !hasCjk(existingEn))) continue;
     if (seen.has(subject)) continue;
     seen.add(subject);
     subjectsToTranslate.push(subject);
@@ -276,9 +431,9 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
 
   const configured = [
     process.env.SUPPLIER_TRANSLATE_MODEL,
-    process.env.OPENAI_EDIT_MODEL,
     "gpt-5-mini",
     "gpt-4o-mini",
+    process.env.OPENAI_EDIT_MODEL,
   ]
     .map((v) => String(v || "").trim())
     .filter(Boolean);
@@ -286,9 +441,14 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
   const limitedSubjects = subjectsToTranslate.slice(0, 15);
 
   const prompt = [
-    "Translate this title to English, maximum 80 characters.",
+    "You translate Chinese 1688 product titles into clean English for sourcing.",
     "Return JSON only.",
     'Return format: { \"items\": [ { \"subject\": \"...\", \"english_title\": \"...\" } ] }',
+    "Rules:",
+    "1) Remove marketing filler words and hype.",
+    "2) Keep technical data: material, dimensions, model, pack count, and key specs.",
+    "3) Keep clear product nouns and essential attributes.",
+    "4) Output should be detailed but concise, max 120 characters.",
     "",
     "Titles to translate:",
     ...limitedSubjects.map((s, i) => `${i + 1}. ${s}`),
@@ -343,7 +503,7 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
       "";
     const english = typeof englishCandidate === "string" ? englishCandidate.trim() : "";
     if (!subject || !english) return;
-    map.set(subject, english.slice(0, 80));
+    map.set(subject, english.slice(0, 120));
   });
 
   if (map.size === 0) return offers;
@@ -353,9 +513,9 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
     if (!subject) return offer;
     const existingEn =
       typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
-    if (existingEn) return offer;
+    if (existingEn && !hasCjk(existingEn)) return offer;
     const translated = map.get(subject);
-    return translated ? ({ ...(offer as any), subject_en: translated } as Offer) : offer;
+    return translated ? ({ ...(offer as any), subject_en: translated.slice(0, 120) } as Offer) : offer;
   });
 };
 
@@ -540,7 +700,7 @@ export async function GET(request: NextRequest) {
   if (searchRow && !refresh) {
     const offers = Array.isArray((searchRow as any).offers) ? (searchRow as any).offers : [];
     // Normalize 1688 detail URLs to the canonical form (detail.1688.com/offer/{id}.html).
-    const normalizedOffers = offers.map((offer: Offer) => {
+    const normalizedOffersBase = offers.map((offer: Offer) => {
       const canonical = canonical1688OfferUrl(offer);
       return canonical ? { ...offer, detailUrl: canonical } : offer;
     });
@@ -549,10 +709,30 @@ export async function GET(request: NextRequest) {
 
     // Previously we cached tool failures as empty offers (tool returns { ok:false, offers:[] } with no meta).
     // That makes the UI look like "no suppliers found" forever. If we see that shape, rerun once.
-    const looksLikeFailure = normalizedOffers.length === 0 && meta === null;
+    const looksLikeFailure = normalizedOffersBase.length === 0 && meta === null;
     // Always return cached suppliers immediately unless caller explicitly requests refresh=1.
     // This keeps the supplier dialog fast when we already have results.
     if (!looksLikeFailure) {
+      let normalizedOffers = normalizedOffersBase;
+      if (hasMissingOfferEnglish(normalizedOffers)) {
+        const translatedOffers = await translateOffersBestEffort(normalizedOffers);
+        if (translatedOffers !== normalizedOffers) {
+          normalizedOffers = translatedOffers;
+          await adminClient
+            .from("discovery_production_supplier_searches")
+            .update({
+              offers: normalizedOffers,
+              meta,
+              input,
+              fetched_at:
+                typeof (searchRow as any)?.fetched_at === "string"
+                  ? (searchRow as any).fetched_at
+                  : new Date().toISOString(),
+            })
+            .eq("provider", provider)
+            .eq("product_id", productId);
+        }
+      }
       const selected = selectionRow ?? null;
       return NextResponse.json({
         provider,
@@ -886,6 +1066,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
+  const partnerSuggestionTitle = await updatePartnerSuggestionTitleBestEffort(
+    provider,
+    productId,
+    selectedOfferWithPayload
+  );
+
   const queued = spawnSupplierPayloadWorkerBestEffort(provider, productId);
   if (!queued) {
     const failedAt = new Date().toISOString();
@@ -912,11 +1098,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       selected: failedRow ?? selectionRow ?? null,
       payload_fetch_status: "failed",
+      suggestion_title: partnerSuggestionTitle || null,
     });
   }
 
   return NextResponse.json({
     selected: selectionRow ?? null,
     payload_fetch_status: "fetching",
+    suggestion_title: partnerSuggestionTitle || null,
   });
 }

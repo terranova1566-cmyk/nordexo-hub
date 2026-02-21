@@ -11,6 +11,10 @@ type Offer = {
   [key: string]: unknown;
 };
 
+const hasCjk = (value: unknown) => /[\u3400-\u9fff]/.test(String(value || ""));
+const asText = (value: unknown) =>
+  value === null || value === undefined ? "" : String(value).trim();
+
 const getAdminClient = () => {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -124,19 +128,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ offers });
   }
 
-  const subjectsToTranslate: string[] = [];
-  const seen = new Set<string>();
-  offers.forEach((offer) => {
-    const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
-    const existingEn =
-      typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
-    if (!subject || existingEn) return;
-    if (seen.has(subject)) return;
-    seen.add(subject);
-    subjectsToTranslate.push(subject);
+  const offersToTranslate = offers.filter((offer) => {
+    const subject = asText(offer?.subject);
+    const existingEn = asText(offer?.subject_en);
+    if (!subject || !hasCjk(subject)) return false;
+    return !existingEn || hasCjk(existingEn);
   });
 
-  if (subjectsToTranslate.length === 0) {
+  if (offersToTranslate.length === 0) {
     return NextResponse.json({ offers });
   }
 
@@ -149,25 +148,34 @@ export async function POST(request: NextRequest) {
   const modelCandidates = Array.from(
     new Set(
       [
-        process.env.SUPPLIER_TRANSLATE_MODEL,
-        process.env.OPENAI_EDIT_MODEL,
-        "gpt-5-mini",
         "gpt-4o-mini",
+        process.env.SUPPLIER_TRANSLATE_MODEL,
+        "gpt-5-mini",
+        process.env.OPENAI_EDIT_MODEL,
       ]
-        .map((value) => String(value || "").trim())
+        .map((value) => asText(value))
         .filter(Boolean)
     )
   );
 
-  const limitedSubjects = subjectsToTranslate.slice(0, 15);
+  const limitedOffers = offersToTranslate.slice(0, 20).map((offer, index) => ({
+    idx: index + 1,
+    offer_id: asText(offer?.offerId) || null,
+    subject: asText(offer?.subject),
+  }));
 
   const prompt = [
-    'Translate this title to English, maximum 80 characters.',
+    "Translate Chinese supplier product titles into concise, natural English.",
+    "Remove marketing words, hype, and unrelated selling language.",
+    "Keep practical usage and core product nouns.",
+    "Keep meaningful technical attributes such as material, dimensions, model, and pack details.",
+    "Do not add brand claims or promotional copy.",
+    "Maximum 120 characters per translated title.",
     "Return JSON only.",
-    'Return format: { "items": [ { "subject": "...", "english_title": "..." } ] }',
+    'Return format: { "items": [ { "offer_id": "...", "subject": "...", "english_title": "..." } ] }',
     "",
-    "Titles to translate:",
-    ...limitedSubjects.map((s, i) => `${i + 1}. ${s}`),
+    "Input JSON:",
+    JSON.stringify(limitedOffers, null, 2),
   ].join("\n");
 
   let parsed: any = null;
@@ -178,7 +186,7 @@ export async function POST(request: NextRequest) {
       response_format: { type: "json_object" },
     };
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -202,16 +210,12 @@ export async function POST(request: NextRequest) {
   }
   if (!parsed) return NextResponse.json({ offers });
 
-  const map = new Map<string, string>();
+  const mapByOfferId = new Map<string, string>();
+  const mapBySubject = new Map<string, string>();
   const items = Array.isArray((parsed as any)?.items) ? (parsed as any).items : [];
   items.forEach((row: any, idx: number) => {
-    // Prefer explicit mapping; fall back to index-based mapping to make the prompt more robust.
-    const subject =
-      typeof row?.subject === "string"
-        ? row.subject.trim()
-        : typeof limitedSubjects[idx] === "string"
-          ? limitedSubjects[idx].trim()
-          : "";
+    const subject = asText(row?.subject) || asText(limitedOffers[idx]?.subject);
+    const offerId = asText(row?.offer_id) || asText(limitedOffers[idx]?.offer_id);
 
     const englishCandidate =
       (typeof row?.english_title === "string" && row.english_title.trim()) ||
@@ -222,20 +226,21 @@ export async function POST(request: NextRequest) {
       "";
 
     const english = typeof englishCandidate === "string" ? englishCandidate.trim() : "";
-    if (!subject || !english) return;
-    map.set(subject, english.slice(0, 80));
+    if (!english) return;
+    if (offerId) mapByOfferId.set(offerId, english.slice(0, 120));
+    if (subject) mapBySubject.set(subject, english.slice(0, 120));
   });
 
-  if (map.size === 0) {
+  if (mapByOfferId.size === 0 && mapBySubject.size === 0) {
     return NextResponse.json({ offers });
   }
 
   const updatedOffers = offers.map((offer) => {
-    const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
+    const subject = asText(offer?.subject);
+    const offerId = asText(offer?.offerId);
     if (!subject) return offer;
-    if (typeof offer?.subject_en === "string" && offer.subject_en.trim()) return offer;
-    const translated = map.get(subject);
-    return translated ? { ...offer, subject_en: translated } : offer;
+    const translated = (offerId && mapByOfferId.get(offerId)) || mapBySubject.get(subject);
+    return translated ? { ...offer, subject_en: translated.slice(0, 120) } : offer;
   });
 
   const { error: upsertError } = await adminClient

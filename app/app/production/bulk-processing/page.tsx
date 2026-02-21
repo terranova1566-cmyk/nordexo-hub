@@ -24,7 +24,14 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { formatDateTime } from "@/lib/format";
 
@@ -55,6 +62,10 @@ type ExtractorFileSummary = {
   urlCount: number;
   productCount: number;
   missingSpuCount: number;
+  deckItems?: ExtractorPreviewItem[];
+  keywordLabel?: string;
+  keywordCached?: boolean;
+  keywordUpdatedAt?: string | null;
 };
 
 type ExtractorPreviewItem = {
@@ -88,15 +99,44 @@ type QueueKeywordPayload = {
 type DeckHoverPreview = {
   fileName: string;
   index: number;
-  imageUrl: string;
+  proxyUrl: string;
   x: number;
   y: number;
 };
 
-const toImageProxyUrl = (rawUrl: string | null | undefined) => {
+const toImageProxyUrl = (
+  rawUrl: string | null | undefined,
+  options?: { width?: number; height?: number }
+) => {
   const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
   if (!value) return "";
-  return `/api/1688-extractor/image-proxy?url=${encodeURIComponent(value)}`;
+  const params = new URLSearchParams({ url: value });
+  if (typeof options?.width === "number" && options.width > 0) {
+    params.set("w", String(Math.round(options.width)));
+  }
+  if (typeof options?.height === "number" && options.height > 0) {
+    params.set("h", String(Math.round(options.height)));
+  }
+  return `/api/1688-extractor/image-proxy?${params.toString()}`;
+};
+
+const getIncomingSourceLabel = (fileName: string) =>
+  fileName.toLowerCase().startsWith("production_queue_incoming_")
+    ? "Production queue"
+    : "Chrome extension";
+
+const fetchWithTimeout = async (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = 15000
+) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 const useStyles = makeStyles({
@@ -149,11 +189,18 @@ const useStyles = makeStyles({
     minWidth: "260px",
     maxWidth: "360px",
   },
+  chromeColSource: {
+    width: "140px",
+  },
   chromeColJson: {
     width: "108px",
   },
   chromeColActions: {
     width: "280px",
+  },
+  chromeColRowSelect: {
+    width: "44px",
+    textAlign: "center",
   },
   chromeActionsCell: {
     width: "280px",
@@ -168,6 +215,19 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground3,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     color: tokens.colorNeutralForeground2,
+  },
+  completedBatchButton: {
+    backgroundColor: "#107c10",
+    border: "1px solid #0b6a0b",
+    color: "#ffffff",
+    "&:hover": {
+      backgroundColor: "#0b6a0b",
+      color: "#ffffff",
+    },
+    "&:active": {
+      backgroundColor: "#095a09",
+      color: "#ffffff",
+    },
   },
   chromeLink: {
     paddingInline: 0,
@@ -213,11 +273,22 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase100,
   },
-  queueKeywords: {
+  queueKeywordsWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+  },
+  queueKeywordsMain: {
     display: "-webkit-box",
-    WebkitLineClamp: 3,
+    WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
+  },
+  queueKeywordsFile: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    wordBreak: "break-all",
   },
   queueKeywordsLoading: {
     color: tokens.colorNeutralForeground3,
@@ -302,11 +373,11 @@ const useStyles = makeStyles({
   },
   previewColLink: {
     width: "118px",
-    textAlign: "right",
+    textAlign: "left",
   },
   previewColAction: {
     width: "92px",
-    textAlign: "right",
+    textAlign: "left",
   },
   previewImageCell: {
     textAlign: "center",
@@ -317,19 +388,19 @@ const useStyles = makeStyles({
     alignItems: "center",
   },
   previewActionCell: {
-    textAlign: "right",
+    textAlign: "left",
   },
   previewLinkCell: {
-    textAlign: "right",
+    textAlign: "left",
   },
   previewLinkInner: {
     display: "flex",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     alignItems: "center",
   },
   previewActionInner: {
     display: "flex",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     alignItems: "center",
   },
   previewWhiteButton: {
@@ -465,14 +536,13 @@ const useStyles = makeStyles({
 export default function BulkProcessingPage() {
   const styles = useStyles();
   const { t } = useI18n();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const [job, setJob] = useState<BulkJob | null>(null);
+  const [bulkJobs, setBulkJobs] = useState<BulkJob[]>([]);
   const [activeTab, setActiveTab] = useState<string>("parallel");
   const [logs, setLogs] = useState<Record<string, string[]>>({});
-  const [isUploading, setIsUploading] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isStopping, setIsStopping] = useState(false);
+  const [isImportingJson, setIsImportingJson] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [extractorFiles, setExtractorFiles] = useState<ExtractorFileSummary[]>(
     []
   );
@@ -500,7 +570,6 @@ export default function BulkProcessingPage() {
   const [availableSpuCount, setAvailableSpuCount] = useState<number | null>(
     null
   );
-  const [error, setError] = useState<string | null>(null);
   const [queuePreviewByFile, setQueuePreviewByFile] = useState<
     Record<string, ExtractorPreviewItem[]>
   >({});
@@ -522,6 +591,13 @@ export default function BulkProcessingPage() {
   const autoAssignRunningRef = useRef(false);
   const queuePreviewRequestRef = useRef<Set<string>>(new Set());
   const queueKeywordRequestRef = useRef<Set<string>>(new Set());
+  const preloadedImageUrlsRef = useRef<Set<string>>(new Set());
+  const preloadedImageElementsRef = useRef<Map<string, HTMLImageElement>>(
+    new Map()
+  );
+  const preloadedZoomBlobUrlByProxyRef = useRef<Map<string, string>>(new Map());
+  const preloadingZoomProxyUrlsRef = useRef<Set<string>>(new Set());
+  const [, forceZoomPreviewRefresh] = useState(0);
   const logSourcesRef = useRef<EventSource[]>([]);
 
   const loadSpuSummary = useCallback(async () => {
@@ -532,6 +608,21 @@ export default function BulkProcessingPage() {
       if (typeof payload?.freeCount === "number") {
         setAvailableSpuCount(payload.freeCount);
       }
+    } catch {
+      return;
+    }
+  }, []);
+
+  const loadBulkJobs = useCallback(async () => {
+    try {
+      const response = await fetch("/api/bulk-jobs", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const items = (payload?.items ?? []) as BulkJob[];
+      setBulkJobs(items);
+      const running = items.find((entry) => entry.status === "running");
+      const queued = items.find((entry) => entry.status === "queued");
+      setJob(running ?? queued ?? null);
     } catch {
       return;
     }
@@ -549,6 +640,43 @@ export default function BulkProcessingPage() {
       const payload = await response.json();
       const nextItems = (payload?.items ?? []) as ExtractorFileSummary[];
       setExtractorFiles(nextItems);
+      setQueuePreviewByFile(() => {
+        const next: Record<string, ExtractorPreviewItem[]> = {};
+        nextItems.forEach((item) => {
+          const deck = Array.isArray(item.deckItems)
+            ? item.deckItems.filter((entry) => Boolean(entry?.imageUrl)).slice(0, 5)
+            : [];
+          next[item.name] = deck as ExtractorPreviewItem[];
+        });
+        return next;
+      });
+      setQueuePreviewLoadingByFile(() => {
+        const next: Record<string, boolean> = {};
+        nextItems.forEach((item) => {
+          next[item.name] = false;
+        });
+        return next;
+      });
+      setQueueKeywordsByFile(() => {
+        const next: Record<string, string> = {};
+        nextItems.forEach((item) => {
+          const cached = typeof item.keywordLabel === "string" ? item.keywordLabel.trim() : "";
+          next[item.name] = cached;
+        });
+        return next;
+      });
+      setQueueKeywordsLoadingByFile((prev) => {
+        const next: Record<string, boolean> = {};
+        nextItems.forEach((item) => {
+          const cached = Boolean(
+            item.keywordCached &&
+              typeof item.keywordLabel === "string" &&
+              item.keywordLabel.trim()
+          );
+          next[item.name] = cached ? false : Boolean(prev[item.name]);
+        });
+        return next;
+      });
       setSelectedExtractorFiles((prev) => {
         if (!prev.size) return prev;
         const allowed = new Set(nextItems.map((item) => item.name));
@@ -568,33 +696,28 @@ export default function BulkProcessingPage() {
   }, [loadExtractorFiles]);
 
   useEffect(() => {
-    if (job) return;
-    let active = true;
-    const loadLatest = async () => {
-      try {
-        const response = await fetch("/api/bulk-jobs");
-        if (!response.ok) return;
-        const payload = await response.json();
-        const items = (payload?.items ?? []) as BulkJob[];
-        if (!items.length) return;
-        const running = items.find((entry) => entry.status === "running");
-        const queued = items.find((entry) => entry.status === "queued");
-        const selected = running ?? queued ?? items[0];
-        if (active) setJob(selected);
-      } catch {
-        return;
-      }
-    };
-    loadLatest();
+    loadBulkJobs();
+  }, [loadBulkJobs]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadBulkJobs();
+    }, 3000);
     return () => {
-      active = false;
+      clearInterval(interval);
     };
-  }, [job]);
+  }, [loadBulkJobs]);
 
   const tabs = useMemo(() => {
     const workerCount = job?.workerCount ?? 1;
     return ["parallel", ...Array.from({ length: workerCount }, (_, i) => `w${i + 1}`)];
   }, [job?.workerCount]);
+
+  useEffect(() => {
+    if (job) return;
+    setLogs({});
+    setActiveTab("parallel");
+  }, [job]);
 
   const appendLog = useCallback((key: string, line: string) => {
     setLogs((prev) => {
@@ -614,20 +737,22 @@ export default function BulkProcessingPage() {
     [extractorFiles, selectedExtractorFiles]
   );
 
-  const productionQueueFiles = useMemo(
-    () =>
-      extractorFiles.filter((entry) =>
-        entry.name.toLowerCase().startsWith("production_queue_incoming_")
-      ),
-    [extractorFiles]
-  );
+  const productionQueueFiles = useMemo(() => extractorFiles, [extractorFiles]);
+
+  const latestJobByInputName = useMemo(() => {
+    const map = new Map<string, BulkJob>();
+    for (const entry of bulkJobs) {
+      if (!entry?.inputName) continue;
+      if (!map.has(entry.inputName)) {
+        map.set(entry.inputName, entry);
+      }
+    }
+    return map;
+  }, [bulkJobs]);
 
   const chromeExtractorFiles = useMemo(
-    () =>
-      extractorFiles.filter(
-        (entry) => !entry.name.toLowerCase().startsWith("production_queue_incoming_")
-      ),
-    [extractorFiles]
+    () => [] as ExtractorFileSummary[],
+    []
   );
 
   useEffect(() => {
@@ -661,38 +786,54 @@ export default function BulkProcessingPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const pending = productionQueueFiles.filter(
+      (entry) =>
+        entry.deckItems === undefined &&
+        !queuePreviewByFile[entry.name] &&
+        !queuePreviewRequestRef.current.has(entry.name)
+    );
+    if (!pending.length) return () => void 0;
+
+    pending.forEach((entry) => {
+      queuePreviewRequestRef.current.add(entry.name);
+      setQueuePreviewLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
+    });
+
     const loadQueuePreviews = async () => {
-      for (const entry of productionQueueFiles) {
-        if (cancelled) return;
-        if (queuePreviewByFile[entry.name]) continue;
-        if (queuePreviewRequestRef.current.has(entry.name)) continue;
-        queuePreviewRequestRef.current.add(entry.name);
-        setQueuePreviewLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
-        try {
-          const response = await fetch(
-            `/api/1688-extractor/files/${encodeURIComponent(entry.name)}`
-          );
-          if (!response.ok) continue;
-          const payload = (await response.json()) as ExtractorPreview;
-          const items =
-            (payload.items ?? payload.previewItems ?? []).filter(
-              (item) => Boolean(item?.imageUrl)
-            ) as ExtractorPreviewItem[];
-          if (cancelled) return;
-          setQueuePreviewByFile((prev) => ({ ...prev, [entry.name]: items }));
-        } catch {
-          continue;
-        } finally {
-          queuePreviewRequestRef.current.delete(entry.name);
-          if (!cancelled) {
-            setQueuePreviewLoadingByFile((prev) => ({
-              ...prev,
-              [entry.name]: false,
-            }));
+      await Promise.allSettled(
+        pending.map(async (entry) => {
+          try {
+            const response = await fetchWithTimeout(
+              `/api/1688-extractor/files/${encodeURIComponent(entry.name)}`,
+              { cache: "no-store" },
+              15000
+            );
+            if (!response.ok) {
+              throw new Error(`Preview request failed for ${entry.name}`);
+            }
+            const payload = (await response.json()) as ExtractorPreview;
+            const items =
+              (payload.items ?? payload.previewItems ?? []).filter((item) =>
+                Boolean(item?.imageUrl)
+              ) as ExtractorPreviewItem[];
+            if (cancelled) return;
+            setQueuePreviewByFile((prev) => ({ ...prev, [entry.name]: items }));
+          } catch {
+            if (cancelled) return;
+            setQueuePreviewByFile((prev) => ({ ...prev, [entry.name]: [] }));
+          } finally {
+            queuePreviewRequestRef.current.delete(entry.name);
+            if (!cancelled) {
+              setQueuePreviewLoadingByFile((prev) => ({
+                ...prev,
+                [entry.name]: false,
+              }));
+            }
           }
-        }
-      }
+        })
+      );
     };
+
     void loadQueuePreviews();
     return () => {
       cancelled = true;
@@ -701,43 +842,137 @@ export default function BulkProcessingPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const pending = productionQueueFiles.filter((entry) => {
+      if (entry.keywordCached) return false;
+      const existing = queueKeywordsByFile[entry.name];
+      const hasLabel = typeof existing === "string" && existing.trim().length > 0;
+      return !hasLabel && !queueKeywordRequestRef.current.has(entry.name);
+    });
+    if (!pending.length) return () => void 0;
+
+    pending.forEach((entry) => {
+      queueKeywordRequestRef.current.add(entry.name);
+      setQueueKeywordsLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
+    });
+
     const loadQueueKeywords = async () => {
-      for (const entry of productionQueueFiles) {
-        if (cancelled) return;
-        if (queueKeywordsByFile[entry.name]) continue;
-        if (queueKeywordRequestRef.current.has(entry.name)) continue;
-        queueKeywordRequestRef.current.add(entry.name);
-        setQueueKeywordsLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
-        try {
-          const response = await fetch(
-            `/api/1688-extractor/files/${encodeURIComponent(entry.name)}/keywords?v=${encodeURIComponent(entry.receivedAt || "")}`,
-            { cache: "no-store" }
-          );
-          if (!response.ok) continue;
-          const payload = (await response.json()) as QueueKeywordPayload;
-          const label =
-            typeof payload?.label === "string" ? payload.label.trim() : "";
-          if (!label) continue;
-          if (cancelled) return;
-          setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: label }));
-        } catch {
-          continue;
-        } finally {
-          queueKeywordRequestRef.current.delete(entry.name);
-          if (!cancelled) {
-            setQueueKeywordsLoadingByFile((prev) => ({
-              ...prev,
-              [entry.name]: false,
-            }));
+      await Promise.allSettled(
+        pending.map(async (entry) => {
+          try {
+            const response = await fetchWithTimeout(
+              `/api/1688-extractor/files/${encodeURIComponent(entry.name)}/keywords`,
+              { cache: "no-store" },
+              25000
+            );
+            if (!response.ok) {
+              throw new Error(`Keyword request failed for ${entry.name}`);
+            }
+            const payload = (await response.json()) as QueueKeywordPayload;
+            const label =
+              typeof payload?.label === "string" ? payload.label.trim() : "";
+            if (cancelled) return;
+            setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: label }));
+          } catch {
+            if (cancelled) return;
+            setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: "" }));
+          } finally {
+            queueKeywordRequestRef.current.delete(entry.name);
+            if (!cancelled) {
+              setQueueKeywordsLoadingByFile((prev) => ({
+                ...prev,
+                [entry.name]: false,
+              }));
+            }
           }
-        }
-      }
+        })
+      );
     };
+
     void loadQueueKeywords();
     return () => {
       cancelled = true;
     };
   }, [productionQueueFiles, queueKeywordsByFile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const thumbUrls: string[] = [];
+    const zoomUrls: string[] = [];
+    productionQueueFiles.forEach((entry) => {
+      const deckItems = (queuePreviewByFile[entry.name] ?? []).slice(0, 5);
+      deckItems.forEach((item) => {
+        const thumbUrl = toImageProxyUrl(item.imageUrl, { width: 75, height: 75 });
+        const zoomUrl = toImageProxyUrl(item.imageUrl, { width: 300, height: 300 });
+        if (thumbUrl) thumbUrls.push(thumbUrl);
+        if (zoomUrl) zoomUrls.push(zoomUrl);
+      });
+    });
+
+    thumbUrls.forEach((url) => {
+      if (preloadedImageUrlsRef.current.has(url)) return;
+      preloadedImageUrlsRef.current.add(url);
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      preloadedImageElementsRef.current.set(url, img);
+    });
+
+    const missingZoom = zoomUrls.filter(
+      (url) =>
+        !preloadedZoomBlobUrlByProxyRef.current.has(url) &&
+        !preloadingZoomProxyUrlsRef.current.has(url)
+    );
+    if (!missingZoom.length) return;
+
+    let cancelled = false;
+    missingZoom.forEach((url) => preloadingZoomProxyUrlsRef.current.add(url));
+
+    const run = async () => {
+      let changed = false;
+      await Promise.allSettled(
+        missingZoom.map(async (url) => {
+          try {
+            const response = await fetch(url, { cache: "force-cache" });
+            if (!response.ok) return;
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            preloadedZoomBlobUrlByProxyRef.current.set(url, objectUrl);
+            const img = new Image();
+            img.decoding = "async";
+            img.src = objectUrl;
+            preloadedImageElementsRef.current.set(objectUrl, img);
+            changed = true;
+          } catch {
+            // best-effort preloading
+          } finally {
+            preloadingZoomProxyUrlsRef.current.delete(url);
+          }
+        })
+      );
+      if (!cancelled && changed) {
+        forceZoomPreviewRefresh((prev) => prev + 1);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [productionQueueFiles, queuePreviewByFile, forceZoomPreviewRefresh]);
+
+  useEffect(() => {
+    return () => {
+      preloadedZoomBlobUrlByProxyRef.current.forEach((objectUrl) => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // ignore cleanup errors
+        }
+      });
+      preloadedZoomBlobUrlByProxyRef.current.clear();
+      preloadedImageElementsRef.current.clear();
+    };
+  }, []);
 
   const selectedProductTotal = useMemo(
     () =>
@@ -751,6 +986,27 @@ export default function BulkProcessingPage() {
     [selectedExtractorList]
   );
 
+  const selectedProductionNames = useMemo(
+    () =>
+      productionQueueFiles
+        .filter((entry) => selectedExtractorFiles.has(entry.name))
+        .map((entry) => entry.name),
+    [productionQueueFiles, selectedExtractorFiles]
+  );
+
+  const allProductionSelected = useMemo(
+    () =>
+      productionQueueFiles.length > 0 &&
+      productionQueueFiles.every((entry) => selectedExtractorFiles.has(entry.name)),
+    [productionQueueFiles, selectedExtractorFiles]
+  );
+
+  const someProductionSelected = useMemo(
+    () =>
+      productionQueueFiles.some((entry) => selectedExtractorFiles.has(entry.name)),
+    [productionQueueFiles, selectedExtractorFiles]
+  );
+
   const allExtractorSelected = useMemo(
     () =>
       chromeExtractorFiles.length > 0 &&
@@ -762,6 +1018,18 @@ export default function BulkProcessingPage() {
     () => chromeExtractorFiles.some((entry) => selectedExtractorFiles.has(entry.name)),
     [chromeExtractorFiles, selectedExtractorFiles]
   );
+
+  const toggleSelectAllProduction = useCallback(() => {
+    setSelectedExtractorFiles((prev) => {
+      const next = new Set(prev);
+      if (allProductionSelected) {
+        productionQueueFiles.forEach((entry) => next.delete(entry.name));
+      } else {
+        productionQueueFiles.forEach((entry) => next.add(entry.name));
+      }
+      return next;
+    });
+  }, [allProductionSelected, productionQueueFiles]);
 
   const toggleSelectAllExtractor = useCallback(() => {
     if (allExtractorSelected) {
@@ -818,74 +1086,66 @@ export default function BulkProcessingPage() {
     }
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile) return;
-    setIsUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      const response = await fetch("/api/bulk-jobs/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Upload failed.");
-      }
-      const payload = await response.json();
-      setJob(payload.job as BulkJob);
-      setLogs({});
-      setActiveTab("parallel");
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsUploading(false);
-    }
+  const handleClickImportJson = () => {
+    importFileInputRef.current?.click();
   };
 
-  const handleStart = async () => {
-    if (!job) return;
-    setIsStarting(true);
-    setError(null);
+  const handleImportJsonFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsImportingJson(true);
+    setExtractorError(null);
     try {
-      const response = await fetch(`/api/bulk-jobs/${job.jobId}/start`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Unable to start job.");
+      const raw = await file.text();
+      const parsed = JSON.parse(raw) as unknown;
+      const fallbackName = file.name.replace(/\.json$/i, "").trim();
+      let payload: Record<string, unknown>;
+      if (Array.isArray(parsed)) {
+        payload = { items: parsed, filenameBase: fallbackName };
+      } else if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        const items =
+          Array.isArray(record.items)
+            ? record.items
+            : Array.isArray(record.urls)
+            ? record.urls
+            : Array.isArray(record.data)
+            ? record.data
+            : Array.isArray(record.products)
+            ? record.products
+            : Array.isArray(record.results)
+            ? record.results
+            : null;
+        if (!items) {
+          throw new Error("JSON must contain an items array.");
+        }
+        payload = { ...record, items };
+        const hasName = Boolean(
+          String(record.filenameBase ?? record.filename ?? record.name ?? "").trim()
+        );
+        if (!hasName) {
+          payload.filenameBase = fallbackName;
+        }
+      } else {
+        throw new Error("Invalid JSON structure.");
       }
-      const payload = await response.json();
-      setJob(payload.job as BulkJob);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsStarting(false);
-    }
-  };
 
-  const handleStop = async () => {
-    if (!job) return;
-    setIsStopping(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/bulk-jobs/${job.jobId}/stop`, {
+      const response = await fetch("/api/1688-extractor/upload", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         const message = await response.text();
-        throw new Error(message || "Unable to stop job.");
+        throw new Error(message || "Unable to import JSON file.");
       }
-      const payload = await response.json();
-      setJob(payload.job as BulkJob);
+      await Promise.all([loadExtractorFiles(), loadBulkJobs()]);
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message || "Unable to import JSON file.";
+      setExtractorError(message);
     } finally {
-      setIsStopping(false);
+      setIsImportingJson(false);
+      event.target.value = "";
     }
   };
 
@@ -971,6 +1231,54 @@ export default function BulkProcessingPage() {
     }
   };
 
+  const handleDeleteSelectedExtractors = async () => {
+    if (!selectedProductionNames.length) return;
+    setIsDeletingSelected(true);
+    setExtractorError(null);
+    try {
+      const settled = await Promise.allSettled(
+        selectedProductionNames.map(async (name) => {
+          const response = await fetch(
+            `/api/1688-extractor/files/${encodeURIComponent(name)}`,
+            { method: "DELETE" }
+          );
+          if (!response.ok) {
+            const message = await response.text();
+            throw new Error(`${name}: ${message || "Unable to delete file."}`);
+          }
+          return name;
+        })
+      );
+
+      const deletedNames = settled
+        .filter((result): result is PromiseFulfilledResult<string> => result.status === "fulfilled")
+        .map((result) => result.value);
+      const failedMessages = settled
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => (result.reason as Error)?.message || String(result.reason));
+
+      if (deletedNames.length) {
+        setSelectedExtractorFiles((prev) => {
+          const next = new Set(prev);
+          deletedNames.forEach((name) => next.delete(name));
+          return next;
+        });
+        if (preview && deletedNames.includes(preview.name)) {
+          setPreview(null);
+        }
+        await loadExtractorFiles();
+      }
+
+      if (failedMessages.length) {
+        setExtractorError(failedMessages.join(" | "));
+      }
+    } catch (err) {
+      setExtractorError((err as Error).message || "Unable to delete selected files.");
+    } finally {
+      setIsDeletingSelected(false);
+    }
+  };
+
   const handleDeleteExtractor = async (name: string) => {
     setExtractorLoadingName(name);
     setExtractorError(null);
@@ -996,7 +1304,7 @@ export default function BulkProcessingPage() {
 
   const handleLoadExtractor = async (name: string) => {
     setExtractorLoadingName(name);
-    setError(null);
+    setExtractorError(null);
     try {
       const response = await fetch("/api/bulk-jobs/from-extractor", {
         method: "POST",
@@ -1011,12 +1319,57 @@ export default function BulkProcessingPage() {
       setJob(payload.job as BulkJob);
       setLogs({});
       setActiveTab("parallel");
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      await loadBulkJobs();
     } catch (err) {
-      setError((err as Error).message);
+      setExtractorError((err as Error).message);
+    } finally {
+      setExtractorLoadingName(null);
+    }
+  };
+
+  const handleStopBatch = async (name: string, jobId: string) => {
+    setExtractorLoadingName(name);
+    setExtractorError(null);
+    try {
+      const response = await fetch(`/api/bulk-jobs/${encodeURIComponent(jobId)}/stop`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to stop batch.");
+      }
+      const payload = await response.json();
+      if (payload?.job) {
+        setJob(payload.job as BulkJob);
+      }
+      await loadBulkJobs();
+    } catch (err) {
+      const message = (err as Error).message || "Unable to stop batch.";
+      setExtractorError(message);
+    } finally {
+      setExtractorLoadingName(null);
+    }
+  };
+
+  const handleRemoveBatchData = async (name: string, jobId: string) => {
+    setExtractorLoadingName(name);
+    setExtractorError(null);
+    try {
+      const response = await fetch(`/api/bulk-jobs/${encodeURIComponent(jobId)}/stop`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to remove batch data.");
+      }
+      const payload = await response.json();
+      if (payload?.job) {
+        setJob(payload.job as BulkJob);
+      }
+      await loadBulkJobs();
+    } catch (err) {
+      const message = (err as Error).message || "Unable to remove batch data.";
+      setExtractorError(message);
     } finally {
       setExtractorLoadingName(null);
     }
@@ -1082,22 +1435,6 @@ export default function BulkProcessingPage() {
   ]);
 
   useEffect(() => {
-    if (!job) return;
-    if (job.status !== "running" && job.status !== "queued") return;
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/bulk-jobs/${job.jobId}`);
-        if (!response.ok) return;
-        const payload = await response.json();
-        setJob(payload.job as BulkJob);
-      } catch {
-        return;
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [job]);
-
-  useEffect(() => {
     logSourcesRef.current.forEach((source) => source.close());
     logSourcesRef.current = [];
     if (!job) return;
@@ -1129,8 +1466,6 @@ export default function BulkProcessingPage() {
     };
   }, [job?.jobId, job?.workerCount, appendLog]);
 
-  const statusLabel = job ? job.status : "idle";
-
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -1147,7 +1482,42 @@ export default function BulkProcessingPage() {
           <Text size={500} weight="semibold">
             {t("bulkProcessing.queueIncoming.title")}
           </Text>
+          <div className={styles.chromeHeaderActions}>
+            <Button
+              appearance="primary"
+              size="small"
+              onClick={handleClickImportJson}
+              disabled={isImportingJson || isDeletingSelected}
+            >
+              {isImportingJson ? <Spinner size="tiny" /> : "Import JSON File"}
+            </Button>
+            <Button
+              appearance="outline"
+              size="small"
+              onClick={() => void handleDeleteSelectedExtractors()}
+              disabled={isDeletingSelected || selectedProductionNames.length === 0}
+            >
+              {isDeletingSelected ? <Spinner size="tiny" /> : "Delete"}
+            </Button>
+            <Button
+              appearance="outline"
+              size="small"
+              onClick={handleOpenMergeDialog}
+              disabled={
+                isMerging || isDeletingSelected || selectedProductionNames.length < 2
+              }
+            >
+              Merge
+            </Button>
+          </div>
         </div>
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept=".json,application/json"
+          style={{ display: "none" }}
+          onChange={handleImportJsonFile}
+        />
         {extractorLoading ? <Spinner size="tiny" /> : null}
         {!extractorLoading && productionQueueFiles.length === 0 ? (
           <Text size={200} className={styles.chromeEmpty}>
@@ -1164,8 +1534,8 @@ export default function BulkProcessingPage() {
                 <TableHeaderCell className={styles.chromeColKeywords}>
                   Batch Content
                 </TableHeaderCell>
-                <TableHeaderCell className={styles.chromeColJson}>
-                  {t("bulkProcessing.chrome.file")}
+                <TableHeaderCell className={styles.chromeColSource}>
+                  Source
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.chromeColProducts}>
                   {t("bulkProcessing.chrome.products")}
@@ -1173,13 +1543,35 @@ export default function BulkProcessingPage() {
                 <TableHeaderCell className={styles.chromeColCreated}>
                   {t("bulkProcessing.chrome.received")}
                 </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColJson}>
+                  {t("bulkProcessing.chrome.file")}
+                </TableHeaderCell>
                 <TableHeaderCell className={styles.chromeColActions}>
                   {t("bulkProcessing.chrome.actions")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.chromeColRowSelect}>
+                  <Checkbox
+                    checked={
+                      allProductionSelected
+                        ? true
+                        : someProductionSelected
+                        ? "mixed"
+                        : false
+                    }
+                    onChange={toggleSelectAllProduction}
+                    aria-label={t("common.selectAll")}
+                  />
                 </TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {productionQueueFiles.map((entry) => (
+              {productionQueueFiles.map((entry) => {
+                const rowJob = latestJobByInputName.get(entry.name) ?? null;
+                const isRunningBatch =
+                  rowJob?.status === "running" || rowJob?.status === "queued";
+                const isBatchComplete = rowJob?.status === "completed";
+                const isRowBusy = extractorLoadingName === entry.name;
+                return (
                 <TableRow key={entry.name}>
                   <TableCell className={styles.chromeColDeck}>
                     {(() => {
@@ -1194,12 +1586,18 @@ export default function BulkProcessingPage() {
                           <div className={styles.queueDeckPlaceholder}>No image</div>
                         );
                       }
-                      const deckCount = deckItems.length;
                       return (
                         <div className={styles.queueDeckWrap}>
                           {deckItems.map((item, index) => {
-                            const imageUrl = toImageProxyUrl(item.imageUrl);
-                            if (!imageUrl) return null;
+                            const thumbUrl = toImageProxyUrl(item.imageUrl, {
+                              width: 75,
+                              height: 75,
+                            });
+                            const hoverUrl = toImageProxyUrl(item.imageUrl, {
+                              width: 300,
+                              height: 300,
+                            });
+                            if (!thumbUrl || !hoverUrl) return null;
                             const isHovered =
                               deckHoverPreview?.fileName === entry.name &&
                               deckHoverPreview?.index === index;
@@ -1215,7 +1613,7 @@ export default function BulkProcessingPage() {
                                   setDeckHoverPreview({
                                     fileName: entry.name,
                                     index,
-                                    imageUrl,
+                                    proxyUrl: hoverUrl,
                                     x: ev.clientX,
                                     y: ev.clientY,
                                   });
@@ -1246,7 +1644,7 @@ export default function BulkProcessingPage() {
                                 }}
                               >
                                 <img
-                                  src={imageUrl}
+                                  src={thumbUrl}
                                   alt=""
                                   className={styles.queueDeckImage}
                                 />
@@ -1258,24 +1656,34 @@ export default function BulkProcessingPage() {
                     })()}
                   </TableCell>
                   <TableCell className={styles.chromeColKeywords}>
-                    {queueKeywordsByFile[entry.name] ? (
-                      <Text size={200} className={styles.queueKeywords}>
-                        {queueKeywordsByFile[entry.name]}
-                      </Text>
-                    ) : queueKeywordsLoadingByFile[entry.name] ? (
-                      <Text size={200} className={styles.queueKeywordsLoading}>
-                        Building batch content...
-                      </Text>
-                    ) : (
-                      <Text size={200} color="neutral">
-                        -
-                      </Text>
-                    )}
+                    {(() => {
+                      const hasKeyword = Object.prototype.hasOwnProperty.call(
+                        queueKeywordsByFile,
+                        entry.name
+                      );
+                      const label = queueKeywordsByFile[entry.name] ?? "";
+                      const topText = queueKeywordsLoadingByFile[entry.name]
+                        ? "Building batch content..."
+                        : label || (hasKeyword ? "-" : "-");
+                      const topClass = queueKeywordsLoadingByFile[entry.name]
+                        ? styles.queueKeywordsLoading
+                        : styles.queueKeywordsMain;
+                      const topSize = queueKeywordsLoadingByFile[entry.name] ? 200 : 300;
+
+                      return (
+                        <div className={styles.queueKeywordsWrap}>
+                          <Text size={topSize} className={topClass}>
+                            {topText}
+                          </Text>
+                          <Text className={styles.queueKeywordsFile}>{entry.name}</Text>
+                        </div>
+                      );
+                    })()}
                   </TableCell>
-                  <TableCell className={styles.chromeColJson}>
-                    <Button appearance="primary" size="small" onClick={() => handlePreview(entry)}>
-                      JSON file
-                    </Button>
+                  <TableCell className={styles.chromeColSource}>
+                    <Text size={200} color="neutral">
+                      {getIncomingSourceLabel(entry.name)}
+                    </Text>
                   </TableCell>
                   <TableCell className={styles.chromeColProducts}>
                     {entry.productCount || entry.urlCount}
@@ -1283,37 +1691,87 @@ export default function BulkProcessingPage() {
                   <TableCell className={styles.chromeColCreated}>
                     {formatDateTime(entry.receivedAt)}
                   </TableCell>
+                  <TableCell className={styles.chromeColJson}>
+                    <Button appearance="primary" size="small" onClick={() => handlePreview(entry)}>
+                      JSON file
+                    </Button>
+                  </TableCell>
                   <TableCell className={styles.chromeActionsCell}>
                     <div className={styles.chromeActions}>
                       <Button
-                        appearance="primary"
+                        appearance={
+                          isBatchComplete || isRunningBatch ? "outline" : "primary"
+                        }
+                        className={
+                          isBatchComplete
+                            ? styles.completedBatchButton
+                            : isRunningBatch
+                            ? styles.assignedButton
+                            : undefined
+                        }
                         onClick={() => handleLoadExtractor(entry.name)}
-                        disabled={extractorLoadingName === entry.name}
+                        disabled={isRowBusy || isBatchComplete || isRunningBatch}
                         size="small"
                       >
-                        {extractorLoadingName === entry.name ? (
+                        {isRowBusy && !isBatchComplete && !isRunningBatch ? (
                           <Spinner size="tiny" />
+                        ) : isBatchComplete ? (
+                          "Batch Complete"
+                        ) : isRunningBatch ? (
+                          <>
+                            <Spinner size="tiny" />
+                            {" "}
+                            Processing Batch
+                          </>
                         ) : (
                           "Run this batch"
                         )}
                       </Button>
                       <Button
                         appearance="outline"
-                        onClick={() => handleDeleteExtractor(entry.name)}
-                        disabled={extractorLoadingName === entry.name}
+                        onClick={() => {
+                          if (isRunningBatch && rowJob) {
+                            void handleStopBatch(entry.name, rowJob.jobId);
+                            return;
+                          }
+                          if (isBatchComplete && rowJob) {
+                            void handleRemoveBatchData(entry.name, rowJob.jobId);
+                            return;
+                          }
+                          void handleDeleteExtractor(entry.name);
+                        }}
+                        disabled={isRowBusy}
                         size="small"
                       >
-                        {t("bulkProcessing.chrome.delete")}
+                        {isRowBusy ? (
+                          <Spinner size="tiny" />
+                        ) : isRunningBatch ? (
+                          "Stop Process"
+                        ) : isBatchComplete ? (
+                          "Remove Batch"
+                        ) : (
+                          t("bulkProcessing.chrome.delete")
+                        )}
                       </Button>
                     </div>
                   </TableCell>
+                  <TableCell className={styles.chromeColRowSelect}>
+                    <Checkbox
+                      checked={selectedExtractorFiles.has(entry.name)}
+                      onChange={() => toggleSelectExtractor(entry.name)}
+                      aria-label={t("common.selectItem", { item: entry.name })}
+                      disabled={isDeletingSelected}
+                    />
+                  </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         ) : null}
       </Card>
 
+      {chromeExtractorFiles.length ? (
       <Card className={styles.chromeCard}>
         <div className={styles.chromeHeaderRow}>
           <Text size={500} weight="semibold">
@@ -1435,144 +1893,33 @@ export default function BulkProcessingPage() {
           </Table>
         ) : null}
       </Card>
+      ) : null}
 
-      <Card className={styles.uploadCard}>
-        <div className={styles.uploadRow}>
-          <Field label={t("bulkProcessing.uploadLabel")}>
-            <input
-              type="file"
-              accept="application/json"
-              className={styles.fileInput}
-              ref={fileInputRef}
-              onChange={(event) =>
-                setSelectedFile(event.target.files?.[0] ?? null)
-              }
-            />
-          </Field>
-          <Button
-            appearance="outline"
-            onClick={handleUpload}
-            disabled={!selectedFile || isUploading}
+      {job ? (
+        <Card className={styles.logCard}>
+          <TabList
+            selectedValue={activeTab}
+            onTabSelect={(_, data) => setActiveTab(String(data.value))}
+            className={styles.tabList}
           >
-            {isUploading ? <Spinner size="tiny" /> : t("bulkProcessing.upload")}
-          </Button>
-          <Button
-            appearance="primary"
-            onClick={handleStart}
-            disabled={!job || job.status === "running" || isStarting}
-          >
-            {isStarting ? <Spinner size="tiny" /> : t("bulkProcessing.run")}
-          </Button>
-          <Button
-            appearance="outline"
-            onClick={handleStop}
-            disabled={
-              !job ||
-              (job.status !== "running" && job.status !== "queued") ||
-              isStopping
-            }
-          >
-            {isStopping ? <Spinner size="tiny" /> : t("bulkProcessing.stop")}
-          </Button>
-        </div>
+            {tabs.map((tab) => (
+              <Tab key={tab} value={tab}>
+                {tab === "parallel"
+                  ? t("bulkProcessing.logs.parallel")
+                  : `${t("bulkProcessing.logs.worker")} ${tab.replace("w", "")}`}
+              </Tab>
+            ))}
+          </TabList>
 
-        {error ? (
-          <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
-            {error}
-          </Text>
-        ) : null}
-
-        {job ? (
-          <Table size="small" className={styles.summaryTable}>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell className={styles.summaryColFile}>
-                  {t("bulkProcessing.summary.file")}
-                </TableHeaderCell>
-                <TableHeaderCell className={styles.summaryColNumber}>
-                  {t("bulkProcessing.summary.count")}
-                </TableHeaderCell>
-                <TableHeaderCell className={styles.summaryColNumber}>
-                  {t("bulkProcessing.summary.workers")}
-                </TableHeaderCell>
-                <TableHeaderCell className={styles.summaryColStatus}>
-                  {t("bulkProcessing.summary.status")}
-                </TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell>{job.inputName}</TableCell>
-                <TableCell className={styles.summaryCellNumber}>
-                  {job.itemCount}
-                </TableCell>
-                <TableCell className={styles.summaryCellNumber}>
-                  {job.workerCount}
-                </TableCell>
-                <TableCell className={styles.summaryCellNumber}>
-                  <span className={styles.statusPill}>{statusLabel}</span>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        ) : null}
-
-        {job?.status === "completed" ? (
-          <div className={styles.downloadsRow}>
-            <Text size={200}>{t("bulkProcessing.completed")}</Text>
-            {job.summary?.outputExcelPath ? (
-              <Button
-                appearance="outline"
-                onClick={() =>
-                  window.open(
-                    `/api/bulk-jobs/${job.jobId}/download?type=excel`,
-                    "_blank"
-                  )
-                }
-              >
-                {t("bulkProcessing.downloadExcel")}
-              </Button>
-            ) : null}
-            {job.summary?.outputZipPath ? (
-              <Button
-                appearance="outline"
-                onClick={() =>
-                  window.open(
-                    `/api/bulk-jobs/${job.jobId}/download?type=zip`,
-                    "_blank"
-                  )
-                }
-              >
-                {t("bulkProcessing.downloadZip")}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-      </Card>
-
-      <Card className={styles.logCard}>
-        <TabList
-          selectedValue={activeTab}
-          onTabSelect={(_, data) => setActiveTab(String(data.value))}
-          className={styles.tabList}
-        >
-          {tabs.map((tab) => (
-            <Tab key={tab} value={tab}>
-              {tab === "parallel"
-                ? t("bulkProcessing.logs.parallel")
-                : `${t("bulkProcessing.logs.worker")} ${tab.replace("w", "")}`}
-            </Tab>
-          ))}
-        </TabList>
-
-        {tabs.map((tab) =>
-          activeTab === tab ? (
-            <div key={tab} className={styles.logBox}>
-              {(logs[tab]?.join("\n") ?? "") || t("bulkProcessing.logs.empty")}
-            </div>
-          ) : null
-        )}
-      </Card>
+          {tabs.map((tab) =>
+            activeTab === tab ? (
+              <div key={tab} className={styles.logBox}>
+                {(logs[tab]?.join("\n") ?? "") || t("bulkProcessing.logs.empty")}
+              </div>
+            ) : null
+          )}
+        </Card>
+      ) : null}
 
       {deckHoverPreview ? (
         <div
@@ -1583,7 +1930,11 @@ export default function BulkProcessingPage() {
           }}
         >
           <img
-            src={deckHoverPreview.imageUrl}
+            src={
+              preloadedZoomBlobUrlByProxyRef.current.get(
+                deckHoverPreview.proxyUrl
+              ) ?? deckHoverPreview.proxyUrl
+            }
             alt=""
             className={styles.queueZoomImage}
           />
@@ -1666,7 +2017,10 @@ export default function BulkProcessingPage() {
                                 <div className={styles.previewThumb}>
                                   {item.imageUrl ? (
                                     <img
-                                      src={toImageProxyUrl(item.imageUrl)}
+                                      src={toImageProxyUrl(item.imageUrl, {
+                                        width: 75,
+                                        height: 75,
+                                      })}
                                       alt=""
                                       className={styles.previewImage}
                                     />
