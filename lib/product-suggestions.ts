@@ -332,6 +332,29 @@ const normalizeTextBlock = (value: string, maxLen = 3_500) => {
   return text.slice(0, maxLen);
 };
 
+const normalizeReadableLines = (value: string, options?: { maxChars?: number; maxLines?: number }) => {
+  const maxChars = Math.max(2_000, Number(options?.maxChars ?? 180_000));
+  const maxLines = Math.max(100, Number(options?.maxLines ?? 6_000));
+  const lines = String(value || "")
+    .replace(/\u00a0/g, " ")
+    .split(/\r?\n/g)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return "";
+
+  const compacted: string[] = [];
+  let prev = "";
+  for (const line of lines) {
+    if (line === prev) continue;
+    compacted.push(line);
+    prev = line;
+    if (compacted.length >= maxLines) break;
+  }
+
+  return compacted.join("\n").slice(0, maxChars);
+};
+
 const normalizeDescription = (value: string) => {
   const lines = String(value || "")
     .replace(/\u00a0/g, " ")
@@ -366,24 +389,10 @@ const extractReadablePageText = (html: string, maxChars = 30_000) => {
   );
   const rawText = decodeEntities(withBreaks.replace(/<[^>]+>/g, " "));
 
-  const lines = rawText
-    .split(/\r?\n/g)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) return "";
-
-  const deduped: string[] = [];
-  const seen = new Set<string>();
-  for (const line of lines) {
-    const key = line.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(line);
-    if (deduped.length >= 1500) break;
-  }
-
-  return deduped.join("\n").slice(0, Math.max(2000, maxChars));
+  return normalizeReadableLines(rawText, {
+    maxChars: Math.max(2_000, maxChars),
+    maxLines: 6_000,
+  });
 };
 
 const extractDescriptionFromDom = (html: string) => {
@@ -496,6 +505,170 @@ const fetchHtml = async (url: string) => {
   }
 };
 
+type BrowserCopiedPage = {
+  finalUrl: string | null;
+  title: string;
+  description: string;
+  readableText: string;
+  mainImageUrl: string | null;
+  imageUrls: string[];
+  errors: string[];
+};
+
+const crawlWithBrowserCopyPaste = async (inputUrl: string): Promise<BrowserCopiedPage | null> => {
+  let chromiumRuntime: {
+    launch: (options?: Record<string, unknown>) => Promise<unknown>;
+  } | null = null;
+
+  try {
+    const pw = (await import("playwright").catch(() => null)) as unknown;
+    const rec = pw as Record<string, unknown> | null;
+    const chromium = rec?.chromium as
+      | {
+          launch: (options?: Record<string, unknown>) => Promise<unknown>;
+        }
+      | undefined;
+    chromiumRuntime = chromium ?? null;
+  } catch {
+    return null;
+  }
+
+  if (!chromiumRuntime || typeof chromiumRuntime.launch !== "function") return null;
+
+  let browser: any = null;
+  let page: any = null;
+
+  try {
+    browser = await chromiumRuntime.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    page = await browser.newPage({
+      userAgent:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      locale: "en-US",
+    });
+    await page.goto(inputUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 25_000,
+    });
+    await page.waitForTimeout(1200);
+
+    const snapshot = (await page.evaluate(
+      `(() => {
+        const textOf = (value) => (value === null || value === undefined ? "" : String(value).trim());
+        const getMetaContent = (selector) => {
+          const element = document.querySelector(selector);
+          if (!element) return "";
+          return textOf(element.getAttribute("content") || element.textContent || "");
+        };
+
+        const h1 = document.querySelector("h1");
+        const title = textOf((h1 && h1.textContent) || document.title || "");
+        const description =
+          getMetaContent('meta[property="og:description"]') ||
+          getMetaContent('meta[name="description"]') ||
+          getMetaContent('meta[name="twitter:description"]');
+
+        const rawImageUrls = [];
+        const pushUrl = (value) => {
+          const text = textOf(value);
+          if (!text) return;
+          rawImageUrls.push(text);
+        };
+
+        const ogImage = getMetaContent('meta[property="og:image"]');
+        if (ogImage) pushUrl(ogImage);
+
+        const images = Array.from(document.images || []);
+        images.forEach((img) => {
+          pushUrl(img.currentSrc || "");
+          pushUrl(img.src || "");
+          pushUrl(img.getAttribute("data-src") || "");
+          pushUrl(img.getAttribute("data-original") || "");
+        });
+
+        const allElements = Array.from(document.querySelectorAll("*"));
+        for (const element of allElements.slice(0, 3500)) {
+          const style = window.getComputedStyle(element);
+          const bg = textOf(style.backgroundImage || "");
+          if (!bg || bg === "none") continue;
+          const match = bg.match(/url\\(([^)]+)\\)/i);
+          if (!match || !match[1]) continue;
+          pushUrl(match[1].replace(/^['"]|['"]$/g, "").trim());
+        }
+
+        const bodyText = textOf((document.body && document.body.innerText) || "");
+        return {
+          finalUrl: textOf(location.href) || null,
+          title,
+          description,
+          readableText: bodyText,
+          imageUrls: rawImageUrls,
+        };
+      })()`
+    )) as {
+      finalUrl: string | null;
+      title: string;
+      description: string;
+      readableText: string;
+      imageUrls: string[];
+    };
+
+    const finalUrl = asText(snapshot.finalUrl) || asText(page.url()) || inputUrl;
+    const normalizedImages = uniqueList(
+      (snapshot.imageUrls || [])
+        .map((entry: unknown) => toAbsoluteUrl(finalUrl, asText(entry)))
+        .filter((entry: unknown): entry is string => Boolean(entry))
+        .filter((entry: string) => !shouldSkipImageUrl(entry)),
+      80
+    );
+    const mainImageUrl = normalizedImages.length > 0 ? normalizedImages[0] : null;
+
+    return {
+      finalUrl: finalUrl || null,
+      title: asText(snapshot.title),
+      description: normalizeDescription(asText(snapshot.description)),
+      readableText: normalizeReadableLines(asText(snapshot.readableText), {
+        maxChars: 180_000,
+        maxLines: 7_500,
+      }),
+      mainImageUrl,
+      imageUrls: normalizedImages,
+      errors: [],
+    };
+  } catch (error) {
+    return {
+      finalUrl: null,
+      title: "",
+      description: "",
+      readableText: "",
+      mainImageUrl: null,
+      imageUrls: [],
+      errors: [
+        `Browser copy-paste fallback failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ],
+    };
+  } finally {
+    if (page) {
+      try {
+        await page.close();
+      } catch {
+        // ignore close errors
+      }
+    }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        // ignore close errors
+      }
+    }
+  }
+};
+
 const parseUrlCandidate = (inputUrl: string, html: string, finalUrl: string) => {
   const readableText = extractReadablePageText(html);
   const jsonLdBlocks = collectJsonLdBlocks(html);
@@ -600,7 +773,61 @@ export const crawlUrlForProduct = async (inputUrlRaw: string): Promise<UrlCrawlR
 
     try {
       const { html, finalUrl } = await fetchHtml(target);
-      const parsed = parseUrlCandidate(inputUrl, html, finalUrl);
+      let parsed = parseUrlCandidate(inputUrl, html, finalUrl);
+
+      const browserSnapshot =
+        !parsed.title ||
+        !parsed.description ||
+        parsed.readableText.length < 9_000 ||
+        /amazon\./i.test(finalUrl)
+          ? await crawlWithBrowserCopyPaste(finalUrl)
+          : null;
+
+      if (browserSnapshot) {
+        if (browserSnapshot.errors.length > 0) {
+          errors.push(...browserSnapshot.errors);
+        } else {
+          const mergedImages = uniqueList(
+            [
+              ...(browserSnapshot.mainImageUrl ? [browserSnapshot.mainImageUrl] : []),
+              ...browserSnapshot.imageUrls,
+              ...parsed.imageUrls,
+            ],
+            80
+          );
+          const mergedMainImage =
+            asText(browserSnapshot.mainImageUrl) ||
+            asText(parsed.mainImageUrl) ||
+            (mergedImages.length > 0 ? mergedImages[0] : "");
+          const mergedReadableText = normalizeReadableLines(
+            [browserSnapshot.readableText, parsed.readableText]
+              .map((entry) => asText(entry))
+              .filter(Boolean)
+              .join("\n\n"),
+            {
+              maxChars: 180_000,
+              maxLines: 7_500,
+            }
+          );
+          parsed = {
+            ...parsed,
+            finalUrl: asText(browserSnapshot.finalUrl) || parsed.finalUrl,
+            title: asText(parsed.title) || asText(browserSnapshot.title),
+            description:
+              normalizeDescription(asText(parsed.description)) ||
+              normalizeDescription(asText(browserSnapshot.description)),
+            readableText: mergedReadableText || parsed.readableText,
+            mainImageUrl: mergedMainImage || null,
+            imageUrls: mergedImages,
+            confidence:
+              parsed.confidence +
+              (asText(browserSnapshot.title) ? 1 : 0) +
+              (asText(browserSnapshot.description) ? 1 : 0) +
+              (asText(browserSnapshot.readableText).length > 12_000 ? 1 : 0),
+          };
+        }
+      }
+
       if (!best || parsed.confidence > best.confidence) {
         best = parsed;
       }
@@ -803,8 +1030,9 @@ const cleanExternalDataWithOpenAi = async (input: {
     "Rules:",
     "1) title: short Swedish e-commerce title, product-noun focused.",
     "2) description: Swedish, merge core product description + key specifications.",
-    "3) Do not include external links, seller menus, campaign text, or unrelated recommendations.",
-    "4) Keep technical details relevant to the actual product.",
+    "3) Keep as many concrete technical specifications as available (dimensions, materials, capacity, voltage/power, compatibility, package contents, model/version).",
+    "4) Use only information present in the copied page text. Do not invent missing specs.",
+    "5) Do not include external links, seller menus, campaign text, or unrelated recommendations.",
     "",
     `Input URL: ${asText(input.inputUrl) || "-"}`,
     `Final URL: ${asText(input.finalUrl) || "-"}`,

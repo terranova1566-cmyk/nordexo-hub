@@ -26,6 +26,7 @@ const IMAGE_EXTENSIONS = new Set([
 
 const ALLOWED_TAGS = new Set(["MAIN", "ENV", "INF", "VAR"]);
 const ALLOWED_MAIN_SUBTYPES = new Set(["main_only", "main_composite"]);
+const DIGI_TAG_PATTERN = /\(\s*DIGI\s*\)/i;
 
 const normalizePathValue = (value: unknown) =>
   String(value ?? "")
@@ -72,7 +73,9 @@ const normalizeTag = (
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
-  if (!raw) return { tag: null, mainSubtype: null };
+  if (!raw || raw === "NULL" || raw === "NONE" || raw === "UNTAGGED" || raw === "SKIP") {
+    return { tag: null, mainSubtype: null };
+  }
 
   if (raw === "MAIN_ONLY") {
     return { tag: "MAIN", mainSubtype: "main_only" };
@@ -95,6 +98,9 @@ const normalizeMainSubtype = (value: unknown) => {
   return null;
 };
 
+const isDigiTaggedFileName = (fileName: string) =>
+  DIGI_TAG_PATTERN.test(String(fileName || ""));
+
 const pickFilesRoot = (productAbsolute: string, productRelative: string) => {
   const candidates = ["Files (F)", "files"];
   for (const name of candidates) {
@@ -116,7 +122,6 @@ const pickFilesRoot = (productAbsolute: string, productRelative: string) => {
 
 const createCellSvg = (cellWidth: number, cellHeight: number, imageSize: number, id: string) => `
 <svg xmlns="http://www.w3.org/2000/svg" width="${cellWidth}" height="${cellHeight}">
-  <rect x="0" y="0" width="${cellWidth}" height="${cellHeight}" fill="#ececec"/>
   <rect x="0" y="${imageSize}" width="${cellWidth}" height="${cellHeight - imageSize}" fill="#000000"/>
   <rect x="0.5" y="0.5" width="${cellWidth - 1}" height="${cellHeight - 1}" fill="none" stroke="#000000" stroke-width="1"/>
   <text x="${cellWidth / 2}" y="${imageSize + Math.floor((cellHeight - imageSize) * 0.68)}" fill="#ffffff" font-size="19" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(id)}</text>
@@ -241,16 +246,19 @@ const buildPrompt = (input: {
 
   return [
     "You are an expert e-commerce image classifier for Nordic/Swedish storefront quality.",
-    "Analyze each tile by ID from the provided contact sheet and classify every image.",
+    "Analyze each tile by ID from the provided contact sheet.",
     "",
     "Categories:",
-    "1) MAIN: clean white-background product image for webshop.",
+    "1) MAIN: ONLY for a clean product image with a completely white background.",
+    "   - Be strict: white must be true white, not beige/cream/gray.",
+    "   - If borders/background are messy, cluttered, or broken, do NOT use MAIN.",
     "   - main_subtype must be either main_only or main_composite.",
     "   - main_only = only product visible.",
     "   - main_composite = still white-background main image but includes hand/person/accessories.",
     "2) ENV: environmental scene / lifestyle / in-use context photo.",
     "3) INF: infographic, text-heavy, dimensions, graphics, instructions, technical layout.",
     "4) VAR: variant-series image set (color/count/type variants).",
+    "5) UNTAGGED (null): use when image does not clearly fit MAIN/ENV/INF/VAR.",
     "",
     "Critical VAR rule:",
     "- Only use VAR when there is a clear repeated variant pattern across at least 2 images.",
@@ -267,7 +275,7 @@ const buildPrompt = (input: {
     '  "images": [',
     '    {',
     '      "id": "C001",',
-    '      "primary_tag": "MAIN|ENV|INF|VAR",',
+    '      "primary_tag": "MAIN|ENV|INF|VAR|null",',
     '      "main_subtype": "main_only|main_composite|null",',
     '      "confidence": 0.0,',
     '      "reason": "short reason"',
@@ -278,6 +286,8 @@ const buildPrompt = (input: {
     "",
     "Rules:",
     "- Include one row for each visible ID.",
+    "- At most ONE image may be tagged as MAIN for the whole sheet.",
+    "- Do NOT force a category. Leave primary_tag as null when uncertain.",
     "- If primary_tag is not MAIN, set main_subtype to null.",
     "- Keep reason concise (max 15 words).",
   ].join("\n");
@@ -393,6 +403,7 @@ export async function POST(request: Request) {
   requestedPaths.forEach((value) => {
     const relative = normalizePathValue(value);
     if (!relative || normalizedPathSet.has(relative)) return;
+    if (isDigiTaggedFileName(path.basename(relative))) return;
     const absolute = resolveDraftPath(relative);
     if (!absolute) return;
     if (!absolute.startsWith(`${folderAbsolutePath}${path.sep}`)) return;
@@ -412,7 +423,12 @@ export async function POST(request: Request) {
 
   const limitedItems = imageItems.slice(0, 16);
   if (limitedItems.length === 0) {
-    return NextResponse.json({ error: "No valid images to classify." }, { status: 400 });
+    return NextResponse.json({
+      ok: true,
+      model: null,
+      decisions: [],
+      skippedReason: "No valid non-DIGI images to classify.",
+    });
   }
 
   const pathParts = folderPath.split("/").filter(Boolean);
@@ -455,7 +471,6 @@ export async function POST(request: Request) {
         if (!id || !byId.has(id)) return null;
         const primaryCandidate = normalizeTag(row.primary_tag);
         const tag = primaryCandidate.tag;
-        if (!tag) return null;
         const mainSubtype =
           tag === "MAIN"
             ? normalizeMainSubtype(row.main_subtype) || primaryCandidate.mainSubtype
@@ -483,7 +498,7 @@ export async function POST(request: Request) {
           id: string;
           path: string;
           file_name: string;
-          primary_tag: "MAIN" | "ENV" | "INF" | "VAR";
+          primary_tag: "MAIN" | "ENV" | "INF" | "VAR" | null;
           main_subtype: string | null;
           confidence: number | null;
           reason: string;
@@ -491,19 +506,41 @@ export async function POST(request: Request) {
       );
 
     const decisionsByPath = new Map(decisions.map((row) => [row.path, row]));
-    const normalizedDecisions = limitedItems.map((item) => {
+    let normalizedDecisions = limitedItems.map((item) => {
       const decided = decisionsByPath.get(item.relativePath);
       if (decided) return decided;
       return {
         id: item.id,
         path: item.relativePath,
         file_name: item.fileName,
-        primary_tag: "INF" as const,
+        primary_tag: null,
         main_subtype: null,
-        confidence: 0.25,
-        reason: "No structured classifier output for this tile.",
+        confidence: null,
+        reason: "No structured classifier output for this tile; left untagged.",
       };
     });
+
+    const mainCandidates = normalizedDecisions
+      .filter((row) => row.primary_tag === "MAIN")
+      .sort((left, right) => {
+        const leftConfidence = typeof left.confidence === "number" ? left.confidence : -1;
+        const rightConfidence = typeof right.confidence === "number" ? right.confidence : -1;
+        return rightConfidence - leftConfidence;
+      });
+    const primaryMainId = mainCandidates[0]?.id ?? null;
+    if (primaryMainId) {
+      normalizedDecisions = normalizedDecisions.map((row) => {
+        if (row.primary_tag !== "MAIN" || row.id === primaryMainId) return row;
+        return {
+          ...row,
+          primary_tag: null,
+          main_subtype: null,
+          reason: row.reason
+            ? `${row.reason} (secondary white-background candidate left untagged)`
+            : "Secondary white-background candidate left untagged.",
+        };
+      });
+    }
 
     const summary = {
       ok: true,

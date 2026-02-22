@@ -2719,19 +2719,46 @@ const toArray = <T,>(value: unknown): T[] =>
 
 // Auto-run supplier lookup for incoming products only.
 const ENABLE_AUTO_SUPPLIER_LOOKUP = true;
-const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<"digideal" | "letsdeal", string> = {
+const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<
+  "digideal" | "letsdeal" | "offerilla",
+  string
+> = {
   digideal: "2026-02-20T00:00:00.000Z",
   letsdeal: "2026-02-20T00:00:00.000Z",
+  offerilla: "2026-02-20T00:00:00.000Z",
 };
 
 export default function DigidealCampaignsPage() {
   const styles = useStyles();
   const { t } = useI18n();
   const pathname = usePathname();
-  const provider = pathname.startsWith("/app/letsdeal") ? "letsdeal" : "digideal";
-  const providerLabel = provider === "letsdeal" ? "LetsDeal" : "DigiDeal";
+  const provider = pathname.startsWith("/app/letsdeal")
+    ? "letsdeal"
+    : pathname.startsWith("/app/offerilla")
+      ? "offerilla"
+      : "digideal";
+  const providerLabel =
+    provider === "letsdeal"
+      ? "LetsDeal"
+      : provider === "offerilla"
+        ? "Offerilla"
+        : "DigiDeal";
   const loadingCampaignsLabel =
-    provider === "letsdeal" ? "Loading LetsDeal Campaigns..." : t("digideal.loading");
+    provider === "digideal"
+      ? t("digideal.loading")
+      : `Loading ${providerLabel} Campaigns...`;
+  const emptyCampaignsLabel =
+    provider === "digideal"
+      ? t("digideal.empty")
+      : `No ${providerLabel} campaigns found.`;
+  const loadCampaignsErrorLabel =
+    provider === "digideal"
+      ? t("digideal.error")
+      : `Unable to load ${providerLabel} campaigns.`;
+  const searchCampaignsPlaceholder =
+    provider === "digideal"
+      ? t("digideal.filters.searchPlaceholder")
+      : `Search ${providerLabel} campaigns`;
 
   const [items, setItems] = useState<DigidealItem[]>([]);
   const [page, setPage] = useState(1);
@@ -3607,6 +3634,7 @@ export default function DigidealCampaignsPage() {
   );
 
   useEffect(() => {
+    if (provider !== "digideal") return;
     if (!isAdmin) return;
     if (variantsDialogOpen && variantsTarget) return;
 
@@ -3640,9 +3668,10 @@ export default function DigidealCampaignsPage() {
       autoVariantPickAttemptsRef.current.add(productId);
       void attemptAutoPickDigidealVariant(item);
     });
-  }, [attemptAutoPickDigidealVariant, isAdmin, items, variantsDialogOpen, variantsTarget]);
+  }, [attemptAutoPickDigidealVariant, isAdmin, items, provider, variantsDialogOpen, variantsTarget]);
 
   useEffect(() => {
+    if (provider !== "digideal") return;
     if (!ENABLE_AUTO_SUPPLIER_LOOKUP) return;
     if (!isAdmin) return;
     if (bulkFindingSuppliers) return;
@@ -5290,7 +5319,7 @@ export default function DigidealCampaignsPage() {
   };
 
   const bulkFindSuppliers = useCallback(async () => {
-    if (provider === "letsdeal") return;
+    if (provider !== "digideal") return;
     if (!isAdmin || bulkFindingSuppliers) return;
 
     const needsSupplier = items.filter((item) => {
@@ -6695,7 +6724,7 @@ export default function DigidealCampaignsPage() {
         });
 
         if (!response.ok) {
-          let message = t("digideal.error");
+          let message = loadCampaignsErrorLabel;
           try {
             const errorPayload = (await response.json()) as {
               error?: string;
@@ -6726,7 +6755,7 @@ export default function DigidealCampaignsPage() {
         setTotal(payload.total ?? 0);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : t("digideal.error"));
+        setError(err instanceof Error ? err.message : loadCampaignsErrorLabel);
       } finally {
         setIsLoading(false);
       }
@@ -7290,7 +7319,7 @@ export default function DigidealCampaignsPage() {
                 styles.estimatedPriceHintCritical
               )
             : styles.estimatedPriceHintText;
-        const canManageSupplier = isAdmin && !isNordexo;
+        const canManageSupplier = isAdmin && provider === "digideal" && !isNordexo;
         const hasManualSupplierData =
           item.purchase_price !== null ||
           item.weight_grams !== null ||
@@ -8327,7 +8356,7 @@ export default function DigidealCampaignsPage() {
 	            <Input
 	              value={search}
 	              onChange={(_, data) => setSearch(data.value)}
-              placeholder={t("digideal.filters.searchPlaceholder")}
+              placeholder={searchCampaignsPlaceholder}
               className={styles.searchInput}
             />
           </Field>
@@ -8666,7 +8695,7 @@ export default function DigidealCampaignsPage() {
 	            <Button appearance="outline" size="medium" onClick={resetAllFilters}>
 	              {t("digideal.filters.resetAll")}
 	            </Button>
-              {isAdmin && provider !== "letsdeal" ? (
+              {isAdmin && provider === "digideal" ? (
                 <Button
                   appearance="outline"
                   size="medium"
@@ -9087,7 +9116,7 @@ export default function DigidealCampaignsPage() {
         {isLoading ? (
           <Spinner label={loadingCampaignsLabel} />
         ) : items.length === 0 ? (
-          <Text>{t("digideal.empty")}</Text>
+          <Text>{emptyCampaignsLabel}</Text>
         ) : (
           <Table className={styles.table} size="small">
             <TableHeader>

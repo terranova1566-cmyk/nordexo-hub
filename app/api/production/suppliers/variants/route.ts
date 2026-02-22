@@ -8,6 +8,14 @@ import {
   loadSuggestionRecord,
   saveSuggestionRecord,
 } from "@/lib/product-suggestions";
+import {
+  extractJsonFromText,
+  normalizeNameLoose,
+  normalizeNameStrict,
+  parseVariantWeightTableFromReadableText,
+  pickFallbackWeightGrams,
+  toWeightGrams as asWeightGrams,
+} from "@/shared/1688/core";
 
 export const runtime = "nodejs";
 
@@ -45,6 +53,20 @@ type VariantGalleryImage = {
   url_full: string;
 };
 
+type WeightReviewPayload = {
+  version?: number;
+  generated_at?: string;
+  mode?: string;
+  needs_review?: boolean;
+  trigger_next_supplier?: boolean;
+  confidence?: number | null;
+  reason_codes?: string[];
+  summary?: string | null;
+  heuristic?: Record<string, unknown> | null;
+  ai?: Record<string, unknown> | null;
+  evidence?: Record<string, unknown> | null;
+};
+
 type VariantCachePayload = {
   cached_at: string;
   payload_file_path: string | null;
@@ -54,6 +76,7 @@ type VariantCachePayload = {
   type3_label: string;
   combos: VariantCombo[];
   gallery_images: VariantGalleryImage[];
+  weight_review?: WeightReviewPayload | null;
 };
 
 const variantTranslationCache = new Map<string, string>();
@@ -64,6 +87,36 @@ const asText = (value: unknown) =>
 const asNumber = (value: unknown) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+};
+
+const normalizeWeightReview = (value: unknown): WeightReviewPayload | null => {
+  if (!value || typeof value !== "object") return null;
+  const rec = value as Record<string, unknown>;
+  const reasonCodes = Array.isArray(rec.reason_codes)
+    ? rec.reason_codes.map((entry) => asText(entry)).filter(Boolean)
+    : [];
+  return {
+    version: Number.isFinite(Number(rec.version)) ? Number(rec.version) : undefined,
+    generated_at: asText(rec.generated_at) || undefined,
+    mode: asText(rec.mode) || undefined,
+    needs_review: Boolean(rec.needs_review),
+    trigger_next_supplier: Boolean(rec.trigger_next_supplier),
+    confidence: asNumber(rec.confidence),
+    reason_codes: reasonCodes,
+    summary: asText(rec.summary) || null,
+    heuristic:
+      rec.heuristic && typeof rec.heuristic === "object"
+        ? (rec.heuristic as Record<string, unknown>)
+        : null,
+    ai:
+      rec.ai && typeof rec.ai === "object"
+        ? (rec.ai as Record<string, unknown>)
+        : null,
+    evidence:
+      rec.evidence && typeof rec.evidence === "object"
+        ? (rec.evidence as Record<string, unknown>)
+        : null,
+  };
 };
 
 const asPriceNumber = (value: unknown) => {
@@ -82,42 +135,6 @@ const asOptionalPrice = (value: unknown) => {
   return asPriceNumber(raw);
 };
 
-const asWeightGrams = (
-  value: unknown,
-  options?: { allowUnitless?: boolean }
-) => {
-  const allowUnitless = Boolean(options?.allowUnitless);
-  const raw = asText(value);
-  if (!raw) return null;
-  const normalized = raw.replace(/,/g, ".").trim();
-  const match = normalized.match(/-?\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const num = Number(match[0]);
-  if (!Number.isFinite(num) || num <= 0) return null;
-
-  const unit = normalized.toLowerCase();
-  if (
-    unit.includes("kg") ||
-    unit.includes("公斤") ||
-    unit.includes("千克")
-  ) {
-    return Math.round(num * 1000);
-  }
-  if (unit.includes("g") || unit.includes("克")) {
-    return Math.round(num);
-  }
-  if (unit.includes("斤")) {
-    return null;
-  }
-  if (allowUnitless && num <= 20 && normalized.includes(".")) {
-    return Math.round(num * 1000);
-  }
-  if (allowUnitless) {
-    return Math.round(num);
-  }
-  return null;
-};
-
 const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value);
 const normalizeVariantTextKey = (value: unknown) =>
   asText(value)
@@ -125,14 +142,6 @@ const normalizeVariantTextKey = (value: unknown) =>
     .replace(/[（]/g, "(")
     .replace(/[）]/g, ")")
     .toLowerCase();
-
-const normalizeNameStrict = (value: unknown) =>
-  asText(value)
-    .toLowerCase()
-    .replace(/\s+/g, "");
-
-const normalizeNameLoose = (value: unknown) =>
-  normalizeNameStrict(value).replace(/[（(].*?[）)]/g, "");
 
 type VariantImageTarget = {
   thumbUrl: string;
@@ -319,107 +328,6 @@ const collectPayloadGalleryImages = (
   });
 
   return out.slice(0, 160);
-};
-
-const pickFallbackWeightGrams = (
-  candidates: unknown[],
-  options?: { allowUnitless?: boolean }
-) => {
-  const values = candidates
-    .map((candidate) => asWeightGrams(candidate, options))
-    .filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry) && entry > 0);
-  if (values.length === 0) return null;
-  const plausible = values.filter((entry) => entry >= 20 && entry <= 200_000);
-  if (plausible.length === 0) return null;
-
-  const sorted = [...plausible].sort((a, b) => a - b);
-  const min = sorted[0];
-  const max = sorted[sorted.length - 1];
-  if (
-    sorted.length >= 3 &&
-    min > 0 &&
-    Number.isFinite(min) &&
-    Number.isFinite(max) &&
-    max / min >= 8
-  ) {
-    return sorted[Math.floor(sorted.length / 2)];
-  }
-  return max;
-};
-
-const parseVariantWeightTableFromReadableText = (value: unknown) => {
-  const text = asText(value).replace(/\r/g, "\n");
-  const out = { weightByName: new Map<string, number>(), weights: [] as number[] };
-  if (!text) return out;
-
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return out;
-
-  const toGramsFromHeaderUnit = (rawCell: string, unit: "g" | "kg") => {
-    const match = rawCell.replace(/,/g, ".").match(/-?\d+(?:\.\d+)?/);
-    if (!match) return null;
-    const num = Number(match[0]);
-    if (!Number.isFinite(num) || num <= 0) return null;
-    return unit === "kg" ? Math.round(num * 1000) : Math.round(num);
-  };
-
-  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
-    const headerLine = lines[headerIndex];
-    if (!headerLine) continue;
-    if (!/(重量|weight)/i.test(headerLine)) continue;
-    const unitMatch = headerLine.match(/(?:重量|weight)\s*[（(]?\s*(kg|g)\s*[)）]?/i);
-    if (!unitMatch?.[1]) continue;
-    const unit = unitMatch[1].toLowerCase() as "g" | "kg";
-    const hasTabs = headerLine.includes("\t");
-    const headerCells = hasTabs
-      ? headerLine.split("\t").map((part) => part.trim()).filter(Boolean)
-      : headerLine.split(/\s+/).map((part) => part.trim()).filter(Boolean);
-    const weightIdx = Math.max(
-      0,
-      headerCells.findIndex((cell) => /(重量|weight)/i.test(cell))
-    );
-
-    let started = false;
-    for (let i = headerIndex + 1; i < Math.min(lines.length, headerIndex + 45); i += 1) {
-      const line = lines[i];
-      if (!line) break;
-      if (/^【/.test(line)) break;
-      if (/登录查看全部|展开全部|内容声明/i.test(line)) break;
-
-      if (hasTabs && !line.includes("\t")) {
-        if (started) break;
-        continue;
-      }
-      if (
-        !hasTabs &&
-        !/^-?\d+(?:[.,]\d+)?(?:\s*(?:kg|g|公斤|千克|克))?$/i.test(line)
-      ) {
-        if (started) break;
-        continue;
-      }
-
-      const parts = hasTabs
-        ? line.split(/\t+/).map((part) => part.trim())
-        : line.split(/\s+/).map((part) => part.trim());
-      if (parts.length <= weightIdx) continue;
-
-      const grams = toGramsFromHeaderUnit(parts[weightIdx], unit);
-      if (!grams) continue;
-
-      started = true;
-      out.weights.push(grams);
-      const name = hasTabs ? asText(parts[0]) : "";
-      const strictName = normalizeNameStrict(name);
-      const looseName = normalizeNameLoose(name);
-      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
-      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
-    }
-  }
-
-  return out;
 };
 
 const pickText = (...values: unknown[]) => {
@@ -755,6 +663,7 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
       type2Label: "",
       type3Label: "",
       galleryImages: [] as VariantGalleryImage[],
+      weightReview: null as WeightReviewPayload | null,
     };
   }
   const payloadPath = safeExtractorJsonPath(selectedOffer._production_payload_file_path);
@@ -765,6 +674,7 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
       type2Label: "",
       type3Label: "",
       galleryImages: [] as VariantGalleryImage[],
+      weightReview: null as WeightReviewPayload | null,
     };
   }
   const payload = await loadJsonFile(payloadPath);
@@ -775,8 +685,10 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
         ? (payload as any).items[0]
         : payload;
   const variations = item && typeof item === "object" ? (item as any).variations : null;
+  const readableSource =
+    asText((item as any)?.readable_1688_full) || asText((item as any)?.readable_1688);
   const { weightByName: tableWeightByName, weights: tableWeights } =
-    parseVariantWeightTableFromReadableText((item as any)?.readable_1688);
+    parseVariantWeightTableFromReadableText(readableSource);
   const fallbackWeightGrams = (() => {
     const tableDerived = pickFallbackWeightGrams(tableWeights, {
       allowUnitless: true,
@@ -835,6 +747,7 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
     type2Label: asText((variations as any)?.type2Label),
     type3Label: asText((variations as any)?.type3Label),
     galleryImages,
+    weightReview: normalizeWeightReview((item as any)?.weight_review_1688),
   };
 }
 
@@ -965,6 +878,7 @@ const loadVariantCacheFromSelectedOffer = (
     type3_label: asText(cacheRaw.type3_label),
     combos,
     gallery_images,
+    weight_review: normalizeWeightReview(cacheRaw.weight_review),
   };
 };
 
@@ -1011,27 +925,12 @@ const persistVariantCacheOnSuggestionBestEffort = async (
         type3Label: cache.type3_label,
         combos: cache.combos,
         galleryImages: cache.gallery_images,
+        weightReview: cache.weight_review || null,
       },
     } as any;
     await saveSuggestionRecord(next);
   } catch {
     // Best effort only.
-  }
-};
-
-const extractJsonFromText = (text: string) => {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {}
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
   }
 };
 
@@ -1227,6 +1126,10 @@ export async function GET(request: NextRequest) {
       (cacheMatchesPayload ? cached?.gallery_images : payloadLoaded?.galleryImages) ||
       cached?.gallery_images ||
       [];
+    const weightReview =
+      (cacheMatchesPayload ? cached?.weight_review : payloadLoaded?.weightReview) ||
+      cached?.weight_review ||
+      null;
 
     const translatedCombos =
       skipTranslation || !hasMissingVariantEnglish(sourceCombos)
@@ -1243,7 +1146,8 @@ export async function GET(request: NextRequest) {
         cachedGalleryCount !== galleryImages.length ||
         asText(cached?.type1_label || "") !== asText(type1Label) ||
         asText(cached?.type2_label || "") !== asText(type2Label) ||
-        asText(cached?.type3_label || "") !== asText(type3Label));
+        asText(cached?.type3_label || "") !== asText(type3Label) ||
+        JSON.stringify(cached?.weight_review || null) !== JSON.stringify(weightReview));
     if (shouldPersistCache) {
       const cachePayload: VariantCachePayload = {
         cached_at: new Date().toISOString(),
@@ -1254,6 +1158,7 @@ export async function GET(request: NextRequest) {
         type3_label: type3Label,
         combos: translatedCombos,
         gallery_images: galleryImages,
+        weight_review: weightReview,
       };
       await persistVariantCacheOnSelection(
         adminClient,
@@ -1292,6 +1197,7 @@ export async function GET(request: NextRequest) {
       selected_combo_indexes: savedIndexes,
       packs_text: packsText,
       gallery_images: galleryImages,
+      weight_review: weightReview,
     });
   } catch (error) {
     return NextResponse.json(
@@ -1369,6 +1275,10 @@ export async function POST(request: NextRequest) {
       (cacheMatchesPayload ? cached?.gallery_images : payloadLoaded?.galleryImages) ||
       cached?.gallery_images ||
       [];
+    const weightReview =
+      (cacheMatchesPayload ? cached?.weight_review : payloadLoaded?.weightReview) ||
+      cached?.weight_review ||
+      null;
 
     const selectedIndexes = normalizeSelectionIndexes(
       (body as any).selected_combo_indexes,
@@ -1417,6 +1327,7 @@ export async function POST(request: NextRequest) {
         type3_label: type3Label,
         combos,
         gallery_images: galleryImages,
+        weight_review: weightReview,
       } satisfies VariantCachePayload;
     }
 
@@ -1443,6 +1354,7 @@ export async function POST(request: NextRequest) {
         type3_label: type3Label,
         combos,
         gallery_images: galleryImages,
+        weight_review: weightReview,
       });
     }
 

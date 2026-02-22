@@ -3,7 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
+import { DRAFT_ROOT, resolveDraftPath, safeRemoveDraftPath } from "@/lib/drafts";
 
 export const runtime = "nodejs";
 
@@ -324,11 +324,33 @@ export async function POST(request: Request) {
     }
   }
 
+  // Remove source run folders after a successful merge.
+  // Intentionally filesystem-only: do not delete draft_products/draft_variants rows.
+  const deletedRuns: string[] = [];
+  const notDeletedRuns: string[] = [];
+  for (const run of runs) {
+    const runAbs = resolveDraftPath(run);
+    if (!runAbs || !runAbs.startsWith(`${DRAFT_ROOT}${path.sep}`)) {
+      notDeletedRuns.push(run);
+      continue;
+    }
+    try {
+      if (fs.existsSync(runAbs)) {
+        safeRemoveDraftPath(runAbs);
+      }
+      deletedRuns.push(run);
+    } catch {
+      notDeletedRuns.push(run);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     merged_run: mergedRunName,
     total_spus: totalSpus,
     total_sbus: totalSpus,
     updated_rows: updatedRows,
+    deleted_runs: deletedRuns,
+    not_deleted_runs: notDeletedRuns,
   });
 }

@@ -11,6 +11,10 @@ import {
 export const runtime = "nodejs";
 
 const TABLE = "partner_email_templates";
+const TEMPLATE_SELECT_WITH_METADATA =
+  "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at";
+const TEMPLATE_SELECT_LEGACY =
+  "template_id,name,description,subject_template,body_template,macros,created_at,updated_at";
 
 function normalizeTemplateId(value: unknown): string {
   const raw = String(value ?? "").trim();
@@ -39,23 +43,69 @@ function parseTags(value: unknown) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function isMissingTemplateMetadataColumnError(error: unknown) {
+  const code = String((error as { code?: string })?.code ?? "");
+  if (code === "42703") return true;
+
+  const message = String((error as { message?: string })?.message ?? "").toLowerCase();
+  if (!message.includes(TABLE)) return false;
+  const hasMetadataColumn = ["category", "tags", "owner_user_id", "owner_team"].some((column) =>
+    message.includes(column)
+  );
+  if (!hasMetadataColumn) return false;
+  return (
+    message.includes("does not exist") ||
+    message.includes("schema cache") ||
+    message.includes("could not find") ||
+    message.includes("column")
+  );
+}
+
+function normalizeTemplateRow<T extends Record<string, unknown>>(row: T) {
+  return {
+    ...row,
+    category: Object.prototype.hasOwnProperty.call(row, "category")
+      ? row.category ?? null
+      : null,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    owner_user_id: Object.prototype.hasOwnProperty.call(row, "owner_user_id")
+      ? row.owner_user_id ?? null
+      : null,
+    owner_team: Object.prototype.hasOwnProperty.call(row, "owner_team")
+      ? row.owner_team ?? null
+      : null,
+  };
+}
+
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
-  const { data, error } = await auth.supabase
+  const withMetadata = await auth.supabase
     .from(TABLE)
-    .select(
-      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
-    )
+    .select(TEMPLATE_SELECT_WITH_METADATA)
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (withMetadata.error && !isMissingTemplateMetadataColumnError(withMetadata.error)) {
+    return NextResponse.json({ error: withMetadata.error.message }, { status: 500 });
+  }
+  if (!withMetadata.error) {
+    const rows = Array.isArray(withMetadata.data) ? withMetadata.data : [];
+    return NextResponse.json({ templates: rows.map((row) => normalizeTemplateRow(row)) });
   }
 
-  return NextResponse.json({ templates: data ?? [] });
+  const legacy = await auth.supabase
+    .from(TABLE)
+    .select(TEMPLATE_SELECT_LEGACY)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (legacy.error) {
+    return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+  }
+  const rows = Array.isArray(legacy.data) ? legacy.data : [];
+
+  return NextResponse.json({ templates: rows.map((row) => normalizeTemplateRow(row)) });
 }
 
 export async function POST(request: Request) {
@@ -124,29 +174,53 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await auth.supabase
+  const insertWithMetadataPayload = {
+    template_id: templateId,
+    name,
+    description,
+    category,
+    tags,
+    owner_user_id: ownerUserId,
+    owner_team: ownerTeam,
+    subject_template: subjectTemplate,
+    body_template: bodyTemplate,
+    macros,
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  };
+  const insertLegacyPayload = {
+    template_id: templateId,
+    name,
+    description,
+    subject_template: subjectTemplate,
+    body_template: bodyTemplate,
+    macros,
+    created_by: auth.userId,
+    updated_by: auth.userId,
+  };
+
+  let data: Record<string, unknown> | null = null;
+  const withMetadataInsert = await auth.supabase
     .from(TABLE)
-    .insert({
-      template_id: templateId,
-      name,
-      description,
-      category,
-      tags,
-      owner_user_id: ownerUserId,
-      owner_team: ownerTeam,
-      subject_template: subjectTemplate,
-      body_template: bodyTemplate,
-      macros,
-      created_by: auth.userId,
-      updated_by: auth.userId,
-    })
-    .select(
-      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
-    )
+    .insert(insertWithMetadataPayload)
+    .select(TEMPLATE_SELECT_WITH_METADATA)
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (withMetadataInsert.error && !isMissingTemplateMetadataColumnError(withMetadataInsert.error)) {
+    return NextResponse.json({ error: withMetadataInsert.error.message }, { status: 500 });
+  }
+  if (!withMetadataInsert.error) {
+    data = withMetadataInsert.data as Record<string, unknown>;
+  } else {
+    const legacyInsert = await auth.supabase
+      .from(TABLE)
+      .insert(insertLegacyPayload)
+      .select(TEMPLATE_SELECT_LEGACY)
+      .single();
+    if (legacyInsert.error) {
+      return NextResponse.json({ error: legacyInsert.error.message }, { status: 500 });
+    }
+    data = legacyInsert.data as Record<string, unknown>;
   }
 
   const { error: versionError } = await auth.supabase
@@ -164,7 +238,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    ...data,
+    ...normalizeTemplateRow(data || {}),
     macro_validation: macroValidation,
     warnings,
   });

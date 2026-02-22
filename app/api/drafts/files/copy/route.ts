@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const copy = createCopyOfDraftFile(relativePath);
+    const copy = await createCopyOfDraftFile(relativePath);
     return NextResponse.json({ ok: true, item: copy });
   } catch (err) {
     return NextResponse.json(

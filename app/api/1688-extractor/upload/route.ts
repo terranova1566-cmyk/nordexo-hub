@@ -93,7 +93,7 @@ export async function POST(request: Request) {
   const targetPath = path.join(UPLOAD_DIR, safeName);
   fs.writeFileSync(targetPath, JSON.stringify(items, null, 2), "utf8");
   try {
-    await generateQueueKeywordsForFile(safeName, { force: true, mode: "fast" });
+    await generateQueueKeywordsForFile(safeName, { force: true, mode: "full" });
   } catch {
     // best effort for upload path
   }

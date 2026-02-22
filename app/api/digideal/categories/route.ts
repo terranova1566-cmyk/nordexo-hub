@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
   try {
     const { data, error } = await readClient
-      .from(providerConfig.productsTable)
+      .from(providerConfig.productsSearchView)
       .select("google_taxonomy_path")
       .not("google_taxonomy_path", "is", null)
       .neq("google_taxonomy_path", "");

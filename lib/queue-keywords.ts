@@ -12,7 +12,8 @@ export type QueueKeywordResult = {
 };
 
 const KEYWORD_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_keyword_cache");
-const KEYWORD_CACHE_VERSION = 8;
+const PREVIEW_TITLE_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_preview_table_cache");
+const KEYWORD_CACHE_VERSION = 9;
 
 const TITLE_KEYS = [
   "title_1688",
@@ -190,11 +191,16 @@ const normalizeKeywords = (input: unknown, maxCount: number) => {
   const limit = Math.max(1, Math.min(20, Math.round(maxCount || 1)));
   if (!Array.isArray(input)) return [] as string[];
   const out: string[] = [];
+  const maxLabelLength = 42;
   for (const value of input) {
-    const keyword = cleanTitle(asText(value))
+    let keyword = cleanTitle(asText(value))
       .replace(/^[-*•\d.\s]+/, "")
-      .replace(/[，,、]+$/g, "")
-      .slice(0, 24);
+      .replace(/[，,、]+$/g, "");
+    if (keyword.length > maxLabelLength) {
+      const clipped = keyword.slice(0, maxLabelLength + 1);
+      const wordBoundary = clipped.replace(/\s+\S*$/, "").trim();
+      keyword = (wordBoundary || clipped.slice(0, maxLabelLength)).trim();
+    }
     if (!keyword) continue;
     out.push(keyword);
     if (out.length >= limit) break;
@@ -316,6 +322,13 @@ const fallbackKeywordForTitle = (title: string, index: number) => {
   if (mapped) return mapped;
   const normalized = normalizeSingleEnglishKeyword(title);
   if (normalized) return normalized;
+  const direct = cleanTitle(title)
+    .replace(/[（(].*?[)）]/g, " ")
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 28);
+  if (direct) return direct;
   return `Product ${index + 1}`;
 };
 
@@ -368,13 +381,13 @@ const requestOpenAiKeywords = async (titles: string[], maxCount: number) => {
 
   const prompt = [
     "You receive product titles in mixed languages (Chinese, Swedish, English).",
-    `Return exactly ${limit} short ENGLISH product-noun labels.`,
+    `Return exactly ${limit} short ENGLISH working product titles.`,
     "Rules:",
-    "1) Each label must describe what the product is (noun), not usage or marketing text.",
-    "2) Keep each label specific and reusable (1-4 words).",
-    "3) One label per title, preserve title order.",
+    "1) Each title must describe what the product is (noun-focused), not usage or marketing text.",
+    "2) Keep each title concise and reusable (2-8 words).",
+    "3) One title per input title, preserve title order.",
     "4) Output must be English only.",
-    `5) Return exactly ${limit} labels.`,
+    `5) Return exactly ${limit} titles.`,
     '6) Output JSON only: {"keywords":["k1","k2"]}',
     "",
     "Titles:",
@@ -425,6 +438,34 @@ const sanitizeFileName = (fileName: string) => {
 
 const cacheFilePathFor = (fileName: string) =>
   path.join(KEYWORD_CACHE_DIR, `${fileName}.json`);
+
+const readPreviewEnglishTitles = (
+  fileName: string,
+  sourceMtimeMs: number,
+  maxCount: number
+) => {
+  const safeName = sanitizeFileName(fileName);
+  if (!safeName) return [] as string[];
+  const cachePath = path.join(PREVIEW_TITLE_CACHE_DIR, `${safeName}.json`);
+  if (!fs.existsSync(cachePath)) return [] as string[];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cachePath, "utf8")) as {
+      sourceMtimeMs?: number;
+      items?: Array<{ index?: number; titleEn?: string }>;
+    };
+    if (Number(parsed?.sourceMtimeMs) !== Number(sourceMtimeMs)) return [] as string[];
+    const rows = Array.isArray(parsed?.items) ? parsed.items : [];
+    const limit = Math.max(1, Math.min(20, Math.round(maxCount || 1)));
+    return rows
+      .filter((row) => Number.isInteger(Number(row?.index)))
+      .sort((a, b) => Number(a.index) - Number(b.index))
+      .map((row) => cleanTitle(asText(row.titleEn)))
+      .filter(Boolean)
+      .slice(0, limit);
+  } catch {
+    return [] as string[];
+  }
+};
 
 const isValidKeywordCache = (
   cache: unknown,
@@ -477,10 +518,14 @@ export const generateQueueKeywordsForFile = async (
   const stat = fs.statSync(filePath);
   fs.mkdirSync(KEYWORD_CACHE_DIR, { recursive: true });
   const cachePath = cacheFilePathFor(safeName);
+  const mode = options?.mode === "fast" ? "fast" : "full";
 
   if (!options?.force) {
     const cached = readQueueKeywordCacheForFile(safeName);
-    if (cached) return cached;
+    if (cached) {
+      if (mode === "fast") return cached;
+      if (cached.source === "openai") return cached;
+    }
   }
 
   const raw = fs.readFileSync(filePath, "utf8");
@@ -508,13 +553,18 @@ export const generateQueueKeywordsForFile = async (
     return emptyResult;
   }
 
-  const mode = options?.mode === "fast" ? "fast" : "full";
   const aiKeywords =
     mode === "full"
       ? await requestOpenAiKeywords(titles, keywordTargetCount)
       : null;
+  const previewTitles = readPreviewEnglishTitles(
+    safeName,
+    stat.mtimeMs,
+    keywordTargetCount
+  );
+  const preferredAiKeywords = previewTitles.length > 0 ? previewTitles : aiKeywords;
   const finalKeywords = mergeEnglishKeywords(
-    aiKeywords,
+    preferredAiKeywords,
     titles,
     keywordTargetCount
   );
@@ -523,7 +573,7 @@ export const generateQueueKeywordsForFile = async (
     updatedAt: new Date().toISOString(),
     keywords: finalKeywords,
     label: finalKeywords.join(", "),
-    source: aiKeywords?.length ? "openai" : "fallback",
+    source: preferredAiKeywords?.length ? "openai" : "fallback",
     cacheVersion: KEYWORD_CACHE_VERSION,
   };
   fs.writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf8");

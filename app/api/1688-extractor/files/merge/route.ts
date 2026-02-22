@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     try {
       await generateQueueKeywordsForFile(result.name, {
         force: true,
-        mode: "fast",
+        mode: "full",
       });
     } catch {
       // best-effort post-merge metadata generation

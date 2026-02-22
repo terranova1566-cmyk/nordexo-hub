@@ -8,6 +8,13 @@ import { createClient } from "@supabase/supabase-js";
 import { scrapeCdonFromHtml } from "./competitor-scrapers/cdon.mjs";
 import { scrapeFyndiqFromHtml } from "./competitor-scrapers/fyndiq.mjs";
 import { loadDigidealFromSupabase } from "./competitor-scrapers/digideal.mjs";
+import {
+  extractJsonFromText as parseJsonFromText,
+  normalizeNameLoose as normalizeVariantNameLoose,
+  normalizeNameStrict as normalizeVariantNameStrict,
+  parseVariantWeightTableFromReadableText,
+} from "../shared/1688/core.mjs";
+import { reviewSupplierWeightBestEffort } from "../shared/1688/weight-review.mjs";
 
 const EXTRACTOR_CLI_PATH = "/srv/node-tools/1688-extractor/src/offer_detail_cli.js";
 const OUTPUT_DIR =
@@ -107,22 +114,6 @@ const canonical1688Url = (detailUrl, offerId = "") => {
   return asText(detailUrl);
 };
 
-const parseJsonFromText = (text) => {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {}
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-};
-
 const toPriceNumber = (value) => {
   const text = asText(value).replace(",", ".");
   if (!text) return null;
@@ -130,125 +121,6 @@ const toPriceNumber = (value) => {
   if (!match) return null;
   const num = Number(match[0]);
   return Number.isFinite(num) ? num : null;
-};
-
-const toWeightGrams = (value, options = {}) => {
-  const { allowUnitless = false } = options || {};
-  const raw = asText(value);
-  if (!raw) return null;
-  const normalized = raw.replace(/,/g, ".").trim();
-  const match = normalized.match(/-?\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const num = Number(match[0]);
-  if (!Number.isFinite(num) || num <= 0) return null;
-
-  const unit = normalized.toLowerCase();
-  if (unit.includes("kg") || unit.includes("公斤") || unit.includes("千克")) {
-    return Math.round(num * 1000);
-  }
-  if (unit.includes("g") || unit.includes("克")) {
-    return Math.round(num);
-  }
-  if (unit.includes("斤")) {
-    return null;
-  }
-  if (allowUnitless && num <= 20 && normalized.includes(".")) {
-    return Math.round(num * 1000);
-  }
-  if (allowUnitless) {
-    return Math.round(num);
-  }
-  return null;
-};
-
-const normalizeVariantNameStrict = (value) =>
-  asText(value)
-    .toLowerCase()
-    .replace(/\s+/g, "");
-
-const normalizeVariantNameLoose = (value) =>
-  normalizeVariantNameStrict(value).replace(/[（(].*?[）)]/g, "");
-
-const parseVariantWeightTableFromReadableText = (value) => {
-  const text = asText(value).replace(/\r/g, "\n");
-  const out = { weightByName: new Map(), weights: [] };
-  if (!text) return out;
-
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return out;
-
-  const toGramsFromHeaderUnit = (rawCell, unit) => {
-    const cell = asText(rawCell);
-    if (!cell) return null;
-    const match = cell.replace(/,/g, ".").match(/-?\d+(?:\.\d+)?/);
-    if (!match) return null;
-    const num = Number(match[0]);
-    if (!Number.isFinite(num) || num <= 0) return null;
-    if (unit === "kg") return Math.round(num * 1000);
-    return Math.round(num);
-  };
-
-  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
-    const headerLine = lines[headerIndex];
-    if (!headerLine) continue;
-    if (!/(重量|weight)/i.test(headerLine)) continue;
-    const unitMatch = headerLine.match(/(?:重量|weight)\s*[（(]?\s*(kg|g)\s*[)）]?/i);
-    if (!unitMatch) continue;
-    const unit = String(unitMatch[1] || "").toLowerCase();
-
-    const hasTabs = headerLine.includes("\t");
-    const headerCells = hasTabs
-      ? headerLine.split("\t").map((part) => part.trim()).filter(Boolean)
-      : headerLine.split(/\s+/).map((part) => part.trim()).filter(Boolean);
-    const weightIdx = Math.max(
-      0,
-      headerCells.findIndex((cell) => /(重量|weight)/i.test(cell))
-    );
-
-    let started = false;
-    for (let i = headerIndex + 1; i < Math.min(lines.length, headerIndex + 45); i += 1) {
-      const line = lines[i];
-      if (!line) break;
-      if (/^【/.test(line)) break;
-      if (/登录查看全部|展开全部|内容声明/i.test(line)) break;
-
-      if (hasTabs && !line.includes("\t")) {
-        if (started) break;
-        continue;
-      }
-
-      if (
-        !hasTabs &&
-        !/^-?\d+(?:[.,]\d+)?(?:\s*(?:kg|g|公斤|千克|克))?$/i.test(line)
-      ) {
-        if (started) break;
-        continue;
-      }
-
-      const parts = hasTabs
-        ? line.split(/\t+/).map((part) => part.trim())
-        : line.split(/\s+/).map((part) => part.trim());
-      if (parts.length <= weightIdx) continue;
-
-      const cell = parts[weightIdx];
-      const grams = toGramsFromHeaderUnit(cell, unit);
-      if (!grams) continue;
-
-      started = true;
-      out.weights.push(grams);
-
-      const name = hasTabs ? asText(parts[0]) : "";
-      const strictName = normalizeVariantNameStrict(name);
-      const looseName = normalizeVariantNameLoose(name);
-      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
-      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
-    }
-  }
-
-  return out;
 };
 
 const enrichVariantWeightsFromReadableText = (payload) => {
@@ -358,6 +230,95 @@ const isBetterVariationQuality = (next, current) => {
     return next.combos > current.combos;
   }
   return false;
+};
+
+const countWeightTokens = (value) => {
+  const text = asText(value);
+  if (!text) return 0;
+  const matches = text.match(/-?\d+(?:[.,]\d+)?\s*(?:kg|g|公斤|千克|克)/gi);
+  return Array.isArray(matches) ? matches.length : 0;
+};
+
+const compactReadableText = (value, options = {}) => {
+  const maxChars = Number.isFinite(Number(options.maxChars))
+    ? Math.max(3_000, Math.trunc(Number(options.maxChars)))
+    : 120_000;
+  const maxLines = Number.isFinite(Number(options.maxLines))
+    ? Math.max(150, Math.trunc(Number(options.maxLines)))
+    : 8_000;
+  const text = asText(value).replace(/\u00a0/g, " ");
+  if (!text) return "";
+
+  const out = [];
+  const seen = new Set();
+  for (const rawLine of text.split(/\r?\n/g)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+    if (out.length >= maxLines) break;
+  }
+  return out.join("\n").slice(0, maxChars);
+};
+
+const mergeReadableText = (primary, secondary, options = {}) => {
+  const preferred = compactReadableText(primary, options);
+  const fallback = compactReadableText(secondary, options);
+  if (!preferred) return fallback;
+  if (!fallback || fallback === preferred) return preferred;
+
+  const primaryLines = preferred.split("\n");
+  const out = [...primaryLines];
+  const seen = new Set(primaryLines);
+  for (const line of fallback.split("\n")) {
+    const text = asText(line);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out.join("\n");
+};
+
+const mergeReadableTextIntoPayload = (basePayload, secondaryPayload) => {
+  if (!basePayload || typeof basePayload !== "object") return basePayload;
+  const baseExtracted =
+    basePayload.extracted && typeof basePayload.extracted === "object"
+      ? basePayload.extracted
+      : null;
+  if (!baseExtracted) return basePayload;
+
+  const secondaryExtracted =
+    secondaryPayload?.extracted && typeof secondaryPayload.extracted === "object"
+      ? secondaryPayload.extracted
+      : null;
+  const baseReadable = asText(baseExtracted.readableText);
+  const secondaryReadable = asText(secondaryExtracted?.readableText);
+  if (!secondaryReadable) {
+    return {
+      ...basePayload,
+      extracted: {
+        ...baseExtracted,
+        readableText: compactReadableText(baseReadable),
+      },
+    };
+  }
+
+  const baseWeightTokens = countWeightTokens(baseReadable);
+  const secondaryWeightTokens = countWeightTokens(secondaryReadable);
+  const preferSecondary = secondaryWeightTokens > baseWeightTokens;
+  const merged = mergeReadableText(
+    preferSecondary ? secondaryReadable : baseReadable,
+    preferSecondary ? baseReadable : secondaryReadable
+  );
+
+  return {
+    ...basePayload,
+    extracted: {
+      ...baseExtracted,
+      readableText: merged,
+    },
+  };
 };
 
 const hasCjk = (value) => /[\u3400-\u9fff]/.test(String(value || ""));
@@ -1029,11 +990,20 @@ const run1688OfferDetail = async (detailUrl, offerId) => {
   const primary = await runAttempt("cn");
   if (!primary.ok) {
     const fallback = await runAttempt("default");
-    return fallback.ok ? fallback : primary;
+    if (!fallback.ok) return primary;
+    return {
+      ...fallback,
+      payload: enrichVariantWeightsFromReadableText(
+        mergeReadableTextIntoPayload(fallback.payload, primary?.payload)
+      ),
+    };
   }
 
   const primaryQuality = getVariationQuality(primary.payload);
-  if (!isLikelyFlatPriceExtraction(primaryQuality)) {
+  const primaryReadable = asText(primary?.payload?.extracted?.readableText);
+  const shouldTryReadableFallback =
+    primaryReadable.length < 1_800 || countWeightTokens(primaryReadable) <= 1;
+  if (!isLikelyFlatPriceExtraction(primaryQuality) && !shouldTryReadableFallback) {
     return primary;
   }
 
@@ -1044,14 +1014,20 @@ const run1688OfferDetail = async (detailUrl, offerId) => {
 
   const fallbackQuality = getVariationQuality(fallback.payload);
   if (isBetterVariationQuality(fallbackQuality, primaryQuality)) {
+    const merged = mergeVariantLabelsFromSource(fallback.payload, primary.payload);
     return {
       ...fallback,
-      payload: mergeVariantLabelsFromSource(fallback.payload, primary.payload),
+      payload: enrichVariantWeightsFromReadableText(
+        mergeReadableTextIntoPayload(merged, primary.payload)
+      ),
     };
   }
+  const merged = mergeVariantLabelsFromSource(primary.payload, fallback.payload);
   return {
     ...primary,
-    payload: mergeVariantLabelsFromSource(primary.payload, fallback.payload),
+    payload: enrichVariantWeightsFromReadableText(
+      mergeReadableTextIntoPayload(merged, fallback.payload)
+    ),
   };
 };
 
@@ -1088,6 +1064,8 @@ const selectionMatches = (current, snapshot) => {
 const withPayloadMeta = (offer, patch) => {
   const now = patch.updatedAt || new Date().toISOString();
   const base = offer && typeof offer === "object" ? offer : {};
+  const hasWeightReview =
+    patch.weightReview && typeof patch.weightReview === "object";
   return {
     ...base,
     _production_payload_status: firstString(patch.status) || null,
@@ -1106,6 +1084,34 @@ const withPayloadMeta = (offer, patch) => {
         : null,
     _production_payload_competitor_error:
       firstString(patch.competitorError) || null,
+    _production_weight_review_status: hasWeightReview
+      ? patch.weightReview.needs_review
+        ? "warning"
+        : "ok"
+      : firstString(base._production_weight_review_status) || null,
+    _production_weight_review_summary:
+      hasWeightReview
+        ? firstString(patch.weightReview?.summary) || null
+        : firstString(base._production_weight_review_summary) || null,
+    _production_weight_review_reason_codes: hasWeightReview
+      ? Array.isArray(patch.weightReview?.reason_codes)
+        ? patch.weightReview.reason_codes.filter((entry) => asText(entry))
+        : []
+      : Array.isArray(base._production_weight_review_reason_codes)
+        ? base._production_weight_review_reason_codes
+        : [],
+    _production_weight_review_confidence:
+      hasWeightReview && Number.isFinite(Number(patch.weightReview?.confidence))
+        ? Number(patch.weightReview.confidence)
+        : Number.isFinite(Number(base._production_weight_review_confidence))
+          ? Number(base._production_weight_review_confidence)
+          : null,
+    _production_weight_review_trigger_next_supplier: hasWeightReview
+      ? Boolean(patch.weightReview?.trigger_next_supplier)
+      : Boolean(base._production_weight_review_trigger_next_supplier),
+    _production_weight_review_updated_at: hasWeightReview
+      ? now
+      : firstString(base._production_weight_review_updated_at) || null,
   };
 };
 
@@ -1236,13 +1242,18 @@ const buildExtractorItem = ({
   offerId,
   extractedPayload,
   competitor,
+  weightReview,
 }) => {
   const extracted = extractedPayload?.extracted ?? {};
   const extractedErrors = Array.isArray(extractedPayload?.errors)
     ? extractedPayload.errors.map((entry) => asText(entry)).filter(Boolean)
     : [];
 
-  const readable1688 = sanitizeReadable1688(asText(extracted?.readableText));
+  const readable1688Full = compactReadableText(asText(extracted?.readableText), {
+    maxChars: 140_000,
+    maxLines: 10_000,
+  });
+  const readable1688 = sanitizeReadable1688(readable1688Full);
 
   // Keep 1688 source images separate from marketplace competitor images.
   const imageUrls1688 = uniqueUrls(
@@ -1264,6 +1275,11 @@ const buildExtractorItem = ({
   if (competitor.url) notes.push(`competitor_url:${competitor.url}`);
   if (competitor.title) notes.push(`competitor_title:${competitor.title}`);
   if (competitor.error) notes.push(`competitor_fetch_error:${competitor.error}`);
+  if (weightReview?.needs_review) {
+    notes.push(
+      `weight_review_warning:${Array.isArray(weightReview?.reason_codes) ? weightReview.reason_codes.join(",") : "possible_weight_issue"}`
+    );
+  }
 
   return {
     sku: "",
@@ -1272,6 +1288,7 @@ const buildExtractorItem = ({
     url_amz: "",
     variants_1688: "",
     readable_1688: readable1688,
+    readable_1688_full: readable1688Full || readable1688,
     main_image_1688: firstString(
       extracted?.mainImageUrl,
       imageUrls1688[0],
@@ -1286,6 +1303,8 @@ const buildExtractorItem = ({
       : [],
     product_weights_1688: Array.isArray(extracted?.weights) ? extracted.weights : [],
     variations: extracted?.variations ?? null,
+    weight_review_1688:
+      weightReview && typeof weightReview === "object" ? weightReview : null,
     variation_filter_tokens: [],
     notes,
     errors: extractedErrors,
@@ -1457,6 +1476,16 @@ const main = async () => {
   const translatedDetailPayload = await translateVariantCombosBestEffort(
     detailResult.payload
   );
+  let weightReview = null;
+  try {
+    weightReview = await reviewSupplierWeightBestEffort({
+      extractedPayload: translatedDetailPayload,
+      competitor,
+      detailUrl: selectedDetailUrl,
+    });
+  } catch {
+    weightReview = null;
+  }
 
   const item = buildExtractorItem({
     provider,
@@ -1465,6 +1494,7 @@ const main = async () => {
     offerId: selectedOfferId,
     extractedPayload: translatedDetailPayload,
     competitor,
+    weightReview,
   });
 
   let saved;
@@ -1498,6 +1528,7 @@ const main = async () => {
       ? competitor.imageUrls.length
       : 0,
     competitorError: competitor.error,
+    weightReview,
   });
   await updateSelectionOffer(admin, provider, productId, readyOffer);
 };

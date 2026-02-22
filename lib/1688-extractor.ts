@@ -82,6 +82,12 @@ const extractUrl = (entry: Record<string, unknown>) =>
 
 const extractTitle = (entry: Record<string, unknown>) =>
   firstString(entry, [
+    "title_1688",
+    "title_cn",
+    "title_zh",
+    "subject",
+    "subject_cn",
+    "subject_zh",
     "title",
     "name",
     "product_title",
@@ -89,20 +95,75 @@ const extractTitle = (entry: Record<string, unknown>) =>
     "listing_title",
   ]);
 
+const READABLE_TITLE_BLOCKLIST = [
+  "客服",
+  "回头率",
+  "商品评价",
+  "查看全部评价",
+  "登录查看全部",
+  "服务",
+  "物流",
+  "发货",
+  "材质",
+  "品牌",
+  "规格",
+  "货号",
+  "价格",
+  "评价",
+  "全部",
+  "店铺",
+  "商品属性",
+  "商品资质",
+  "包装信息",
+  "商品详情",
+  "加采购车",
+  "立即下单",
+  "库存",
+  "商品件重尺",
+];
+
+const cleanReadableLine = (value: string) =>
+  value
+    .replace(/\s+/g, " ")
+    .replace(/[|｜•·]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const containsChinese = (value: string) => /[\u4e00-\u9fff]/.test(value);
+
 const extractReadableTitle = (value: unknown) => {
   if (typeof value !== "string") return "";
   const lines = value
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => cleanReadableLine(line))
     .filter(Boolean);
-  let idx = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/%/.test(lines[i])) idx = i;
-  }
-  if (idx >= 0 && idx + 1 < lines.length) {
-    return lines[idx + 1];
-  }
-  return "";
+
+  const candidates = lines
+    .filter((line) => containsChinese(line))
+    .filter((line) => line.length >= 6 && line.length <= 72)
+    .filter((line) => !/^[-\d\s.,%]+$/.test(line))
+    .filter((line) => !/https?:\/\/|with\(document\)|window\.|function\(/i.test(line))
+    .filter((line) => !line.includes("\t"))
+    .filter(
+      (line) =>
+        !READABLE_TITLE_BLOCKLIST.some((token) => line.includes(token)) &&
+        !line.includes("¥") &&
+        !line.includes("￥")
+    )
+    .map((line, idx) => {
+      let score = 0;
+      score += Math.min(44, line.length);
+      if (!/[A-Za-z]/.test(line)) score += 12;
+      if (idx < Math.max(20, Math.round(lines.length * 0.35))) score += 10;
+      if (/灯|机|器|刷|耳环|项链|玩具|工具|摆件|收纳|垫|网|吊灯|台灯|面罩/i.test(line)) {
+        score += 8;
+      }
+      if (/[0-9]{3,}/.test(line)) score -= 8;
+      return { line, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.line ?? "";
 };
 
 const extractSku = (entry: Record<string, unknown>) =>

@@ -7155,6 +7155,11 @@
       "key": "nav.letsdealDealsManager",
       "text": "LetsDeal",
       "context": "Deals menu item"
+    },
+    {
+      "key": "nav.offerillaDealsManager",
+      "text": "Offerilla",
+      "context": "Deals menu item"
     }
   ]
 }

@@ -618,6 +618,39 @@ type LetsDealFallbackPrice = {
   scrapedAt: string | null;
 };
 
+type LetsDealDealUrlFallback = {
+  dealUrl: string;
+  scrapeDate: string | null;
+  scrapedAt: string | null;
+};
+
+const extractLetsDealSlugFromUrl = (value: unknown) => {
+  const raw = toText(value);
+  if (!raw) return null;
+  const clean = raw.split(/[?#]/)[0];
+  const match = clean.match(/\/deal\/[^/]+\/([^/]+)/i);
+  if (!match?.[1]) return null;
+  const slug = match[1].trim();
+  return slug || null;
+};
+
+const toHumanReadableSlug = (value: string) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = raw;
+  }
+  const words = decoded
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!words) return null;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
 const loadLetsDealFallbackPriceMap = async (
   supabase: any,
   productIds: string[]
@@ -699,6 +732,78 @@ const loadLetsDealFallbackPriceMap = async (
   return { map, error: null };
 };
 
+const loadLetsDealDealUrlMap = async (supabase: any, productIds: string[]) => {
+  const map = new Map<string, LetsDealDealUrlFallback>();
+  const uniqueProductIds = Array.from(
+    new Set(
+      productIds
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (uniqueProductIds.length === 0) {
+    return { map, error: null };
+  }
+
+  const chunkSize = 50;
+  const pageSize = 1000;
+  const maxPagesPerChunk = 20;
+
+  for (let start = 0; start < uniqueProductIds.length; start += chunkSize) {
+    const chunk = uniqueProductIds.slice(start, start + chunkSize);
+    const unresolved = new Set(chunk);
+    let offset = 0;
+    let pagesRead = 0;
+
+    while (unresolved.size > 0) {
+      const { data, error } = await supabase
+        .from("letsdeal_product_daily")
+        .select("product_id, deal_url, scrape_date, scraped_at")
+        .in("product_id", chunk)
+        .not("deal_url", "is", null)
+        .order("product_id", { ascending: true })
+        .order("scraped_at", { ascending: false })
+        .order("scrape_date", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        return { map, error };
+      }
+
+      const rows = (data ?? []) as Array<{
+        product_id?: string | null;
+        deal_url?: string | null;
+        scrape_date?: string | null;
+        scraped_at?: string | null;
+      }>;
+
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const productId =
+          typeof row.product_id === "string" ? row.product_id.trim() : "";
+        const dealUrl = toText(row.deal_url);
+        if (!productId || !dealUrl || !unresolved.has(productId) || map.has(productId)) {
+          continue;
+        }
+        map.set(productId, {
+          dealUrl,
+          scrapeDate: typeof row.scrape_date === "string" ? row.scrape_date : null,
+          scrapedAt: typeof row.scraped_at === "string" ? row.scraped_at : null,
+        });
+        unresolved.delete(productId);
+      }
+
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+      pagesRead += 1;
+      if (pagesRead >= maxPagesPerChunk) break;
+    }
+  }
+
+  return { map, error: null };
+};
+
 const resolveDealPriceFields = ({
   provider,
   rawPrice,
@@ -707,7 +812,7 @@ const resolveDealPriceFields = ({
   rawSaveKr,
   fallbackPrice,
 }: {
-  provider: "digideal" | "letsdeal";
+  provider: "digideal" | "letsdeal" | "offerilla";
   rawPrice: number | null;
   rawOriginalPrice: number | null;
   rawDiscountPercent: number | null;
@@ -927,9 +1032,18 @@ export async function GET(request: NextRequest) {
     const productSelect =
       provider === "letsdeal" ? PRODUCT_SELECT_LETSDEAL : PRODUCT_SELECT;
 
+    const selectCountMode: "exact" | "planned" | undefined = needsAllRows
+      ? undefined
+      : provider === "letsdeal"
+        ? "planned"
+        : "exact";
+
     let query = readClient
       .from(productsSearchView)
-      .select(productSelect, { count: "exact" });
+      .select(
+        productSelect,
+        selectCountMode ? { count: selectCountMode } : undefined
+      );
 
     if (effectiveStatus !== "all") {
       query = query.eq("status", effectiveStatus);
@@ -1477,6 +1591,7 @@ export async function GET(request: NextRequest) {
     const productIds =
       products?.map((product) => product.product_id).filter(Boolean) ?? [];
     let letsDealFallbackPriceMap = new Map<string, LetsDealFallbackPrice>();
+    let letsDealDealUrlMap = new Map<string, LetsDealDealUrlFallback>();
     if (provider === "letsdeal" && productIds.length > 0) {
       const needsFallbackIds = (products ?? [])
         .map((product) => {
@@ -1507,6 +1622,37 @@ export async function GET(request: NextRequest) {
           });
         } else {
           letsDealFallbackPriceMap = map;
+        }
+      }
+
+      const needsUrlFallbackIds = (products ?? [])
+        .map((product) => {
+          const productId =
+            typeof product?.product_id === "string" ? product.product_id.trim() : "";
+          if (!productId) return "";
+          const listingTitle = toText((product as any).listing_title);
+          const titleH1 = toText((product as any).title_h1);
+          const productSlug = toText((product as any).product_slug);
+          const productUrl = toText((product as any).product_url);
+          if (listingTitle || titleH1 || productSlug || productUrl) return "";
+          return productId;
+        })
+        .filter(Boolean);
+
+      if (needsUrlFallbackIds.length > 0) {
+        const { map, error } = await loadLetsDealDealUrlMap(
+          readClient,
+          needsUrlFallbackIds
+        );
+        if (error) {
+          console.error("letsdeal deal url fallback map error", {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          });
+        } else {
+          letsDealDealUrlMap = map;
         }
       }
     }
@@ -1870,6 +2016,30 @@ export async function GET(request: NextRequest) {
 
     const items =
       products?.map((product) => {
+        const productId = String((product as any).product_id ?? "").trim();
+        const letsDealUrlFallback =
+          provider === "letsdeal" ? letsDealDealUrlMap.get(productId) : null;
+        const resolvedProductUrl =
+          toText((product as any).product_url) ||
+          toText(letsDealUrlFallback?.dealUrl) ||
+          null;
+        const resolvedProductSlug =
+          toText((product as any).product_slug) ||
+          extractLetsDealSlugFromUrl(resolvedProductUrl) ||
+          null;
+        const slugTitleFallback = resolvedProductSlug
+          ? toHumanReadableSlug(resolvedProductSlug)
+          : null;
+        const resolvedListingTitle =
+          toText((product as any).listing_title) ||
+          toText((product as any).title_h1) ||
+          slugTitleFallback ||
+          null;
+        const resolvedTitleH1 =
+          toText((product as any).title_h1) ||
+          toText((product as any).listing_title) ||
+          slugTitleFallback ||
+          null;
         const imageFields = sanitizeDealImageFields(product as Record<string, unknown>);
         const detail = detailMap.get(product.product_id);
         const purchasePrice = toNumber(detail?.purchase_price);
@@ -2016,8 +2186,8 @@ export async function GET(request: NextRequest) {
             : null;
         return {
           product_id: product.product_id,
-          listing_title: product.listing_title ?? null,
-          title_h1: product.title_h1 ?? null,
+          listing_title: resolvedListingTitle,
+          title_h1: resolvedTitleH1,
           subtitle:
             typeof (product as any).subtitle === "string"
               ? String((product as any).subtitle).trim() || null
@@ -2030,8 +2200,8 @@ export async function GET(request: NextRequest) {
             typeof (product as any).google_taxonomy_path === "string"
               ? String((product as any).google_taxonomy_path).trim() || null
               : null,
-          product_url: product.product_url ?? null,
-          product_slug: product.product_slug ?? null,
+          product_url: resolvedProductUrl,
+          product_slug: resolvedProductSlug,
           prodno: product.prodno ?? null,
           seller_name: normalizeSellerName(product.seller_name),
           seller_orgnr: product.seller_orgnr ?? null,

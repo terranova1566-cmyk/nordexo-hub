@@ -1,10 +1,11 @@
-export type DealsProvider = "digideal" | "letsdeal";
+export type DealsProvider = "digideal" | "letsdeal" | "offerilla";
 
 export const DEFAULT_DEALS_PROVIDER: DealsProvider = "digideal";
 
 export const resolveDealsProvider = (value: unknown): DealsProvider => {
   const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (raw === "letsdeal") return "letsdeal";
+  if (raw === "offerilla") return "offerilla";
   return DEFAULT_DEALS_PROVIDER;
 };
 
@@ -24,6 +25,21 @@ export type DealsProviderConfig = {
 export const getDealsProviderConfig = (
   provider: DealsProvider
 ): DealsProviderConfig => {
+  if (provider === "offerilla") {
+    return {
+      provider,
+      productsTable: "offerilla_products",
+      productsSearchView: "offerilla_products_search",
+      productDailyTable: "offerilla_product_daily",
+      dailyCountColumn: "purchased_count",
+      viewsTable: "offerilla_views",
+      viewItemsTable: "offerilla_view_items",
+      sellerCountsView: "offerilla_seller_counts",
+      contentAnalysisTable: null,
+      fakeSalesOffset: 0,
+    };
+  }
+
   if (provider === "letsdeal") {
     return {
       provider,

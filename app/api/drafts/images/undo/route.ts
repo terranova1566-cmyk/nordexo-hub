@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
 import { restoreDraftImageUndoBackup } from "@/lib/draft-image-undo";
+import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
 
 export const runtime = "nodejs";
 
@@ -70,12 +71,21 @@ export async function POST(request: Request) {
   }
 
   const stat = fs.statSync(absolute);
+  let pixelQualityScore: number | null = null;
+  let scoreRefreshError: string | null = null;
+  try {
+    const refreshed = await refreshDraftImageScoreByAbsolutePath(absolute);
+    pixelQualityScore = refreshed.pixelQualityScore;
+  } catch (err) {
+    scoreRefreshError = err instanceof Error ? err.message : "score refresh failed";
+  }
   return NextResponse.json({
     ok: true,
     path: targetRelative,
     name: path.basename(absolute),
     size: stat.size,
     modifiedAt: new Date().toISOString(),
+    pixelQualityScore,
+    scoreRefreshError,
   });
 }
-

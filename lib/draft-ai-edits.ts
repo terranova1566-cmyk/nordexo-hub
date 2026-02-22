@@ -2,10 +2,12 @@ import fs from "fs";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
 import { spawn } from "child_process";
+import sharp from "sharp";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { convertImageFileToJpegInPlace } from "@/lib/image-jpeg";
 import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
+import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
 
 export type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 export type AiPromptMode =
@@ -89,6 +91,7 @@ const ZIMAGE_IMAGE_TO_IMAGE_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "image_to_image
 const ZIMAGE_BG_REMOVAL_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "background_removal.js");
 const ZIMAGE_ERASER_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "image_eraser.js");
 const ZIMAGE_UPSCALE_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "upscale.js");
+const ZIMAGE_UPSCALE_TARGET_SIZE_PX = 1000;
 const AUTO_CENTER_SCRIPT_PATH = path.join(PROCESSOR_ROOT, "auto_center_white.py");
 const ZIMAGE_INPUT_DIR = path.join(ZIMAGE_ROOT, "input");
 const ZIMAGE_OUTPUT_DIR = path.join(ZIMAGE_ROOT, "output");
@@ -485,6 +488,43 @@ export const runAutoCenterWhiteInPlace = async (absolutePath: string) => {
     timeoutMs,
     cwd: PROCESSOR_ROOT,
   });
+};
+
+const enforceExactSquareSizeInPlace = async (
+  absolutePath: string,
+  targetSize: number
+) => {
+  const parsed = path.parse(absolutePath);
+  const normalizedSize = Math.max(1, Math.round(targetSize));
+  const tempPath = path.join(
+    parsed.dir,
+    `.${parsed.name}.square-${Date.now()}-${randomUUID().slice(0, 8)}.tmp.jpg`
+  );
+
+  try {
+    await sharp(absolutePath, { failOnError: false })
+      .rotate()
+      .resize({
+        width: normalizedSize,
+        height: normalizedSize,
+        fit: "cover",
+        position: "centre",
+        withoutEnlargement: false,
+      })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toFile(tempPath);
+
+    if (!moveFileWithFallback(tempPath, absolutePath)) {
+      throw new Error("Unable to persist normalized upscale image.");
+    }
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch {}
+  }
 };
 
 const buildPendingImageName = (originalAbsPath: string, provider: AiEditProvider) => {
@@ -1134,7 +1174,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
     const now = new Date();
     const stamp = formatTimestampForFilename(now);
     const prefix = input.templatePreset === "digideal_main" ? "DD" : "SCENE";
-    const suffixTag = input.templatePreset === "product_scene" ? " (ENV)" : "";
+    const suffixTag = input.templatePreset === "product_scene" ? " (ENV) (DIGI)" : " (DIGI)";
     const additionalPrompt = String(input.prompt || "").trim();
 
     const providerEnv = loadProcessorEnv();
@@ -1283,6 +1323,18 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
       .map((row) => row.finalAbs)
       .filter((abs): abs is string => Boolean(abs))
       .map((abs) => toRelativePath(abs));
+    const scoreRefreshErrors: string[] = [];
+    for (const abs of planned
+      .map((row) => row.finalAbs)
+      .filter((value): value is string => Boolean(value))) {
+      try {
+        await refreshDraftImageScoreByAbsolutePath(abs);
+      } catch (err) {
+        scoreRefreshErrors.push(
+          `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
+        );
+      }
+    }
 
     appendAiEditLog({
       action: "preset_outputs",
@@ -1292,6 +1344,8 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
       guidance_length: additionalPrompt.length,
       original_path: originalPath,
       created_paths: createdPaths,
+      score_refresh_errors:
+        scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
     });
 
     return createdPaths;
@@ -1501,6 +1555,12 @@ const runImageEditScript = async (input: {
         await runAutoCenterWhiteInPlace(input.pendingAbsPath);
         await convertImageFileToJpegInPlace(input.pendingAbsPath);
       }
+      if (input.provider === "zimage" && input.mode === "upscale") {
+        await enforceExactSquareSizeInPlace(
+          input.pendingAbsPath,
+          ZIMAGE_UPSCALE_TARGET_SIZE_PX
+        );
+      }
 
       return {
         maxAttempts,
@@ -1624,12 +1684,16 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       throw new Error("Pending AI image path is invalid.");
     }
 
+    const scorePathsToRefresh: string[] = [];
+    const scoreRefreshErrors: string[] = [];
+
     if (input.decision === "replace_with_ai") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
         throw new Error("Pending AI image was not found.");
       }
       saveDraftImageUndoBackup(originalAbsPath);
       fs.copyFileSync(pendingAbsPath, originalAbsPath);
+      scorePathsToRefresh.push(originalAbsPath);
     } else if (input.decision === "keep_both") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
         throw new Error("Pending AI image was not found.");
@@ -1649,6 +1713,7 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
         moveFileWithFallback(uneditedAbsPath, originalAbsPath);
         throw new Error("Unable to keep the AI-edited image.");
       }
+      scorePathsToRefresh.push(uneditedAbsPath, editedAbsPath);
     }
 
     removeFileQuietly(pendingAbsPath);
@@ -1656,18 +1721,30 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
     next.splice(index, 1);
     writeFolderState(folderAbsPath, { version: 1, edits: next });
 
+    for (const abs of scorePathsToRefresh) {
+      try {
+        await refreshDraftImageScoreByAbsolutePath(abs);
+      } catch (err) {
+        scoreRefreshErrors.push(
+          `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
+        );
+      }
+    }
+
     appendAiEditLog({
       action: "resolve",
       requested_by: input.requestedBy,
       decision: input.decision,
       original_path: originalPath,
       pending_path: record.pendingPath,
+      score_refresh_errors:
+        scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
     });
 
     return record;
   });
 
-export const createCopyOfDraftFile = (relativePath: string) => {
+export const createCopyOfDraftFile = async (relativePath: string) => {
   const normalizedPath = normalizeRelativePath(relativePath);
   if (!normalizedPath || normalizedPath.includes("..")) {
     throw new Error("Invalid path.");
@@ -1693,6 +1770,13 @@ export const createCopyOfDraftFile = (relativePath: string) => {
   }
   fs.copyFileSync(absolutePath, targetAbsPath);
   const relativeCopyPath = toRelativePath(targetAbsPath);
+  let pixelQualityScore: number | null = null;
+  try {
+    const refreshed = await refreshDraftImageScoreByAbsolutePath(targetAbsPath);
+    pixelQualityScore = refreshed.pixelQualityScore;
+  } catch {
+    pixelQualityScore = null;
+  }
   appendAiEditLog({
     action: "copy",
     source_path: toRelativePath(absolutePath),
@@ -1701,5 +1785,6 @@ export const createCopyOfDraftFile = (relativePath: string) => {
   return {
     name: path.basename(targetAbsPath),
     path: relativeCopyPath,
+    pixelQualityScore,
   };
 };

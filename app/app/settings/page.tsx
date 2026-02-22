@@ -242,6 +242,32 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "12px",
   },
+  uiAuditGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: "12px",
+  },
+  uiAuditItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    padding: "12px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  uiAuditLinks: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  uiAuditRoute: {
+    fontFamily: tokens.fontFamilyMonospace,
+    color: tokens.colorNeutralForeground3,
+  },
+  uiAuditNote: {
+    color: tokens.colorNeutralForeground3,
+  },
   helperText: {
     color: tokens.colorNeutralForeground3,
   },
@@ -2100,6 +2126,7 @@ export default function SettingsPage() {
           <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
           <Tab value="ai-image-edit">{t("settings.aiImage.tab")}</Tab>
+          <Tab value="ui-audit">UI Audit</Tab>
           <Tab value="shopify-syncer">Shopify Syncer</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
         </TabList>
@@ -3261,6 +3288,58 @@ export default function SettingsPage() {
               </DialogBody>
             </DialogSurface>
           </Dialog>
+        </div>
+      ) : null}
+
+      {activeTab === "ui-audit" ? (
+        <div className={styles.sectionGrid}>
+          <Card className={styles.card}>
+            <Text weight="semibold">UI Audit</Text>
+            <Text size={200} className={styles.helperText}>
+              Compare current and prototype pages from one place while we
+              standardize spacing, typography, colors, buttons, and menus.
+            </Text>
+
+            <div className={styles.uiAuditGrid}>
+              <div className={styles.uiAuditItem}>
+                <Text weight="semibold">All Products</Text>
+                <Text size={200} className={styles.uiAuditNote}>
+                  Current page vs design-lab prototype
+                </Text>
+                <Text size={200} className={styles.uiAuditRoute}>
+                  Current: /app/products?view=all
+                </Text>
+                <Text size={200} className={styles.uiAuditRoute}>
+                  Prototype: /app/products-design-lab?view=all
+                </Text>
+                <div className={styles.uiAuditLinks}>
+                  <Button
+                    as="a"
+                    href="/app/products?view=all"
+                    appearance="outline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open current page
+                  </Button>
+                  <Button
+                    as="a"
+                    href="/app/products-design-lab?view=all"
+                    appearance="primary"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open design-lab page
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Text size={200} className={styles.helperText}>
+              Future design-lab pages can be added here so review remains in one
+              dedicated UI audit area.
+            </Text>
+          </Card>
         </div>
       ) : null}
 

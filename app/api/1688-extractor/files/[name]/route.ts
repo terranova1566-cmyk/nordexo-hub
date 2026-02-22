@@ -96,7 +96,7 @@ export async function PATCH(
     try {
       await generateQueueKeywordsForFile(decodedName, {
         force: true,
-        mode: "fast",
+        mode: "full",
       });
     } catch {
       // best-effort metadata refresh after patch

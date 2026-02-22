@@ -27,10 +27,12 @@ export async function GET() {
 
   const items = listExtractorFiles().map((item) => {
     const keywordCache = readQueueKeywordCacheForFile(item.name);
+    const hasAiKeywords = keywordCache?.source === "openai";
     return {
       ...item,
       keywordLabel: keywordCache?.label ?? "",
-      keywordCached: Boolean(keywordCache),
+      keywordCached: hasAiKeywords,
+      keywordSource: keywordCache?.source ?? null,
       keywordUpdatedAt: keywordCache?.updatedAt ?? null,
     };
   });

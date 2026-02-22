@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import {
+  canonical1688OfferUrl,
+  extractJsonFromText,
+  hasCjk,
+} from "../shared/1688/core.mjs";
+import { run1688ImageSearch } from "../shared/1688/image-search-runner.mjs";
 
-const TOOL_PATH = "/srv/node-tools/1688-image-search/index.js";
 const TAXONOMY_WORKER_PATH =
   "/srv/nordexo-hub/scripts/product-suggestions-taxonomy-worker.mjs";
 const SUGGESTIONS_DIR =
@@ -134,51 +139,11 @@ const localImagePathFromSuggestion = (record) => {
   return null;
 };
 
-const toOfferId = (offer) => {
-  const raw = offer?.offerId;
-  const text = raw === null || raw === undefined ? "" : String(raw).trim();
-  return text || null;
-};
-
-const canonical1688OfferUrl = (offer) => {
-  const id = toOfferId(offer);
-  if (id && /^\d{6,}$/.test(id)) {
-    return `https://detail.1688.com/offer/${id}.html`;
-  }
-  const raw = asText(offer?.detailUrl || offer?.detail_url);
-  if (!raw) return null;
-  const match = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
-  if (match?.[1]) return `https://detail.1688.com/offer/${match[1]}.html`;
-  return raw;
-};
-
-const parseSearchResultFromStdout = (stdout) => {
-  const raw = asText(stdout);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
-
-const extractJsonFromText = (text) => {
-  const raw = asText(text);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // continue
-  }
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-};
+const canonical1688OfferUrlFromResult = (offer) =>
+  canonical1688OfferUrl({
+    ...(offer && typeof offer === "object" ? offer : {}),
+    detailUrl: asText(offer?.detailUrl || offer?.detail_url),
+  });
 
 const cleanSuggestionTitle = (value) => {
   const normalized = String(value || "")
@@ -193,8 +158,6 @@ const cleanSuggestionTitle = (value) => {
   if (!normalized) return "";
   return normalized.slice(0, 80);
 };
-
-const hasCjk = (value) => /[\u3400-\u9fff]/.test(String(value || ""));
 
 const generateSuggestionTitleWithOpenAi = async (sourceTitle) => {
   const apiKey = asText(process.env.OPENAI_API_KEY);
@@ -320,53 +283,16 @@ const queueTaxonomyForRecordIfNeeded = async (record) => {
 };
 
 const runImageSearchByFile = (imagePath, limit = MAX_OFFERS) => {
-  const args = [
-    TOOL_PATH,
-    "--pretty",
-    "false",
-    "--limit",
-    String(limit),
-    "--page",
-    "1",
-    "--cpsFirst",
-    "false",
-    "--includeRaw",
-    "false",
-    "--image",
+  return run1688ImageSearch({
+    publicBaseUrl: DEFAULT_PUBLIC_BASE_URL,
     imagePath,
-  ];
-
-  const result = spawnSync(process.execPath, args, {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PUBLIC_BASE_URL: DEFAULT_PUBLIC_BASE_URL,
-      PUBLIC_TEMP_IMAGE_TTL_MS:
-        process.env.PUBLIC_TEMP_IMAGE_TTL_MS || String(30 * 60 * 1000),
-    },
-    timeout: 70_000,
-    maxBuffer: 20 * 1024 * 1024,
+    limit,
+    page: 1,
+    cpsFirst: false,
+    includeRaw: false,
+    pretty: false,
+    timeoutMs: 70_000,
   });
-
-  const stdout = String(result.stdout || "").trim();
-  const stderr = String(result.stderr || "").trim();
-  const parsed = parseSearchResultFromStdout(stdout);
-
-  if (parsed && typeof parsed === "object") {
-    if (parsed.ok === false) {
-      const message =
-        asText(parsed?.error?.message) || asText(parsed?.error) || stderr || "1688 image search failed.";
-      return { ok: false, error: message };
-    }
-    return { ok: true, payload: parsed };
-  }
-
-  const fallbackError =
-    stderr ||
-    (result.status === 124 || result.signal === "SIGTERM"
-      ? "1688 image search timed out."
-      : "1688 image search failed.");
-  return { ok: false, error: fallbackError };
 };
 
 const isRetriableSearchError = (message) => {
@@ -498,7 +424,7 @@ const getAdminClient = () => {
 const upsertSupplierSearch = async (adminClient, provider, productId, payload) => {
   const offersRaw = Array.isArray(payload?.offers) ? payload.offers : [];
   let offers = offersRaw.map((offer) => {
-    const canonical = canonical1688OfferUrl(offer);
+    const canonical = canonical1688OfferUrlFromResult(offer);
     return canonical && offer && typeof offer === "object"
       ? { ...offer, detailUrl: canonical }
       : offer;

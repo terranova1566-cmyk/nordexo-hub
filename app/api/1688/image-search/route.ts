@@ -3,11 +3,13 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import {
+  getPublicBaseUrlFromRequest,
+  run1688ImageSearch,
+} from "@/shared/1688/image-search-runner";
 
 export const runtime = "nodejs";
 
-const TOOL_PATH = "/srv/node-tools/1688-image-search/index.js";
 const UPLOAD_DIR = "/srv/incoming-scripts/uploads/1688-image-search";
 
 const isTruthy = (value: unknown) => {
@@ -50,13 +52,8 @@ const guessExtension = (file: File) => {
   return ".jpg";
 };
 
-const getPublicBaseUrl = (request: Request) => {
-  const proto = request.headers.get("x-forwarded-proto") || "https";
-  const host =
-    request.headers.get("x-forwarded-host") || request.headers.get("host");
-  if (!host) return null;
-  return `${proto}://${host}`;
-};
+const getPublicBaseUrl = (request: Request) =>
+  getPublicBaseUrlFromRequest(request);
 
 async function requireAdmin() {
   const supabase = await createServerSupabase();
@@ -186,66 +183,26 @@ export async function POST(request: Request) {
       await fs.writeFile(tempFilePath, buf);
     }
 
-    const args: string[] = [
-      "--pretty",
-      "false",
-      "--limit",
-      String(limit),
-      "--page",
-      String(page),
-      "--cpsFirst",
-      cpsFirst ? "true" : "false",
-      "--includeRaw",
-      includeRaw ? "true" : "false",
-    ];
-    if (sortFields) {
-      args.push("--sortFields", sortFields);
-    }
-    if (fields) {
-      args.push("--fields", fields);
-    }
-    if (tempFilePath) {
-      args.push("--image", tempFilePath);
-    } else if (imageUrl) {
-      args.push("--image-url", imageUrl);
-    }
-
-    const result = spawnSync(process.execPath, [TOOL_PATH, ...args], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PUBLIC_BASE_URL: baseUrl,
-      },
-      maxBuffer: 20 * 1024 * 1024,
-      timeout: 60_000,
+    const run = run1688ImageSearch({
+      publicBaseUrl: baseUrl,
+      imagePath: tempFilePath,
+      imageUrl: tempFilePath ? null : imageUrl,
+      limit,
+      page,
+      cpsFirst,
+      includeRaw,
+      pretty: false,
+      sortFields,
+      fields,
     });
 
-    const stdout = String(result.stdout || "").trim();
-    const stderr = String(result.stderr || "").trim();
-
-    let parsed: unknown = null;
-    if (stdout) {
-      try {
-        parsed = JSON.parse(stdout);
-      } catch {}
-    }
-
-    if (parsed) {
-      // Always return the tool's structured payload (even if the tool exited non-zero).
-      return NextResponse.json(parsed);
-    }
-
-    if (result.status !== 0) {
-      const status = result.status === 2 ? 400 : 500;
-      return NextResponse.json(
-        { error: stderr || "1688 image search failed." },
-        { status }
-      );
+    if (run.ok) {
+      return NextResponse.json(run.payload);
     }
 
     return NextResponse.json(
-      { error: "Invalid response from 1688 tool.", detail: (stderr || stdout).slice(0, 500) },
-      { status: 500 }
+      { error: run.error || "1688 image search failed." },
+      { status: run.status ?? 500 }
     );
   } finally {
     if (tempFilePath) {

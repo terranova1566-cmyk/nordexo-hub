@@ -36,6 +36,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const PROVIDER = "partner_suggestions";
+const MIN_SUPPLIER_GALLERY_BYTES = 20 * 1024;
+const MIN_SUPPLIER_GALLERY_DIMENSION = 600;
 
 type SupplierOffer = {
   rank?: number;
@@ -223,6 +225,14 @@ type SupplierGalleryImageEntry = {
   thumb: string;
   full: string;
   identity: string;
+  source: "offer" | "gallery" | "variant";
+};
+
+type SupplierGalleryProbeResult = {
+  width: number;
+  height: number;
+  byteSize: number | null;
+  signature: string | null;
 };
 
 type VariantDraftOverride = {
@@ -460,6 +470,26 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
+  },
+  actionOutlineButton: {
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  packsButtonAdded: {
+    border: "1px solid #0f6cbd",
+    color: "#0f6cbd",
+    backgroundColor: "#e8f3ff",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+      border: "1px solid #0f6cbd",
+      color: "#0f6cbd",
+    },
+    "&:active": {
+      backgroundColor: "#dcedff",
+      border: "1px solid #0f6cbd",
+      color: "#0f6cbd",
+    },
   },
   deleteButtonActive: {
     border: "1px solid #0f6cbd",
@@ -856,8 +886,8 @@ const useStyles = makeStyles({
     color: tokens.colorPaletteDarkOrangeForeground2,
   },
   dialogSurface: {
-    width: "min(1200px, 96vw)",
-    maxWidth: "min(1200px, 96vw)",
+    width: "min(1340px, 96vw)",
+    maxWidth: "min(1340px, 96vw)",
     maxHeight: "92vh",
     overflow: "hidden",
   },
@@ -867,7 +897,7 @@ const useStyles = makeStyles({
   },
   dialogBody: {
     display: "grid",
-    gridTemplateColumns: "minmax(360px, 1fr) minmax(500px, 1.25fr)",
+    gridTemplateColumns: "520px minmax(0, 1fr)",
     gap: "16px",
     height: "76vh",
     maxHeight: "76vh",
@@ -918,6 +948,19 @@ const useStyles = makeStyles({
       minHeight: "172px",
     },
   },
+  supplierMediaPane: {
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  supplierMediaTitle: {
+    fontSize: tokens.fontSizeBase300,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: "1.1",
+    color: tokens.colorNeutralForeground2,
+    paddingLeft: "2px",
+  },
   supplierSourceCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "10px",
@@ -929,28 +972,6 @@ const useStyles = makeStyles({
     width: "100%",
     height: "100%",
     minHeight: "0",
-  },
-  supplierSourceBadge: {
-    position: "absolute",
-    top: "8px",
-    left: "8px",
-    zIndex: 2,
-    fontSize: tokens.fontSizeBase100,
-    fontWeight: tokens.fontWeightRegular,
-    lineHeight: "1",
-    color: tokens.colorNeutralForeground1,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: "999px",
-    padding: "4px 7px",
-    textTransform: "lowercase",
-    letterSpacing: "0.02em",
-    opacity: 0.5,
-    transition: "opacity 120ms ease",
-    pointerEvents: "none",
-  },
-  supplierSourceBadgeActive: {
-    opacity: 1,
   },
   supplierSourceImage: {
     width: "100%",
@@ -1042,18 +1063,29 @@ const useStyles = makeStyles({
     lineHeight: "1.15",
   },
   supplierGalleryThumbButton: {
+    appearance: "none",
+    WebkitAppearance: "none",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "8px",
     padding: "0",
     backgroundColor: tokens.colorNeutralBackground1,
-    width: "clamp(168px, 22vh, 240px)",
-    height: "clamp(168px, 22vh, 240px)",
+    width: "clamp(132px, 16vh, 192px)",
+    height: "clamp(132px, 16vh, 192px)",
     overflow: "hidden",
     flex: "0 0 auto",
     boxSizing: "border-box",
+    cursor: "zoom-in",
+    transition: "border-color 140ms ease, box-shadow 140ms ease",
+    "&:hover": {
+      boxShadow: `inset 0 0 0 1px ${tokens.colorBrandStroke1}`,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "1px",
+    },
   },
   supplierGalleryThumbButtonSingle: {
-    height: "100%",
+    height: "calc(100% - 4px)",
     width: "auto",
     aspectRatio: "1 / 1",
     maxWidth: "100%",
@@ -1063,7 +1095,42 @@ const useStyles = makeStyles({
     width: "100%",
     height: "100%",
     display: "block",
-    objectFit: "cover",
+    objectFit: "contain",
+    objectPosition: "center",
+    backgroundColor: tokens.colorNeutralBackground1,
+    pointerEvents: "none",
+  },
+  supplierImagePreviewDialog: {
+    width: "min(560px, calc(100vw - 40px))",
+    maxWidth: "560px",
+  },
+  supplierImagePreviewBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  supplierImagePreviewFrame: {
+    width: "500px",
+    height: "500px",
+    maxWidth: "100%",
+    maxHeight: "calc(100vh - 260px)",
+    margin: "0 auto",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  supplierImagePreviewImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  supplierImagePreviewActions: {
+    justifyContent: "flex-end",
   },
   variantsSectionWrap: {
     position: "relative",
@@ -1106,12 +1173,12 @@ const useStyles = makeStyles({
   offerCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "10px",
-    padding: "8px 10px 8px 8px",
+    padding: "9px 10px 9px 8px",
     display: "grid",
     gridTemplateColumns: "74px 1fr",
     gap: "12px",
     alignItems: "stretch",
-    minHeight: "88px",
+    minHeight: "92px",
   },
   offerCardInteractive: {
     cursor: "pointer",
@@ -1143,24 +1210,60 @@ const useStyles = makeStyles({
   offerMeta: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: "3px",
     minWidth: 0,
+  },
+  offerOpenLink: {
+    width: "fit-content",
+    fontSize: tokens.fontSizeBase100,
+    color: "#0f6cbd",
+    textDecoration: "none",
+    lineHeight: "1.15",
+    cursor: "pointer",
+    "&:hover": {
+      color: "#0f6cbd",
+      textDecoration: "underline",
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "1px",
+      borderRadius: "3px",
+    },
   },
   offerTitleEn: {
     fontWeight: tokens.fontWeightSemibold,
     fontSize: tokens.fontSizeBase200,
+    lineHeight: "1.1",
     display: "block",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
     overflow: "hidden",
   },
   offerTitleZh: {
-    fontSize: tokens.fontSizeBase100,
+    fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground3,
+    lineHeight: "1.1",
     display: "-webkit-box",
     WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
+  },
+  offerSelectedBadge: {
+    borderRadius: "999px",
+    border: "0.75px solid #2e7d32",
+    color: "#2e7d32",
+    backgroundColor: "#dfffd4",
+    opacity: 1,
+    fontWeight: tokens.fontWeightSemibold,
+    width: "fit-content",
+    "&.fui-Badge": {
+      backgroundColor: "#dfffd4",
+      opacity: 1,
+    },
+    "&.fui-Badge--outline": {
+      backgroundColor: "#dfffd4",
+      opacity: 1,
+    },
   },
   offerFooter: {
     display: "flex",
@@ -1215,9 +1318,21 @@ const useStyles = makeStyles({
     width: "70px",
     verticalAlign: "middle",
   },
+  variantHeaderText: {
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: "1.1",
+  },
+  variantPickHeaderCell: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: "0",
+    paddingRight: "0",
+  },
   variantImageCellCenter: {
     width: "100%",
-    minHeight: "44px",
+    minHeight: "50px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1252,19 +1367,54 @@ const useStyles = makeStyles({
   packsPopoverBody: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
+  },
+  packsFieldLabel: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: "1.05",
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightRegular,
+  },
+  packsInputCompact: {
+    "& input": {
+      fontSize: tokens.fontSizeBase100,
+      lineHeight: "1.1",
+      paddingTop: "2px",
+      paddingBottom: "2px",
+    },
+  },
+  packsBadgeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap",
+    minHeight: "24px",
+  },
+  packsBadgeButton: {
+    appearance: "none",
+    WebkitAppearance: "none",
+    border: "0",
+    background: "transparent",
+    padding: "0",
+    margin: "0",
+    cursor: "pointer",
+    borderRadius: "999px",
+  },
+  packsBadge: {
+    border: "1px solid #0f6cbd",
+    color: "#0f6cbd",
+    backgroundColor: "#e8f3ff",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  packsBadgeEmpty: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.1",
   },
   packsPopoverActions: {
     display: "flex",
     justifyContent: "flex-end",
     gap: "6px",
-  },
-  packsSummary: {
-    fontSize: tokens.fontSizeBase100,
-    color: tokens.colorNeutralForeground2,
-    fontWeight: tokens.fontWeightSemibold,
-    whiteSpace: "nowrap",
-    marginLeft: "2px",
   },
   priceBadge: {
     backgroundColor: tokens.colorNeutralBackground1,
@@ -1506,6 +1656,76 @@ const buildImageProxyUrl = (rawUrl: unknown, width?: number, height?: number) =>
   return `/api/1688-extractor/image-proxy?${params.toString()}`;
 };
 
+const unwrapProxyImageUrl = (rawUrl: unknown) => {
+  const source = normalizeImageUrl(rawUrl);
+  if (!source) return "";
+  if (source.startsWith("/api/1688-extractor/image-proxy?")) {
+    try {
+      const parsed = new URL(source, "https://preview.local");
+      const inner = normalizeImageUrl(parsed.searchParams.get("url"));
+      if (inner) return inner;
+    } catch {
+      return source;
+    }
+  }
+  return source;
+};
+
+const stripImageSizeTokens = (value: string) =>
+  value
+    .replace(/_sum(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/gi, "")
+    .replace(/\.(\d{2,4}x\d{2,4})(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/gi, "")
+    .replace(/_(\d{2,4}x\d{2,4})(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/gi, "")
+    .replace(/@\d+w_\d+h(?:_[a-z0-9]+)*(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/gi, "")
+    .replace(/\.(jpg|jpeg|png|webp|gif|bmp|avif)\.\1$/i, ".$1");
+
+const buildImageSourceCandidates = (rawUrl: unknown) => {
+  const unwrapped = unwrapProxyImageUrl(rawUrl);
+  if (!unwrapped) return [] as string[];
+  const candidates: string[] = [];
+  const add = (next: unknown) => {
+    const text = normalizeImageUrl(next);
+    if (!text) return;
+    if (!candidates.includes(text)) candidates.push(text);
+  };
+  add(unwrapped);
+  add(stripImageSizeTokens(unwrapped));
+  try {
+    const parsed = new URL(
+      unwrapped.startsWith("//") ? `https:${unwrapped}` : unwrapped,
+      "https://preview.local"
+    );
+    const cleaned = new URL(parsed.toString());
+    cleaned.searchParams.delete("x-oss-process");
+    cleaned.searchParams.delete("imageMogr2");
+    cleaned.searchParams.delete("w");
+    cleaned.searchParams.delete("h");
+    cleaned.searchParams.delete("width");
+    cleaned.searchParams.delete("height");
+    cleaned.searchParams.delete("resize");
+    cleaned.searchParams.delete("quality");
+    cleaned.searchParams.delete("crop");
+    cleaned.pathname = stripImageSizeTokens(cleaned.pathname);
+    add(
+      parsed.origin === "https://preview.local"
+        ? `${cleaned.pathname}${cleaned.search}`
+        : cleaned.toString()
+    );
+  } catch {
+    // Ignore parse failures and keep string-based candidates.
+  }
+  return candidates;
+};
+
+const buildLargePreviewImageUrl = (rawUrl: unknown, size = 520) => {
+  const candidates = buildImageSourceCandidates(rawUrl);
+  for (const candidate of candidates) {
+    const proxied = buildImageProxyUrl(candidate, size, size);
+    if (proxied) return proxied;
+  }
+  return normalizeImageUrl(rawUrl);
+};
+
 const extractOfferImageUrl = (offer: unknown) => {
   const offerRecord =
     offer && typeof offer === "object" ? (offer as Record<string, unknown>) : {};
@@ -1526,9 +1746,6 @@ const parsePackValues = (value: unknown) => {
     .filter((entry) => Number.isFinite(entry) && entry > 0 && entry <= 999);
   return Array.from(new Set(packs)).sort((a, b) => a - b);
 };
-
-const formatPackLabels = (packs: number[]) =>
-  packs.map((pack) => (pack === 1 ? "1" : `${pack}-P`)).join(", ");
 
 const normalizePacksText = (value: unknown) => {
   const packs = parsePackValues(value);
@@ -1571,70 +1788,134 @@ const buildGoogleImageSearchUrl = (rawImageUrl: unknown) => {
 };
 
 const imageIdentity = (value: unknown): string => {
-  const raw = normalizeImageUrl(value);
+  const raw = unwrapProxyImageUrl(value);
   if (!raw) return "";
   try {
-    if (raw.startsWith("/api/1688-extractor/image-proxy?")) {
-      const parsedProxy = new URL(raw, "https://identity.local");
-      const inner = parsedProxy.searchParams.get("url");
-      if (inner) return imageIdentity(inner);
-    }
     const absolute = raw.startsWith("//") ? `https:${raw}` : raw;
     const parsed = new URL(absolute, "https://identity.local");
     let host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    let pathname = parsed.pathname.toLowerCase();
-    pathname = pathname.replace(
-      /_sum(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/i,
-      ""
-    );
+    let pathname = stripImageSizeTokens(parsed.pathname).toLowerCase();
     if (!host && parsed.origin === "https://identity.local") host = "local";
     return `${host}${pathname}`;
   } catch {
-    const cleaned = raw
+    const cleaned = stripImageSizeTokens(raw)
       .replace(/^https?:\/\//i, "")
       .replace(/^\/\//, "")
       .replace(/[?#].*$/, "")
       .toLowerCase();
-    return cleaned.replace(/_sum(?=\.(?:jpg|jpeg|png|webp|gif|bmp|avif)$)/i, "");
+    return cleaned;
   }
 };
 
-const loadImageDimensions = (
-  url: string,
-  timeoutMs = 9000
-): Promise<{ width: number; height: number } | null> =>
-  new Promise((resolve) => {
-    if (!url) {
-      resolve(null);
-      return;
-    }
-    const image = new Image();
-    let finished = false;
-    const timer = window.setTimeout(() => {
-      if (finished) return;
-      finished = true;
-      resolve(null);
-    }, timeoutMs);
+const computeImageSignature = (image: HTMLImageElement) => {
+  const sampleSize = 12;
+  const canvas = document.createElement("canvas");
+  canvas.width = sampleSize;
+  canvas.height = sampleSize;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(image, 0, 0, sampleSize, sampleSize);
+  const pixels = context.getImageData(0, 0, sampleSize, sampleSize).data;
+  const luminance: number[] = [];
+  for (let index = 0; index < pixels.length; index += 4) {
+    const r = pixels[index] ?? 0;
+    const g = pixels[index + 1] ?? 0;
+    const b = pixels[index + 2] ?? 0;
+    luminance.push(r * 0.299 + g * 0.587 + b * 0.114);
+  }
+  if (luminance.length === 0) return null;
+  const average =
+    luminance.reduce((sum, value) => sum + value, 0) / luminance.length;
+  const bits = luminance.map((value) => (value >= average ? "1" : "0")).join("");
+  let hash = "";
+  for (let index = 0; index < bits.length; index += 4) {
+    const chunk = bits.slice(index, index + 4).padEnd(4, "0");
+    hash += Number.parseInt(chunk, 2).toString(16);
+  }
+  return `${sampleSize}:${hash}`;
+};
 
-    image.onload = () => {
-      if (finished) return;
-      finished = true;
-      window.clearTimeout(timer);
-      resolve({
-        width: image.naturalWidth || 0,
-        height: image.naturalHeight || 0,
+const probeSupplierImage = async (
+  url: string,
+  timeoutMs = 10_000
+): Promise<SupplierGalleryProbeResult | null> => {
+  if (!url) return null;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      cache: "force-cache",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const byteSize =
+      Number.isFinite(blob.size) && blob.size > 0 ? Math.trunc(blob.size) : null;
+    if (!blob.size) {
+      return {
+        width: 0,
+        height: 0,
+        byteSize,
+        signature: null,
+      };
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const metadata = await new Promise<{
+        width: number;
+        height: number;
+        signature: string | null;
+      } | null>((resolve) => {
+        const image = new Image();
+        let finished = false;
+        const decodeTimeout = window.setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          resolve(null);
+        }, timeoutMs);
+        image.onload = () => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(decodeTimeout);
+          resolve({
+            width: image.naturalWidth || 0,
+            height: image.naturalHeight || 0,
+            signature: computeImageSignature(image),
+          });
+        };
+        image.onerror = () => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(decodeTimeout);
+          resolve(null);
+        };
+        image.decoding = "async";
+        image.referrerPolicy = "no-referrer";
+        image.src = objectUrl;
       });
-    };
-    image.onerror = () => {
-      if (finished) return;
-      finished = true;
-      window.clearTimeout(timer);
-      resolve(null);
-    };
-    image.decoding = "async";
-    image.referrerPolicy = "no-referrer";
-    image.src = url;
-  });
+      if (!metadata) {
+        return {
+          width: 0,
+          height: 0,
+          byteSize,
+          signature: null,
+        };
+      }
+      return {
+        ...metadata,
+        byteSize,
+      };
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
 
 const resolveProbeImageUrl = (value: unknown) => {
   const normalized = normalizeImageUrl(value);
@@ -1835,9 +2116,11 @@ export default function DigiDealProductSuggestionsPage() {
     Map<string, Promise<VariantsPayload | null>>
   >(new Map());
   const supplierGalleryStripRef = useRef<HTMLDivElement | null>(null);
-  const supplierGalleryDimensionsCacheRef = useRef<
-    Map<string, { width: number; height: number } | null>
+  const supplierGalleryProbeCacheRef = useRef<
+    Map<string, SupplierGalleryProbeResult | null>
   >(new Map());
+  const offerDialogOpenRef = useRef(false);
+  const offerDialogItemIdRef = useRef("");
   const itemsRef = useRef<SuggestionItem[]>([]);
   const loadItemsInFlightRef = useRef(false);
 
@@ -1895,6 +2178,8 @@ export default function DigiDealProductSuggestionsPage() {
     SupplierGalleryImageEntry[]
   >([]);
   const [supplierGalleryFiltering, setSupplierGalleryFiltering] = useState(false);
+  const [supplierImagePreviewEntry, setSupplierImagePreviewEntry] =
+    useState<SupplierGalleryImageEntry | null>(null);
 
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const [jsonDialogText, setJsonDialogText] = useState("");
@@ -1906,7 +2191,6 @@ export default function DigiDealProductSuggestionsPage() {
   const [sourceDialogSaving, setSourceDialogSaving] = useState(false);
   const [sourceImageCopying, setSourceImageCopying] = useState(false);
   const [sourcePreviewHover, setSourcePreviewHover] = useState(false);
-  const [sourceMainImageHover, setSourceMainImageHover] = useState(false);
 
   const parsedUrls = useMemo(
     () =>
@@ -2275,7 +2559,11 @@ export default function DigiDealProductSuggestionsPage() {
         setVariantsLoading(true);
         try {
           const awaited = await inFlight;
-          if (awaited && offerDialogItem?.id === item.id) {
+          if (
+            awaited &&
+            offerDialogOpenRef.current &&
+            offerDialogItemIdRef.current === item.id
+          ) {
             applyVariantsPayload(awaited);
           }
           return awaited;
@@ -2301,6 +2589,9 @@ export default function DigiDealProductSuggestionsPage() {
           }
           const nextVariants = payload as VariantsPayload;
           const comboCount = Array.isArray(nextVariants?.combos) ? nextVariants.combos.length : 0;
+          const galleryCount = Array.isArray(nextVariants?.gallery_images)
+            ? nextVariants.gallery_images.length
+            : 0;
           const latestItem = itemsRef.current.find((entry) => entry.id === item.id) || item;
           const payloadStatus = normalizePayloadStatus(latestItem.selection?.payload_status);
           const supplierSelectedNow = Boolean(
@@ -2319,6 +2610,7 @@ export default function DigiDealProductSuggestionsPage() {
           const shouldRetry =
             waitForPayload &&
             comboCount === 0 &&
+            galleryCount === 0 &&
             supplierSelectedNow &&
             (shouldRetryWhileLoading || shouldRetryAfterReadyish);
 
@@ -2328,21 +2620,15 @@ export default function DigiDealProductSuggestionsPage() {
             continue;
           }
 
-          if (comboCount > 0) {
-            variantsCacheRef.current[item.id] = nextVariants;
-            if (!background && offerDialogItem?.id === item.id) {
-              applyVariantsPayload(nextVariants);
-            }
-            return nextVariants;
+          variantsCacheRef.current[item.id] = nextVariants;
+          if (
+            !background &&
+            offerDialogOpenRef.current &&
+            offerDialogItemIdRef.current === item.id
+          ) {
+            applyVariantsPayload(nextVariants);
           }
-
-          if (!background && offerDialogItem?.id === item.id) {
-            setVariants(null);
-            setVariantDraftOverrides({});
-            setSelectedVariantIndexes([]);
-            setPacksText("");
-          }
-          return null;
+          return nextVariants;
         }
       };
 
@@ -2365,13 +2651,14 @@ export default function DigiDealProductSuggestionsPage() {
         if (!background) setVariantsLoading(false);
       }
     },
-    [applyVariantsPayload, loadItems, offerDialogItem?.id]
+    [applyVariantsPayload, loadItems]
   );
 
   const openSupplierDialog = useCallback(
     async (item: SuggestionItem) => {
       setOfferDialogItem(item);
       setOfferDialogOffers(item.search?.offers || []);
+      setSupplierImagePreviewEntry(null);
       if (Array.isArray(item.search?.offers) && item.search.offers.length > 0) {
         void translateSupplierOffers(item.id, item.search.offers);
       }
@@ -2756,18 +3043,27 @@ export default function DigiDealProductSuggestionsPage() {
   const supplierGalleryCandidates = useMemo(() => {
     const entries: SupplierGalleryImageEntry[] = [];
     const seen = new Set<string>();
-    const push = (fullValue: unknown, thumbHint?: unknown) => {
+    const push = (
+      fullValue: unknown,
+      thumbHint: unknown,
+      source: SupplierGalleryImageEntry["source"]
+    ) => {
       const fullRaw = normalizeImageUrl(fullValue) || normalizeImageUrl(thumbHint);
       if (!fullRaw) return;
       const identity = imageIdentity(fullRaw);
       if (!identity || seen.has(identity)) return;
       seen.add(identity);
       const thumbRaw = normalizeImageUrl(thumbHint) || fullRaw;
+      const previewUrl =
+        buildLargePreviewImageUrl(fullRaw, 520) ||
+        buildLargePreviewImageUrl(thumbRaw, 520) ||
+        fullRaw;
       entries.push({
         key: identity,
         identity,
         full: fullRaw,
-        thumb: buildImageProxyUrl(thumbRaw, 280, 280) || thumbRaw,
+        thumb: previewUrl,
+        source,
       });
     };
 
@@ -2777,11 +3073,32 @@ export default function DigiDealProductSuggestionsPage() {
         : null;
 
     if (selectedOfferRecord) {
-      push(selectedOfferRecord.imageUrl, selectedOfferRecord.image_thumb_url);
-      push(selectedOfferRecord.image_url, selectedOfferRecord.image_thumb_url);
-      push(selectedOfferRecord.imgUrl, selectedOfferRecord.image_thumb_url);
-      push(selectedOfferRecord.img_url, selectedOfferRecord.image_thumb_url);
-      push(selectedOfferRecord.image, selectedOfferRecord.image_thumb_url);
+      push(selectedOfferRecord.imageUrl, selectedOfferRecord.image_thumb_url, "offer");
+      push(selectedOfferRecord.image_url, selectedOfferRecord.image_thumb_url, "offer");
+      push(selectedOfferRecord.imgUrl, selectedOfferRecord.image_thumb_url, "offer");
+      push(selectedOfferRecord.img_url, selectedOfferRecord.image_thumb_url, "offer");
+      push(selectedOfferRecord.image, selectedOfferRecord.image_thumb_url, "offer");
+
+      const selectedVariantCache =
+        selectedOfferRecord._production_variant_cache &&
+        typeof selectedOfferRecord._production_variant_cache === "object"
+          ? (selectedOfferRecord._production_variant_cache as Record<string, unknown>)
+          : null;
+
+      if (selectedVariantCache && Array.isArray(selectedVariantCache.gallery_images)) {
+        selectedVariantCache.gallery_images.forEach((imageRow) => {
+          if (!imageRow || typeof imageRow !== "object") return;
+          const imageRecord = imageRow as Record<string, unknown>;
+          push(
+            imageRecord.full_url ||
+              imageRecord.url_full ||
+              imageRecord.url ||
+              imageRecord.thumb_url,
+            imageRecord.thumb_url || imageRecord.url,
+            "gallery"
+          );
+        });
+      }
     }
     if (Array.isArray(variants?.gallery_images)) {
       variants.gallery_images.forEach((imageRow) => {
@@ -2789,38 +3106,50 @@ export default function DigiDealProductSuggestionsPage() {
         const imageRecord = imageRow as Record<string, unknown>;
         push(
           imageRecord.full_url || imageRecord.url_full || imageRecord.url || imageRecord.thumb_url,
-          imageRecord.thumb_url || imageRecord.url
+          imageRecord.thumb_url || imageRecord.url,
+          "gallery"
         );
       });
     }
-    if (variants?.combos) {
-      variants.combos.forEach((combo) => {
-        push(
-          combo.image_full_url || combo.image_zoom_url || combo.image_url || combo.image_thumb_url,
-          combo.image_thumb_url || combo.image_url
-        );
-      });
-    }
-
     return entries.slice(0, 120);
   }, [selectedDialogOffer, variants]);
 
   const supplierVariantImageIdentitySet = useMemo(() => {
     const identities = new Set<string>();
-    if (!Array.isArray(variants?.combos)) return identities;
-    variants.combos.forEach((combo) => {
+    const pushComboImages = (comboRow: unknown) => {
+      if (!comboRow || typeof comboRow !== "object") return;
+      const comboRecord = comboRow as Record<string, unknown>;
       [
-        combo.image_full_url,
-        combo.image_zoom_url,
-        combo.image_url,
-        combo.image_thumb_url,
+        comboRecord.image_full_url,
+        comboRecord.image_zoom_url,
+        comboRecord.image_url,
+        comboRecord.image_thumb_url,
       ].forEach((value) => {
         const id = imageIdentity(value);
         if (id) identities.add(id);
       });
-    });
+    };
+
+    if (Array.isArray(variants?.combos)) {
+      variants.combos.forEach((combo) => pushComboImages(combo));
+    }
+
+    const selectedOfferRecord =
+      selectedDialogOffer && typeof selectedDialogOffer === "object"
+        ? (selectedDialogOffer as Record<string, unknown>)
+        : null;
+    const selectedVariantCache =
+      selectedOfferRecord &&
+      selectedOfferRecord._production_variant_cache &&
+      typeof selectedOfferRecord._production_variant_cache === "object"
+        ? (selectedOfferRecord._production_variant_cache as Record<string, unknown>)
+        : null;
+
+    if (selectedVariantCache && Array.isArray(selectedVariantCache.combos)) {
+      selectedVariantCache.combos.forEach((comboRow) => pushComboImages(comboRow));
+    }
     return identities;
-  }, [variants]);
+  }, [selectedDialogOffer, variants]);
 
   const variantSelectionIsLoading = Boolean(
     (variantsLoading || selectingOfferId) && selectedOfferId
@@ -2834,10 +3163,44 @@ export default function DigiDealProductSuggestionsPage() {
     setPacksPopoverOpen(false);
   }, [packsDraft]);
 
-  const packsSummaryLabel = useMemo(
-    () => formatPackLabels(parsePackValues(packsText)),
-    [packsText]
+  const appliedPackValues = useMemo(() => parsePackValues(packsText), [packsText]);
+  const draftPackValues = useMemo(() => parsePackValues(packsDraft), [packsDraft]);
+  const hasAppliedPacks = appliedPackValues.length > 0;
+  const variantIndexes = useMemo(
+    () => (Array.isArray(variants?.combos) ? variants.combos.map((combo) => combo.index) : []),
+    [variants]
   );
+  const selectedVariantIndexSet = useMemo(
+    () => new Set(selectedVariantIndexes),
+    [selectedVariantIndexes]
+  );
+  const allVariantsSelected =
+    variantIndexes.length > 0 &&
+    variantIndexes.every((index) => selectedVariantIndexSet.has(index));
+  const someVariantsSelected =
+    variantIndexes.length > 0 &&
+    variantIndexes.some((index) => selectedVariantIndexSet.has(index));
+
+  const toggleAllVariants = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedVariantIndexes([]);
+        return;
+      }
+      setSelectedVariantIndexes([...variantIndexes].sort((a, b) => a - b));
+    },
+    [variantIndexes]
+  );
+
+  const removeDraftPack = useCallback((packToRemove: number) => {
+    setPacksDraft((prev) =>
+      parsePackValues(prev)
+        .filter((pack) => pack !== packToRemove)
+        .join(", ")
+    );
+  }, []);
+
+  const supplierDialogTitleText = toText(offerDialogItem?.title) || toText(offerDialogItem?.id);
 
   const categorySummary =
     categorySelections.length === 0
@@ -3270,6 +3633,11 @@ export default function DigiDealProductSuggestionsPage() {
   }, [items]);
 
   useEffect(() => {
+    offerDialogOpenRef.current = offerDialogOpen;
+    offerDialogItemIdRef.current = offerDialogItem?.id || "";
+  }, [offerDialogItem?.id, offerDialogOpen]);
+
+  useEffect(() => {
     let active = true;
     const loadViewerRole = async () => {
       try {
@@ -3372,10 +3740,10 @@ export default function DigiDealProductSuggestionsPage() {
     setOfferDialogItem((prev) => (prev && prev.id === latest.id ? latest : prev));
     setOfferDialogOffers(Array.isArray(latest.search?.offers) ? latest.search.offers : []);
     const latestSelected = toText(latest.selection?.selected_offer_id);
-    if (latestSelected && latestSelected !== selectedOfferId) {
+    if (!selectingOfferId && latestSelected && latestSelected !== selectedOfferId) {
       setSelectedOfferId(latestSelected);
     }
-  }, [items, offerDialogItem?.id, offerDialogOpen, selectedOfferId]);
+  }, [items, offerDialogItem?.id, offerDialogOpen, selectedOfferId, selectingOfferId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3385,54 +3753,87 @@ export default function DigiDealProductSuggestionsPage() {
       return;
     }
 
+    const quickNonVariant = supplierGalleryCandidates.filter(
+      (entry) => !supplierVariantImageIdentitySet.has(entry.identity)
+    );
+    setSupplierGalleryVisibleImages(quickNonVariant.slice(0, 120));
+    if (quickNonVariant.length === 0) {
+      setSupplierGalleryFiltering(false);
+      return;
+    }
+
     setSupplierGalleryFiltering(true);
     const run = async () => {
-      const strictFiltered: SupplierGalleryImageEntry[] = [];
-      const relaxedFiltered: SupplierGalleryImageEntry[] = [];
-      const relaxedMinDimension = 360;
-      for (const entry of supplierGalleryCandidates) {
-        const cacheKey = entry.identity || entry.full;
-        let dimensions = supplierGalleryDimensionsCacheRef.current.get(cacheKey);
-        if (dimensions === undefined) {
-          const probeUrl = resolveProbeImageUrl(entry.full || entry.thumb);
-          dimensions = await loadImageDimensions(probeUrl);
-          supplierGalleryDimensionsCacheRef.current.set(cacheKey, dimensions);
-        }
-        const isDuplicateVariantImage = supplierVariantImageIdentitySet.has(entry.identity);
-        const hasLargeDimensions =
-          dimensions !== null &&
-          dimensions !== undefined &&
-          dimensions.width >= 600 &&
-          dimensions.height >= 600;
-        const hasRelaxedDimensions =
-          dimensions !== null &&
-          dimensions !== undefined &&
-          dimensions.width >= relaxedMinDimension &&
-          dimensions.height >= relaxedMinDimension;
+      const nonVariantImages: Array<{
+        entry: SupplierGalleryImageEntry;
+        probe: SupplierGalleryProbeResult | null;
+      }> = [];
 
-        if (!isDuplicateVariantImage && hasLargeDimensions) {
-          strictFiltered.push(entry);
+      for (const entry of quickNonVariant) {
+        const cacheKey = entry.identity || entry.full || entry.thumb;
+        let probe = supplierGalleryProbeCacheRef.current.get(cacheKey);
+        if (probe === undefined) {
+          const probeUrl =
+            buildLargePreviewImageUrl(entry.full || entry.thumb, 640) ||
+            resolveProbeImageUrl(entry.full || entry.thumb);
+          probe = await probeSupplierImage(probeUrl);
+          supplierGalleryProbeCacheRef.current.set(cacheKey, probe ?? null);
         }
-        if (hasRelaxedDimensions) {
-          relaxedFiltered.push(entry);
+        const hasMinimumDimensions =
+          !probe ||
+          (probe.width >= MIN_SUPPLIER_GALLERY_DIMENSION &&
+            probe.height >= MIN_SUPPLIER_GALLERY_DIMENSION);
+        if (!hasMinimumDimensions) {
+          continue;
         }
+        const hasMinimumBytes =
+          !probe ||
+          probe.byteSize === null ||
+          probe.byteSize >= MIN_SUPPLIER_GALLERY_BYTES;
+        if (!hasMinimumBytes) {
+          continue;
+        }
+        nonVariantImages.push({ entry, probe });
       }
       if (cancelled) return;
-      let finalImages = strictFiltered;
-      if (finalImages.length < 2) {
-        const merged: SupplierGalleryImageEntry[] = [];
-        const mergedSeen = new Set<string>();
-        const pushUnique = (entry: SupplierGalleryImageEntry) => {
-          const id = entry.identity || entry.key;
-          if (!id || mergedSeen.has(id)) return;
-          mergedSeen.add(id);
-          merged.push(entry);
-        };
-        strictFiltered.forEach(pushUnique);
-        relaxedFiltered.forEach(pushUnique);
-        supplierGalleryCandidates.forEach(pushUnique);
-        finalImages = merged;
-      }
+
+      const scoreEntry = (probe: SupplierGalleryProbeResult | null) => {
+        if (!probe) return 0;
+        const area = Math.max(0, probe.width) * Math.max(0, probe.height);
+        return area * 1000000 + Math.max(0, probe.byteSize ?? 0);
+      };
+
+      const dedupeBySignatureKeepLargest = (
+        rows: Array<{
+          entry: SupplierGalleryImageEntry;
+          probe: SupplierGalleryProbeResult | null;
+        }>
+      ) => {
+        const out: Array<{
+          entry: SupplierGalleryImageEntry;
+          probe: SupplierGalleryProbeResult | null;
+        }> = [];
+        const seenBySignature = new Map<string, number>();
+        rows.forEach((row) => {
+          const signature = row.probe?.signature || `id:${row.entry.identity || row.entry.key}`;
+          const existingIndex = seenBySignature.get(signature);
+          if (existingIndex === undefined) {
+            seenBySignature.set(signature, out.length);
+            out.push(row);
+            return;
+          }
+          const existing = out[existingIndex];
+          if (scoreEntry(row.probe) > scoreEntry(existing.probe)) {
+            out[existingIndex] = row;
+          }
+        });
+        return out;
+      };
+
+      const finalImages = dedupeBySignatureKeepLargest(nonVariantImages).map(
+        (row) => row.entry
+      );
+      if (cancelled) return;
       setSupplierGalleryVisibleImages(finalImages.slice(0, 120));
       setSupplierGalleryFiltering(false);
     };
@@ -4880,14 +5281,14 @@ export default function DigiDealProductSuggestionsPage() {
             setPacksPopoverOpen(false);
             setPacksDraft("");
             setVariantDraftOverrides({});
-            setSourceMainImageHover(false);
+            setSupplierImagePreviewEntry(null);
           }
         }}
       >
         <DialogSurface className={styles.dialogSurface}>
           <DialogBody>
             <DialogTitle>
-              Supplier Selection {offerDialogItem ? `- ${offerDialogItem.id}` : ""}
+              Select Supplier{supplierDialogTitleText ? ` - ${supplierDialogTitleText}` : ""}
             </DialogTitle>
             <DialogContent className={styles.dialogContent}>
               <div className={styles.dialogBody}>
@@ -4898,6 +5299,7 @@ export default function DigiDealProductSuggestionsPage() {
                       <Button
                         appearance="outline"
                         size="small"
+                        className={styles.actionOutlineButton}
                         disabled={!offerDialogItem || offerDialogBusy || Boolean(selectingOfferId)}
                         onClick={async () => {
                           if (!offerDialogItem) return;
@@ -4919,7 +5321,7 @@ export default function DigiDealProductSuggestionsPage() {
                           }
                         }}
                       >
-                        Refresh Offers
+                        Refresh Offer
                       </Button>
                     </div>
                   </div>
@@ -4943,6 +5345,12 @@ export default function DigiDealProductSuggestionsPage() {
                         const offerImageUrlRaw = extractOfferImageUrl(offer);
                         const offerImageUrl =
                           buildImageProxyUrl(offerImageUrlRaw, 160, 160) || offerImageUrlRaw;
+                        const detailUrlRaw = toText(offer.detailUrl);
+                        const offerLink = /^https?:\/\//i.test(detailUrlRaw)
+                          ? detailUrlRaw
+                          : detailUrlRaw.startsWith("//")
+                            ? `https:${detailUrlRaw}`
+                            : "";
                         const titleEnRaw = toText(offer.subject_en);
                         const titleEn = titleEnRaw && !hasCjk(titleEnRaw) ? titleEnRaw : "";
                         const titleZh = toText(offer.subject);
@@ -4992,9 +5400,21 @@ export default function DigiDealProductSuggestionsPage() {
                                   Selecting supplier...
                                 </Text>
                               ) : selected ? (
-                                <Text size={100} className={styles.variantMetaTight}>
+                                <Badge appearance="filled" size="small" className={styles.offerSelectedBadge}>
                                   Selected
-                                </Text>
+                                </Badge>
+                              ) : null}
+                              {offerLink ? (
+                                <a
+                                  href={offerLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={styles.offerOpenLink}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                >
+                                  Open supplier link
+                                </a>
                               ) : null}
                             </div>
                           </div>
@@ -5012,90 +5432,83 @@ export default function DigiDealProductSuggestionsPage() {
                   )}
                 >
                   <div className={styles.supplierMediaTop}>
-                    <div
-                      className={styles.supplierSourceCard}
-                      onMouseEnter={() => setSourceMainImageHover(true)}
-                      onMouseLeave={() => setSourceMainImageHover(false)}
-                    >
-                      {dialogSourceMainImageUrl ? (
-                        <span
+                    <div className={styles.supplierMediaPane}>
+                      <Text className={styles.supplierMediaTitle}>Original Image</Text>
+                      <div className={styles.supplierSourceCard}>
+                        {dialogSourceMainImageUrl ? (
+                          <img
+                            src={dialogSourceMainImageUrl}
+                            alt={toText(offerDialogItem?.title) || toText(offerDialogItem?.id) || "source"}
+                            className={styles.supplierSourceImage}
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div className={styles.supplierSourcePlaceholder}>
+                            <Text className={styles.supplierGalleryEmpty}>No source image</Text>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.supplierMediaPane}>
+                      <Text className={styles.supplierMediaTitle}>Supply Image</Text>
+                      <div className={styles.supplierGalleryCard}>
+                        <div
+                          ref={supplierGalleryStripRef}
                           className={mergeClasses(
-                            styles.supplierSourceBadge,
-                            sourceMainImageHover
-                              ? styles.supplierSourceBadgeActive
+                            styles.supplierGalleryScroller,
+                            isSingleSupplierGalleryImage
+                              ? styles.supplierGalleryScrollerSingle
+                              : undefined,
+                            supplierGalleryFiltering
+                              ? styles.supplierGalleryScrollerLoading
                               : undefined
                           )}
                         >
-                          original image
-                        </span>
-                      ) : null}
-                      {dialogSourceMainImageUrl ? (
-                        <img
-                          src={dialogSourceMainImageUrl}
-                          alt={toText(offerDialogItem?.title) || toText(offerDialogItem?.id) || "source"}
-                          className={styles.supplierSourceImage}
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className={styles.supplierSourcePlaceholder}>
-                          <Text className={styles.supplierGalleryEmpty}>No source image</Text>
-                        </div>
-                      )}
-                    </div>
-                    <div className={styles.supplierGalleryCard}>
-                      <div
-                        ref={supplierGalleryStripRef}
-                        className={mergeClasses(
-                          styles.supplierGalleryScroller,
-                          isSingleSupplierGalleryImage
-                            ? styles.supplierGalleryScrollerSingle
-                            : undefined,
-                          supplierGalleryFiltering
-                            ? styles.supplierGalleryScrollerLoading
-                            : undefined
-                        )}
-                      >
-                        {supplierGalleryVisibleImages.length === 0 ? (
-                          <Text className={styles.supplierGalleryEmpty}>
-                            {supplierGalleryFiltering
-                              ? "Loading images..."
-                              : "No extra supplier images"}
-                          </Text>
-                        ) : (
-                          supplierGalleryVisibleImages.map((entry) => (
-                            <div
-                              key={entry.key}
-                              className={mergeClasses(
-                                styles.supplierGalleryThumbButton,
-                                isSingleSupplierGalleryImage
-                                  ? styles.supplierGalleryThumbButtonSingle
-                                  : undefined
-                              )}
-                            >
-                              <img
-                                src={entry.thumb}
-                                alt="supplier-gallery-thumb"
-                                className={styles.supplierGalleryThumbImage}
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      {supplierGalleryFiltering ? (
-                        <div className={styles.supplierGalleryLoadingOverlay}>
-                          <div className={styles.supplierGalleryLoadingInner}>
-                            <Spinner size="tiny" />
-                            <Text className={styles.supplierGalleryLoadingText}>
-                              Loading images.
+                          {supplierGalleryVisibleImages.length === 0 ? (
+                            <Text className={styles.supplierGalleryEmpty}>
+                              {supplierGalleryFiltering
+                                ? "Loading images..."
+                                : "No extra supplier images"}
                             </Text>
-                          </div>
+                          ) : (
+                            supplierGalleryVisibleImages.map((entry) => (
+                              <button
+                                type="button"
+                                key={entry.key}
+                                className={mergeClasses(
+                                  styles.supplierGalleryThumbButton,
+                                  isSingleSupplierGalleryImage
+                                    ? styles.supplierGalleryThumbButtonSingle
+                                    : undefined
+                                )}
+                                onClick={() => setSupplierImagePreviewEntry(entry)}
+                                aria-label="Preview supplier image"
+                              >
+                                <img
+                                  src={entry.thumb}
+                                  alt="supplier-gallery-thumb"
+                                  className={styles.supplierGalleryThumbImage}
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </button>
+                            ))
+                          )}
                         </div>
-                      ) : null}
+                        {supplierGalleryFiltering ? (
+                          <div className={styles.supplierGalleryLoadingOverlay}>
+                            <div className={styles.supplierGalleryLoadingInner}>
+                              <Spinner size="tiny" />
+                              <Text className={styles.supplierGalleryLoadingText}>
+                                Loading images.
+                              </Text>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -5123,15 +5536,21 @@ export default function DigiDealProductSuggestionsPage() {
                               <Button
                                 appearance="outline"
                                 size="small"
+                                className={mergeClasses(
+                                  hasAppliedPacks ? styles.packsButtonAdded : styles.actionOutlineButton
+                                )}
                                 disabled={!offerDialogItem || variantsSaving}
                               >
-                                Packs
+                                {hasAppliedPacks ? "Packs Added" : "Add Packs"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverSurface className={styles.packsPopoverSurface}>
                               <div className={styles.packsPopoverBody}>
-                                <Field label="Pack quantities (comma-separated)">
+                                <Field
+                                  label={<span className={styles.packsFieldLabel}>Pack Quantities</span>}
+                                >
                                   <Input
+                                    className={styles.packsInputCompact}
                                     value={packsDraft}
                                     placeholder="e.g. 1, 2, 10"
                                     onChange={(_, data) =>
@@ -5145,6 +5564,25 @@ export default function DigiDealProductSuggestionsPage() {
                                     }}
                                   />
                                 </Field>
+                                <div className={styles.packsBadgeWrap}>
+                                  {draftPackValues.length > 0 ? (
+                                    draftPackValues.map((pack) => (
+                                      <Tooltip key={`pack-${pack}`} relationship="label" content="Remove Pack">
+                                        <button
+                                          type="button"
+                                          className={styles.packsBadgeButton}
+                                          onClick={() => removeDraftPack(pack)}
+                                        >
+                                          <Badge appearance="outline" size="small" className={styles.packsBadge}>
+                                            {pack}
+                                          </Badge>
+                                        </button>
+                                      </Tooltip>
+                                    ))
+                                  ) : (
+                                    <Text className={styles.packsBadgeEmpty}>No packs added yet.</Text>
+                                  )}
+                                </div>
                                 <div className={styles.packsPopoverActions}>
                                   <Button
                                     size="small"
@@ -5166,6 +5604,7 @@ export default function DigiDealProductSuggestionsPage() {
                           <Button
                             appearance="outline"
                             size="small"
+                            className={styles.actionOutlineButton}
                             disabled={!offerDialogItem || variantsLoading || variantsSaving}
                             onClick={async () => {
                               if (!offerDialogItem) return;
@@ -5185,9 +5624,6 @@ export default function DigiDealProductSuggestionsPage() {
                           >
                             {variantsSaving ? "Saving..." : "Save Variants"}
                           </Button>
-                          {packsSummaryLabel ? (
-                            <Text className={styles.packsSummary}>{packsSummaryLabel}</Text>
-                          ) : null}
                         </div>
                       </div>
 
@@ -5202,11 +5638,36 @@ export default function DigiDealProductSuggestionsPage() {
                       <Table className={styles.variantsTable}>
                         <TableHeader>
                           <TableRow>
-                            <TableHeaderCell className={styles.variantImageCol}>Image</TableHeaderCell>
-                            <TableHeaderCell>Variant</TableHeaderCell>
-                            <TableHeaderCell className={styles.variantPriceCol}>Price (CNY)</TableHeaderCell>
-                            <TableHeaderCell className={styles.variantWeightCol}>Weight (g)</TableHeaderCell>
-                            <TableHeaderCell className={styles.variantPickCol}>Pick</TableHeaderCell>
+                            <TableHeaderCell className={styles.variantImageCol}>
+                              <span className={styles.variantHeaderText}>Image</span>
+                            </TableHeaderCell>
+                            <TableHeaderCell>
+                              <span className={styles.variantHeaderText}>Variant</span>
+                            </TableHeaderCell>
+                            <TableHeaderCell className={styles.variantPriceCol}>
+                              <span className={styles.variantHeaderText}>Price (CNY)</span>
+                            </TableHeaderCell>
+                            <TableHeaderCell className={styles.variantWeightCol}>
+                              <span className={styles.variantHeaderText}>Weight (g)</span>
+                            </TableHeaderCell>
+                            <TableHeaderCell
+                              className={mergeClasses(
+                                styles.variantPickCol,
+                                styles.variantPickHeaderCell
+                              )}
+                            >
+                              <Checkbox
+                                checked={
+                                  allVariantsSelected
+                                    ? true
+                                    : someVariantsSelected
+                                      ? "mixed"
+                                      : false
+                                }
+                                onChange={(_, data) => toggleAllVariants(Boolean(data.checked))}
+                                aria-label="Select all variants"
+                              />
+                            </TableHeaderCell>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -5419,6 +5880,47 @@ export default function DigiDealProductSuggestionsPage() {
                 </div>
               </div>
             </DialogContent>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(supplierImagePreviewEntry)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            setSupplierImagePreviewEntry(null);
+          }
+        }}
+      >
+        <DialogSurface className={styles.supplierImagePreviewDialog}>
+          <DialogBody className={styles.supplierImagePreviewBody}>
+            <DialogTitle>Supplier Image Preview</DialogTitle>
+            <DialogContent>
+              <div className={styles.supplierImagePreviewFrame}>
+                {supplierImagePreviewEntry ? (
+                  <img
+                    src={
+                      buildLargePreviewImageUrl(
+                        supplierImagePreviewEntry.full || supplierImagePreviewEntry.thumb,
+                        500
+                      ) ||
+                      supplierImagePreviewEntry.full ||
+                      supplierImagePreviewEntry.thumb
+                    }
+                    alt="Supplier preview"
+                    className={styles.supplierImagePreviewImage}
+                    referrerPolicy="no-referrer"
+                    loading="eager"
+                    decoding="async"
+                  />
+                ) : null}
+              </div>
+            </DialogContent>
+            <DialogActions className={styles.supplierImagePreviewActions}>
+              <Button appearance="secondary" onClick={() => setSupplierImagePreviewEntry(null)}>
+                Close
+              </Button>
+            </DialogActions>
           </DialogBody>
         </DialogSurface>
       </Dialog>

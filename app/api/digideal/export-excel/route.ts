@@ -196,8 +196,14 @@ export async function POST(request: Request) {
   }
 
   const workbook = new ExcelJS.Workbook();
+  const exportSheetName =
+    provider === "letsdeal"
+      ? "LetsDeal Export"
+      : provider === "offerilla"
+        ? "Offerilla Export"
+        : "DigiDeal Export";
   const sheet = workbook.addWorksheet(
-    provider === "letsdeal" ? "LetsDeal Export" : "DigiDeal Export",
+    exportSheetName,
     {
     views: [{ state: "frozen", ySplit: 1 }],
     }

@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-02-21T19:17:52.497Z",
+  "catalog": {
+    "products_count": 6233,
+    "daily_rows_count": 147732,
+    "products_with_any_daily_rows": 6233
+  },
+  "missing_counts": {
+    "title": 1134,
+    "product_slug": 1134,
+    "deal_url": 1134,
+    "seller_name": 136,
+    "both_images": 0,
+    "last_price_kr": 44,
+    "sales_snapshot": 1460,
+    "status": 0,
+    "first_seen_at": 0,
+    "last_seen_at": 0,
+    "core_identity_all_missing": 1134
+  },
+  "recoverability": {
+    "title_from_daily_deal_url": {
+      "totalMissing": 1134,
+      "recoverable": 1134,
+      "unrecoverable": 0
+    },
+    "slug_from_daily_deal_url": {
+      "totalMissing": 1134,
+      "recoverable": 1134,
+      "unrecoverable": 0
+    },
+    "deal_url_from_daily": {
+      "totalMissing": 1134,
+      "recoverable": 1134,
+      "unrecoverable": 0
+    },
+    "image_from_daily": {
+      "totalMissing": 0,
+      "recoverable": 0,
+      "unrecoverable": 0
+    },
+    "price_from_daily": {
+      "totalMissing": 44,
+      "recoverable": 0,
+      "unrecoverable": 44
+    },
+    "sales_from_daily": {
+      "totalMissing": 1460,
+      "recoverable": 5,
+      "unrecoverable": 1455
+    },
+    "core_identity_all_missing_from_daily": {
+      "totalMissing": 1134,
+      "recoverableByDealUrl": 1134,
+      "unrecoverable": 0
+    }
+  },
+  "samples": {
+    "title_missing": [
+      "qe5sm0rbsd0q",
+      "097d9hdx4ptv",
+      "41j3z9y440qv",
+      "vwjq9pr2mw3g",
+      "w9umqsr449nk",
+      "p34kj0f61s6z",
+      "62z6ctfbn3nm",
+      "75jq7zh4c1vx",
+      "ex4umqf4g368",
+      "5t1k8xa2mzc6",
+      "4ksjcxrvs2vw",
+      "gbp0x0hv18jm",
+      "b7q6d1r4eve8",
+      "6z566drzjjjd",
+      "74dujda40z4b",
+      "uesdwefu947c",
+      "z05g90ywxg0m",
+      "bdumq5f23egu",
+      "vb7kcwy24284",
+      "t6xje0ab8vq6"
+    ],
+    "core_identity_all_missing": [
+      "qe5sm0rbsd0q",
+      "097d9hdx4ptv",
+      "41j3z9y440qv",
+      "vwjq9pr2mw3g",
+      "w9umqsr449nk",
+      "p34kj0f61s6z",
+      "62z6ctfbn3nm",
+      "75jq7zh4c1vx",
+      "ex4umqf4g368",
+      "5t1k8xa2mzc6",
+      "4ksjcxrvs2vw",
+      "gbp0x0hv18jm",
+      "b7q6d1r4eve8",
+      "6z566drzjjjd",
+      "74dujda40z4b",
+      "uesdwefu947c",
+      "z05g90ywxg0m",
+      "bdumq5f23egu",
+      "vb7kcwy24284",
+      "t6xje0ab8vq6"
+    ],
+    "both_images_missing": [],
+    "last_price_missing": [
+      "85ztnzr4c521",
+      "jg2654yssjsj",
+      "53395xf4cvtm",
+      "0q29nbfvj00q",
+      "1eu9d0yb1bnc",
+      "nt2kj8ysdm83",
+      "220je1r40ex7",
+      "jumxk5au2494",
+      "1emxwufu62ew",
+      "67t1nsy40bst",
+      "w67kvbfb1cet",
+      "25kwdjy40nqb",
+      "26zvk0r8e0nz",
+      "smuqpcrugnv9",
+      "q1u3edrtqcup",
+      "3b63nty8beq5",
+      "ndmx06y40gpg",
+      "q46pkbfsvemn",
+      "s15smeyz5v96",
+      "zwtu5qh445e5"
+    ],
+    "unrecoverable_core_identity": []
+  }
+}

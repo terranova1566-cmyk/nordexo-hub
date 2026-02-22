@@ -62,6 +62,20 @@ const normalizeSellerName = (value?: string | null) => {
   return group ? group.display : value.trim();
 };
 
+const inferOfferillaStatus = (value: unknown) => {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!raw) return "online";
+  if (
+    raw.includes("sold out") ||
+    raw.includes("out of stock") ||
+    raw.includes("loppu") ||
+    raw.includes("ei saatavilla")
+  ) {
+    return "offline";
+  }
+  return "online";
+};
+
 export async function GET(request: NextRequest) {
   const provider = resolveDealsProvider(request.nextUrl.searchParams.get("provider"));
   const providerConfig = getDealsProviderConfig(provider);
@@ -94,18 +108,32 @@ export async function GET(request: NextRequest) {
           "product_image_url",
           "deal_url",
         ].join(",")
-      : [
-          "product_id",
-          "listing_title",
-          "title_h1",
-          "product_slug",
-          "prodno",
-          "seller_name",
-          "status",
-          "primary_image_url",
-          "image_urls",
-          "description_html",
-        ].join(",");
+      : provider === "offerilla"
+        ? [
+            "product_id",
+            "title",
+            "product_slug",
+            "page_product_id",
+            "seller_name",
+            "last_stock_status",
+            "main_image_url",
+            "gallery_image_urls",
+            "product_url",
+            "description_html",
+            "description_text",
+          ].join(",")
+        : [
+            "product_id",
+            "listing_title",
+            "title_h1",
+            "product_slug",
+            "prodno",
+            "seller_name",
+            "status",
+            "primary_image_url",
+            "image_urls",
+            "description_html",
+          ].join(",");
 
   const { data: rawProduct, error: productError } = await supabase
     .from(providerConfig.productsTable)
@@ -164,7 +192,27 @@ export async function GET(request: NextRequest) {
           description_html: null,
           product_url: (rawProduct as any).deal_url ?? null,
         }
-      : rawProduct;
+      : provider === "offerilla" && rawProduct && typeof rawProduct === "object"
+        ? {
+            ...(rawProduct as Record<string, unknown>),
+            listing_title: (rawProduct as any).title ?? null,
+            title_h1: (rawProduct as any).title ?? null,
+            prodno:
+              (rawProduct as any).page_product_id ??
+              (rawProduct as any).product_id ??
+              null,
+            status: inferOfferillaStatus((rawProduct as any).last_stock_status),
+            primary_image_url: (rawProduct as any).main_image_url ?? null,
+            image_urls: Array.isArray((rawProduct as any).gallery_image_urls)
+              ? (rawProduct as any).gallery_image_urls
+              : [(rawProduct as any).main_image_url].filter(Boolean),
+            description_html:
+              (rawProduct as any).description_html ??
+              (rawProduct as any).description_text ??
+              null,
+            product_url: (rawProduct as any).product_url ?? null,
+          }
+        : rawProduct;
 
   const normalizedProduct =
     mappedProduct && typeof mappedProduct === "object"

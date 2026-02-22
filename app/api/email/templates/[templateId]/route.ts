@@ -10,6 +10,10 @@ import {
 export const runtime = "nodejs";
 
 const TABLE = "partner_email_templates";
+const TEMPLATE_SELECT_WITH_METADATA =
+  "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at";
+const TEMPLATE_SELECT_LEGACY =
+  "template_id,name,description,subject_template,body_template,macros,created_at,updated_at";
 
 type RouteContext = {
   params: Promise<{ templateId: string }>;
@@ -27,6 +31,40 @@ function parseTags(value: unknown) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function isMissingTemplateMetadataColumnError(error: unknown) {
+  const code = String((error as { code?: string })?.code ?? "");
+  if (code === "42703") return true;
+
+  const message = String((error as { message?: string })?.message ?? "").toLowerCase();
+  if (!message.includes(TABLE)) return false;
+  const hasMetadataColumn = ["category", "tags", "owner_user_id", "owner_team"].some((column) =>
+    message.includes(column)
+  );
+  if (!hasMetadataColumn) return false;
+  return (
+    message.includes("does not exist") ||
+    message.includes("schema cache") ||
+    message.includes("could not find") ||
+    message.includes("column")
+  );
+}
+
+function normalizeTemplateRow<T extends Record<string, unknown>>(row: T) {
+  return {
+    ...row,
+    category: Object.prototype.hasOwnProperty.call(row, "category")
+      ? row.category ?? null
+      : null,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    owner_user_id: Object.prototype.hasOwnProperty.call(row, "owner_user_id")
+      ? row.owner_user_id ?? null
+      : null,
+    owner_team: Object.prototype.hasOwnProperty.call(row, "owner_team")
+      ? row.owner_team ?? null
+      : null,
+  };
+}
+
 export async function GET(_: Request, context: RouteContext) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
@@ -37,22 +75,35 @@ export async function GET(_: Request, context: RouteContext) {
     return NextResponse.json({ error: "Template ID is required." }, { status: 400 });
   }
 
-  const { data, error } = await auth.supabase
+  const withMetadata = await auth.supabase
     .from(TABLE)
-    .select(
-      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
-    )
+    .select(TEMPLATE_SELECT_WITH_METADATA)
     .eq("template_id", id)
     .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (withMetadata.error && !isMissingTemplateMetadataColumnError(withMetadata.error)) {
+    return NextResponse.json({ error: withMetadata.error.message }, { status: 500 });
   }
-  if (!data) {
+  if (!withMetadata.error && withMetadata.data) {
+    return NextResponse.json(normalizeTemplateRow(withMetadata.data));
+  }
+  if (!withMetadata.error && !withMetadata.data) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  return NextResponse.json(data);
+  const legacy = await auth.supabase
+    .from(TABLE)
+    .select(TEMPLATE_SELECT_LEGACY)
+    .eq("template_id", id)
+    .maybeSingle();
+  if (legacy.error) {
+    return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+  }
+  if (!legacy.data) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  return NextResponse.json(normalizeTemplateRow(legacy.data));
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -176,18 +227,37 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "No updates provided." }, { status: 400 });
   }
 
-  const { data, error } = await auth.supabase
+  let data: Record<string, unknown> | null = null;
+  const withMetadataUpdate = await auth.supabase
     .from(TABLE)
     .update(updates)
     .eq("template_id", id)
-    .select(
-      "template_id,name,description,category,tags,owner_user_id,owner_team,subject_template,body_template,macros,created_at,updated_at"
-    )
+    .select(TEMPLATE_SELECT_WITH_METADATA)
     .maybeSingle();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (withMetadataUpdate.error && !isMissingTemplateMetadataColumnError(withMetadataUpdate.error)) {
+    return NextResponse.json({ error: withMetadataUpdate.error.message }, { status: 500 });
   }
+  if (!withMetadataUpdate.error) {
+    data = withMetadataUpdate.data as Record<string, unknown> | null;
+  } else {
+    const metadataKeys = new Set(["category", "tags", "owner_user_id", "owner_team"]);
+    const legacyUpdates: Record<string, unknown> = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (metadataKeys.has(key)) return;
+      legacyUpdates[key] = value;
+    });
+    const legacyUpdate = await auth.supabase
+      .from(TABLE)
+      .update(legacyUpdates)
+      .eq("template_id", id)
+      .select(TEMPLATE_SELECT_LEGACY)
+      .maybeSingle();
+    if (legacyUpdate.error) {
+      return NextResponse.json({ error: legacyUpdate.error.message }, { status: 500 });
+    }
+    data = legacyUpdate.data as Record<string, unknown> | null;
+  }
+
   if (!data) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
@@ -239,7 +309,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({
-    ...data,
+    ...normalizeTemplateRow(data),
     macro_validation: macroValidation,
     warnings,
   });

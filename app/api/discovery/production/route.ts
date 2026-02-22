@@ -6,6 +6,10 @@ import {
   PARTNER_SUGGESTION_PROVIDER,
   loadSuggestionRecord,
 } from "@/lib/product-suggestions";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+} from "@/lib/deals/provider";
 
 export const runtime = "nodejs";
 
@@ -106,6 +110,36 @@ const pickFirstImage = (value: unknown) => {
     }
   }
   return firstString(value);
+};
+
+type ProductionStatusSnapshot = {
+  status: string | null;
+  updated_at: string | null;
+  spu_assigned_at: string | null;
+  production_started_at: string | null;
+  production_done_at: string | null;
+  last_file_name: string | null;
+  last_job_id: string | null;
+};
+
+const keyOf = (provider: string, productId: string) =>
+  `${provider}:${productId}`;
+
+const parseRefKey = (key: string) => {
+  const idx = key.indexOf(":");
+  if (idx <= 0) return null;
+  const provider = key.slice(0, idx).trim();
+  const product_id = key.slice(idx + 1).trim();
+  if (!provider || !product_id) return null;
+  return { provider, product_id };
+};
+
+const shouldReconcileSpuAssignedStatus = (row: ProductionStatusSnapshot | null | undefined) => {
+  if (!row) return false;
+  const status = (firstString(row.status) || "").toLowerCase();
+  if (status !== "spu_assigned") return false;
+  if (firstString(row.production_started_at) || firstString(row.production_done_at)) return false;
+  return true;
 };
 
 export async function GET() {
@@ -474,15 +508,7 @@ export async function GET() {
   const supplierSelectedSet = new Set<string>();
   const productionStatusMap = new Map<
     string,
-    {
-      status: string | null;
-      updated_at: string | null;
-      spu_assigned_at: string | null;
-      production_started_at: string | null;
-      production_done_at: string | null;
-      last_file_name: string | null;
-      last_job_id: string | null;
-    }
+    ProductionStatusSnapshot
   >();
   const productionSpuMap = new Map<
     string,
@@ -491,6 +517,7 @@ export async function GET() {
       assigned_at: string | null;
     }
   >();
+  const productionSpuLinksMap = new Map<string, Set<string>>();
   const supplierSelectedOfferMap = new Map<
     string,
     {
@@ -641,11 +668,14 @@ export async function GET() {
           }>
         | null
     )?.forEach((row) => {
-      const key = `${row.provider}:${row.product_id}`;
+      const key = keyOf(row.provider, row.product_id);
       const existing = productionSpuMap.get(key);
       const nextAssignedAt = firstString(row.assigned_at) ?? null;
       const nextSpu = firstString(row.spu) ?? null;
       if (!nextSpu) return;
+      const links = productionSpuLinksMap.get(key) ?? new Set<string>();
+      links.add(nextSpu.toUpperCase());
+      productionSpuLinksMap.set(key, links);
       if (!existing) {
         productionSpuMap.set(key, { spu: nextSpu, assigned_at: nextAssignedAt });
         return;
@@ -656,6 +686,87 @@ export async function GET() {
         productionSpuMap.set(key, { spu: nextSpu, assigned_at: nextAssignedAt });
       }
     });
+
+    // Reconcile stale "SPU assigned" statuses if the linked draft SPU no longer exists.
+    // This catches manual filesystem/database cleanup that bypasses the normal delete APIs.
+    try {
+      const candidateKeys: string[] = [];
+      const candidateSpus = new Set<string>();
+      for (const [key, statusRow] of productionStatusMap.entries()) {
+        if (!shouldReconcileSpuAssignedStatus(statusRow)) continue;
+        candidateKeys.push(key);
+        const linkedSpus = productionSpuLinksMap.get(key);
+        linkedSpus?.forEach((spu) => candidateSpus.add(spu.toUpperCase()));
+      }
+
+      if (candidateKeys.length > 0) {
+        const existingDraftSpus = new Set<string>();
+        if (candidateSpus.size > 0) {
+          const { data: draftSpuRows, error: draftSpuError } = await adminClient
+            .from("draft_products")
+            .select("draft_spu")
+            .in("draft_spu", Array.from(candidateSpus));
+          if (draftSpuError) {
+            throw new Error(draftSpuError.message);
+          }
+          (draftSpuRows as Array<{ draft_spu?: string | null }> | null)?.forEach((row) => {
+            const spu = firstString(row.draft_spu);
+            if (spu) existingDraftSpus.add(spu.toUpperCase());
+          });
+        }
+
+        const staleRefs: Array<{ provider: string; product_id: string; key: string }> = [];
+        candidateKeys.forEach((key) => {
+          const parsed = parseRefKey(key);
+          if (!parsed) return;
+          const linkedSpus = Array.from(productionSpuLinksMap.get(key) ?? []);
+          const hasAnyDraft =
+            linkedSpus.length > 0
+              ? linkedSpus.some((spu) => existingDraftSpus.has(spu.toUpperCase()))
+              : false;
+          if (linkedSpus.length === 0 || !hasAnyDraft) {
+            staleRefs.push({ ...parsed, key });
+          }
+        });
+
+        if (staleRefs.length > 0) {
+          const nowIso = new Date().toISOString();
+          for (const ref of staleRefs) {
+            const { error: statusResetError } = await adminClient
+              .from("discovery_production_status")
+              .update({
+                status: null,
+                spu_assigned_at: null,
+                production_started_at: null,
+                production_done_at: null,
+                last_file_name: null,
+                last_job_id: null,
+                updated_at: nowIso,
+              })
+              .eq("provider", ref.provider)
+              .eq("product_id", ref.product_id);
+            if (statusResetError) {
+              throw new Error(statusResetError.message);
+            }
+
+            const { error: linkDeleteError } = await adminClient
+              .from("discovery_production_item_spus")
+              .delete()
+              .eq("provider", ref.provider)
+              .eq("product_id", ref.product_id);
+            if (linkDeleteError) {
+              throw new Error(linkDeleteError.message);
+            }
+
+            productionStatusMap.delete(ref.key);
+            productionSpuMap.delete(ref.key);
+            productionSpuLinksMap.delete(ref.key);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Unable to reconcile stale production queue SPU status:", error);
+    }
   }
 
   const withSuppliers = withComments.map((item) => {
@@ -800,23 +911,24 @@ export async function DELETE(request: Request) {
   }
 
   const provider = String(payload?.provider ?? "").trim();
+  const normalizedProvider = provider.toLowerCase();
   const productId = String(payload?.product_id ?? "").trim();
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
-  if (provider === PARTNER_SUGGESTION_PROVIDER) {
+  if (normalizedProvider === PARTNER_SUGGESTION_PROVIDER) {
     const statusClient = adminClient ?? supabase;
     const [{ error: statusError }, { error: spuError }] = await Promise.all([
       statusClient
         .from("discovery_production_status")
         .delete()
-        .eq("provider", provider)
+        .eq("provider", normalizedProvider)
         .eq("product_id", productId),
       statusClient
         .from("discovery_production_item_spus")
         .delete()
-        .eq("provider", provider)
+        .eq("provider", normalizedProvider)
         .eq("product_id", productId),
     ]);
 
@@ -834,7 +946,7 @@ export async function DELETE(request: Request) {
   let deleteQuery = deleteClient
     .from("discovery_production_items")
     .delete()
-    .eq("provider", provider)
+    .eq("provider", normalizedProvider)
     .eq("product_id", productId);
 
   if (!isAdmin) {
@@ -847,10 +959,16 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (provider === "digideal") {
+  if (
+    normalizedProvider === "digideal" ||
+    normalizedProvider === "letsdeal" ||
+    normalizedProvider === "offerilla"
+  ) {
+    const dealsProvider = resolveDealsProvider(normalizedProvider);
+    const providerConfig = getDealsProviderConfig(dealsProvider);
     const updateClient = adminClient ?? supabase;
     const { error: updateError } = await updateClient
-      .from("digideal_products")
+      .from(providerConfig.productsTable)
       .update({
         digideal_add_rerun: false,
         digideal_add_rerun_at: null,

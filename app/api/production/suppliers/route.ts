@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
@@ -10,15 +10,37 @@ import {
   loadSuggestionRecord,
   saveSuggestionRecord,
 } from "@/lib/product-suggestions";
+import {
+  canonical1688OfferUrl,
+  extractJsonFromText,
+  hasCjk,
+  isImageFetchError,
+  toOfferId,
+} from "@/shared/1688/core";
+import {
+  getPublicBaseUrlFromRequest,
+  run1688ImageSearch as run1688ImageSearchTool,
+} from "@/shared/1688/image-search-runner";
 
 export const runtime = "nodejs";
 
-const TOOL_PATH = "/srv/node-tools/1688-image-search/index.js";
 const SUPPLIER_PAYLOAD_WORKER_PATH =
   "/srv/nordexo-hub/scripts/production-supplier-fetch-worker.mjs";
 const PUBLIC_TEMP_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
 const PUBLIC_TEMP_PERSIST_DAYS = 180;
 const TEMP_IMAGE_ID_RE = /\/api\/public\/temp-images\/([a-f0-9]{32})/i;
+const DIGIDEAL_PROVIDER = "digideal";
+const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
+  PARTNER_SUGGESTION_PROVIDER || ""
+).trim().toLowerCase();
+
+const isSupportedSupplierProvider = (provider: string) => {
+  const normalized = String(provider || "").trim().toLowerCase();
+  return (
+    normalized === DIGIDEAL_PROVIDER ||
+    normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
+  );
+};
 
 type Offer = {
   rank?: number;
@@ -81,13 +103,8 @@ const persistTempImageUrlsBestEffort = async (input: unknown) => {
   }
 };
 
-const getPublicBaseUrl = (request: Request) => {
-  const proto = request.headers.get("x-forwarded-proto") || "https";
-  const host =
-    request.headers.get("x-forwarded-host") || request.headers.get("host");
-  if (!host) return null;
-  return `${proto}://${host}`;
-};
+const getPublicBaseUrl = (request: Request) =>
+  getPublicBaseUrlFromRequest(request);
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 
@@ -117,18 +134,6 @@ const normalizeSupplierImageUrl = (
     return base ? normalizePublicTempImagePath(`${base}${trimmed}`) : null;
   }
   return null;
-};
-
-const isImageFetchError = (error: string) => {
-  const msg = String(error || "").toLowerCase();
-  return (
-    msg.includes("handle image error") ||
-    msg.includes("image_fetch_error") ||
-    msg.includes("image fetch error") ||
-    // Some providers return image URLs that are not directly fetchable by 1688.
-    // In those cases we should fall back to the next candidate (e.g. local mirror URL).
-    msg.includes("invalid image url")
-  );
 };
 
 const sleep = (ms: number) =>
@@ -227,40 +232,6 @@ async function requireAdmin() {
   return { ok: true as const, user };
 }
 
-const toOfferId = (offer: Offer) => {
-  const raw = offer?.offerId;
-  const text = raw === null || raw === undefined ? "" : String(raw).trim();
-  return text || null;
-};
-
-const canonical1688OfferUrl = (offer: Offer) => {
-  const id = toOfferId(offer);
-  if (id && /^\d{6,}$/.test(id)) {
-    return `https://detail.1688.com/offer/${id}.html`;
-  }
-  const raw = typeof offer?.detailUrl === "string" ? offer.detailUrl.trim() : "";
-  if (!raw) return null;
-  const match = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
-  if (match?.[1]) return `https://detail.1688.com/offer/${match[1]}.html`;
-  return raw || null;
-};
-
-const extractJsonFromText = (text: string) => {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {}
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-};
-
 const pickFirstText = (...values: unknown[]) => {
   for (const value of values) {
     const text = typeof value === "string" ? value.trim() : "";
@@ -282,8 +253,6 @@ const cleanSuggestionTitle = (value: string) => {
   if (!normalized) return "";
   return normalized.slice(0, 80);
 };
-
-const hasCjk = (value: unknown) => /[\u3400-\u9fff]/.test(String(value || ""));
 
 const extractSuggestionTitle = (payload: unknown) => {
   if (!payload || typeof payload !== "object") return "";
@@ -558,71 +527,15 @@ const pickImageUrlFromItem = (
 };
 
 const run1688ImageSearch = (request: Request, imageUrl: string, limit: number) => {
-  const baseUrl = getPublicBaseUrl(request);
-  if (!baseUrl) {
-    return { ok: false as const, error: "Unable to determine public base URL." };
-  }
-
-  const args: string[] = [
-    "--pretty",
-    "false",
-    "--limit",
-    String(limit),
-    "--page",
-    "1",
-    "--cpsFirst",
-    "false",
-    "--includeRaw",
-    "false",
-    "--image-url",
+  return run1688ImageSearchTool({
+    publicBaseUrl: getPublicBaseUrl(request),
     imageUrl,
-  ];
-
-  const result = spawnSync(process.execPath, [TOOL_PATH, ...args], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PUBLIC_BASE_URL: baseUrl,
-      // Keep temp images around longer than the tool's default (5 minutes),
-      // so recrop and verification flows don't break on later revisits.
-      PUBLIC_TEMP_IMAGE_TTL_MS:
-        process.env.PUBLIC_TEMP_IMAGE_TTL_MS || String(30 * 60 * 1000),
-    },
-    maxBuffer: 20 * 1024 * 1024,
-    timeout: 60_000,
+    limit,
+    page: 1,
+    cpsFirst: false,
+    includeRaw: false,
+    pretty: false,
   });
-
-  const stdout = String(result.stdout || "").trim();
-  const stderr = String(result.stderr || "").trim();
-
-  let parsed: any = null;
-  if (stdout) {
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {}
-  }
-
-  if (parsed) {
-    // The tool always returns structured JSON. Treat ok:false as an error so we don't cache
-    // permanent "0 suppliers" rows on transient failures.
-    if (parsed && typeof parsed === "object" && (parsed as any).ok === false) {
-      const message =
-        typeof (parsed as any)?.error?.message === "string"
-          ? String((parsed as any).error.message)
-          : typeof (parsed as any)?.error === "string"
-            ? String((parsed as any).error)
-            : "1688 image search failed.";
-      return { ok: false as const, error: message, status: 502 };
-    }
-    return { ok: true as const, payload: parsed };
-  }
-
-  const status = result.status === 2 ? 400 : 500;
-  return {
-    ok: false as const,
-    error: stderr || "1688 image search failed.",
-    status,
-  };
 };
 
 export async function GET(request: NextRequest) {
@@ -648,9 +561,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
-  if (provider.toLowerCase() === "letsdeal") {
+  if (!isSupportedSupplierProvider(provider)) {
     return NextResponse.json(
-      { error: "Supplier fetching is disabled for LetsDeal." },
+      {
+        error:
+          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+      },
       { status: 409 }
     );
   }
@@ -827,26 +743,28 @@ export async function GET(request: NextRequest) {
     // Retry a few times before moving on to the next candidate so DigiDeal webp->jpg rehosts
     // don’t flake as often.
     run = run1688ImageSearch(request, candidate, limit);
-    if (!run.ok && isImageFetchError(run.error)) {
-      for (const delayMs of [250, 600, 1200]) {
-        await sleep(delayMs);
-        run = run1688ImageSearch(request, candidate, limit);
-        if (run.ok) break;
-        if (!isImageFetchError(run.error)) break;
-      }
-      if (!run.ok && isImageFetchError(run.error)) {
-        // Helps debug the (rare) cases where 1688 can't fetch a URL that looks valid.
-        console.warn("[api/production/suppliers] image fetch error after retries", {
-          provider,
-          productId,
-          candidate,
-          error: run.error,
-        });
+    if (!run.ok) {
+      if (isImageFetchError(run.error)) {
+        for (const delayMs of [250, 600, 1200]) {
+          await sleep(delayMs);
+          run = run1688ImageSearch(request, candidate, limit);
+          if (run.ok) break;
+          if (!isImageFetchError(run.error)) break;
+        }
+        if (!run.ok && isImageFetchError(run.error)) {
+          // Helps debug the (rare) cases where 1688 can't fetch a URL that looks valid.
+          console.warn("[api/production/suppliers] image fetch error after retries", {
+            provider,
+            productId,
+            candidate,
+            error: run.error,
+          });
+        }
       }
     }
     if (run.ok) break;
     if (i >= imageCandidates.length - 1) break;
-    if (!isImageFetchError(run.error)) break;
+    if (!run.ok && !isImageFetchError(run.error)) break;
   }
 
   if (!run || !run.ok) {
@@ -936,9 +854,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
-  if (provider.toLowerCase() === "letsdeal") {
+  if (!isSupportedSupplierProvider(provider)) {
     return NextResponse.json(
-      { error: "Supplier fetching is disabled for LetsDeal." },
+      {
+        error:
+          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+      },
       { status: 409 }
     );
   }

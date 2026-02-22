@@ -195,6 +195,7 @@ type DraftVariantEditorRow = {
 
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
+type ImageFolderTabValue = "main" | "variants" | "ocr" | "others";
 
 const useStyles = makeStyles({
   page: {
@@ -545,6 +546,9 @@ const useStyles = makeStyles({
       gridTemplateColumns: "1fr",
     },
   },
+  explorerLayoutSingleColumn: {
+    gridTemplateColumns: "minmax(0, 1fr)",
+  },
   folderPane: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: "12px",
@@ -787,12 +791,6 @@ const useStyles = makeStyles({
       transform: "translateY(0)",
       pointerEvents: "auto",
     },
-    "&:hover .mediaTagBadge": {
-      opacity: 0.95,
-    },
-    "&:focus-within .mediaTagBadge": {
-      opacity: 0.95,
-    },
   },
   mediaTagStack: {
     position: "absolute",
@@ -800,9 +798,10 @@ const useStyles = makeStyles({
     left: "8px",
     zIndex: 2,
     display: "inline-flex",
-    flexDirection: "column",
+    flexDirection: "row",
     gap: "4px",
     pointerEvents: "none",
+    alignItems: "center",
   },
   mediaTagStackShifted: {
     left: "42px",
@@ -815,8 +814,7 @@ const useStyles = makeStyles({
     color: "#ffffff",
     letterSpacing: "0.02em",
     lineHeight: 1.2,
-    opacity: 0.52,
-    transition: "opacity 120ms ease",
+    opacity: 1,
     textTransform: "uppercase",
   },
   mediaTagMain: {
@@ -830,6 +828,9 @@ const useStyles = makeStyles({
   },
   mediaTagInf: {
     backgroundColor: "#b65a00",
+  },
+  mediaTagDigi: {
+    backgroundColor: "#6f42ff",
   },
   mediaImageBusy: {
     filter: "blur(2.4px)",
@@ -1179,6 +1180,44 @@ const useStyles = makeStyles({
     height: "16px",
     flexShrink: 0,
     color: tokens.colorNeutralForeground3,
+  },
+  contextMenuTagCheckbox: {
+    marginLeft: "auto",
+    width: "16px",
+    height: "16px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "4px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxSizing: "border-box",
+  },
+  contextMenuTagCheckboxChecked: {
+    border: "1px solid #0f6cbd",
+    backgroundColor: "#0f6cbd",
+    color: "#ffffff",
+  },
+  contextMenuTagCheckboxMixed: {
+    border: "1px solid #0f6cbd",
+    backgroundColor: "#deecff",
+  },
+  contextMenuTagCheckboxIcon: {
+    width: "11px",
+    height: "11px",
+    display: "block",
+  },
+  contextMenuTagCheckboxBar: {
+    width: "8px",
+    height: "2px",
+    borderRadius: "999px",
+    backgroundColor: "#0f6cbd",
+    display: "block",
+  },
+  contextMenuTagLabel: {
+    flex: 1,
+    lineHeight: 1,
   },
   compactMenuList: {
     paddingTop: "2px",
@@ -2216,28 +2255,53 @@ const splitFileNameAndExtension = (fileName: string) => {
   };
 };
 
-const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF"] as const;
+const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
 type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
 const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "TAG IMAGE"] as const;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
-  const { baseName, extension } = splitFileNameAndExtension(fileName);
+const stripTrailingImageTagSuffixes = (baseName: string) => {
   let nextBase = baseName.trim();
-  TAG_IMAGE_SUFFIXES_TO_STRIP.forEach((tagValue) => {
-    const pattern = new RegExp(
-      `\\s*\\(${escapeRegExp(tagValue)}\\)\\s*$`,
-      "i"
-    );
-    nextBase = nextBase.replace(pattern, "").trim();
-  });
-  return `${nextBase} (${tag})${extension}`;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    TAG_IMAGE_SUFFIXES_TO_STRIP.forEach((tagValue) => {
+      const pattern = new RegExp(
+        `\\s*\\(${escapeRegExp(tagValue)}\\)\\s*$`,
+        "i"
+      );
+      const replaced = nextBase.replace(pattern, "").trim();
+      if (replaced !== nextBase) {
+        nextBase = replaced;
+        changed = true;
+      }
+    });
+  }
+  return nextBase;
+};
+
+const normalizeImageTags = (tags: ImageTagOption[]) =>
+  TAG_IMAGE_OPTIONS.filter((option) => tags.includes(option));
+
+const buildTaggedImageFileNameFromTags = (
+  fileName: string,
+  tags: ImageTagOption[]
+) => {
+  const { baseName, extension } = splitFileNameAndExtension(fileName);
+  const cleanedBase = stripTrailingImageTagSuffixes(baseName);
+  const orderedTags = normalizeImageTags(tags);
+  const suffix = orderedTags.map((tag) => ` (${tag})`).join("");
+  return `${cleanedBase}${suffix}${extension}`;
+};
+
+const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
+  return buildTaggedImageFileNameFromTags(fileName, [tag]);
 };
 
 const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
-  const matches = String(fileName || "").match(/\((MAIN|ENV|VAR|INF)\)/gi) ?? [];
+  const matches = String(fileName || "").match(/\((MAIN|ENV|VAR|INF|DIGI)\)/gi) ?? [];
   const ordered: ImageTagOption[] = [];
   matches.forEach((value) => {
     const normalized = value.replace(/[()]/g, "").trim().toUpperCase();
@@ -2245,13 +2309,44 @@ const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
       (normalized === "MAIN" ||
         normalized === "ENV" ||
         normalized === "VAR" ||
-        normalized === "INF") &&
+        normalized === "INF" ||
+        normalized === "DIGI") &&
       !ordered.includes(normalized as ImageTagOption)
     ) {
       ordered.push(normalized as ImageTagOption);
     }
   });
-  return ordered;
+  return normalizeImageTags(ordered);
+};
+
+const isDigiTaggedImageName = (fileName: string) =>
+  extractImageTagsFromFileName(fileName).includes("DIGI");
+
+const toggleImageTagInFileName = (fileName: string, tag: ImageTagOption) => {
+  const currentTags = extractImageTagsFromFileName(fileName);
+  const nextTags = currentTags.includes(tag)
+    ? currentTags.filter((value) => value !== tag)
+    : [...currentTags, tag];
+  return buildTaggedImageFileNameFromTags(fileName, nextTags);
+};
+
+const extractFileNameFromPath = (pathValue: string) => {
+  const tail = String(pathValue || "").split("/").filter(Boolean).pop() || "";
+  try {
+    return decodeURIComponent(tail);
+  } catch {
+    return tail;
+  }
+};
+
+const buildStableImageCardKey = (entry: DraftEntry) => {
+  const fullPath = String(entry.path || "").trim();
+  const parts = fullPath.split("/").filter(Boolean);
+  const fileNameFromPath = parts.pop() || String(entry.name || "").trim();
+  const directory = parts.join("/");
+  const { baseName, extension } = splitFileNameAndExtension(fileNameFromPath);
+  const stripped = stripTrailingImageTagSuffixes(baseName);
+  return `${directory}/${stripped}${extension}`;
 };
 
 const stripSkuPackSuffix = (value: string) =>
@@ -2372,6 +2467,7 @@ export default function DraftExplorerPage() {
   );
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
+  const [folderTreeHidden, setFolderTreeHidden] = useState(false);
   const [movingEntry, setMovingEntry] = useState(false);
   const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
@@ -2453,7 +2549,10 @@ export default function DraftExplorerPage() {
   const [renameExtension, setRenameExtension] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [bulkImageActionPending, setBulkImageActionPending] = useState(false);
-  const [tagImagesRunning, setTagImagesRunning] = useState(false);
+  const [tagImagesRunningPaths, setTagImagesRunningPaths] = useState<Set<string>>(
+    new Set()
+  );
+  const [tagAllImagesRunning, setTagAllImagesRunning] = useState(false);
   const [deleteFolderPending, setDeleteFolderPending] = useState(false);
   const [deleteRunsPending, setDeleteRunsPending] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
@@ -2528,6 +2627,13 @@ export default function DraftExplorerPage() {
   const pendingFolderOpenPathRef = useRef<string | null>(null);
   const initialOpenSpuHandledRef = useRef(false);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
+  const currentPathRef = useRef("");
+
+  const tagImagesRunning = tagImagesRunningPaths.size > 0;
+  const tagImagesRunningInCurrentPath = useMemo(() => {
+    const pathValue = String(currentPath || "").trim();
+    return Boolean(pathValue && tagImagesRunningPaths.has(pathValue));
+  }, [currentPath, tagImagesRunningPaths]);
 
   useEffect(() => {
     try {
@@ -4403,6 +4509,10 @@ export default function DraftExplorerPage() {
   }, [selectedFolder, fetchFolderTree]);
 
   useEffect(() => {
+    currentPathRef.current = String(currentPath || "");
+  }, [currentPath]);
+
+  useEffect(() => {
     if (!currentPath) {
       setPendingAiEditsByOriginal({});
       return;
@@ -5357,6 +5467,11 @@ export default function DraftExplorerPage() {
       const newName = String(payload?.name || activeEntry.name);
       const newModifiedAt = String(payload?.modifiedAt || new Date().toISOString());
       const newSize = Number(payload?.size ?? activeEntry.size ?? 0);
+      const newPixelQualityScore =
+        typeof payload?.pixelQualityScore === "number" &&
+        Number.isFinite(payload.pixelQualityScore)
+          ? Math.round(payload.pixelQualityScore)
+          : null;
 
       setEntries((prev) => {
         let hadNew = false;
@@ -5371,6 +5486,7 @@ export default function DraftExplorerPage() {
                 path: newPath,
                 modifiedAt: newModifiedAt,
                 size: newSize,
+                pixelQualityScore: newPixelQualityScore,
               };
             }
             if (item.path === oldPath) {
@@ -5390,6 +5506,7 @@ export default function DraftExplorerPage() {
               path: newPath,
               modifiedAt: newModifiedAt,
               size: newSize,
+              pixelQualityScore: newPixelQualityScore,
             });
           }
         }
@@ -5419,7 +5536,16 @@ export default function DraftExplorerPage() {
         return next;
       });
       setPhotopeaEntry((prev) =>
-        prev ? { ...prev, path: newPath, name: newName, modifiedAt: newModifiedAt, size: newSize } : prev
+        prev
+          ? {
+              ...prev,
+              path: newPath,
+              name: newName,
+              modifiedAt: newModifiedAt,
+              size: newSize,
+              pixelQualityScore: newPixelQualityScore,
+            }
+          : prev
       );
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
@@ -5702,14 +5828,20 @@ export default function DraftExplorerPage() {
 
   const handleCreateCopiesForEntries = useCallback(
     async (sourceEntries: DraftEntry[]) => {
-      if (bulkImageActionPending) return;
       clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
       const targets = sourceEntries.filter((entry) => entry.type === "file");
       if (targets.length === 0) return;
       setBulkImageActionPending(true);
       setError(null);
       const failures: string[] = [];
-      const created: Array<{ sourcePath: string; name: string; path: string; size: number }> = [];
+      const created: Array<{
+        sourcePath: string;
+        name: string;
+        path: string;
+        size: number;
+        pixelQualityScore: number | null;
+      }> = [];
       try {
         for (const entry of targets) {
           try {
@@ -5722,15 +5854,25 @@ export default function DraftExplorerPage() {
             if (!response.ok) {
               throw new Error(payload?.error || "Unable to create copy.");
             }
-            const copy = payload?.item as { name?: string; path?: string } | undefined;
+            const copy = payload?.item as {
+              name?: string;
+              path?: string;
+              pixelQualityScore?: number | null;
+            } | undefined;
             const copyName = String(copy?.name || "").trim();
             const copyPath = String(copy?.path || "").trim();
+            const copyPixelQualityScore =
+              typeof copy?.pixelQualityScore === "number" &&
+              Number.isFinite(copy.pixelQualityScore)
+                ? Math.round(copy.pixelQualityScore)
+                : null;
             if (copyName && copyPath) {
               created.push({
                 sourcePath: entry.path,
                 name: copyName,
                 path: copyPath,
                 size: entry.size,
+                pixelQualityScore: copyPixelQualityScore,
               });
             }
           } catch (err) {
@@ -5751,6 +5893,7 @@ export default function DraftExplorerPage() {
                 path: item.path,
                 size: item.size,
                 modifiedAt: now,
+                pixelQualityScore: item.pixelQualityScore,
               };
               const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
               if (sourceIndex < 0) {
@@ -5769,6 +5912,7 @@ export default function DraftExplorerPage() {
         }
       } finally {
         setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
       }
       if (failures.length > 0) {
         setError(
@@ -5790,8 +5934,8 @@ export default function DraftExplorerPage() {
 
   const handleUndoLastChangeForEntries = useCallback(
     async (sourceEntries: DraftEntry[]) => {
-      if (bulkImageActionPending) return;
       clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
       const targets = sourceEntries.filter(
         (entry) => entry.type === "file" && isImage(entry.name)
       );
@@ -5811,7 +5955,13 @@ export default function DraftExplorerPage() {
       const failures: string[] = [];
       const updates: Record<
         string,
-        { path: string; name: string; size: number; modifiedAt: string }
+        {
+          path: string;
+          name: string;
+          size: number;
+          modifiedAt: string;
+          pixelQualityScore: number | null;
+        }
       > = {};
 
       try {
@@ -5834,11 +5984,17 @@ export default function DraftExplorerPage() {
                 : entry.size;
             const nextModifiedAt =
               String(payload?.modifiedAt || "").trim() || new Date().toISOString();
+            const nextPixelQualityScore =
+              typeof payload?.pixelQualityScore === "number" &&
+              Number.isFinite(payload.pixelQualityScore)
+                ? Math.round(payload.pixelQualityScore)
+                : null;
             updates[entry.path] = {
               path: nextPath,
               name: nextName,
               size: nextSize,
               modifiedAt: nextModifiedAt,
+              pixelQualityScore: nextPixelQualityScore,
             };
           } catch (err) {
             failures.push(`${entry.name}: ${(err as Error).message}`);
@@ -5856,6 +6012,7 @@ export default function DraftExplorerPage() {
                 name: update.name,
                 size: update.size,
                 modifiedAt: update.modifiedAt,
+                pixelQualityScore: update.pixelQualityScore,
               };
             })
           );
@@ -5891,6 +6048,7 @@ export default function DraftExplorerPage() {
         }
       } finally {
         setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
       }
 
       if (failures.length > 0) {
@@ -5921,6 +6079,7 @@ export default function DraftExplorerPage() {
       options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
     ) => {
       clearSelectedFilesForImageActions();
+      const pathAtStart = String(currentPathRef.current || "");
       const deduped = sourceEntries.filter(
         (entry, index, arr) =>
           entry.type === "file" &&
@@ -6065,32 +6224,36 @@ export default function DraftExplorerPage() {
           }
         }
       };
-      await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
+      try {
+        await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
 
-      if (currentPath) {
-        await refreshEntries(currentPath);
-        await fetchPendingAiEdits(currentPath);
-      }
+        const latestPath = String(currentPathRef.current || "");
+        if (pathAtStart && latestPath === pathAtStart) {
+          await refreshEntries(pathAtStart);
+          await fetchPendingAiEdits(pathAtStart);
+        }
 
-      const messages: string[] = [];
-      if (skipped.length > 0) {
-        messages.push(`Skipped ${skipped.length} image(s) with existing pending/running edits.`);
-      }
-      if (failures.length > 0) {
-        messages.push(
-          `Failed ${failures.length} image(s): ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
-        );
-      }
-      if (messages.length > 0) {
-        setError(messages.join(" "));
+        const messages: string[] = [];
+        if (skipped.length > 0) {
+          messages.push(`Skipped ${skipped.length} image(s) with existing pending/running edits.`);
+        }
+        if (failures.length > 0) {
+          messages.push(
+            `Failed ${failures.length} image(s): ${failures
+              .slice(0, 3)
+              .join("; ")}${failures.length > 3 ? "..." : ""}`
+          );
+        }
+        if (messages.length > 0) {
+          setError(messages.join(" "));
+        }
+      } finally {
+        clearSelectedFilesForImageActions();
       }
     },
     [
       aiEditJobsByPath,
       clearSelectedFilesForImageActions,
-      currentPath,
       fetchPendingAiEdits,
       refreshEntries,
       isImage,
@@ -6226,6 +6389,7 @@ export default function DraftExplorerPage() {
   const resolveAiEdit = useCallback(
     async (originalPath: string, decision: AiResolveDecision) => {
       if (aiReviewSubmitting) return;
+      const pathAtStart = String(currentPathRef.current || "");
       setAiReviewSubmitting(true);
       setError(null);
       try {
@@ -6243,16 +6407,23 @@ export default function DraftExplorerPage() {
           delete next[originalPath];
           return next;
         });
+        const latestPath = String(currentPathRef.current || "");
+        const canRefreshActiveFolder = Boolean(pathAtStart && latestPath === pathAtStart);
         if (decision === "replace_with_ai") {
-          const now = new Date().toISOString();
-          setEntries((prev) =>
-            prev.map((item) =>
-              item.path === originalPath ? { ...item, modifiedAt: now } : item
-            )
-          );
-        } else if (decision === "keep_both" && currentPath) {
-          await refreshEntries(currentPath);
-          await fetchPendingAiEdits(currentPath);
+          if (canRefreshActiveFolder) {
+            await refreshEntries(pathAtStart);
+            await fetchPendingAiEdits(pathAtStart);
+          } else {
+            const now = new Date().toISOString();
+            setEntries((prev) =>
+              prev.map((item) =>
+                item.path === originalPath ? { ...item, modifiedAt: now } : item
+              )
+            );
+          }
+        } else if (decision === "keep_both" && canRefreshActiveFolder) {
+          await refreshEntries(pathAtStart);
+          await fetchPendingAiEdits(pathAtStart);
         }
         setAiReviewOriginalPath(null);
       } catch (err) {
@@ -6261,7 +6432,7 @@ export default function DraftExplorerPage() {
         setAiReviewSubmitting(false);
       }
     },
-    [aiReviewSubmitting, currentPath, fetchPendingAiEdits, refreshEntries]
+    [aiReviewSubmitting, fetchPendingAiEdits, refreshEntries]
   );
 
   const startRename = (entry: DraftEntry) => {
@@ -7197,12 +7368,11 @@ export default function DraftExplorerPage() {
         }
 
         if (Object.keys(renames).length > 0) {
-          const now = new Date().toISOString();
           setEntries((prev) =>
             prev.map((item) => {
               const renamed = renames[item.path];
               if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path, modifiedAt: now };
+              return { ...item, name: renamed.name, path: renamed.path };
             })
           );
           setSelectedFiles((prev) => {
@@ -7230,9 +7400,23 @@ export default function DraftExplorerPage() {
             });
             return next;
           });
+          setContextMenu((prev) => {
+            if (!prev) return prev;
+            const renamed = renames[prev.entry.path];
+            if (!renamed) return prev;
+            return {
+              ...prev,
+              entry: {
+                ...prev.entry,
+                path: renamed.path,
+                name: renamed.name,
+              },
+            };
+          });
         }
       } finally {
         setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
       }
 
       if (failures.length > 0) {
@@ -7247,6 +7431,119 @@ export default function DraftExplorerPage() {
       aiEditJobsByPath,
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
+      isImage,
+      pendingAiEditsByOriginal,
+    ]
+  );
+
+  const handleToggleImageTag = useCallback(
+    async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
+      clearSelectedFilesForImageActions();
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length === 0 || bulkImageActionPending) return;
+
+      setBulkImageActionPending(true);
+      setError(null);
+      const failures: string[] = [];
+      const renames: Record<string, { name: string; path: string }> = {};
+
+      try {
+        for (const sourceEntry of targets) {
+          const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
+          if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
+            failures.push(`${entry.name}: resolve AI status first.`);
+            continue;
+          }
+          const requestedName = toggleImageTagInFileName(entry.name, tag);
+          if (!requestedName || requestedName === entry.name) continue;
+          try {
+            const response = await fetch("/api/drafts/images/rename", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: entry.path, name: requestedName }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Rename failed.");
+            }
+            const renamedPath = String(payload?.path || entry.path);
+            const renamedName = String(payload?.name || requestedName);
+            renames[entry.path] = { path: renamedPath, name: renamedName };
+          } catch (err) {
+            failures.push(`${entry.name}: ${(err as Error).message}`);
+          }
+        }
+
+        if (Object.keys(renames).length > 0) {
+          setEntries((prev) =>
+            prev.map((item) => {
+              const renamed = renames[item.path];
+              if (!renamed) return item;
+              return { ...item, name: renamed.name, path: renamed.path };
+            })
+          );
+          setSelectedFiles((prev) => {
+            if (prev.size === 0) return prev;
+            const next = new Set(prev);
+            Object.entries(renames).forEach(([oldPath, renamed]) => {
+              if (!next.has(oldPath)) return;
+              next.delete(oldPath);
+              next.add(renamed.path);
+            });
+            return next;
+          });
+          setPreviewPath((prev) => {
+            if (!prev) return prev;
+            const renamed = renames[prev];
+            return renamed ? renamed.path : prev;
+          });
+          setImageDimensions((prev) => {
+            const next: Record<string, { width: number; height: number }> = { ...prev };
+            Object.entries(renames).forEach(([oldPath, renamed]) => {
+              const dims = next[oldPath];
+              if (!dims) return;
+              delete next[oldPath];
+              next[renamed.path] = dims;
+            });
+            return next;
+          });
+          setContextMenu((prev) => {
+            if (!prev) return prev;
+            const renamed = renames[prev.entry.path];
+            if (!renamed) return prev;
+            return {
+              ...prev,
+              entry: {
+                ...prev.entry,
+                path: renamed.path,
+                name: renamed.name,
+              },
+            };
+          });
+        }
+      } finally {
+        setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Failed to update tags for ${failures.length} image(s): ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+    },
+    [
+      aiEditJobsByPath,
+      bulkImageActionPending,
+      clearSelectedFilesForImageActions,
+      entryByPath,
       isImage,
       pendingAiEditsByOriginal,
     ]
@@ -7342,8 +7639,12 @@ export default function DraftExplorerPage() {
 
       try {
         for (const assignment of normalizedAssignments) {
-          const target = workingEntries.get(assignment.path);
-          if (!target) {
+          const target =
+            workingEntries.get(assignment.path) ?? {
+              path: assignment.path,
+              name: extractFileNameFromPath(assignment.path),
+            };
+          if (!target.path || !target.name) {
             failures.push(`${assignment.path}: file not found`);
             continue;
           }
@@ -7373,8 +7674,10 @@ export default function DraftExplorerPage() {
             const renamedPath = String(payload?.path || target.path);
             const renamedName = String(payload?.name || requestedName);
             renames[target.path] = { path: renamedPath, name: renamedName };
-            workingEntries.delete(target.path);
-            workingEntries.set(renamedPath, { path: renamedPath, name: renamedName });
+            if (workingEntries.has(target.path)) {
+              workingEntries.delete(target.path);
+              workingEntries.set(renamedPath, { path: renamedPath, name: renamedName });
+            }
             applied += 1;
           } catch (err) {
             failures.push(`${target.name}: ${(err as Error).message}`);
@@ -7382,12 +7685,11 @@ export default function DraftExplorerPage() {
         }
 
         if (Object.keys(renames).length > 0) {
-          const now = new Date().toISOString();
           setEntries((prev) =>
             prev.map((item) => {
               const renamed = renames[item.path];
               if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path, modifiedAt: now };
+              return { ...item, name: renamed.name, path: renamed.path };
             })
           );
           setSelectedFiles((prev) => {
@@ -7418,45 +7720,58 @@ export default function DraftExplorerPage() {
         }
       } finally {
         setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
       }
 
       return { applied, failures };
     },
     [
       aiEditJobsByPath,
+      clearSelectedFilesForImageActions,
       entries,
       isImage,
       pendingAiEditsByOriginal,
     ]
   );
 
-  const handleRunImageClassifierTagging = useCallback(async () => {
-    if (!currentPath || tagImagesRunning || bulkImageActionPending) return;
+  const completedSpuPathsInSelectedRun = useMemo(() => {
+    const run = String(selectedFolder || "").trim();
+    if (!run) return [] as string[];
+    return Array.from(completedSpuFolders)
+      .map((pathValue) => String(pathValue || "").trim())
+      .filter((pathValue) => pathValue.startsWith(`${run}/`))
+      .filter((pathValue) => pathValue.split("/").filter(Boolean).length === 2)
+      .sort((left, right) => left.localeCompare(right));
+  }, [completedSpuFolders, selectedFolder]);
 
-    const targets = entries
-      .filter((entry) => entry.type === "file" && isImage(entry.name))
-      .map((entry) => entry.path);
-    if (targets.length === 0) return;
-
-    clearSelectedFilesForImageActions();
-    setError(null);
-    setTagImagesRunning(true);
-
-    try {
-      const pathParts = currentPath.split("/").filter(Boolean);
-      const currentSpu = pathParts.length >= 2 ? pathParts[1] : "";
-      const variantHints = currentSpu
-        ? await collectVariantHintsForSpu(currentSpu)
-        : [];
+  const runImageClassifierTaggingForFolder = useCallback(
+    async ({
+      folderPath,
+      imagePaths,
+      spu,
+      variantHints,
+    }: {
+      folderPath: string;
+      imagePaths: string[];
+      spu?: string;
+      variantHints?: string[];
+    }) => {
+      const normalizedImages = imagePaths
+        .map((pathValue) => String(pathValue || "").trim())
+        .filter(Boolean)
+        .filter((pathValue) => !/\(\s*DIGI\s*\)/i.test(extractFileNameFromPath(pathValue)));
+      if (normalizedImages.length === 0) {
+        return { failures: [] as string[], applied: 0 };
+      }
 
       const response = await fetch("/api/drafts/images/tag-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          folderPath: currentPath,
-          imagePaths: targets,
-          spu: currentSpu,
-          variantHints,
+          folderPath,
+          imagePaths: normalizedImages,
+          spu: String(spu || "").trim(),
+          variantHints: Array.isArray(variantHints) ? variantHints : [],
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -7468,13 +7783,26 @@ export default function DraftExplorerPage() {
         ? (payload.decisions as Array<Record<string, unknown>>)
         : [];
 
-      const assignments = decisions
-        .map((row) => ({
-          path: String(row.path || "").trim(),
-          tag: String(row.primary_tag || "").trim().toUpperCase(),
-        }))
+      const decisionRows = decisions
+        .map((row) => {
+          const confidenceRaw = Number(row.confidence);
+          return {
+            path: String(row.path || "").trim(),
+            tag: String(row.primary_tag || "").trim().toUpperCase(),
+            confidence:
+              Number.isFinite(confidenceRaw) && confidenceRaw >= 0
+                ? confidenceRaw
+                : null,
+          };
+        })
         .filter(
-          (row): row is { path: string; tag: ImageTagOption } =>
+          (
+            row
+          ): row is {
+            path: string;
+            tag: ImageTagOption;
+            confidence: number | null;
+          } =>
             Boolean(row.path) &&
             (row.tag === "MAIN" ||
               row.tag === "ENV" ||
@@ -7482,10 +7810,68 @@ export default function DraftExplorerPage() {
               row.tag === "INF")
         );
 
-      const { failures } = await applyTagAssignments(assignments);
+      const mainCandidates = decisionRows
+        .filter((row) => row.tag === "MAIN")
+        .sort((left, right) => {
+          const leftConfidence = left.confidence ?? -1;
+          const rightConfidence = right.confidence ?? -1;
+          return rightConfidence - leftConfidence;
+        });
+      const primaryMainPath = mainCandidates[0]?.path ?? "";
 
-      if (currentPath) {
-        await refreshEntries(currentPath);
+      const assignments = decisionRows
+        .filter((row) => row.tag !== "MAIN" || row.path === primaryMainPath)
+        .map((row) => ({
+          path: row.path,
+          tag: row.tag,
+        }));
+
+      const { failures, applied } = await applyTagAssignments(assignments);
+      return { failures, applied };
+    },
+    [applyTagAssignments]
+  );
+
+  const handleRunImageClassifierTagging = useCallback(async () => {
+    if (!currentPath || tagImagesRunning || bulkImageActionPending || tagAllImagesRunning) {
+      return;
+    }
+    const pathAtStart = String(currentPath || "");
+
+    const targets = entries
+      .filter(
+        (entry) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          !isDigiTaggedImageName(entry.name)
+      )
+      .map((entry) => entry.path);
+    if (targets.length === 0) return;
+
+    clearSelectedFilesForImageActions();
+    setError(null);
+    setTagImagesRunningPaths((prev) => {
+      const next = new Set(prev);
+      next.add(pathAtStart);
+      return next;
+    });
+
+    try {
+      const pathParts = pathAtStart.split("/").filter(Boolean);
+      const currentSpu = pathParts.length >= 2 ? pathParts[1] : "";
+      const variantHints = currentSpu
+        ? await collectVariantHintsForSpu(currentSpu)
+        : [];
+
+      const { failures } = await runImageClassifierTaggingForFolder({
+        folderPath: pathAtStart,
+        imagePaths: targets,
+        spu: currentSpu,
+        variantHints,
+      });
+
+      if (currentPathRef.current === pathAtStart) {
+        await refreshEntries(pathAtStart);
       }
 
       if (failures.length > 0) {
@@ -7498,10 +7884,15 @@ export default function DraftExplorerPage() {
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setTagImagesRunning(false);
+      setTagImagesRunningPaths((prev) => {
+        if (!prev.has(pathAtStart)) return prev;
+        const next = new Set(prev);
+        next.delete(pathAtStart);
+        return next;
+      });
+      clearSelectedFilesForImageActions();
     }
   }, [
-    applyTagAssignments,
     bulkImageActionPending,
     clearSelectedFilesForImageActions,
     collectVariantHintsForSpu,
@@ -7509,18 +7900,160 @@ export default function DraftExplorerPage() {
     entries,
     isImage,
     refreshEntries,
+    runImageClassifierTaggingForFolder,
+    setTagImagesRunningPaths,
+    tagAllImagesRunning,
     tagImagesRunning,
   ]);
+
+  const handleTagAllImagesForCompletedSpuFolders = useCallback(async () => {
+    if (
+      !selectedFolder ||
+      tagAllImagesRunning ||
+      tagImagesRunning ||
+      bulkImageActionPending
+    ) {
+      return;
+    }
+
+    const targets = completedSpuPathsInSelectedRun;
+    if (targets.length === 0) {
+      setError("No completed SPU folders were found for this run.");
+      return;
+    }
+
+    clearSelectedFilesForImageActions();
+    setError(null);
+    setTagAllImagesRunning(true);
+
+    try {
+      let processedFolders = 0;
+      let totalFailures = 0;
+      const failureMessages: string[] = [];
+
+      for (const spuPath of targets) {
+        const pathParts = spuPath.split("/").filter(Boolean);
+        const spu = pathParts.length >= 2 ? pathParts[1] : "";
+        try {
+          const folderEntries = await listPathEntries(spuPath);
+          const imagePaths = folderEntries
+            .filter(
+              (entry) =>
+                entry.type === "file" &&
+                isImage(entry.name) &&
+                !isDigiTaggedImageName(entry.name)
+            )
+            .map((entry) => entry.path);
+          if (imagePaths.length === 0) continue;
+
+          processedFolders += 1;
+          const variantHints = spu ? await collectVariantHintsForSpu(spu) : [];
+          const { failures } = await runImageClassifierTaggingForFolder({
+            folderPath: spuPath,
+            imagePaths,
+            spu,
+            variantHints,
+          });
+          if (failures.length > 0) {
+            totalFailures += failures.length;
+            failureMessages.push(
+              `${spu || spuPath}: ${failures[0]}${failures.length > 1 ? "..." : ""}`
+            );
+          }
+        } catch (err) {
+          totalFailures += 1;
+          failureMessages.push(
+            `${spu || spuPath}: ${
+              err instanceof Error ? err.message : "Unable to tag images."
+            }`
+          );
+        }
+      }
+
+      if (
+        currentPath &&
+        currentPath.startsWith(`${selectedFolder}/`)
+      ) {
+        await refreshEntries(currentPath);
+      }
+
+      if (processedFolders === 0) {
+        setError("No direct images were found in completed SPU folders.");
+      } else if (totalFailures > 0) {
+        setError(
+          `Tag All Images finished with ${totalFailures} issue(s): ${failureMessages
+            .slice(0, 3)
+            .join("; ")}${failureMessages.length > 3 ? "..." : ""}`
+        );
+      }
+    } finally {
+      setTagAllImagesRunning(false);
+      clearSelectedFilesForImageActions();
+    }
+  }, [
+    bulkImageActionPending,
+    clearSelectedFilesForImageActions,
+    collectVariantHintsForSpu,
+    completedSpuPathsInSelectedRun,
+    currentPath,
+    isImage,
+    listPathEntries,
+    refreshEntries,
+    runImageClassifierTaggingForFolder,
+    selectedFolder,
+    tagAllImagesRunning,
+    tagImagesRunning,
+  ]);
+
+  const getContextMenuImageTagState = useCallback(
+    (tag: ImageTagOption): "none" | "some" | "all" => {
+      if (!contextMenu?.image) return "none";
+      const targets = resolveContextActionTargets(contextMenu.entry, {
+        imageOnly: true,
+      });
+      if (targets.length === 0) return "none";
+      const taggedCount = targets.reduce((count, sourceEntry) => {
+        const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
+        const tags = extractImageTagsFromFileName(entry.name);
+        return tags.includes(tag) ? count + 1 : count;
+      }, 0);
+      if (taggedCount === 0) return "none";
+      if (taggedCount === targets.length) return "all";
+      return "some";
+    },
+    [contextMenu, entryByPath, resolveContextActionTargets]
+  );
 
   const handleContextMenuAction = (action: string) => {
     if (!contextMenu) return;
     const { entry } = contextMenu;
+    if (action.startsWith("tag-image-toggle:")) {
+      const tag = action.slice("tag-image-toggle:".length).trim().toUpperCase();
+      if (
+        tag === "MAIN" ||
+        tag === "ENV" ||
+        tag === "VAR" ||
+        tag === "INF" ||
+        tag === "DIGI"
+      ) {
+        const targets = resolveContextActionTargets(entry, { imageOnly: true });
+        restoreSelectionAfterContextAction(targets);
+        void handleToggleImageTag(targets, tag);
+      }
+      return;
+    }
     setContextMenu(null);
     setContextMenuSubmenu(null);
     setContextMenuNestedSubmenu(null);
     if (action.startsWith("tag-image:")) {
       const tag = action.slice("tag-image:".length).trim().toUpperCase();
-      if (tag === "MAIN" || tag === "ENV" || tag === "VAR" || tag === "INF") {
+      if (
+        tag === "MAIN" ||
+        tag === "ENV" ||
+        tag === "VAR" ||
+        tag === "INF" ||
+        tag === "DIGI"
+      ) {
         const targets = resolveContextActionTargets(entry, { imageOnly: true });
         restoreSelectionAfterContextAction(targets);
         void handleApplyImageTag(targets, tag);
@@ -7862,12 +8395,83 @@ export default function DraftExplorerPage() {
     [normalizeFolderToken]
   );
 
+  const isOcrImagesFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+      if (normalized === "ocrchinese" || normalized === "ocr") return true;
+      return normalized.includes("ocr") && normalized.includes("chinese");
+    },
+    [normalizeFolderToken]
+  );
+
+  const isOtherImagesFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+      if (
+        normalized === "other" ||
+        normalized === "others" ||
+        normalized === "otherimage" ||
+        normalized === "otherimages" ||
+        normalized === "nonsquare"
+      ) {
+        return true;
+      }
+      return normalized.includes("otherimages");
+    },
+    [normalizeFolderToken]
+  );
+
+  const isRejectVariantMismatchFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+      if (normalized.includes("variantmismatch")) return true;
+      return (
+        normalized.includes("rejectvariant") && normalized.includes("mismatch")
+      );
+    },
+    [normalizeFolderToken]
+  );
+
+  const isLegacyOthersFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+
+      const rejectBadComposite =
+        normalized === "rejectbadcomposite" ||
+        (normalized.includes("reject") &&
+          normalized.includes("bad") &&
+          normalized.includes("composite"));
+
+      const rejectNotSuitable =
+        normalized === "rejectnotsuitable" ||
+        (normalized.includes("reject") && normalized.includes("notsuitable")) ||
+        (normalized.includes("reject") &&
+          normalized.includes("not") &&
+          normalized.includes("suitable"));
+
+      const rejectVariant =
+        (normalized === "rejectvariant" ||
+          (normalized.includes("reject") && normalized.includes("variant"))) &&
+        !isRejectVariantMismatchFolderName(name);
+
+      return rejectBadComposite || rejectNotSuitable || rejectVariant;
+    },
+    [isRejectVariantMismatchFolderName, normalizeFolderToken]
+  );
+
   const imageTabTargets = useMemo(() => {
     if (!currentPath) {
       return {
         mainPath: null as string | null,
         variantsPath: null as string | null,
-        active: null as "main" | "variants" | null,
+        ocrPath: null as string | null,
+        othersPath: null as string | null,
+        othersPaths: [] as string[],
+        active: null as ImageFolderTabValue | null,
       };
     }
 
@@ -7876,6 +8480,9 @@ export default function DraftExplorerPage() {
       return {
         mainPath: null,
         variantsPath: null,
+        ocrPath: null,
+        othersPath: null,
+        othersPaths: [] as string[],
         active: null,
       };
     }
@@ -7886,12 +8493,18 @@ export default function DraftExplorerPage() {
       return {
         mainPath: null,
         variantsPath: null,
+        ocrPath: null,
+        othersPath: null,
+        othersPaths: [] as string[],
         active: null,
       };
     }
 
     const mainPath = `${run}/${top}`;
     let variantsPath: string | null = null;
+    let ocrPath: string | null = null;
+    let othersPath: string | null = null;
+    let othersPaths: string[] = [];
 
     const findNodeByPath = (
       node: DraftFolderTreeNode,
@@ -7908,22 +8521,61 @@ export default function DraftExplorerPage() {
     const findVariantNode = (
       node: DraftFolderTreeNode
     ): DraftFolderTreeNode | null => {
-      const direct = node.children.find((child) =>
+      const findFirstMatchingNode = (
+        predicate: (child: DraftFolderTreeNode) => boolean
+      ) => {
+        const directMatch = node.children.find((child) => predicate(child));
+        if (directMatch) return directMatch;
+        const queue = [...node.children];
+        while (queue.length > 0) {
+          const next = queue.shift();
+          if (!next) break;
+          if (predicate(next)) return next;
+          queue.push(...next.children);
+        }
+        return null;
+      };
+
+      const direct = findFirstMatchingNode((child) =>
         isVariantImagesFolderName(child.name)
       );
       if (direct) return direct;
-      const fallback = node.children.find((child) =>
+      const fallback = findFirstMatchingNode((child) =>
         normalizeFolderToken(child.name).includes("variant")
       );
       if (fallback) return fallback;
+      return null;
+    };
+
+    const findOcrNode = (node: DraftFolderTreeNode): DraftFolderTreeNode | null => {
       const queue = [...node.children];
       while (queue.length > 0) {
         const next = queue.shift();
         if (!next) break;
-        if (isVariantImagesFolderName(next.name)) return next;
+        if (isOcrImagesFolderName(next.name)) return next;
         queue.push(...next.children);
       }
       return null;
+    };
+
+    const findOtherNodes = (
+      node: DraftFolderTreeNode
+    ): DraftFolderTreeNode[] => {
+      const hits: DraftFolderTreeNode[] = [];
+      const queue = [...node.children];
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (!next) break;
+        if (
+          !isRejectVariantMismatchFolderName(next.name) &&
+          (isOtherImagesFolderName(next.name) ||
+            isLegacyOthersFolderName(next.name))
+        ) {
+          hits.push(next);
+        }
+        queue.push(...next.children);
+      }
+      return hits;
     };
 
     if (folderTree) {
@@ -7931,23 +8583,50 @@ export default function DraftExplorerPage() {
       if (mainNode) {
         const variantNode = findVariantNode(mainNode);
         variantsPath = variantNode?.path ?? null;
+        const ocrNode = findOcrNode(mainNode);
+        ocrPath = ocrNode?.path ?? null;
+        const otherNodes = findOtherNodes(mainNode);
+        othersPaths = Array.from(
+          new Set(
+            otherNodes
+              .map((node) => String(node.path || "").trim())
+              .filter((value) => Boolean(value))
+          )
+        );
+        othersPath = othersPaths[0] ?? null;
       }
     }
 
-    let active: "main" | "variants" | null = null;
+    let active: ImageFolderTabValue | null = null;
     if (
       variantsPath &&
       (currentPath === variantsPath || currentPath.startsWith(`${variantsPath}/`))
     ) {
       active = "variants";
+    } else if (
+      ocrPath &&
+      (currentPath === ocrPath || currentPath.startsWith(`${ocrPath}/`))
+    ) {
+      active = "ocr";
+    } else if (
+      othersPaths.some(
+        (pathValue) =>
+          currentPath === pathValue || currentPath.startsWith(`${pathValue}/`)
+      )
+    ) {
+      active = "others";
     } else if (currentPath === mainPath || currentPath.startsWith(`${mainPath}/`)) {
       active = "main";
     }
 
-    return { mainPath, variantsPath, active };
+    return { mainPath, variantsPath, ocrPath, othersPath, othersPaths, active };
   }, [
     currentPath,
     folderTree,
+    isLegacyOthersFolderName,
+    isOcrImagesFolderName,
+    isOtherImagesFolderName,
+    isRejectVariantMismatchFolderName,
     isChunksDirectory,
     isVariantImagesFolderName,
     normalizeFolderToken,
@@ -8092,6 +8771,10 @@ export default function DraftExplorerPage() {
   const previewPendingAi = previewPath
     ? pendingAiEditsByOriginal[previewPath] ?? null
     : null;
+  const previewDisplayPath = previewPendingAi?.pendingPath ?? previewPath;
+  const previewDisplayModifiedAt =
+    previewPendingAi?.updatedAt ??
+    (previewPath ? entryByPath.get(previewPath)?.modifiedAt ?? null : null);
   const previewRuntimeJob = previewPath ? aiEditJobsByPath[previewPath] ?? null : null;
   const previewNav = useMemo(() => {
     if (!previewPath) {
@@ -8120,9 +8803,12 @@ export default function DraftExplorerPage() {
     const candidates = [previewNav.nextPath, previewNav.next2Path].filter(Boolean) as string[];
     candidates.forEach((pathValue) => {
       const entry = entryByPath.get(pathValue);
+      const pendingAi = pendingAiEditsByOriginal[pathValue] ?? null;
+      const displayPath = pendingAi?.pendingPath ?? pathValue;
+      const displayModifiedAt = pendingAi?.updatedAt ?? entry?.modifiedAt;
       const img = new Image();
       img.decoding = "async";
-      img.src = buildDraftDownloadUrl(pathValue, entry?.modifiedAt);
+      img.src = buildDraftDownloadUrl(displayPath, displayModifiedAt);
       // Best-effort decode to make next/next+1 swaps feel instantaneous.
       if (typeof img.decode === "function") {
         void img.decode().catch(() => undefined);
@@ -8131,6 +8817,7 @@ export default function DraftExplorerPage() {
   }, [
     buildDraftDownloadUrl,
     entryByPath,
+    pendingAiEditsByOriginal,
     previewNav.next2Path,
     previewNav.nextPath,
     previewPath,
@@ -10749,6 +11436,38 @@ export default function DraftExplorerPage() {
                 </div>
               </PopoverSurface>
             </Popover>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance="outline"
+                  disabled={
+                    !selectedFolder ||
+                    tagAllImagesRunning ||
+                    tagImagesRunning ||
+                    bulkImageActionPending
+                  }
+                  className={styles.explorerWhiteButton}
+                >
+                  {tagAllImagesRunning ? "Working..." : "Actions"}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList className={styles.compactMenuList}>
+                  <MenuItem
+                    disabled={
+                      !selectedFolder ||
+                      completedSpuPathsInSelectedRun.length === 0 ||
+                      tagAllImagesRunning ||
+                      tagImagesRunning ||
+                      bulkImageActionPending
+                    }
+                    onClick={() => void handleTagAllImagesForCompletedSpuFolders()}
+                  >
+                    Tag All Images
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
             <Button
               appearance="outline"
               onClick={() => {
@@ -10805,6 +11524,14 @@ export default function DraftExplorerPage() {
                 <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
               </svg>
             </Button>
+            <Button
+              appearance="outline"
+              onClick={() => setFolderTreeHidden((prev) => !prev)}
+              className={styles.explorerWhiteButton}
+              disabled={!USE_NEW_FILE_EXPLORER}
+            >
+              {folderTreeHidden ? "Show folders" : "Hide folders"}
+            </Button>
           </div>
           {!USE_NEW_FILE_EXPLORER ? (
             <div className={styles.explorerControlsRight}>
@@ -10823,7 +11550,13 @@ export default function DraftExplorerPage() {
         </div>
 
         {USE_NEW_FILE_EXPLORER ? (
-          <div className={styles.explorerLayout}>
+          <div
+            className={mergeClasses(
+              styles.explorerLayout,
+              folderTreeHidden ? styles.explorerLayoutSingleColumn : undefined
+            )}
+          >
+            {!folderTreeHidden ? (
             <div
               className={styles.folderPane}
               onDragOver={(event) => {
@@ -10942,49 +11675,49 @@ export default function DraftExplorerPage() {
                 </Button>
               </div>
             </div>
+            ) : null}
 
             <div className={styles.contentColumn}>
             <div className={styles.filePane}>
               <div className={styles.imageToolbar}>
                 <div className={styles.imageToolbarTabs}>
-                  <Button
+                  <TabList
                     size="small"
-                    appearance={
-                      imageTabTargets.active === "main" ? "primary" : "outline"
-                    }
-                    disabled={!imageTabTargets.mainPath || movingEntry}
-                    className={
-                      imageTabTargets.active === "main"
-                        ? undefined
-                        : styles.explorerWhiteButton
-                    }
-                    onClick={() => {
-                      if (!imageTabTargets.mainPath) return;
-                      setCurrentPath(imageTabTargets.mainPath);
+                    selectedValue={imageTabTargets.active ?? undefined}
+                    onTabSelect={(_, data) => {
+                      const value = data.value as ImageFolderTabValue;
+                      const nextPath =
+                        value === "main"
+                          ? imageTabTargets.mainPath
+                          : value === "variants"
+                            ? imageTabTargets.variantsPath
+                            : value === "ocr"
+                              ? imageTabTargets.ocrPath
+                              : value === "others"
+                                ? imageTabTargets.othersPaths[0] ?? null
+                                : null;
+                      if (nextPath) setCurrentPath(nextPath);
                     }}
                   >
-                    Main
-                  </Button>
-                  <Button
-                    size="small"
-                    appearance={
-                      imageTabTargets.active === "variants"
-                        ? "primary"
-                        : "outline"
-                    }
-                    disabled={!imageTabTargets.variantsPath || movingEntry}
-                    className={
-                      imageTabTargets.active === "variants"
-                        ? undefined
-                        : styles.explorerWhiteButton
-                    }
-                    onClick={() => {
-                      if (!imageTabTargets.variantsPath) return;
-                      setCurrentPath(imageTabTargets.variantsPath);
-                    }}
-                  >
-                    Variants
-                  </Button>
+                    <Tab value="main" disabled={!imageTabTargets.mainPath || movingEntry}>
+                      Main
+                    </Tab>
+                    <Tab
+                      value="variants"
+                      disabled={!imageTabTargets.variantsPath || movingEntry}
+                    >
+                      Variants
+                    </Tab>
+                    <Tab value="ocr" disabled={!imageTabTargets.ocrPath || movingEntry}>
+                      OCR
+                    </Tab>
+                    <Tab
+                      value="others"
+                      disabled={imageTabTargets.othersPaths.length === 0 || movingEntry}
+                    >
+                      Others
+                    </Tab>
+                  </TabList>
                 </div>
 
                 <div className={styles.imageToolbarRight}>
@@ -11299,26 +12032,31 @@ export default function DraftExplorerPage() {
                   </MenuPopover>
                   </Menu>
                   <Button
-                    size="small"
-                    appearance={tagImagesRunning ? "primary" : "outline"}
+                    appearance={tagImagesRunningInCurrentPath ? "primary" : "outline"}
                     disabled={
                       imageEntries.length === 0 ||
                       bulkImageActionPending ||
                       tagImagesRunning ||
+                      tagAllImagesRunning ||
                       !currentPath
                     }
-                    className={tagImagesRunning ? undefined : styles.explorerWhiteButton}
+                    className={mergeClasses(
+                      styles.imageToolbarActions,
+                      tagImagesRunningInCurrentPath
+                        ? undefined
+                        : styles.explorerWhiteButton
+                    )}
                     onClick={() => void handleRunImageClassifierTagging()}
                   >
-                    {tagImagesRunning ? "Tagging..." : "Tag Images"}
+                    {tagImagesRunningInCurrentPath ? "Tagging..." : "Tag Images"}
                   </Button>
                   <Button
-                    size="small"
                     appearance={currentSpuMarkedCompleted ? "primary" : "outline"}
                     disabled={!currentSpuMainPath}
-                    className={
+                    className={mergeClasses(
+                      styles.imageToolbarActions,
                       currentSpuMarkedCompleted ? undefined : styles.explorerWhiteButton
-                    }
+                    )}
                     onClick={handleToggleCurrentSpuCompleted}
                   >
                     {currentSpuMarkedCompleted ? "Uncomplete" : "Completed"}
@@ -11482,7 +12220,9 @@ export default function DraftExplorerPage() {
                     <div
                       className={mergeClasses(
                         styles.dualGrid,
-                        tagImagesRunning ? styles.dualGridTagging : undefined
+                        tagImagesRunningInCurrentPath
+                          ? styles.dualGridTagging
+                          : undefined
                       )}
                       aria-busy={imageOrderPersisting}
                       style={{
@@ -11523,6 +12263,8 @@ export default function DraftExplorerPage() {
                     >
                       {imageEntries.map((entry) => {
                         const pendingAi = pendingAiEditsByOriginal[entry.path] ?? null;
+                        const displayPath = pendingAi?.pendingPath ?? entry.path;
+                        const displayModifiedAt = pendingAi?.updatedAt ?? entry.modifiedAt;
                         const runtimeJob = aiEditJobsByPath[entry.path] ?? null;
                         const reloadBusy = reloadingImagePaths.has(entry.path);
                         const busy = Boolean(runtimeJob) || reloadBusy;
@@ -11542,7 +12284,7 @@ export default function DraftExplorerPage() {
                                 : styles.mediaMetaQualityBad;
                         return (
                           <div
-                            key={entry.path}
+                            key={buildStableImageCardKey(entry)}
                             className={mergeClasses(
                               styles.mediaCard,
                               imageReorderDropPath === entry.path
@@ -11657,6 +12399,8 @@ export default function DraftExplorerPage() {
                                             ? styles.mediaTagEnv
                                             : tag === "VAR"
                                               ? styles.mediaTagVar
+                                              : tag === "DIGI"
+                                                ? styles.mediaTagDigi
                                               : styles.mediaTagInf
                                       )}
                                     >
@@ -11730,7 +12474,10 @@ export default function DraftExplorerPage() {
                                 </svg>
                               </button>
                               <img
-                                src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                                src={buildDraftDownloadUrl(
+                                  displayPath,
+                                  displayModifiedAt
+                                )}
                                 alt={entry.name}
                                 className={mergeClasses(
                                   styles.thumbImage,
@@ -11836,11 +12583,15 @@ export default function DraftExplorerPage() {
                     </div>
                   )}
 
-                {entriesLoading || tagImagesRunning ? (
+                {entriesLoading || tagImagesRunningInCurrentPath ? (
                   <div className={styles.entriesContentOverlay}>
                     <div className={styles.mediaBusyContent}>
                       <Spinner size="tiny" />
-                      <span>{tagImagesRunning ? "Classifying images..." : "Loading"}</span>
+                      <span>
+                        {tagImagesRunningInCurrentPath
+                          ? "Classifying images..."
+                          : "Loading"}
+                      </span>
                     </div>
                   </div>
                 ) : null}
@@ -12408,6 +13159,7 @@ export default function DraftExplorerPage() {
 	            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
 	            ref={contextMenuRef}
 	            onContextMenu={(event) => event.preventDefault()}
+              onClick={(event) => event.stopPropagation()}
 	          >
 	            {contextMenu.image ? (
 	              <div
@@ -12439,35 +13191,53 @@ export default function DraftExplorerPage() {
 	                        : undefined
 	                    )}
 	                  >
-	                    <button
-	                      type="button"
-	                      className={styles.contextMenuButton}
-	                      onClick={() => handleContextMenuAction("tag-image:MAIN")}
-                    >
-                      <span>MAIN</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.contextMenuButton}
-                      onClick={() => handleContextMenuAction("tag-image:ENV")}
-                    >
-                      <span>ENV</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.contextMenuButton}
-                      onClick={() => handleContextMenuAction("tag-image:VAR")}
-                    >
-                      <span>VAR</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.contextMenuButton}
-                      onClick={() => handleContextMenuAction("tag-image:INF")}
-                    >
-                      <span>INF</span>
-                    </button>
-                  </div>
+	                    {TAG_IMAGE_OPTIONS.map((tag) => {
+	                      const state = getContextMenuImageTagState(tag);
+	                      return (
+	                        <button
+	                          type="button"
+	                          className={styles.contextMenuButton}
+	                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleContextMenuAction(`tag-image-toggle:${tag}`);
+                          }}
+	                          key={`tag-toggle-${tag}`}
+	                        >
+                          <span className={styles.contextMenuTagLabel}>{tag}</span>
+                          <span
+                            className={mergeClasses(
+                              styles.contextMenuTagCheckbox,
+                              state === "all"
+                                ? styles.contextMenuTagCheckboxChecked
+                                : undefined,
+                              state === "some"
+                                ? styles.contextMenuTagCheckboxMixed
+                                : undefined
+                            )}
+                            aria-hidden="true"
+                          >
+                            {state === "all" ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 12 12"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={styles.contextMenuTagCheckboxIcon}
+                              >
+                                <path d="M2.4 6.4l2.2 2.2l5 -5" />
+                              </svg>
+                            ) : state === "some" ? (
+                              <span className={styles.contextMenuTagCheckboxBar} />
+                            ) : null}
+                          </span>
+	                        </button>
+	                      );
+	                    })}
+	                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -13089,7 +13859,22 @@ export default function DraftExplorerPage() {
                 <div className={styles.aiCompareGrid}>
                   <div className={styles.aiComparePanel}>
                     <Text size={300} className={styles.aiCompareLabel}>
-                      Original
+                      AI Generated (Primary)
+                    </Text>
+                    <div className={styles.aiCompareImageFrame}>
+                      <img
+                        src={buildDraftDownloadUrl(
+                          aiReviewRecord.pendingPath,
+                          aiReviewRecord.updatedAt
+                        )}
+                        alt="AI generated"
+                        className={styles.aiCompareImage}
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.aiComparePanel}>
+                    <Text size={300} className={styles.aiCompareLabel}>
+                      Original (Secondary)
                     </Text>
                     <div className={styles.aiCompareImageFrame}>
                       <img
@@ -13099,21 +13884,6 @@ export default function DraftExplorerPage() {
                             aiReviewRecord.updatedAt
                         )}
                         alt="Original"
-                        className={styles.aiCompareImage}
-                      />
-                    </div>
-                  </div>
-                  <div className={styles.aiComparePanel}>
-                    <Text size={300} className={styles.aiCompareLabel}>
-                      AI Generated
-                    </Text>
-                    <div className={styles.aiCompareImageFrame}>
-                      <img
-                        src={buildDraftDownloadUrl(
-                          aiReviewRecord.pendingPath,
-                          aiReviewRecord.updatedAt
-                        )}
-                        alt="AI generated"
                         className={styles.aiCompareImage}
                       />
                     </div>
@@ -13282,13 +14052,13 @@ export default function DraftExplorerPage() {
                   </button>
                 ) : null}
 
-                {previewPath ? (
+                {previewDisplayPath ? (
                   <img
                     src={buildDraftDownloadUrl(
-                      previewPath,
-                      entryByPath.get(previewPath)?.modifiedAt
+                      previewDisplayPath,
+                      previewDisplayModifiedAt
                     )}
-                    alt={previewPath}
+                    alt={previewDisplayPath}
                     data-preview-path={previewPath}
                     className={mergeClasses(
                       styles.previewImageLarge,

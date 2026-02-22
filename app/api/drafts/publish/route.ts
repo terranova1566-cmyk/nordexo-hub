@@ -8,6 +8,11 @@ import {
   normalizeImageNamesInFolder,
   validateImageFolder,
 } from "@/lib/image-names";
+import { DRAFT_ROOT } from "@/lib/drafts";
+import {
+  listPendingAiEdits,
+  resolvePendingAiEdit,
+} from "@/lib/draft-ai-edits";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
 import {
   getProductionRefsBySpus,
@@ -75,7 +80,7 @@ const spawnTaxonomyCategorizerForSpus = async (spus: string[]) => {
 
   // Avoid extremely long command lines by using a temp file when needed.
   const joined = uniq.join(",");
-  let args = [...argsBase];
+  const args = [...argsBase];
   if (joined.length > 6000 || uniq.length > 400) {
     const filePath = `/tmp/spu_list_${Date.now()}_${Math.random().toString(16).slice(2)}.txt`;
     await fs.writeFile(filePath, `${uniq.join("\n")}\n`, "utf8");
@@ -315,6 +320,46 @@ const resolveDraftFolder = (value: string) => {
   return abs;
 };
 
+const toDraftRelativeFolder = (folderAbsPath: string) => {
+  const normalized = path.resolve(folderAbsPath);
+  const normalizedRoot = path.resolve(DRAFT_ROOT);
+  if (normalized === normalizedRoot) return "";
+  if (!normalized.startsWith(`${normalizedRoot}${path.sep}`)) return null;
+  return normalized.slice(normalizedRoot.length + 1).replace(/\\/g, "/");
+};
+
+const autoPromotePendingAiEdits = async (folderAbsPath: string) => {
+  const relativeFolder = toDraftRelativeFolder(folderAbsPath);
+  if (relativeFolder == null) {
+    return { resolvedCount: 0, errors: [] as string[] };
+  }
+
+  const pending = listPendingAiEdits(relativeFolder);
+  if (pending.length === 0) {
+    return { resolvedCount: 0, errors: [] as string[] };
+  }
+
+  let resolvedCount = 0;
+  const errors: string[] = [];
+  for (const record of pending) {
+    try {
+      await resolvePendingAiEdit({
+        originalPath: record.originalPath,
+        decision: "replace_with_ai",
+        requestedBy: null,
+      });
+      resolvedCount += 1;
+    } catch (err) {
+      errors.push(
+        `${path.basename(record.originalPath)}: ${
+          err instanceof Error ? err.message : "unable to auto-apply AI edit"
+        }`
+      );
+    }
+  }
+  return { resolvedCount, errors };
+};
+
 const moveFolder = async (src: string, dest: string) => {
   await fs.rm(dest, { recursive: true, force: true });
   try {
@@ -491,6 +536,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const runFolders = new Map<string, string[]>();
   const archivedRuns = new Map<string, string>();
+  let autoPromotedAiEdits = 0;
   const imageIssues: Array<{
     spu: string;
     folder: string;
@@ -519,6 +565,18 @@ export async function POST(request: Request) {
       continue;
     }
     try {
+      const aiPromotion = await autoPromotePendingAiEdits(abs);
+      autoPromotedAiEdits += aiPromotion.resolvedCount;
+      if (aiPromotion.errors.length > 0) {
+        imageIssues.push({
+          spu: row.draft_spu,
+          folder: abs,
+          error: `Failed to auto-apply pending AI edit(s): ${aiPromotion.errors
+            .slice(0, 3)
+            .join("; ")}${aiPromotion.errors.length > 3 ? "..." : ""}`,
+        });
+        continue;
+      }
       await normalizeImageNamesInFolder(abs, row.draft_spu);
       const validation = await validateImageFolder(abs, row.draft_spu);
       if (validation.count > 0) {
@@ -862,6 +920,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     spus: spuList,
+    auto_promoted_ai_edits: autoPromotedAiEdits,
     staged: { spus: stgSpuRows.length, skus: stgSkuRows.length },
     moved: moveResults,
     archived: archiveResults,

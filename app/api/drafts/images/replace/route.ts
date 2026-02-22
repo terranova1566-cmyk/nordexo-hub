@@ -6,6 +6,7 @@ import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
 import { convertBufferToJpeg } from "@/lib/image-jpeg";
 import { runAutoCenterWhiteInPlace } from "@/lib/draft-ai-edits";
 import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
+import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
 
 export const runtime = "nodejs";
 
@@ -172,6 +173,14 @@ export async function POST(request: Request) {
   }
 
   const finalStat = fs.statSync(finalAbsolute);
+  let pixelQualityScore: number | null = null;
+  let scoreRefreshError: string | null = null;
+  try {
+    const refreshed = await refreshDraftImageScoreByAbsolutePath(finalAbsolute);
+    pixelQualityScore = refreshed.pixelQualityScore;
+  } catch (err) {
+    scoreRefreshError = err instanceof Error ? err.message : "score refresh failed";
+  }
   return NextResponse.json({
     ok: true,
     oldPath: targetRelative,
@@ -179,5 +188,7 @@ export async function POST(request: Request) {
     name: path.basename(finalAbsolute),
     size: finalStat.size,
     modifiedAt: nowIso,
+    pixelQualityScore,
+    scoreRefreshError,
   });
 }

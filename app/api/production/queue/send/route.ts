@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
-import crypto from "node:crypto";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { EXTRACTOR_UPLOAD_DIR } from "@/lib/1688-extractor";
-import {
-  BULK_JOB_UPLOAD_DIR,
-  type BulkJob,
-  countItems,
-  resolveWorkerCount,
-  upsertJob,
-} from "@/lib/bulk-jobs";
 import {
   collectProductionRefsFromPayload,
   loadJsonFile,
@@ -372,7 +364,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const itemCount = countItems(mergedItems);
+  const itemCount = mergedItems.length;
   if (itemCount === 0) {
     return NextResponse.json({ error: "Merged payload has no items." }, { status: 400 });
   }
@@ -385,7 +377,7 @@ export async function POST(request: Request) {
   try {
     await generateQueueKeywordsForFile(fileName, {
       force: true,
-      mode: "fast",
+      mode: "full",
     });
   } catch (error) {
     console.error("Queue keyword precompute failed:", error);
@@ -393,25 +385,6 @@ export async function POST(request: Request) {
   void warmQueueImageCacheForFile(fileName).catch((error) => {
     console.error("Queue image cache warm failed:", error);
   });
-
-  const workerCount = resolveWorkerCount(itemCount, null);
-  const jobId = crypto.randomUUID();
-  await fs.mkdir(BULK_JOB_UPLOAD_DIR, { recursive: true });
-  const inputPath = path.join(BULK_JOB_UPLOAD_DIR, `${jobId}.json`);
-  await fs.writeFile(inputPath, JSON.stringify(mergedItems, null, 2), "utf8");
-
-  const job: BulkJob = {
-    jobId,
-    status: "queued",
-    inputPath,
-    inputName: fileName,
-    itemCount,
-    workerCount,
-    createdAt: now.toISOString(),
-    summary: null,
-    error: null,
-  };
-  upsertJob(job);
 
   const refs = collectProductionRefsFromPayload(mergedItems);
   if (refs.length > 0) {
@@ -422,7 +395,7 @@ export async function POST(request: Request) {
         {
           status: "queued_for_production",
           fileName,
-          jobId,
+          jobId: null,
         }
       );
     } catch (error) {
@@ -437,6 +410,7 @@ export async function POST(request: Request) {
     selected_count: queueItems.length,
     missing_count: missingFiles.length,
     missing: missingFiles,
-    job,
+    queued_only: true,
+    job: null,
   });
 }

@@ -50,7 +50,7 @@ export async function GET(
 
   try {
     const result = await generateQueueKeywordsForFile(safeName, {
-      mode: "fast",
+      mode: "full",
     });
     return NextResponse.json(
       {

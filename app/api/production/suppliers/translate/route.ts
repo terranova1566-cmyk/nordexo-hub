@@ -1,8 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { PARTNER_SUGGESTION_PROVIDER } from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
+const DIGIDEAL_PROVIDER = "digideal";
+const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
+  PARTNER_SUGGESTION_PROVIDER || ""
+).trim().toLowerCase();
+const isSupportedSupplierProvider = (provider: string) => {
+  const normalized = String(provider || "").trim().toLowerCase();
+  return (
+    normalized === DIGIDEAL_PROVIDER ||
+    normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
+  );
+};
 
 type Offer = {
   offerId?: string | number | null;
@@ -102,9 +114,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
-  if (provider.toLowerCase() === "letsdeal") {
+  if (!isSupportedSupplierProvider(provider)) {
     return NextResponse.json(
-      { error: "Supplier fetching is disabled for LetsDeal." },
+      {
+        error:
+          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+      },
       { status: 409 }
     );
   }
