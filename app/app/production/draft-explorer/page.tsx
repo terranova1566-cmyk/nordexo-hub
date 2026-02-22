@@ -425,8 +425,8 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
   },
   spuPickerTrigger: {
-    minWidth: "230px",
-    maxWidth: "340px",
+    minWidth: "120px",
+    maxWidth: "175px",
     justifyContent: "space-between",
     paddingLeft: "12px",
     paddingRight: "10px",
@@ -434,8 +434,8 @@ const useStyles = makeStyles({
   spuPickerSurface: {
     padding: "6px",
     borderRadius: "12px",
-    minWidth: "280px",
-    maxWidth: "420px",
+    minWidth: "210px",
+    maxWidth: "310px",
     maxHeight: "520px",
     overflow: "auto",
   },
@@ -453,13 +453,29 @@ const useStyles = makeStyles({
   spuPickerRowActive: {
     backgroundColor: tokens.colorBrandBackground2,
   },
+  spuPickerRowCompleted: {
+    backgroundColor: "#e7f5e8",
+    ":hover": {
+      backgroundColor: "#d9efdb",
+    },
+  },
   spuPickerRowName: {
+    flex: "1 1 auto",
     overflow: "hidden",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
     fontSize: tokens.fontSizeBase200,
     lineHeight: tokens.lineHeightBase200,
     minWidth: 0,
+  },
+  spuPickerRowCheck: {
+    width: "16px",
+    height: "16px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#107c10",
+    flexShrink: 0,
   },
   runPreviewSurface: {
     width: "820px",
@@ -11775,12 +11791,14 @@ export default function DraftExplorerPage() {
                 ) : (
                   runSpuOptions.map((option) => {
                     const active = option.path === selectedSpuPathInRun;
+                    const isCompleted = completedSpuFolders.has(option.path);
                     return (
                       <div
                         key={option.path}
                         className={mergeClasses(
                           styles.spuPickerRow,
-                          active ? styles.spuPickerRowActive : undefined
+                          active ? styles.spuPickerRowActive : undefined,
+                          isCompleted ? styles.spuPickerRowCompleted : undefined
                         )}
                         onClick={() => handleSelectRunSpu(option.path)}
                         role="button"
@@ -11793,6 +11811,24 @@ export default function DraftExplorerPage() {
                         }}
                       >
                         <span className={styles.spuPickerRowName}>{option.name}</span>
+                        {isCompleted ? (
+                          <span className={styles.spuPickerRowCheck} aria-hidden="true">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.iconSvg}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M5 12l5 5l9 -9" />
+                            </svg>
+                          </span>
+                        ) : null}
                       </div>
                     );
                   })
@@ -11833,35 +11869,6 @@ export default function DraftExplorerPage() {
             </Menu>
             <Button
               appearance="outline"
-              onClick={() => {
-                if (!currentPath) return;
-                const parts = currentPath.split("/");
-                if (parts.length <= 1) return;
-                parts.pop();
-                setCurrentPath(parts.join("/"));
-              }}
-              disabled={!currentPath || currentPath === selectedFolder}
-              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-              aria-label={t("bulkProcessing.explorer.up")}
-              title={t("bulkProcessing.explorer.up")}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.iconSvg}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M18 18h-6a3 3 0 0 1 -3 -3v-10l-4 4m8 0l-4 -4" />
-              </svg>
-            </Button>
-            <Button
-              appearance="outline"
               onClick={handleDeleteFolder}
               disabled={!selectedFolder || deleteFolderPending}
               className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
@@ -11890,10 +11897,40 @@ export default function DraftExplorerPage() {
             <Button
               appearance="outline"
               onClick={() => setFolderTreeHidden((prev) => !prev)}
-              className={styles.explorerWhiteButton}
+              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
               disabled={!USE_NEW_FILE_EXPLORER}
+              aria-label={folderTreeHidden ? "Show folders" : "Hide folders"}
+              title={folderTreeHidden ? "Show folders" : "Hide folders"}
             >
-              {folderTreeHidden ? "Show folders" : "Hide folders"}
+              {folderTreeHidden ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M12 2a1 1 0 0 1 .707 .293l1.708 1.707h4.585a3 3 0 0 1 2.995 2.824l.005 .176v7a3 3 0 0 1 -3 3h-1v1a3 3 0 0 1 -3 3h-10a3 3 0 0 1 -3 -3v-9a3 3 0 0 1 3 -3h1v-1a3 3 0 0 1 3 -3zm-6 6h-1a1 1 0 0 0 -1 1v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1 -1v-1h-7a3 3 0 0 1 -3 -3z" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M17 17h-8a2 2 0 0 1 -2 -2v-8m1.177 -2.823c.251 -.114 .53 -.177 .823 -.177h3l2 2h5a2 2 0 0 1 2 2v7c0 .55 -.223 1.05 -.583 1.411" />
+                  <path d="M17 17v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h2" />
+                  <path d="M3 3l18 18" />
+                </svg>
+              )}
             </Button>
           </div>
           <div className={styles.explorerControlsRight}>
