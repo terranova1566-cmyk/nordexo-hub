@@ -276,6 +276,28 @@ const useStyles = makeStyles({
     width: "560px",
     maxWidth: "100%",
   },
+  draftToolbarRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "12px",
+    alignItems: "center",
+  },
+  draftToolbarTabs: {
+    flexShrink: 0,
+  },
+  draftSearchOffset: {
+    marginLeft: "40px",
+    flex: "1 1 320px",
+    minWidth: "220px",
+    maxWidth: "560px",
+  },
+  draftToolbarActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    alignItems: "center",
+    marginLeft: "auto",
+  },
   explorerControls: {
     display: "flex",
     flexWrap: "wrap",
@@ -10215,20 +10237,23 @@ export default function DraftExplorerPage() {
       </div>
 
       <Card className={styles.tableCard}>
-        <div className={styles.draftHeader}>
-          <Text size={500} weight="semibold">
-            {t("draftExplorer.tableTitle")}
-          </Text>
-        </div>
-        <div className={styles.explorerControlsRow}>
+        <div className={styles.draftToolbarRow}>
+          <TabList
+            selectedValue={draftTab}
+            onTabSelect={(_, data) => setDraftTab(data.value as "spu" | "sku")}
+            className={styles.draftToolbarTabs}
+          >
+            <Tab value="spu">{t("draftExplorer.spuTab")}</Tab>
+            <Tab value="sku">{t("draftExplorer.skuTab")}</Tab>
+          </TabList>
           <Input
             aria-label={t("draftExplorer.searchLabel")}
             value={searchInput}
             onChange={(_, data) => setSearchInput(data.value)}
             placeholder={t("draftExplorer.searchPlaceholder")}
-            className={styles.draftSearch}
+            className={mergeClasses(styles.draftSearch, styles.draftSearchOffset)}
           />
-          <div className={styles.explorerControlsRight}>
+          <div className={styles.draftToolbarActions}>
             <Button
               appearance={skuReady ? "outline" : "primary"}
               onClick={handleGenerateSkus}
@@ -10303,14 +10328,6 @@ export default function DraftExplorerPage() {
             </Button>
           </div>
         </div>
-
-        <TabList
-          selectedValue={draftTab}
-          onTabSelect={(_, data) => setDraftTab(data.value as "spu" | "sku")}
-        >
-          <Tab value="spu">{t("draftExplorer.spuTab")}</Tab>
-          <Tab value="sku">{t("draftExplorer.skuTab")}</Tab>
-        </TabList>
 
         {draftError ? (
           <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
@@ -11701,17 +11718,9 @@ export default function DraftExplorerPage() {
 	            </div>
 	          </DialogBody>
 	        </DialogSurface>
-	      </Dialog>
+      </Dialog>
 
       <Card className={styles.logCard}>
-        <div className={styles.explorerHeader}>
-          <div>
-            <Text size={500} weight="semibold">
-              {t("bulkProcessing.explorer.title")}
-            </Text>
-          </div>
-        </div>
-
         {error ? (
           <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
             {error}
