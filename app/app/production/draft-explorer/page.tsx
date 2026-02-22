@@ -2836,6 +2836,7 @@ export default function DraftExplorerPage() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [spuRows, setSpuRows] = useState<DraftSpuRow[]>([]);
   const [skuRows, setSkuRows] = useState<DraftSkuRow[]>([]);
+  const [draftTableShowAll, setDraftTableShowAll] = useState(false);
   const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -2896,6 +2897,7 @@ export default function DraftExplorerPage() {
   const initialOpenSpuHandledRef = useRef(false);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
   const currentPathRef = useRef("");
+  const previousSelectedSpuPathForDraftTableRef = useRef("");
 
   const tagImagesRunning = tagImagesRunningPaths.size > 0;
   const tagImagesRunningInCurrentPath = useMemo(() => {
@@ -3199,6 +3201,7 @@ export default function DraftExplorerPage() {
     setSelectedSpus(new Set());
     setSelectedSkus(new Set());
     setExpandedSkus(new Set());
+    setDraftTableShowAll(false);
   }, [selectedFolder]);
 
   useEffect(() => {
@@ -3235,28 +3238,114 @@ export default function DraftExplorerPage() {
     return () => clearTimeout(handle);
   }, [skuStatus, skuMessage]);
 
+  const currentImageSpuForDraftFilter = useMemo(() => {
+    const run = String(selectedFolder || "").trim();
+    const pathValue = String(currentPath || "").trim();
+    if (!run || !pathValue) return "";
+    const parts = pathValue.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    if (parts[0] !== run) return "";
+    const candidate = String(parts[1] || "").trim();
+    if (!candidate) return "";
+    const normalized = candidate.toLowerCase().replace(/[\s_-]+/g, "");
+    if (normalized === "chunks") return "";
+    return candidate;
+  }, [currentPath, selectedFolder]);
+
+  const draftTableSpuFilterActive =
+    Boolean(currentImageSpuForDraftFilter) && !draftTableShowAll;
+
+  const visibleSpuRows = useMemo(() => {
+    if (!draftTableSpuFilterActive) return spuRows;
+    const filterSpu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!filterSpu) return spuRows;
+    return spuRows.filter(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === filterSpu
+    );
+  }, [currentImageSpuForDraftFilter, draftTableSpuFilterActive, spuRows]);
+
+  const visibleSkuRows = useMemo(() => {
+    if (!draftTableSpuFilterActive) return skuRows;
+    const filterSpu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!filterSpu) return skuRows;
+    return skuRows.filter(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === filterSpu
+    );
+  }, [currentImageSpuForDraftFilter, draftTableSpuFilterActive, skuRows]);
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleSpuRows.map((row) => row.id));
+    setSelectedSpus((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [visibleSpuRows]);
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleSkuRows.map((row) => row.id));
+    setSelectedSkus((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setExpandedSkus((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [visibleSkuRows]);
+
   const allSpuSelected = useMemo(
-    () => spuRows.length > 0 && spuRows.every((row) => selectedSpus.has(row.id)),
-    [spuRows, selectedSpus]
+    () =>
+      visibleSpuRows.length > 0 &&
+      visibleSpuRows.every((row) => selectedSpus.has(row.id)),
+    [selectedSpus, visibleSpuRows]
   );
 
   const someSpuSelected = useMemo(
-    () => spuRows.some((row) => selectedSpus.has(row.id)),
-    [spuRows, selectedSpus]
+    () => visibleSpuRows.some((row) => selectedSpus.has(row.id)),
+    [selectedSpus, visibleSpuRows]
   );
 
   const allSkuSelected = useMemo(
-    () => skuRows.length > 0 && skuRows.every((row) => selectedSkus.has(row.id)),
-    [skuRows, selectedSkus]
+    () =>
+      visibleSkuRows.length > 0 &&
+      visibleSkuRows.every((row) => selectedSkus.has(row.id)),
+    [selectedSkus, visibleSkuRows]
   );
 
   const someSkuSelected = useMemo(
-    () => skuRows.some((row) => selectedSkus.has(row.id)),
-    [skuRows, selectedSkus]
+    () => visibleSkuRows.some((row) => selectedSkus.has(row.id)),
+    [selectedSkus, visibleSkuRows]
   );
 
   const spuColumnStyles = useMemo(() => {
-    const sample = spuRows;
+    const sample = visibleSpuRows;
     const makeStyle = (
       headerText: string,
       values: unknown[],
@@ -3341,10 +3430,10 @@ export default function DraftExplorerPage() {
         { minPx: 92, maxPx: 130, headerAsMax: true }
       ),
     };
-  }, [spuRows, t]);
+  }, [t, visibleSpuRows]);
 
   const skuColumnStyles = useMemo(() => {
-    const sample = skuRows;
+    const sample = visibleSkuRows;
     const makeStyle = (
       headerText: string,
       values: unknown[],
@@ -3436,7 +3525,7 @@ export default function DraftExplorerPage() {
         { minPx: 106, maxPx: 170 }
       ),
     };
-  }, [skuRows, t]);
+  }, [t, visibleSkuRows]);
 
   const skuHeaderColumns = useMemo(
     () => [
@@ -3509,7 +3598,7 @@ export default function DraftExplorerPage() {
       setSelectedSpus(new Set());
       return;
     }
-    setSelectedSpus(new Set(spuRows.map((row) => row.id)));
+    setSelectedSpus(new Set(visibleSpuRows.map((row) => row.id)));
   };
 
   const toggleSelectSpu = (id: string) => {
@@ -3529,7 +3618,7 @@ export default function DraftExplorerPage() {
       setSelectedSkus(new Set());
       return;
     }
-    setSelectedSkus(new Set(skuRows.map((row) => row.id)));
+    setSelectedSkus(new Set(visibleSkuRows.map((row) => row.id)));
   };
 
   const toggleSelectSku = (id: string) => {
@@ -3664,7 +3753,7 @@ export default function DraftExplorerPage() {
       return;
     }
     setPublishStatus("running");
-    const selectedRows = spuRows.filter((row) => selectedSpus.has(row.id));
+    const selectedRows = visibleSpuRows.filter((row) => selectedSpus.has(row.id));
     const selectedSpuValues = selectedRows
       .map((row) => row.draft_spu)
       .filter(Boolean);
@@ -3715,7 +3804,7 @@ export default function DraftExplorerPage() {
   const handleGenerateSkus = async () => {
     setSkuMessage(null);
     setSkuStatus("running");
-    const selectedRows = spuRows.filter((row) => selectedSpus.has(row.id));
+    const selectedRows = visibleSpuRows.filter((row) => selectedSpus.has(row.id));
     const selectedSpuValues = selectedRows
       .map((row) => row.draft_spu)
       .filter(Boolean);
@@ -3768,8 +3857,8 @@ export default function DraftExplorerPage() {
     if (deleteRowsPending) return;
     const selectedRows =
       draftTab === "spu"
-        ? spuRows.filter((row) => selectedSpus.has(row.id))
-        : skuRows.filter((row) => selectedSkus.has(row.id));
+        ? visibleSpuRows.filter((row) => selectedSpus.has(row.id))
+        : visibleSkuRows.filter((row) => selectedSkus.has(row.id));
     if (selectedRows.length === 0) return;
     const confirmDelete = window.confirm(
       t("draftExplorer.deleteRowsConfirm", { count: selectedRows.length })
@@ -3828,7 +3917,7 @@ export default function DraftExplorerPage() {
 
   const handleDuplicateSkuRoles = useCallback(async () => {
     if (duplicateRolesPending) return;
-    const ids = skuRows
+    const ids = visibleSkuRows
       .filter((row) => selectedSkus.has(row.id))
       .map((row) => row.id);
     if (ids.length === 0) return;
@@ -3861,7 +3950,7 @@ export default function DraftExplorerPage() {
     fetchSkuRows,
     fetchSpuRows,
     selectedSkus,
-    skuRows,
+    visibleSkuRows,
   ]);
 
   const handleDetailSave = async () => {
@@ -3990,7 +4079,7 @@ export default function DraftExplorerPage() {
   const handleRerunSkuImages = async () => {
     setSkuMessage(null);
     setSkuStatus("running");
-    const selectedRows = spuRows.filter((row) => selectedSpus.has(row.id));
+    const selectedRows = visibleSpuRows.filter((row) => selectedSpus.has(row.id));
     const selectedSpuValues = selectedRows
       .map((row) => row.draft_spu)
       .filter(Boolean);
@@ -4425,6 +4514,19 @@ export default function DraftExplorerPage() {
     if (parts[0] !== run) return "";
     return `${parts[0]}/${parts[1]}`;
   }, [currentPath, selectedFolder]);
+
+  useEffect(() => {
+    const previousSpuPath = previousSelectedSpuPathForDraftTableRef.current;
+    const nextSpuPath = String(selectedSpuPathInRun || "").trim();
+    if (
+      draftTableShowAll &&
+      nextSpuPath &&
+      nextSpuPath !== previousSpuPath
+    ) {
+      setDraftTableShowAll(false);
+    }
+    previousSelectedSpuPathForDraftTableRef.current = nextSpuPath;
+  }, [draftTableShowAll, selectedSpuPathInRun]);
 
   const selectedRunSpuIndex = useMemo(
     () => runSpuOptions.findIndex((option) => option.path === selectedSpuPathInRun),
@@ -10146,6 +10248,13 @@ export default function DraftExplorerPage() {
               )}
             </Button>
             <Button
+              appearance={draftTableShowAll ? "primary" : "outline"}
+              onClick={() => setDraftTableShowAll(true)}
+              disabled={!currentImageSpuForDraftFilter || draftTableShowAll}
+            >
+              Show All
+            </Button>
+            <Button
               appearance={
                 (draftTab === "spu" ? someSpuSelected : someSkuSelected)
                   ? "primary"
@@ -10366,14 +10475,14 @@ export default function DraftExplorerPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {spuRows.length === 0 ? (
+                {visibleSpuRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12}>
                       {t("draftExplorer.empty")}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  spuRows.map((row, index) => {
+                  visibleSpuRows.map((row, index) => {
                     const altClass = index % 2 === 1 ? styles.tableRowAlt : undefined;
                     const spuMainFolderPath = resolveSpuMainFolderPath(row);
                     const imagesMarkedCompleted = Boolean(
@@ -10560,14 +10669,14 @@ export default function DraftExplorerPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {skuRows.length === 0 ? (
+                {visibleSkuRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13}>
                       {t("draftExplorer.empty")}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  skuRows.map((row, index) => {
+                  visibleSkuRows.map((row, index) => {
                     const isExpanded = expandedSkus.has(row.id);
                     const altClass = index % 2 === 1 ? styles.tableRowAlt : undefined;
                     const imagesMarkedCompleted = isSpuImagesMarkedCompleted(row.draft_spu);
