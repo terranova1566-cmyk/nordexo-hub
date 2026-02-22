@@ -54,6 +54,7 @@ type DraftEntry = {
   size: number;
   modifiedAt: string;
   pixelQualityScore?: number | null;
+  zimageUpscaled?: boolean;
 };
 
 type DraftFolder = {
@@ -76,6 +77,11 @@ type DraftFolderTreeNode = {
   modifiedAt: string;
   fileCount: number;
   children: DraftFolderTreeNode[];
+};
+
+type RunSpuOption = {
+  name: string;
+  path: string;
 };
 
 type ExplorerContextMenuState = {
@@ -101,6 +107,7 @@ type PendingAiEditRecord = {
   id: string;
   originalPath: string;
   pendingPath: string;
+  pendingPixelQualityScore?: number | null;
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
@@ -192,6 +199,20 @@ type DraftVariantEditorRow = {
   variation_amount_se: string;
   draft_raw_row: Record<string, unknown>;
 };
+
+type DraftVariantEditorEditableField =
+  | "draft_sku"
+  | "variation_color_se"
+  | "variation_size_se"
+  | "variation_other_se"
+  | "variation_amount_se"
+  | "draft_option_combined_zh"
+  | "draft_option1"
+  | "draft_option2"
+  | "draft_option3"
+  | "draft_option4"
+  | "draft_price"
+  | "draft_weight";
 
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
@@ -424,6 +445,43 @@ const useStyles = makeStyles({
     marginTop: "6px",
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
     flexWrap: "wrap",
+  },
+  spuPickerTrigger: {
+    minWidth: "230px",
+    maxWidth: "340px",
+    justifyContent: "space-between",
+    paddingLeft: "12px",
+    paddingRight: "10px",
+  },
+  spuPickerSurface: {
+    padding: "6px",
+    borderRadius: "12px",
+    minWidth: "280px",
+    maxWidth: "420px",
+    maxHeight: "520px",
+    overflow: "auto",
+  },
+  spuPickerRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "5px 8px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  spuPickerRowActive: {
+    backgroundColor: tokens.colorBrandBackground2,
+  },
+  spuPickerRowName: {
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    minWidth: 0,
   },
   runPreviewSurface: {
     width: "820px",
@@ -942,6 +1000,17 @@ const useStyles = makeStyles({
   mediaMetaQualityBad: {
     color: "#A4262C",
   },
+  mediaMetaUpscaleIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    color: "#0f6cbd",
+    verticalAlign: "middle",
+  },
+  mediaMetaUpscaleIconSvg: {
+    width: "14px",
+    height: "14px",
+    display: "block",
+  },
   imageToolbar: {
     display: "flex",
     alignItems: "center",
@@ -955,6 +1024,35 @@ const useStyles = makeStyles({
     marginRight: "auto",
     flexWrap: "wrap",
   },
+  imageTabLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  imageTabMainBadgeSpacer: {
+    display: "inline-block",
+    width: "6px",
+    flexShrink: 0,
+  },
+  imageTabBadge: {
+    minWidth: "22px",
+    height: "22px",
+    borderRadius: "999px",
+    padding: "0 7px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: 1,
+    backgroundColor: "#0f6cbd",
+    color: "#ffffff",
+    boxSizing: "border-box",
+  },
+  imageTabBadgeDisabled: {
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground3,
+  },
   imageToolbarRight: {
     display: "inline-flex",
     alignItems: "center",
@@ -964,6 +1062,25 @@ const useStyles = makeStyles({
   },
   imageToolbarActions: {
     marginRight: "2px",
+  },
+  dangerOutlineButton: {
+    color: "#a4262c",
+    border: "1px solid #d13438",
+    ":hover": {
+      color: "#a4262c",
+      border: "1px solid #d13438",
+      backgroundColor: "#fde7e9",
+    },
+    ":active": {
+      color: "#a4262c",
+      border: "1px solid #d13438",
+      backgroundColor: "#f9d7da",
+    },
+    ":disabled": {
+      color: tokens.colorNeutralForeground4,
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      backgroundColor: tokens.colorNeutralBackground1,
+    },
   },
   imageToolbarIconGroup: {
     display: "inline-flex",
@@ -1144,6 +1261,12 @@ const useStyles = makeStyles({
     gap: "8px",
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":disabled": {
+      color: tokens.colorNeutralForeground4,
+      cursor: "not-allowed",
+      backgroundColor: "transparent",
+      opacity: 0.65,
     },
   },
   contextMenuButtonCaret: {
@@ -1668,6 +1791,11 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: "#ffffff",
   },
+  contentSizedTable: {
+    width: "max-content",
+    minWidth: "100%",
+    tableLayout: "fixed",
+  },
   stickyHeader: {
     position: "sticky",
     top: 0,
@@ -1694,11 +1822,24 @@ const useStyles = makeStyles({
   },
   tableCell: {
     verticalAlign: "middle",
+    overflow: "visible",
+  },
+  tableEditInputWrap: {
+    position: "relative",
+    width: "100%",
+    overflow: "visible",
+    minHeight: "28px",
   },
   tableEditInput: {
-    width: "100%",
-    minWidth: 0,
-    maxWidth: "100%",
+    minWidth: "100%",
+    maxWidth: "none",
+  },
+  expandedInlineInput: {
+    position: "relative",
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 6,
+    boxSizing: "border-box",
   },
   tableCellLinkButton: {
     border: "none",
@@ -1714,6 +1855,23 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  tableCellLinkRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    minWidth: 0,
+  },
+  tableCellInlineEditable: {
+    flex: "1 1 auto",
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  tableCellLinkActionButton: {
+    flexShrink: 0,
+    width: "auto",
+    minWidth: "76px",
+    textAlign: "left",
+  },
   tableActionButton: {
     backgroundColor: "#ffffff",
     ":hover": {
@@ -1724,6 +1882,18 @@ const useStyles = makeStyles({
     },
     ":disabled": {
       backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
+  tableActionButtonCompleted: {
+    backgroundColor: "#e7f5e8",
+    ":hover": {
+      backgroundColor: "#d9efdb",
+    },
+    ":active": {
+      backgroundColor: "#cbe6cf",
+    },
+    ":disabled": {
+      backgroundColor: "#d9efdb",
     },
   },
   selectionCol: {
@@ -1985,9 +2155,17 @@ const useStyles = makeStyles({
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     padding: "6px",
     verticalAlign: "middle",
+    overflow: "visible",
+  },
+  variantsEditorInputWrap: {
+    position: "relative",
+    width: "100%",
+    overflow: "visible",
+    minHeight: "28px",
   },
   variantsEditorInput: {
-    width: "100%",
+    minWidth: "100%",
+    maxWidth: "none",
   },
   variantsEditorCheckCol: {
     width: "44px",
@@ -2319,6 +2497,37 @@ const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
   return normalizeImageTags(ordered);
 };
 
+const getImageTagSortRank = (fileName: string) => {
+  const tags = extractImageTagsFromFileName(fileName);
+  if (tags.includes("MAIN")) return 0;
+  if (tags.length === 0) return 1;
+  if (tags.includes("DIGI")) return 5;
+  if (tags.includes("ENV")) return 2;
+  if (tags.includes("INF")) return 3;
+  if (tags.includes("VAR")) return 4;
+  return 4;
+};
+
+const buildTaggedImageOrderPaths = (imageEntries: DraftEntry[]) => {
+  const originalOrder = new Map<string, number>();
+  imageEntries.forEach((entry, index) => {
+    originalOrder.set(entry.path, index);
+  });
+
+  return [...imageEntries]
+    .sort((left, right) => {
+      const rankDiff = getImageTagSortRank(left.name) - getImageTagSortRank(right.name);
+      if (rankDiff !== 0) return rankDiff;
+
+      const leftIndex = originalOrder.get(left.path) ?? 0;
+      const rightIndex = originalOrder.get(right.path) ?? 0;
+      if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+
+      return left.name.localeCompare(right.name);
+    })
+    .map((entry) => entry.path);
+};
+
 const isDigiTaggedImageName = (fileName: string) =>
   extractImageTagsFromFileName(fileName).includes("DIGI");
 
@@ -2409,6 +2618,65 @@ const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
 const USE_NEW_FILE_EXPLORER = true;
 const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
 
+const estimateExpandedInputWidthPx = (
+  value: string,
+  options?: { minPx?: number; maxPx?: number }
+) => {
+  const text = String(value ?? "");
+  const wideCharCount = (text.match(/[^\u0000-\u00ff]/g) ?? []).length;
+  const approximateCharCount = text.length + wideCharCount;
+  const estimated = approximateCharCount * 8 + 56;
+  const minPx = options?.minPx ?? 0;
+  const maxPx = options?.maxPx ?? 1400;
+  if (estimated < minPx) return minPx;
+  if (estimated > maxPx) return maxPx;
+  return estimated;
+};
+
+const normalizeColumnSampleText = (value: unknown, maxChars = 120) => {
+  const text = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (!text) return "";
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}...`;
+};
+
+const estimateTableTextWidthPx = (value: unknown) => {
+  const text = normalizeColumnSampleText(value, 160);
+  if (!text) return 0;
+  const wideCharCount = (text.match(/[^\u0000-\u00ff]/g) ?? []).length;
+  const asciiCount = text.length - wideCharCount;
+  return Math.ceil(asciiCount * 7.1 + wideCharCount * 12.4);
+};
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const computeAdaptiveColumnWidthPx = (
+  headerText: string,
+  values: unknown[],
+  options: {
+    minPx: number;
+    maxPx: number;
+    headerAsMax?: boolean;
+    headerPaddingPx?: number;
+    contentPaddingPx?: number;
+  }
+) => {
+  const headerPaddingPx = options.headerPaddingPx ?? 24;
+  const contentPaddingPx = options.contentPaddingPx ?? 24;
+  const headerWidth = estimateTableTextWidthPx(headerText) + headerPaddingPx;
+  const contentWidth =
+    values.length > 0
+      ? Math.max(...values.map((value) => estimateTableTextWidthPx(value))) + contentPaddingPx
+      : 0;
+
+  let target = Math.max(headerWidth, contentWidth, options.minPx);
+  if (options.headerAsMax) {
+    target = Math.min(target, Math.max(headerWidth, options.minPx));
+  }
+  return Math.round(clampNumber(target, options.minPx, options.maxPx));
+};
+
 export default function DraftExplorerPage() {
   const styles = useStyles();
   const { t } = useI18n();
@@ -2416,6 +2684,8 @@ export default function DraftExplorerPage() {
   const [selectedFolder, setSelectedFolder] = useState<string>("");
   const [currentPath, setCurrentPath] = useState<string>("");
   const [batchPickerOpen, setBatchPickerOpen] = useState(false);
+  const [spuPickerOpen, setSpuPickerOpen] = useState(false);
+  const [runSpuOptions, setRunSpuOptions] = useState<RunSpuOption[]>([]);
   const [selectedRunsForMerge, setSelectedRunsForMerge] = useState<Set<string>>(
     new Set()
   );
@@ -2512,6 +2782,10 @@ export default function DraftExplorerPage() {
   );
   const [aiReviewOriginalPath, setAiReviewOriginalPath] = useState<string | null>(null);
   const [aiReviewSubmitting, setAiReviewSubmitting] = useState(false);
+  const [confirmAiEditsPending, setConfirmAiEditsPending] = useState(false);
+  const [confirmingAiEditPaths, setConfirmingAiEditPaths] = useState<Set<string>>(
+    new Set()
+  );
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [fileViewerContent, setFileViewerContent] = useState("");
   const [fileViewerLoading, setFileViewerLoading] = useState(false);
@@ -2554,6 +2828,7 @@ export default function DraftExplorerPage() {
   );
   const [tagAllImagesRunning, setTagAllImagesRunning] = useState(false);
   const [deleteFolderPending, setDeleteFolderPending] = useState(false);
+  const [deleteProductPending, setDeleteProductPending] = useState(false);
   const [deleteRunsPending, setDeleteRunsPending] = useState(false);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
@@ -2678,6 +2953,15 @@ export default function DraftExplorerPage() {
     });
     return map;
   }, [entries]);
+  const displayImageEntriesRef = useRef<DraftEntry[]>([]);
+  const isImageEntryUpscaled = useCallback(
+    (entry: DraftEntry | null | undefined) => {
+      if (!entry || entry.type !== "file") return false;
+      const latest = entryByPath.get(entry.path) ?? entry;
+      return Boolean(latest.zimageUpscaled);
+    },
+    [entryByPath]
+  );
 
   const buildDraftDownloadUrl = useCallback(
     (pathValue: string, cacheVersion?: string | number | null) => {
@@ -2706,7 +2990,10 @@ export default function DraftExplorerPage() {
   const buildDraggedPathsForEntry = useCallback(
     (entry: DraftEntry) => {
       if (entry.type !== "file") return [entry.path];
-      const selected = entries
+      const selectedSource = isImage(entry.name)
+        ? displayImageEntriesRef.current
+        : entries;
+      const selected = selectedSource
         .filter((candidate) => candidate.type === "file" && selectedFiles.has(candidate.path))
         .map((candidate) => candidate.path);
       if (selected.length > 1 && selected.includes(entry.path)) {
@@ -2714,7 +3001,7 @@ export default function DraftExplorerPage() {
       }
       return [entry.path];
     },
-    [entries, selectedFiles]
+    [entries, isImage, selectedFiles]
   );
 
   const readDraggedPaths = useCallback(
@@ -2914,6 +3201,12 @@ export default function DraftExplorerPage() {
       fetchSkuRows();
     }
   }, [draftTab, fetchSpuRows, fetchSkuRows]);
+
+  useEffect(() => {
+    setSelectedSpus(new Set());
+    setSelectedSkus(new Set());
+    setExpandedSkus(new Set());
+  }, [selectedFolder]);
 
   useEffect(() => {
     fetchSkuStatus().catch(() => {
@@ -3237,6 +3530,255 @@ export default function DraftExplorerPage() {
       ),
     };
   }, [t, visibleSkuRows]);
+
+  const skuHeaderColumns = useMemo(
+    () => [
+      {
+        key: "sku",
+        label: t("draftExplorer.columns.sku"),
+        style: skuColumnStyles.sku,
+      },
+      {
+        key: "colorSe",
+        label: t("draftExplorer.columns.colorSe"),
+        style: skuColumnStyles.colorSe,
+      },
+      {
+        key: "sizeSe",
+        label: t("draftExplorer.columns.sizeSe"),
+        style: skuColumnStyles.sizeSe,
+      },
+      {
+        key: "otherSe",
+        label: t("draftExplorer.columns.otherSe"),
+        style: skuColumnStyles.otherSe,
+      },
+      {
+        key: "amountSe",
+        label: t("draftExplorer.columns.amountSe"),
+        style: skuColumnStyles.amountSe,
+      },
+      {
+        key: "optionCombined",
+        label: t("draftExplorer.columns.optionCombined"),
+        style: skuColumnStyles.optionCombined,
+      },
+      {
+        key: "price",
+        label: t("draftExplorer.columns.price"),
+        style: skuColumnStyles.price,
+      },
+      {
+        key: "weight",
+        label: t("draftExplorer.columns.weight"),
+        style: skuColumnStyles.weight,
+      },
+      {
+        key: "variantImage",
+        label: t("draftExplorer.columns.variantImage"),
+        style: skuColumnStyles.variantImage,
+      },
+      {
+        key: "status",
+        label: t("draftExplorer.columns.status"),
+        style: skuColumnStyles.status,
+      },
+      {
+        key: "updated",
+        label: t("draftExplorer.columns.updated"),
+        style: skuColumnStyles.updated,
+      },
+      {
+        key: "details",
+        label: t("draftExplorer.columns.details"),
+        style: skuColumnStyles.details,
+      },
+    ],
+    [skuColumnStyles, t]
+  );
+
+  const spuColumnStyles = useMemo(() => {
+    const sample = spuRows;
+    const makeStyle = (
+      headerText: string,
+      values: unknown[],
+      options: {
+        minPx: number;
+        maxPx: number;
+        headerAsMax?: boolean;
+        headerPaddingPx?: number;
+        contentPaddingPx?: number;
+      }
+    ) => {
+      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
+      return {
+        width: `${width}px`,
+        minWidth: `${options.minPx}px`,
+        maxWidth: `${options.maxPx}px`,
+      };
+    };
+
+    const detailsLabel = t("draftExplorer.detailsButton");
+    const viewLabel = "View";
+
+    return {
+      selection: {
+        width: "44px",
+        minWidth: "44px",
+        maxWidth: "44px",
+      },
+      spu: makeStyle(
+        t("draftExplorer.columns.spu"),
+        sample.map((row) => row.draft_spu),
+        { minPx: 110, maxPx: 220 }
+      ),
+      title: makeStyle(
+        t("draftExplorer.columns.title"),
+        sample.map((row) => row.draft_title ?? ""),
+        { minPx: 180, maxPx: 560, contentPaddingPx: 12 }
+      ),
+      status: makeStyle(
+        t("draftExplorer.columns.status"),
+        sample.map((row) => row.draft_status ?? ""),
+        { minPx: 90, maxPx: 150 }
+      ),
+      source: makeStyle(
+        t("draftExplorer.columns.source"),
+        sample.map((row) => row.draft_source ?? ""),
+        { minPx: 90, maxPx: 150 }
+      ),
+      supplier: makeStyle(
+        t("draftExplorer.columns.supplierUrl"),
+        sample.map((row) => row.draft_supplier_1688_url ?? ""),
+        { minPx: 130, maxPx: 360, contentPaddingPx: 8 }
+      ),
+      images: makeStyle(
+        t("draftExplorer.columns.images"),
+        sample.map(() => viewLabel),
+        { minPx: 86, maxPx: 124, headerAsMax: true }
+      ),
+      videos: makeStyle(
+        t("draftExplorer.columns.videos"),
+        sample.map((row) => String(row.video_count ?? "")),
+        { minPx: 68, maxPx: 110, headerAsMax: true }
+      ),
+      variants: makeStyle(
+        t("draftExplorer.columns.variants"),
+        sample.map((row) => `Edit (${row.variant_count ?? 0})`),
+        { minPx: 116, maxPx: 180 }
+      ),
+      updated: makeStyle(
+        t("draftExplorer.columns.updated"),
+        sample.map((row) => formatDate(row.draft_updated_at)),
+        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
+      ),
+      created: makeStyle(
+        t("draftExplorer.columns.created"),
+        sample.map((row) => formatDate(row.draft_created_at)),
+        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
+      ),
+      details: makeStyle(
+        t("draftExplorer.columns.details"),
+        sample.map(() => detailsLabel),
+        { minPx: 92, maxPx: 130, headerAsMax: true }
+      ),
+    };
+  }, [spuRows, t]);
+
+  const skuColumnStyles = useMemo(() => {
+    const sample = skuRows;
+    const makeStyle = (
+      headerText: string,
+      values: unknown[],
+      options: {
+        minPx: number;
+        maxPx: number;
+        headerAsMax?: boolean;
+        headerPaddingPx?: number;
+        contentPaddingPx?: number;
+      }
+    ) => {
+      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
+      return {
+        width: `${width}px`,
+        minWidth: `${options.minPx}px`,
+        maxWidth: `${options.maxPx}px`,
+      };
+    };
+
+    const detailsExpandLabel = t("draftExplorer.expand");
+    const detailsCollapseLabel = t("draftExplorer.collapse");
+
+    return {
+      selection: {
+        width: "44px",
+        minWidth: "44px",
+        maxWidth: "44px",
+      },
+      sku: makeStyle(
+        t("draftExplorer.columns.sku"),
+        sample.map((row) => row.draft_sku ?? ""),
+        { minPx: 170, maxPx: 340 }
+      ),
+      colorSe: makeStyle(
+        t("draftExplorer.columns.colorSe"),
+        sample.map((row) => getRawValue(row.draft_raw_row, "variation_color_se")),
+        { minPx: 110, maxPx: 260 }
+      ),
+      sizeSe: makeStyle(
+        t("draftExplorer.columns.sizeSe"),
+        sample.map((row) => getRawValue(row.draft_raw_row, "variation_size_se")),
+        { minPx: 96, maxPx: 210 }
+      ),
+      otherSe: makeStyle(
+        t("draftExplorer.columns.otherSe"),
+        sample.map((row) => getRawValue(row.draft_raw_row, "variation_other_se")),
+        { minPx: 126, maxPx: 340 }
+      ),
+      amountSe: makeStyle(
+        t("draftExplorer.columns.amountSe"),
+        sample.map((row) => getRawValue(row.draft_raw_row, "variation_amount_se")),
+        { minPx: 112, maxPx: 260 }
+      ),
+      optionCombined: makeStyle(
+        t("draftExplorer.columns.optionCombined"),
+        sample.map((row) => row.draft_option_combined_zh ?? ""),
+        { minPx: 190, maxPx: 520 }
+      ),
+      price: makeStyle(
+        t("draftExplorer.columns.price"),
+        sample.map((row) => row.draft_price ?? ""),
+        { minPx: 90, maxPx: 150 }
+      ),
+      weight: makeStyle(
+        t("draftExplorer.columns.weight"),
+        sample.map((row) =>
+          `${row.draft_weight ?? ""}${row.draft_weight_unit ? ` ${row.draft_weight_unit}` : ""}`
+        ),
+        { minPx: 100, maxPx: 170 }
+      ),
+      variantImage: makeStyle(
+        t("draftExplorer.columns.variantImage"),
+        sample.map((row) => row.draft_variant_image_url ?? ""),
+        { minPx: 170, maxPx: 430 }
+      ),
+      status: makeStyle(
+        t("draftExplorer.columns.status"),
+        sample.map((row) => row.draft_status ?? ""),
+        { minPx: 90, maxPx: 150 }
+      ),
+      updated: makeStyle(
+        t("draftExplorer.columns.updated"),
+        sample.map((row) => formatDate(row.draft_updated_at)),
+        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
+      ),
+      details: makeStyle(
+        t("draftExplorer.columns.details"),
+        sample.map(() => `${detailsExpandLabel} ${detailsCollapseLabel}`),
+        { minPx: 106, maxPx: 170 }
+      ),
+    };
+  }, [skuRows, t]);
 
   const skuHeaderColumns = useMemo(
     () => [
@@ -4170,9 +4712,97 @@ export default function DraftExplorerPage() {
       const nextPath = await resolveInitialExplorerPath(nextFolder);
       pendingFolderOpenPathRef.current = nextPath;
       setSelectedFolder(nextFolder);
+      setSpuPickerOpen(false);
       setCurrentPath(nextPath);
     },
     [resolveInitialExplorerPath]
+  );
+
+  useEffect(() => {
+    const run = String(selectedFolder || "").trim();
+    if (!run) {
+      setRunSpuOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadRunSpuOptions = async () => {
+      try {
+        const items = await listPathEntries(run);
+        if (cancelled) return;
+        const options = items
+          .filter(
+            (entry) => entry.type === "dir" && !isChunksDirectory(entry.name)
+          )
+          .map((entry) => ({
+            name: entry.name,
+            path: entry.path,
+          }))
+          .sort((left, right) =>
+            left.name.localeCompare(right.name, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            })
+          );
+        setRunSpuOptions(options);
+      } catch {
+        if (!cancelled) {
+          setRunSpuOptions([]);
+        }
+      }
+    };
+
+    void loadRunSpuOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [folderTree, isChunksDirectory, listPathEntries, selectedFolder]);
+
+  const selectedSpuPathInRun = useMemo(() => {
+    const run = String(selectedFolder || "").trim();
+    const pathValue = String(currentPath || "").trim();
+    if (!run || !pathValue) return "";
+    const parts = pathValue.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    if (parts[0] !== run) return "";
+    return `${parts[0]}/${parts[1]}`;
+  }, [currentPath, selectedFolder]);
+
+  const selectedRunSpuIndex = useMemo(
+    () => runSpuOptions.findIndex((option) => option.path === selectedSpuPathInRun),
+    [runSpuOptions, selectedSpuPathInRun]
+  );
+
+  const selectedRunSpuLabel = useMemo(() => {
+    if (selectedRunSpuIndex >= 0) {
+      return runSpuOptions[selectedRunSpuIndex]?.name ?? "Select SPU";
+    }
+    return "Select SPU";
+  }, [runSpuOptions, selectedRunSpuIndex]);
+
+  const handleSelectRunSpu = useCallback((spuPath: string) => {
+    const normalizedPath = String(spuPath || "").trim();
+    if (!normalizedPath) return;
+    setSpuPickerOpen(false);
+    setCurrentPath(normalizedPath);
+  }, []);
+
+  const canNavigatePrevSpu =
+    selectedRunSpuIndex > 0 && runSpuOptions.length > 0;
+  const canNavigateNextSpu =
+    selectedRunSpuIndex >= 0 &&
+    selectedRunSpuIndex < runSpuOptions.length - 1;
+
+  const handleNavigateRunSpu = useCallback(
+    (direction: -1 | 1) => {
+      if (runSpuOptions.length === 0 || selectedRunSpuIndex < 0) return;
+      const nextIndex = selectedRunSpuIndex + direction;
+      if (nextIndex < 0 || nextIndex >= runSpuOptions.length) return;
+      const target = runSpuOptions[nextIndex];
+      if (!target?.path) return;
+      setCurrentPath(target.path);
+    },
+    [runSpuOptions, selectedRunSpuIndex]
   );
 
   const handleExplorerRefresh = useCallback(() => {
@@ -4624,7 +5254,7 @@ export default function DraftExplorerPage() {
         const next = new Set(prev);
         if (shiftRangeRequested) {
           const anchorPath = selectionAnchorImagePathRef.current;
-          const imagePaths = entries
+          const imagePaths = displayImageEntriesRef.current
             .filter(
               (entry) => entry.type === "file" && isImage(entry.name)
             )
@@ -4653,7 +5283,7 @@ export default function DraftExplorerPage() {
         return next;
       });
     },
-    [entries, isImage]
+    [isImage]
   );
 
   const handleToggleAllNonImageFiles = useCallback(() => {
@@ -4719,6 +5349,49 @@ export default function DraftExplorerPage() {
     }
     return null;
   }, [folders, selectedFolder]);
+
+  const resolveSpuMainFolderPath = useCallback(
+    (row: DraftSpuRow) => {
+      const targetPath = resolveSpuImageExplorerPath(row);
+      const targetParts = targetPath?.split("/").filter(Boolean) ?? [];
+      if (targetParts.length >= 2) {
+        return `${targetParts[0]}/${targetParts[1]}`;
+      }
+
+      const run = String(selectedFolder || "").trim();
+      const spu = String(row.draft_spu || "").trim();
+      if (run && spu) {
+        return `${run}/${spu}`;
+      }
+      return null;
+    },
+    [resolveSpuImageExplorerPath, selectedFolder]
+  );
+  const completedSpuByCode = useMemo(() => {
+    const next: Record<string, boolean> = {};
+    spuRows.forEach((row) => {
+      const spu = String(row.draft_spu || "").trim();
+      if (!spu) return;
+      const spuMainFolderPath = resolveSpuMainFolderPath(row);
+      next[spu.toUpperCase()] = Boolean(
+        spuMainFolderPath && completedSpuFolders.has(spuMainFolderPath)
+      );
+    });
+    return next;
+  }, [completedSpuFolders, resolveSpuMainFolderPath, spuRows]);
+  const isSpuImagesMarkedCompleted = useCallback(
+    (spuValue: string | null | undefined) => {
+      const spu = String(spuValue || "").trim();
+      if (!spu) return false;
+      const normalizedSpu = spu.toUpperCase();
+      if (Object.prototype.hasOwnProperty.call(completedSpuByCode, normalizedSpu)) {
+        return Boolean(completedSpuByCode[normalizedSpu]);
+      }
+      const run = String(selectedFolder || "").trim();
+      return Boolean(run && completedSpuFolders.has(`${run}/${spu}`));
+    },
+    [completedSpuByCode, completedSpuFolders, selectedFolder]
+  );
 
   const openSpuImagesInExplorer = useCallback(
     (row: DraftSpuRow) => {
@@ -5057,6 +5730,90 @@ export default function DraftExplorerPage() {
       );
     });
   }, [variantsEditorRows, variantsEditorSort]);
+
+  const variantsEditorColumnStyles = useMemo(() => {
+    const sample = variantsEditorRows.slice(0, 420);
+    const makeStyle = (
+      headerText: string,
+      values: unknown[],
+      options: { minPx: number; maxPx: number; headerAsMax?: boolean }
+    ) => {
+      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
+      return {
+        width: `${width}px`,
+        minWidth: `${options.minPx}px`,
+        maxWidth: `${options.maxPx}px`,
+      };
+    };
+
+    return {
+      selection: {
+        width: "44px",
+        minWidth: "44px",
+        maxWidth: "44px",
+      },
+      sku: makeStyle(
+        "SKU",
+        sample.map((row) => row.draft_sku),
+        { minPx: 170, maxPx: 360 }
+      ),
+      colorSe: makeStyle(
+        "Color (SE)",
+        sample.map((row) => row.variation_color_se || row.draft_option1),
+        { minPx: 110, maxPx: 260 }
+      ),
+      sizeSe: makeStyle(
+        "Size (SE)",
+        sample.map((row) => row.variation_size_se || row.draft_option2),
+        { minPx: 96, maxPx: 210 }
+      ),
+      otherSe: makeStyle(
+        "Other (SE)",
+        sample.map((row) => row.variation_other_se || row.draft_option3),
+        { minPx: 126, maxPx: 340 }
+      ),
+      amountSe: makeStyle(
+        "Amount (SE)",
+        sample.map((row) => row.variation_amount_se || row.draft_option4),
+        { minPx: 112, maxPx: 260 }
+      ),
+      optionCombinedZh: makeStyle(
+        "Option Combined (ZH)",
+        sample.map((row) => row.draft_option_combined_zh),
+        { minPx: 210, maxPx: 540 }
+      ),
+      colorZh: makeStyle(
+        "Color (ZH)",
+        sample.map((row) => row.draft_option1),
+        { minPx: 110, maxPx: 260 }
+      ),
+      sizeZh: makeStyle(
+        "Size (ZH)",
+        sample.map((row) => row.draft_option2),
+        { minPx: 96, maxPx: 210 }
+      ),
+      otherZh: makeStyle(
+        "Other (ZH)",
+        sample.map((row) => row.draft_option3),
+        { minPx: 126, maxPx: 340 }
+      ),
+      amountZh: makeStyle(
+        "Amount (ZH)",
+        sample.map((row) => row.draft_option4),
+        { minPx: 112, maxPx: 260 }
+      ),
+      price: makeStyle(
+        "Price",
+        sample.map((row) => row.draft_price),
+        { minPx: 90, maxPx: 150, headerAsMax: true }
+      ),
+      weight: makeStyle(
+        "Weight",
+        sample.map((row) => row.draft_weight),
+        { minPx: 100, maxPx: 170, headerAsMax: true }
+      ),
+    };
+  }, [variantsEditorRows]);
 
   const handleVariantEditorAddRow = useCallback(() => {
     const fallbackSkuBase = variantsEditorSpu || "SKU";
@@ -5472,6 +6229,10 @@ export default function DraftExplorerPage() {
         Number.isFinite(payload.pixelQualityScore)
           ? Math.round(payload.pixelQualityScore)
           : null;
+      const newZimageUpscaled =
+        typeof payload?.zimageUpscaled === "boolean"
+          ? payload.zimageUpscaled
+          : false;
 
       setEntries((prev) => {
         let hadNew = false;
@@ -5487,6 +6248,7 @@ export default function DraftExplorerPage() {
                 modifiedAt: newModifiedAt,
                 size: newSize,
                 pixelQualityScore: newPixelQualityScore,
+                zimageUpscaled: newZimageUpscaled,
               };
             }
             if (item.path === oldPath) {
@@ -5507,6 +6269,7 @@ export default function DraftExplorerPage() {
               modifiedAt: newModifiedAt,
               size: newSize,
               pixelQualityScore: newPixelQualityScore,
+              zimageUpscaled: newZimageUpscaled,
             });
           }
         }
@@ -5544,6 +6307,7 @@ export default function DraftExplorerPage() {
               modifiedAt: newModifiedAt,
               size: newSize,
               pixelQualityScore: newPixelQualityScore,
+              zimageUpscaled: newZimageUpscaled,
             }
           : prev
       );
@@ -5628,8 +6392,12 @@ export default function DraftExplorerPage() {
       (sourcePath) =>
         sourcePath !== targetPath && !targetPath.startsWith(`${sourcePath}/`)
     );
-    const existingSources = validSources.filter((sourcePath) =>
-      entryByPath.has(sourcePath)
+    const visibleImageSourcePaths = new Set(
+      displayImageEntriesRef.current.map((entry) => entry.path)
+    );
+    const existingSources = validSources.filter(
+      (sourcePath) =>
+        entryByPath.has(sourcePath) || visibleImageSourcePaths.has(sourcePath)
     );
     if (existingSources.length === 0) {
       setFolderDropTargetPath(null);
@@ -5671,6 +6439,9 @@ export default function DraftExplorerPage() {
 
       if (moved.size > 0) {
         setEntries((prev) => prev.filter((entry) => !moved.has(entry.path)));
+        setMainViewVariantImageEntries((prev) =>
+          prev.filter((entry) => !moved.has(entry.path))
+        );
         setSelectedFiles((prev) => {
           const next = new Set(prev);
           moved.forEach((sourcePath) => next.delete(sourcePath));
@@ -5735,9 +6506,17 @@ export default function DraftExplorerPage() {
         if (!response.ok) {
           throw new Error(payload?.error || "Unable to create copy.");
         }
-        const copy = payload?.item as { name?: string; path?: string } | undefined;
+        const copy = payload?.item as {
+          name?: string;
+          path?: string;
+          zimageUpscaled?: boolean;
+        } | undefined;
         const copyName = String(copy?.name || "").trim();
         const copyPath = String(copy?.path || "").trim();
+        const copyZimageUpscaled =
+          typeof copy?.zimageUpscaled === "boolean"
+            ? copy.zimageUpscaled
+            : false;
         if (copyName && copyPath) {
           const now = new Date().toISOString();
           setEntries((prev) => {
@@ -5748,6 +6527,7 @@ export default function DraftExplorerPage() {
               path: copyPath,
               size: entry.size,
               modifiedAt: now,
+              zimageUpscaled: copyZimageUpscaled,
             };
             const sourceIndex = prev.findIndex((row) => row.path === entry.path);
             if (sourceIndex < 0) return [...prev, copyEntry];
@@ -5841,6 +6621,7 @@ export default function DraftExplorerPage() {
         path: string;
         size: number;
         pixelQualityScore: number | null;
+        zimageUpscaled: boolean;
       }> = [];
       try {
         for (const entry of targets) {
@@ -5858,6 +6639,7 @@ export default function DraftExplorerPage() {
               name?: string;
               path?: string;
               pixelQualityScore?: number | null;
+              zimageUpscaled?: boolean;
             } | undefined;
             const copyName = String(copy?.name || "").trim();
             const copyPath = String(copy?.path || "").trim();
@@ -5866,6 +6648,10 @@ export default function DraftExplorerPage() {
               Number.isFinite(copy.pixelQualityScore)
                 ? Math.round(copy.pixelQualityScore)
                 : null;
+            const copyZimageUpscaled =
+              typeof copy?.zimageUpscaled === "boolean"
+                ? copy.zimageUpscaled
+                : false;
             if (copyName && copyPath) {
               created.push({
                 sourcePath: entry.path,
@@ -5873,6 +6659,7 @@ export default function DraftExplorerPage() {
                 path: copyPath,
                 size: entry.size,
                 pixelQualityScore: copyPixelQualityScore,
+                zimageUpscaled: copyZimageUpscaled,
               });
             }
           } catch (err) {
@@ -5894,6 +6681,7 @@ export default function DraftExplorerPage() {
                 size: item.size,
                 modifiedAt: now,
                 pixelQualityScore: item.pixelQualityScore,
+                zimageUpscaled: item.zimageUpscaled,
               };
               const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
               if (sourceIndex < 0) {
@@ -5961,6 +6749,7 @@ export default function DraftExplorerPage() {
           size: number;
           modifiedAt: string;
           pixelQualityScore: number | null;
+          zimageUpscaled: boolean;
         }
       > = {};
 
@@ -5989,12 +6778,17 @@ export default function DraftExplorerPage() {
               Number.isFinite(payload.pixelQualityScore)
                 ? Math.round(payload.pixelQualityScore)
                 : null;
+            const nextZimageUpscaled =
+              typeof payload?.zimageUpscaled === "boolean"
+                ? payload.zimageUpscaled
+                : false;
             updates[entry.path] = {
               path: nextPath,
               name: nextName,
               size: nextSize,
               modifiedAt: nextModifiedAt,
               pixelQualityScore: nextPixelQualityScore,
+              zimageUpscaled: nextZimageUpscaled,
             };
           } catch (err) {
             failures.push(`${entry.name}: ${(err as Error).message}`);
@@ -6013,6 +6807,7 @@ export default function DraftExplorerPage() {
                 size: update.size,
                 modifiedAt: update.modifiedAt,
                 pixelQualityScore: update.pixelQualityScore,
+                zimageUpscaled: update.zimageUpscaled,
               };
             })
           );
@@ -6117,17 +6912,33 @@ export default function DraftExplorerPage() {
         if (!confirmed) return;
       }
 
-      const skipped: string[] = [];
+      const skippedPendingOrRunning: string[] = [];
+      const skippedAlreadyUpscaled: string[] = [];
       const runnable = deduped.filter((entry) => {
         if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
-          skipped.push(entry.name);
+          skippedPendingOrRunning.push(entry.name);
+          return false;
+        }
+        if (provider === "zimage" && mode === "upscale" && isImageEntryUpscaled(entry)) {
+          skippedAlreadyUpscaled.push(entry.name);
           return false;
         }
         return true;
       });
 
       if (runnable.length === 0) {
-        setError("All selected images already have pending or running AI edits.");
+        const reasons: string[] = [];
+        if (skippedPendingOrRunning.length > 0) {
+          reasons.push("all selected images already have pending/running AI edits");
+        }
+        if (skippedAlreadyUpscaled.length > 0) {
+          reasons.push("all selected images already have Z-image upscale applied");
+        }
+        setError(
+          reasons.length > 0
+            ? `Cannot run action: ${reasons.join(" and ")}.`
+            : "No images can be processed."
+        );
         return;
       }
 
@@ -6186,6 +6997,11 @@ export default function DraftExplorerPage() {
             ) {
               const originalPath = String(payload.originalPath).trim();
               const now = new Date().toISOString();
+              const nextPixelQualityScore =
+                typeof payload?.pixelQualityScore === "number" &&
+                Number.isFinite(payload.pixelQualityScore)
+                  ? Math.round(payload.pixelQualityScore)
+                  : null;
               setReloadingImagePaths((prev) => {
                 const next = new Set(prev);
                 next.add(originalPath);
@@ -6193,7 +7009,20 @@ export default function DraftExplorerPage() {
               });
               setEntries((prev) =>
                 prev.map((item) =>
-                  item.path === originalPath ? { ...item, modifiedAt: now } : item
+                      item.path === originalPath
+                    ? {
+                        ...item,
+                        modifiedAt: now,
+                        pixelQualityScore:
+                          nextPixelQualityScore !== null
+                            ? nextPixelQualityScore
+                            : item.pixelQualityScore ?? null,
+                        zimageUpscaled:
+                          provider === "zimage" && mode === "upscale"
+                            ? true
+                            : item.zimageUpscaled,
+                      }
+                    : item
                 )
               );
               // Safety timeout to avoid stuck spinners if the browser never fires onLoad.
@@ -6234,8 +7063,15 @@ export default function DraftExplorerPage() {
         }
 
         const messages: string[] = [];
-        if (skipped.length > 0) {
-          messages.push(`Skipped ${skipped.length} image(s) with existing pending/running edits.`);
+        if (skippedPendingOrRunning.length > 0) {
+          messages.push(
+            `Skipped ${skippedPendingOrRunning.length} image(s) with existing pending/running edits.`
+          );
+        }
+        if (skippedAlreadyUpscaled.length > 0) {
+          messages.push(
+            `Skipped ${skippedAlreadyUpscaled.length} image(s) already upscaled with Z-image.`
+          );
         }
         if (failures.length > 0) {
           messages.push(
@@ -6257,6 +7093,7 @@ export default function DraftExplorerPage() {
       fetchPendingAiEdits,
       refreshEntries,
       isImage,
+      isImageEntryUpscaled,
       pendingAiEditsByOriginal,
     ]
   );
@@ -6407,6 +7244,33 @@ export default function DraftExplorerPage() {
           delete next[originalPath];
           return next;
         });
+        const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
+          ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
+          : [];
+        const refreshedScoreByPath = new Map<string, number | null>();
+        refreshedScoresRaw.forEach((row) => {
+          const pathValue = String(row?.path || "").trim();
+          if (!pathValue) return;
+          const scoreValue =
+            typeof row?.pixelQualityScore === "number" &&
+            Number.isFinite(row.pixelQualityScore)
+              ? Math.round(row.pixelQualityScore)
+              : null;
+          refreshedScoreByPath.set(pathValue, scoreValue);
+        });
+        if (refreshedScoreByPath.size > 0) {
+          const now = new Date().toISOString();
+          setEntries((prev) =>
+            prev.map((item) => {
+              if (!refreshedScoreByPath.has(item.path)) return item;
+              return {
+                ...item,
+                modifiedAt: now,
+                pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
+              };
+            })
+          );
+        }
         const latestPath = String(currentPathRef.current || "");
         const canRefreshActiveFolder = Boolean(pathAtStart && latestPath === pathAtStart);
         if (decision === "replace_with_ai") {
@@ -6910,194 +7774,6 @@ export default function DraftExplorerPage() {
     };
   }, [currentPath, uploadFilesToCurrentPath]);
 
-  useEffect(() => {
-    const handleDeleteKey = (event: KeyboardEvent) => {
-      if (event.key !== "Delete") return;
-      const target = event.target as HTMLElement | null;
-      const tagName = String(target?.tagName || "").toLowerCase();
-      if (
-        target?.isContentEditable ||
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select"
-      ) {
-        return;
-      }
-      if (
-        !currentPath ||
-        movingEntry ||
-        renamePending ||
-        Boolean(renamingPath) ||
-        Boolean(fileViewerPath) ||
-        Boolean(previewPath) ||
-        Boolean(aiReviewOriginalPath) ||
-        aiEditTargets.length > 0 ||
-        variantsEditorOpen ||
-        detailOpen
-      ) {
-        return;
-      }
-
-      const selectedFilePaths = Array.from(selectedFiles).filter(
-        (pathValue) => entryByPath.get(pathValue)?.type === "file"
-      );
-      if (selectedFilePaths.length === 0) return;
-      event.preventDefault();
-      const deletedImagesPath = `${currentPath}/deleted images`.replace(
-        /\/{2,}/g,
-        "/"
-      );
-      void handleMoveEntriesToFolder(selectedFilePaths, deletedImagesPath);
-    };
-
-    window.addEventListener("keydown", handleDeleteKey);
-    return () => {
-      window.removeEventListener("keydown", handleDeleteKey);
-    };
-  }, [
-    aiEditTargets.length,
-    aiReviewOriginalPath,
-    currentPath,
-    detailOpen,
-    entryByPath,
-    fileViewerPath,
-    handleMoveEntriesToFolder,
-    movingEntry,
-    previewPath,
-    renamePending,
-    renamingPath,
-    selectedFiles,
-    variantsEditorOpen,
-  ]);
-
-  const uploadFilesToCurrentPath = useCallback(
-    async (files: File[]) => {
-      if (!currentPath || files.length === 0) return;
-      try {
-        const formData = new FormData();
-        formData.append("targetPath", currentPath);
-        files.forEach((file) => formData.append("files", file));
-        const response = await fetch("/api/drafts/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || "Upload failed.");
-        }
-        refreshEntries(currentPath);
-        fetchPendingAiEdits(currentPath);
-        if (selectedFolder) {
-          fetchFolderTree(selectedFolder);
-        }
-      } catch (err) {
-        setError((err as Error).message);
-      }
-    },
-    [
-      currentPath,
-      fetchPendingAiEdits,
-      fetchFolderTree,
-      refreshEntries,
-      selectedFolder,
-    ]
-  );
-
-  const handleUploadFiles = useCallback(
-    async (files: File[]) => {
-      await uploadFilesToCurrentPath(files);
-    },
-    [uploadFilesToCurrentPath]
-  );
-
-  const handleAddImageUrls = useCallback(async () => {
-    if (!currentPath) return;
-    const urls = parseImageUrlsInput(imageUrlInput);
-    if (urls.length === 0) {
-      setError("Add at least one valid image URL.");
-      return;
-    }
-    setAddingImageUrls(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/drafts/upload-urls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetPath: currentPath,
-          urls,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to add images from URL.");
-      }
-      setImageUrlInput("");
-      refreshEntries(currentPath);
-      fetchPendingAiEdits(currentPath);
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
-      const failed = Number(payload?.failed || 0);
-      if (failed > 0) {
-        setError(`Added ${payload?.uploaded || 0} image(s), ${failed} failed.`);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setAddingImageUrls(false);
-    }
-  }, [
-    currentPath,
-    imageUrlInput,
-    selectedFolder,
-    fetchPendingAiEdits,
-    fetchFolderTree,
-    refreshEntries,
-  ]);
-
-  useEffect(() => {
-    if (!currentPath) return;
-    const handlePaste = (event: ClipboardEvent) => {
-      const clipboardData = event.clipboardData;
-      if (!clipboardData) return;
-      const itemFiles = Array.from(clipboardData.items || [])
-        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => Boolean(file));
-      const fallbackFiles =
-        itemFiles.length > 0
-          ? []
-          : Array.from(clipboardData.files || []).filter((file) =>
-              file.type.startsWith("image/")
-            );
-      const sourceFiles = itemFiles.length > 0 ? itemFiles : fallbackFiles;
-      if (sourceFiles.length === 0) return;
-
-      event.preventDefault();
-      const segments = currentPath.split("/").filter(Boolean);
-      const currentFolderName = sanitizeFileNameSegment(
-        segments[segments.length - 1] || "folder"
-      );
-      const stamp = formatClipboardDateTime();
-      const renamedFiles = sourceFiles.map((file, index) => {
-        const ext = imageExtensionFromMime(file.type);
-        const suffix = sourceFiles.length > 1 ? `-${index + 1}` : "";
-        const fileName = `${currentFolderName}-clipboard-${stamp}${suffix}.${ext}`;
-        return new File([file], fileName, {
-          type: file.type || `image/${ext}`,
-        });
-      });
-
-      void uploadFilesToCurrentPath(renamedFiles);
-    };
-
-    window.addEventListener("paste", handlePaste);
-    return () => {
-      window.removeEventListener("paste", handlePaste);
-    };
-  }, [currentPath, uploadFilesToCurrentPath]);
-
   const buildExpandedInputStyle = useCallback(
     (value: string, options?: { minPx?: number; maxPx?: number }) => {
       const maxPx = options?.maxPx ?? 1400;
@@ -7243,23 +7919,26 @@ export default function DraftExplorerPage() {
         maxPx: 1800,
       });
       return (
-        <Input
-          value={editingValue}
-          onChange={(_, data) => setEditingValue(data.value)}
-          onBlur={() => commitEdit()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              commitEdit();
-            }
-            if (event.key === "Escape") {
-              cancelEdit();
-            }
-          }}
-          type={options?.numeric ? "number" : "text"}
-          size="small"
-          className={styles.tableEditInput}
-          autoFocus
-        />
+        <div className={styles.tableEditInputWrap}>
+          <Input
+            value={editingValue}
+            onChange={(_, data) => setEditingValue(data.value)}
+            onBlur={() => commitEdit()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                commitEdit();
+              }
+              if (event.key === "Escape") {
+                cancelEdit();
+              }
+            }}
+            type={options?.numeric ? "number" : "text"}
+            size="small"
+            className={mergeClasses(styles.tableEditInput, styles.expandedInlineInput)}
+            style={editStyle}
+            autoFocus
+          />
+        </div>
       );
     }
 
@@ -7298,7 +7977,10 @@ export default function DraftExplorerPage() {
 
   const resolveContextActionTargets = useCallback(
     (entry: DraftEntry, options?: { imageOnly?: boolean }) => {
-      const selected = entries.filter(
+      const selectedSource = options?.imageOnly
+        ? displayImageEntriesRef.current
+        : entries;
+      const selected = selectedSource.filter(
         (candidate) => candidate.type === "file" && selectedFiles.has(candidate.path)
       );
       if (entry.type === "file" && selected.length > 1) {
@@ -7619,7 +8301,8 @@ export default function DraftExplorerPage() {
             (assignment.tag === "MAIN" ||
               assignment.tag === "ENV" ||
               assignment.tag === "VAR" ||
-              assignment.tag === "INF")
+              assignment.tag === "INF" ||
+              assignment.tag === "DIGI")
         );
 
       if (normalizedAssignments.length === 0) {
@@ -7734,6 +8417,50 @@ export default function DraftExplorerPage() {
     ]
   );
 
+  const persistImageOrderForFolder = useCallback(
+    async (folderPath: string, orderedPaths: string[]) => {
+      const normalizedFolderPath = String(folderPath || "").trim();
+      if (!normalizedFolderPath) return;
+      setImageOrderPersisting(true);
+      try {
+        const response = await fetch("/api/drafts/images/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            folderPath: normalizedFolderPath,
+            orderedPaths,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to save image order.");
+        }
+      } catch (err) {
+        setError((err as Error).message);
+        if (currentPathRef.current === normalizedFolderPath) {
+          refreshEntries(normalizedFolderPath);
+        }
+        throw err;
+      } finally {
+        setImageOrderPersisting(false);
+      }
+    },
+    [refreshEntries]
+  );
+
+  const persistImageOrder = useCallback(
+    async (orderedPaths: string[]) => {
+      const normalizedCurrentPath = String(currentPath || "").trim();
+      if (!normalizedCurrentPath) return;
+      try {
+        await persistImageOrderForFolder(normalizedCurrentPath, orderedPaths);
+      } catch {
+        // Error state is already handled in persistImageOrderForFolder.
+      }
+    },
+    [currentPath, persistImageOrderForFolder]
+  );
+
   const completedSpuPathsInSelectedRun = useMemo(() => {
     const run = String(selectedFolder || "").trim();
     if (!run) return [] as string[];
@@ -7807,7 +8534,8 @@ export default function DraftExplorerPage() {
             (row.tag === "MAIN" ||
               row.tag === "ENV" ||
               row.tag === "VAR" ||
-              row.tag === "INF")
+              row.tag === "INF" ||
+              row.tag === "DIGI")
         );
 
       const mainCandidates = decisionRows
@@ -7827,9 +8555,32 @@ export default function DraftExplorerPage() {
         }));
 
       const { failures, applied } = await applyTagAssignments(assignments);
+
+      try {
+        const folderEntries = await listPathEntries(folderPath);
+        const folderImageEntries = folderEntries.filter(
+          (entry) => entry.type === "file" && isImage(entry.name)
+        );
+        if (folderImageEntries.length > 1) {
+          const currentOrder = folderImageEntries.map((entry) => entry.path);
+          const prioritizedOrder = buildTaggedImageOrderPaths(folderImageEntries);
+          const orderChanged =
+            prioritizedOrder.length === currentOrder.length &&
+            prioritizedOrder.some((pathValue, index) => pathValue !== currentOrder[index]);
+          if (orderChanged) {
+            await persistImageOrderForFolder(folderPath, prioritizedOrder);
+          }
+        }
+      } catch (err) {
+        failures.push(
+          `Unable to reorder tagged images: ${
+            err instanceof Error ? err.message : "unknown error"
+          }`
+        );
+      }
       return { failures, applied };
     },
-    [applyTagAssignments]
+    [applyTagAssignments, isImage, listPathEntries, persistImageOrderForFolder]
   );
 
   const handleRunImageClassifierTagging = useCallback(async () => {
@@ -8023,6 +8774,49 @@ export default function DraftExplorerPage() {
     },
     [contextMenu, entryByPath, resolveContextActionTargets]
   );
+  const contextMenuLiveEntry = contextMenu
+    ? entryByPath.get(contextMenu.entry.path) ?? contextMenu.entry
+    : null;
+  const contextMenuUpscaleDisabled =
+    contextMenuLiveEntry &&
+    contextMenuLiveEntry.type === "file" &&
+    isImage(contextMenuLiveEntry.name)
+      ? isImageEntryUpscaled(contextMenuLiveEntry)
+      : false;
+  const contextMenuMoveToMainPath = useMemo(() => {
+    if (!contextMenu?.image) return "";
+    const targets = resolveContextActionTargets(contextMenu.entry, {
+      imageOnly: true,
+    });
+    const anchorPath = String(targets[0]?.path || contextMenu.entry.path || "").trim();
+    const parts = anchorPath.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    return `${parts[0]}/${parts[1]}`;
+  }, [contextMenu, resolveContextActionTargets]);
+  const contextMenuMoveToMainSourcePaths = useMemo(() => {
+    if (!contextMenu?.image || !contextMenuMoveToMainPath) {
+      return [] as string[];
+    }
+    const targets = resolveContextActionTargets(contextMenu.entry, {
+      imageOnly: true,
+    });
+    if (targets.length === 0) return [] as string[];
+    return Array.from(
+      new Set(
+        targets
+          .map((sourceEntry) => String(sourceEntry.path || "").trim())
+          .filter((pathValue) => Boolean(pathValue))
+          .filter((pathValue) => {
+            const slashIndex = pathValue.lastIndexOf("/");
+            if (slashIndex <= 0) return false;
+            const parentPath = pathValue.slice(0, slashIndex);
+            return parentPath !== contextMenuMoveToMainPath;
+          })
+      )
+    );
+  }, [contextMenu, contextMenuMoveToMainPath, resolveContextActionTargets]);
+  const contextMenuMoveToMainDisabled =
+    movingEntry || contextMenuMoveToMainSourcePaths.length === 0;
 
   const handleContextMenuAction = (action: string) => {
     if (!contextMenu) return;
@@ -8063,6 +8857,23 @@ export default function DraftExplorerPage() {
     if (action === "open") {
       clearSelectedFilesForImageActions();
       openEntry(entry);
+      return;
+    }
+    if (action === "move-to-main") {
+      if (!contextMenuMoveToMainPath) {
+        setError("Main folder could not be resolved for this product.");
+        return;
+      }
+      if (contextMenuMoveToMainSourcePaths.length === 0) {
+        setError("Selected image(s) are already in Main.");
+        return;
+      }
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      restoreSelectionAfterContextAction(targets);
+      void handleMoveEntriesToFolder(
+        contextMenuMoveToMainSourcePaths,
+        contextMenuMoveToMainPath
+      );
       return;
     }
     if (action === "download") {
@@ -8228,6 +9039,10 @@ export default function DraftExplorerPage() {
       return;
     }
     if (action === "ai-zimage-upscale") {
+      if (contextMenuUpscaleDisabled) {
+        setError("Z-image upscale has already been applied to this image.");
+        return;
+      }
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
         restoreSelectionAfterContextAction(targets);
@@ -8632,10 +9447,187 @@ export default function DraftExplorerPage() {
     normalizeFolderToken,
   ]);
 
+  const countImagesInEntryList = useCallback(
+    (items: DraftEntry[]) =>
+      items.reduce(
+        (count, item) =>
+          item.type === "file" && isImage(item.name) ? count + 1 : count,
+        0
+      ),
+    [isImage]
+  );
+
+  const countImagesForPath = useCallback(
+    async (pathValue: string | null) => {
+      const normalizedPath = String(pathValue || "").trim();
+      if (!normalizedPath) return 0;
+      if (normalizedPath === currentPath) {
+        return countImagesInEntryList(entries);
+      }
+      try {
+        const items = await listPathEntries(normalizedPath);
+        return countImagesInEntryList(items);
+      } catch {
+        return 0;
+      }
+    },
+    [countImagesInEntryList, currentPath, entries, listPathEntries]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadImageTabCounts = async () => {
+      const uniqueOthersPaths = Array.from(
+        new Set(
+          imageTabTargets.othersPaths
+            .map((pathValue) => String(pathValue || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const [mainDirectCount, variantsCount, ocrCount, othersCounts] =
+        await Promise.all([
+          countImagesForPath(imageTabTargets.mainPath),
+          countImagesForPath(imageTabTargets.variantsPath),
+          countImagesForPath(imageTabTargets.ocrPath),
+          Promise.all(uniqueOthersPaths.map((pathValue) => countImagesForPath(pathValue))),
+        ]);
+
+      if (cancelled) return;
+
+      const othersCount = othersCounts.reduce((total, value) => total + value, 0);
+      setImageTabImageCounts({
+        // Main view intentionally includes merged variant images.
+        main: mainDirectCount + variantsCount,
+        variants: variantsCount,
+        ocr: ocrCount,
+        others: othersCount,
+      });
+    };
+
+    void loadImageTabCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    countImagesForPath,
+    imageTabTargets.mainPath,
+    imageTabTargets.ocrPath,
+    imageTabTargets.othersPaths,
+    imageTabTargets.variantsPath,
+  ]);
+
+  const mainViewShowsMergedImages =
+    imageTabTargets.active === "main" && currentPath === imageTabTargets.mainPath;
+
+  useEffect(() => {
+    let cancelled = false;
+    const variantsPath = mainViewShowsMergedImages
+      ? imageTabTargets.variantsPath
+      : null;
+    if (!variantsPath) {
+      setMainViewVariantImageEntries([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadVariantEntries = async () => {
+      try {
+        const items = await listPathEntries(variantsPath);
+        if (cancelled) return;
+        const variantImages = items.filter(
+          (entry) => entry.type === "file" && isImage(entry.name)
+        );
+        setMainViewVariantImageEntries(variantImages);
+      } catch {
+        if (!cancelled) {
+          setMainViewVariantImageEntries([]);
+        }
+      }
+    };
+
+    void loadVariantEntries();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    entries,
+    imageTabTargets.variantsPath,
+    isImage,
+    listPathEntries,
+    mainViewShowsMergedImages,
+  ]);
+
+  const displayImageEntries = useMemo(() => {
+    const combined: DraftEntry[] = [];
+    const seenPaths = new Set<string>();
+
+    const pushUnique = (entry: DraftEntry) => {
+      if (seenPaths.has(entry.path)) return;
+      seenPaths.add(entry.path);
+      combined.push(entry);
+    };
+
+    imageEntries.forEach(pushUnique);
+    if (mainViewShowsMergedImages) {
+      mainViewVariantImageEntries.forEach(pushUnique);
+    }
+
+    if (combined.length <= 1) return combined;
+
+    const variantPath = String(imageTabTargets.variantsPath || "").trim();
+    const variantPathPrefix = variantPath ? `${variantPath}/` : "";
+    const regular: DraftEntry[] = [];
+    const variantTail: DraftEntry[] = [];
+
+    combined.forEach((entry) => {
+      const tags = extractImageTagsFromFileName(entry.name);
+      const taggedVariant = tags.includes("VAR");
+      const fromVariantFolder =
+        variantPath &&
+        (entry.path === variantPath || entry.path.startsWith(variantPathPrefix));
+      if (taggedVariant || fromVariantFolder) {
+        variantTail.push(entry);
+      } else {
+        regular.push(entry);
+      }
+    });
+
+    return [...regular, ...variantTail];
+  }, [
+    imageEntries,
+    imageTabTargets.variantsPath,
+    mainViewShowsMergedImages,
+    mainViewVariantImageEntries,
+  ]);
+
+  useEffect(() => {
+    displayImageEntriesRef.current = displayImageEntries;
+  }, [displayImageEntries]);
+
   const currentSpuMainPath = imageTabTargets.mainPath;
+  const currentMainProductContext = useMemo(() => {
+    const parts = String(currentSpuMainPath || "").split("/").filter(Boolean);
+    if (parts.length < 2) {
+      return { run: "", spu: "" };
+    }
+    return { run: parts[0], spu: parts[1] };
+  }, [currentSpuMainPath]);
   const currentSpuMarkedCompleted = currentSpuMainPath
     ? completedSpuFolders.has(currentSpuMainPath)
     : false;
+  const confirmablePendingAiPaths = useMemo(() => {
+    if (!mainViewShowsMergedImages) return [] as string[];
+    const unique = new Set<string>();
+    displayImageEntries.forEach((entry) => {
+      if (pendingAiEditsByOriginal[entry.path]) {
+        unique.add(entry.path);
+      }
+    });
+    return Array.from(unique);
+  }, [displayImageEntries, mainViewShowsMergedImages, pendingAiEditsByOriginal]);
 
   const handleToggleCurrentSpuCompleted = useCallback(() => {
     if (!currentSpuMainPath) return;
@@ -8650,34 +9642,210 @@ export default function DraftExplorerPage() {
     });
   }, [currentSpuMainPath]);
 
-  const persistImageOrder = useCallback(
-    async (orderedPaths: string[]) => {
-      if (!currentPath) return;
-      setImageOrderPersisting(true);
-      try {
-        const response = await fetch("/api/drafts/images/order", {
+  const handleDeleteCurrentProduct = useCallback(async () => {
+    if (deleteProductPending) return;
+    if (!mainViewShowsMergedImages) return;
+
+    const run = String(currentMainProductContext.run || "").trim();
+    const spu = String(currentMainProductContext.spu || "").trim();
+    const spuMainPath = run && spu ? `${run}/${spu}` : "";
+    if (!run || !spu || !spuMainPath) return;
+
+    const confirmed = window.confirm(
+      [
+        `Delete product ${spu}?`,
+        "",
+        "This will permanently delete:",
+        `- ${spuMainPath} and all subfolders`,
+        "- related draft SPU and SKU rows",
+        "",
+        "This cannot be undone.",
+      ].join("\n")
+    );
+    if (!confirmed) return;
+
+    setDeleteProductPending(true);
+    setError(null);
+    setDraftError(null);
+    try {
+      const response = await fetch(
+        `/api/drafts/folders/${encodeURIComponent(run)}/cleanup`,
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            folderPath: currentPath,
-            orderedPaths,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to save image order.");
+          body: JSON.stringify({ spus: [spu] }),
         }
-      } catch (err) {
-        setError((err as Error).message);
-        if (currentPath) {
-          refreshEntries(currentPath);
-        }
-      } finally {
-        setImageOrderPersisting(false);
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to delete this product.");
       }
-    },
-    [currentPath, refreshEntries]
-  );
+
+      setCompletedSpuFolders((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        Array.from(next).forEach((pathValue) => {
+          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
+            next.delete(pathValue);
+          }
+        });
+        return next;
+      });
+      setSelectedTreeFolders((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        Array.from(next).forEach((pathValue) => {
+          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
+            next.delete(pathValue);
+          }
+        });
+        return next;
+      });
+      setCollapsedTreeFolders((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        Array.from(next).forEach((pathValue) => {
+          if (pathValue === spuMainPath || pathValue.startsWith(`${spuMainPath}/`)) {
+            next.delete(pathValue);
+          }
+        });
+        return next;
+      });
+      setMainViewVariantImageEntries([]);
+      setSelectedFiles(new Set());
+      setSelectedSpus(new Set());
+      setSelectedSkus(new Set());
+      setPreviewPath(null);
+
+      const nextPath = run;
+      setCurrentPath(nextPath);
+      await Promise.all([fetchSpuRows(), fetchSkuRows(), fetchFolderTree(run)]);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to delete this product.";
+      setError(message);
+      setDraftError(message);
+    } finally {
+      setDeleteProductPending(false);
+    }
+  }, [
+    currentMainProductContext.run,
+    currentMainProductContext.spu,
+    deleteProductPending,
+    fetchFolderTree,
+    fetchSkuRows,
+    fetchSpuRows,
+    mainViewShowsMergedImages,
+  ]);
+
+  const handleConfirmCurrentProductAiEdits = useCallback(async () => {
+    if (confirmAiEditsPending) return;
+    if (!mainViewShowsMergedImages) return;
+    if (confirmablePendingAiPaths.length === 0) return;
+
+    const confirmed = window.confirm(
+      [
+        `Confirm ${confirmablePendingAiPaths.length} pending AI edit${
+          confirmablePendingAiPaths.length === 1 ? "" : "s"
+        }?`,
+        "",
+        "This will replace the original images with the pending AI versions and discard the old pending files.",
+      ].join("\n")
+    );
+    if (!confirmed) return;
+
+    const pendingPaths = [...confirmablePendingAiPaths];
+    const refreshedScoreByPath = new Map<string, number | null>();
+    const failures: string[] = [];
+    const pathAtStart = String(currentPathRef.current || "");
+
+    setConfirmAiEditsPending(true);
+    setConfirmingAiEditPaths(new Set(pendingPaths));
+    setAiReviewOriginalPath(null);
+    setError(null);
+
+    try {
+      for (const originalPath of pendingPaths) {
+        try {
+          const response = await fetch("/api/drafts/ai-edits/resolve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              originalPath,
+              decision: "replace_with_ai",
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Unable to confirm AI edit.");
+          }
+          setPendingAiEditsByOriginal((prev) => {
+            const next = { ...prev };
+            delete next[originalPath];
+            return next;
+          });
+          const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
+            ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
+            : [];
+          refreshedScoresRaw.forEach((row) => {
+            const pathValue = String(row?.path || "").trim();
+            if (!pathValue) return;
+            const scoreValue =
+              typeof row?.pixelQualityScore === "number" &&
+              Number.isFinite(row.pixelQualityScore)
+                ? Math.round(row.pixelQualityScore)
+                : null;
+            refreshedScoreByPath.set(pathValue, scoreValue);
+          });
+        } catch (err) {
+          failures.push(
+            `${originalPath.split("/").filter(Boolean).pop() || originalPath}: ${
+              (err as Error).message
+            }`
+          );
+        }
+      }
+
+      if (refreshedScoreByPath.size > 0) {
+        const now = new Date().toISOString();
+        setEntries((prev) =>
+          prev.map((item) => {
+            if (!refreshedScoreByPath.has(item.path)) return item;
+            return {
+              ...item,
+              modifiedAt: now,
+              pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
+            };
+          })
+        );
+      }
+
+      const latestPath = String(currentPathRef.current || "");
+      if (pathAtStart && latestPath === pathAtStart) {
+        await refreshEntries(pathAtStart);
+        await fetchPendingAiEdits(pathAtStart);
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Confirmed ${
+            pendingPaths.length - failures.length
+          }/${pendingPaths.length} pending AI edits. Failed: ${failures
+            .slice(0, 3)
+            .join("; ")}${failures.length > 3 ? "..." : ""}`
+        );
+      }
+    } finally {
+      setConfirmingAiEditPaths(new Set());
+      setConfirmAiEditsPending(false);
+    }
+  }, [
+    confirmAiEditsPending,
+    confirmablePendingAiPaths,
+    fetchPendingAiEdits,
+    mainViewShowsMergedImages,
+    refreshEntries,
+  ]);
 
   const reorderImagesInGrid = useCallback(
     (draggedPaths: string[], dropTargetPath: string | null) => {
@@ -8737,8 +9905,12 @@ export default function DraftExplorerPage() {
     [imageEntries, persistImageOrder]
   );
 
-  const selectedImageEntries = imageEntries.filter((entry) =>
+  const selectedImageEntries = displayImageEntries.filter((entry) =>
     selectedFiles.has(entry.path)
+  );
+  const selectedImageUpscaleEligibleCount = selectedImageEntries.reduce(
+    (count, entry) => count + (isImageEntryUpscaled(entry) ? 0 : 1),
+    0
   );
   const nonImageFileEntries = entries.filter(
     (entry) => entry.type === "file" && !isImage(entry.name)
@@ -8752,6 +9924,18 @@ export default function DraftExplorerPage() {
     nonImageFilesSelectedCount === nonImageFileEntries.length;
   const nonImageFilesSomeSelected =
     nonImageFilesSelectedCount > 0 && !nonImageFilesAllSelected;
+  const mainTabDisabled =
+    !imageTabTargets.mainPath || movingEntry || imageTabImageCounts.main === 0;
+  const variantsTabDisabled =
+    !imageTabTargets.variantsPath ||
+    movingEntry ||
+    imageTabImageCounts.variants === 0;
+  const ocrTabDisabled =
+    !imageTabTargets.ocrPath || movingEntry || imageTabImageCounts.ocr === 0;
+  const othersTabDisabled =
+    imageTabTargets.othersPaths.length === 0 ||
+    movingEntry ||
+    imageTabImageCounts.others === 0;
 
   useEffect(() => {
     const el = nonImageFileSelectAllRef.current;
@@ -8761,7 +9945,33 @@ export default function DraftExplorerPage() {
   const aiReviewRecord = aiReviewOriginalPath
     ? pendingAiEditsByOriginal[aiReviewOriginalPath] ?? null
     : null;
-  const previewEntry = previewPath ? entryByPath.get(previewPath) ?? null : null;
+  const aiReviewOriginalScoreRaw = aiReviewRecord
+    ? entryByPath.get(aiReviewRecord.originalPath)?.pixelQualityScore
+    : null;
+  const aiReviewOriginalScore =
+    typeof aiReviewOriginalScoreRaw === "number" && Number.isFinite(aiReviewOriginalScoreRaw)
+      ? Math.round(aiReviewOriginalScoreRaw)
+      : null;
+  const aiReviewPendingScore =
+    aiReviewRecord &&
+    typeof aiReviewRecord.pendingPixelQualityScore === "number" &&
+    Number.isFinite(aiReviewRecord.pendingPixelQualityScore)
+      ? Math.round(aiReviewRecord.pendingPixelQualityScore)
+      : null;
+  const aiReviewScoreDelta =
+    aiReviewPendingScore !== null && aiReviewOriginalScore !== null
+      ? aiReviewPendingScore - aiReviewOriginalScore
+      : null;
+  const displayEntryByPath = useMemo(() => {
+    const next = new Map(entryByPath);
+    displayImageEntries.forEach((entry) => {
+      if (!next.has(entry.path)) {
+        next.set(entry.path, entry);
+      }
+    });
+    return next;
+  }, [displayImageEntries, entryByPath]);
+  const previewEntry = previewPath ? displayEntryByPath.get(previewPath) ?? null : null;
   const previewDimensions = previewPath ? imageDimensions[previewPath] ?? null : null;
   const previewFileName =
     previewEntry?.name ??
@@ -8774,7 +9984,7 @@ export default function DraftExplorerPage() {
   const previewDisplayPath = previewPendingAi?.pendingPath ?? previewPath;
   const previewDisplayModifiedAt =
     previewPendingAi?.updatedAt ??
-    (previewPath ? entryByPath.get(previewPath)?.modifiedAt ?? null : null);
+    (previewPath ? displayEntryByPath.get(previewPath)?.modifiedAt ?? null : null);
   const previewRuntimeJob = previewPath ? aiEditJobsByPath[previewPath] ?? null : null;
   const previewNav = useMemo(() => {
     if (!previewPath) {
@@ -8785,7 +9995,7 @@ export default function DraftExplorerPage() {
         next2Path: null as string | null,
       };
     }
-    const paths = imageEntries.map((entry) => entry.path);
+    const paths = displayImageEntries.map((entry) => entry.path);
     const index = paths.indexOf(previewPath);
     const prevPath = index > 0 ? paths[index - 1] ?? null : null;
     const nextPath =
@@ -8793,16 +10003,19 @@ export default function DraftExplorerPage() {
     const next2Path =
       index >= 0 && index < paths.length - 2 ? paths[index + 2] ?? null : null;
     return { index, prevPath, nextPath, next2Path };
-  }, [imageEntries, previewPath]);
+  }, [displayImageEntries, previewPath]);
   const previewBusy =
     Boolean(previewRuntimeJob) ||
-    Boolean(previewPath && reloadingImagePaths.has(previewPath));
+    Boolean(
+      previewPath &&
+        (reloadingImagePaths.has(previewPath) || confirmingAiEditPaths.has(previewPath))
+    );
 
   useEffect(() => {
     if (!previewPath) return;
     const candidates = [previewNav.nextPath, previewNav.next2Path].filter(Boolean) as string[];
     candidates.forEach((pathValue) => {
-      const entry = entryByPath.get(pathValue);
+      const entry = displayEntryByPath.get(pathValue);
       const pendingAi = pendingAiEditsByOriginal[pathValue] ?? null;
       const displayPath = pendingAi?.pendingPath ?? pathValue;
       const displayModifiedAt = pendingAi?.updatedAt ?? entry?.modifiedAt;
@@ -8816,7 +10029,7 @@ export default function DraftExplorerPage() {
     });
   }, [
     buildDraftDownloadUrl,
-    entryByPath,
+    displayEntryByPath,
     pendingAiEditsByOriginal,
     previewNav.next2Path,
     previewNav.nextPath,
@@ -8859,6 +10072,9 @@ export default function DraftExplorerPage() {
       }
 
       setEntries((prev) => prev.filter((entry) => entry.path !== previewPath));
+      setMainViewVariantImageEntries((prev) =>
+        prev.filter((entry) => entry.path !== previewPath)
+      );
       setSelectedFiles((prev) => {
         if (!prev.has(previewPath)) return prev;
         const next = new Set(prev);
@@ -8946,6 +10162,7 @@ export default function DraftExplorerPage() {
   const renderContextMenuIcon = (
     type:
       | "open"
+      | "move-main"
       | "download"
       | "duplicate"
       | "clipboard"
@@ -8978,6 +10195,26 @@ export default function DraftExplorerPage() {
           <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
           <path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
           <path d="M16 16l-2.5 -2.5" />
+        </svg>
+      );
+    }
+    if (type === "move-main") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v8" />
+          <path d="M20 18h-17" />
+          <path d="M6 15l-3 3l3 3" />
         </svg>
       );
     }
@@ -9508,7 +10745,10 @@ export default function DraftExplorerPage() {
                               aria-label={t("common.selectItem", { item: row.draft_spu })}
                             />
                           </TableCell>
-                          <TableCell className={mergeClasses(styles.tableCell, styles.spuCol)}>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.spuCol)}
+                            style={spuColumnStyles.spu}
+                          >
                             <button
                               type="button"
                               className={styles.tableCellLinkButton}
@@ -10133,14 +11373,21 @@ export default function DraftExplorerPage() {
                 <Spinner size="small" />
               ) : (
                 <div className={styles.variantsEditorTableWrap}>
-                  <table className={styles.variantsEditorTable}>
+                  <table
+                    className={mergeClasses(
+                      styles.variantsEditorTable,
+                      styles.contentSizedTable
+                    )}
+                  >
                     <thead>
                       <tr>
                         <th
                           className={mergeClasses(
                             styles.variantsEditorHeadCell,
+                            styles.resizableHeader,
                             styles.variantsEditorCheckCol
                           )}
+                          style={variantsEditorColumnStyles.selection}
                         >
                           <Checkbox
                             checked={
@@ -10154,7 +11401,13 @@ export default function DraftExplorerPage() {
                             aria-label="Select all variants"
                           />
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 140 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.sku}
+                        >
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -10166,7 +11419,13 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.colorSe}
+                        >
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -10178,7 +11437,13 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 63 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.sizeSe}
+                        >
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -10190,7 +11455,13 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 80 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.otherSe}
+                        >
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -10202,7 +11473,13 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 80 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.amountSe}
+                        >
                           <button
                             type="button"
                             className={styles.variantsEditorSortButton}
@@ -10214,25 +11491,67 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 156 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.optionCombinedZh}
+                        >
                           Option Combined (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.colorZh}
+                        >
                           Color (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 63 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.sizeZh}
+                        >
                           Size (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.otherZh}
+                        >
                           Other (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 84 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.amountZh}
+                        >
                           Amount (ZH)
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 68 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.price}
+                        >
                           Price
                         </th>
-                        <th className={styles.variantsEditorHeadCell} style={{ width: 68 }}>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
+                          style={variantsEditorColumnStyles.weight}
+                        >
                           Weight
                         </th>
                       </tr>
@@ -10252,6 +11571,7 @@ export default function DraftExplorerPage() {
                                 styles.variantsEditorCell,
                                 styles.variantsEditorCheckCol
                               )}
+                              style={variantsEditorColumnStyles.selection}
                             >
                               <Checkbox
                                 checked={variantsEditorSelectedRows.has(row.key)}
@@ -10259,173 +11579,81 @@ export default function DraftExplorerPage() {
                                 aria-label={`Select ${row.draft_sku || row.key}`}
                               />
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_sku}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_sku",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.sku}
+                            >
+                              {renderVariantEditorInput(row, "draft_sku")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.variation_color_se}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "variation_color_se",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.colorSe}
+                            >
+                              {renderVariantEditorInput(row, "variation_color_se")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.variation_size_se}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "variation_size_se",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.sizeSe}
+                            >
+                              {renderVariantEditorInput(row, "variation_size_se")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.variation_other_se}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "variation_other_se",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.otherSe}
+                            >
+                              {renderVariantEditorInput(row, "variation_other_se")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.variation_amount_se}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "variation_amount_se",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.amountSe}
+                            >
+                              {renderVariantEditorInput(row, "variation_amount_se")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_option_combined_zh}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_option_combined_zh",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.optionCombinedZh}
+                            >
+                              {renderVariantEditorInput(row, "draft_option_combined_zh")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_option1}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_option1",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.colorZh}
+                            >
+                              {renderVariantEditorInput(row, "draft_option1")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_option2}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_option2",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.sizeZh}
+                            >
+                              {renderVariantEditorInput(row, "draft_option2")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_option3}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_option3",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.otherZh}
+                            >
+                              {renderVariantEditorInput(row, "draft_option3")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_option4}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_option4",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.amountZh}
+                            >
+                              {renderVariantEditorInput(row, "draft_option4")}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_price}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_price",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.price}
+                            >
+                              {renderVariantEditorInput(row, "draft_price", {
+                                numeric: true,
+                              })}
                             </td>
-                            <td className={styles.variantsEditorCell}>
-                              <Input
-                                size="small"
-                                className={styles.variantsEditorInput}
-                                value={row.draft_weight}
-                                onChange={(_, data) =>
-                                  handleVariantEditorCellChange(
-                                    row.key,
-                                    "draft_weight",
-                                    data.value
-                                  )
-                                }
-                              />
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.weight}
+                            >
+                              {renderVariantEditorInput(row, "draft_weight", {
+                                numeric: true,
+                              })}
                             </td>
                           </tr>
                         ))
@@ -11436,6 +12664,71 @@ export default function DraftExplorerPage() {
                 </div>
               </PopoverSurface>
             </Popover>
+            <Popover
+              open={spuPickerOpen}
+              onOpenChange={(_, data) => setSpuPickerOpen(data.open)}
+              positioning="below-start"
+            >
+              <PopoverTrigger disableButtonEnhancement>
+                <Button
+                  appearance="outline"
+                  disabled={!selectedFolder || runSpuOptions.length === 0}
+                  className={mergeClasses(
+                    styles.spuPickerTrigger,
+                    styles.explorerWhiteButton
+                  )}
+                  aria-label="Select SPU folder"
+                  title="Select SPU folder"
+                >
+                  <span className={styles.batchPickerTriggerLabel}>
+                    {selectedRunSpuLabel}
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.batchPickerChevron}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M6 9l6 6l6 -6" />
+                  </svg>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.spuPickerSurface}>
+                {runSpuOptions.length === 0 ? (
+                  <Text size={100}>No SPU folders in this batch.</Text>
+                ) : (
+                  runSpuOptions.map((option) => {
+                    const active = option.path === selectedSpuPathInRun;
+                    return (
+                      <div
+                        key={option.path}
+                        className={mergeClasses(
+                          styles.spuPickerRow,
+                          active ? styles.spuPickerRowActive : undefined
+                        )}
+                        onClick={() => handleSelectRunSpu(option.path)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectRunSpu(option.path);
+                          }
+                        }}
+                      >
+                        <span className={styles.spuPickerRowName}>{option.name}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </PopoverSurface>
+            </Popover>
             <Menu>
               <MenuTrigger disableButtonEnhancement>
                 <Button
@@ -11533,8 +12826,62 @@ export default function DraftExplorerPage() {
               {folderTreeHidden ? "Show folders" : "Hide folders"}
             </Button>
           </div>
-          {!USE_NEW_FILE_EXPLORER ? (
-            <div className={styles.explorerControlsRight}>
+          <div className={styles.explorerControlsRight}>
+            {USE_NEW_FILE_EXPLORER ? (
+              <>
+                <Button
+                  appearance="outline"
+                  onClick={() => handleNavigateRunSpu(-1)}
+                  disabled={!canNavigatePrevSpu}
+                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                  aria-label="Previous SPU folder"
+                  title="Previous SPU folder"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.iconSvg}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M5 12h14" />
+                    <path d="M5 12l6 6" />
+                    <path d="M5 12l6 -6" />
+                  </svg>
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={() => handleNavigateRunSpu(1)}
+                  disabled={!canNavigateNextSpu}
+                  className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                  aria-label="Next SPU folder"
+                  title="Next SPU folder"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.iconSvg}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M5 12h14" />
+                    <path d="M13 6l6 6" />
+                    <path d="M13 18l6 -6" />
+                  </svg>
+                </Button>
+              </>
+            ) : null}
+            {!USE_NEW_FILE_EXPLORER ? (
               <div className={styles.viewToggle}>
                 <Text size={100}>{t("bulkProcessing.explorer.viewSmall")}</Text>
                 <Switch
@@ -11545,8 +12892,8 @@ export default function DraftExplorerPage() {
                 />
                 <Text size={100}>{t("bulkProcessing.explorer.viewLarge")}</Text>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
 
         {USE_NEW_FILE_EXPLORER ? (
@@ -11699,28 +13046,101 @@ export default function DraftExplorerPage() {
                       if (nextPath) setCurrentPath(nextPath);
                     }}
                   >
-                    <Tab value="main" disabled={!imageTabTargets.mainPath || movingEntry}>
-                      Main
+                    <Tab value="main" disabled={mainTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>Main</span>
+                        <span
+                          className={styles.imageTabMainBadgeSpacer}
+                          aria-hidden="true"
+                        >
+                          {" "}
+                        </span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            mainTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.main}
+                        </span>
+                      </span>
                     </Tab>
-                    <Tab
-                      value="variants"
-                      disabled={!imageTabTargets.variantsPath || movingEntry}
-                    >
-                      Variants
+                    <Tab value="variants" disabled={variantsTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>Variants</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            variantsTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.variants}
+                        </span>
+                      </span>
                     </Tab>
-                    <Tab value="ocr" disabled={!imageTabTargets.ocrPath || movingEntry}>
-                      OCR
+                    <Tab value="ocr" disabled={ocrTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>OCR</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            ocrTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.ocr}
+                        </span>
+                      </span>
                     </Tab>
-                    <Tab
-                      value="others"
-                      disabled={imageTabTargets.othersPaths.length === 0 || movingEntry}
-                    >
-                      Others
+                    <Tab value="others" disabled={othersTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>Others</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            othersTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.others}
+                        </span>
+                      </span>
                     </Tab>
                   </TabList>
                 </div>
 
                 <div className={styles.imageToolbarRight}>
+                  {mainViewShowsMergedImages && currentMainProductContext.spu ? (
+                    <>
+                      <Button
+                        appearance="outline"
+                        disabled={
+                          confirmAiEditsPending ||
+                          deleteProductPending ||
+                          aiReviewSubmitting ||
+                          movingEntry ||
+                          confirmablePendingAiPaths.length === 0
+                        }
+                        className={mergeClasses(
+                          styles.imageToolbarActions,
+                          styles.explorerWhiteButton
+                        )}
+                        onClick={() => void handleConfirmCurrentProductAiEdits()}
+                      >
+                        {confirmAiEditsPending ? "Confirming..." : "Confirm AI Edits"}
+                      </Button>
+                      <Button
+                        appearance="outline"
+                        disabled={confirmAiEditsPending || deleteProductPending || movingEntry}
+                        className={mergeClasses(
+                          styles.imageToolbarActions,
+                          styles.explorerWhiteButton,
+                          styles.dangerOutlineButton
+                        )}
+                        onClick={() => void handleDeleteCurrentProduct()}
+                      >
+                        {deleteProductPending ? "Deleting..." : "Delete product"}
+                      </Button>
+                    </>
+                  ) : null}
                   <Menu>
                     <MenuTrigger disableButtonEnhancement>
                       <Button
@@ -12021,7 +13441,11 @@ export default function DraftExplorerPage() {
                         Edit Z-Image: White BG
                       </MenuItem>
                       <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        disabled={
+                          selectedImageEntries.length === 0 ||
+                          selectedImageUpscaleEligibleCount === 0 ||
+                          bulkImageActionPending
+                        }
                         onClick={() =>
                           startAiEditForEntries(selectedImageEntries, "zimage", "upscale")
                         }
@@ -12143,7 +13567,7 @@ export default function DraftExplorerPage() {
                   <Button
                     appearance="outline"
                     className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                    disabled={imageEntries.length === 0}
+                    disabled={displayImageEntries.length === 0}
                     aria-label={
                       imageResizeActionIcon === "grow"
                         ? "Make images bigger"
@@ -12214,7 +13638,7 @@ export default function DraftExplorerPage() {
                 )}
                 aria-busy={entriesLoading}
               >
-                  {imageEntries.length === 0 ? (
+                  {displayImageEntries.length === 0 ? (
                     <Text size={200}>No images in this folder.</Text>
                   ) : (
                     <div
@@ -12261,18 +13685,33 @@ export default function DraftExplorerPage() {
                         setImageReorderDropPath(null);
                       }}
                     >
-                      {imageEntries.map((entry) => {
+                      {displayImageEntries.map((entry) => {
                         const pendingAi = pendingAiEditsByOriginal[entry.path] ?? null;
                         const displayPath = pendingAi?.pendingPath ?? entry.path;
                         const displayModifiedAt = pendingAi?.updatedAt ?? entry.modifiedAt;
                         const runtimeJob = aiEditJobsByPath[entry.path] ?? null;
                         const reloadBusy = reloadingImagePaths.has(entry.path);
-                        const busy = Boolean(runtimeJob) || reloadBusy;
+                        const confirmBusy = confirmingAiEditPaths.has(entry.path);
+                        const busy = Boolean(runtimeJob) || reloadBusy || confirmBusy;
                         const imageTags = extractImageTagsFromFileName(entry.name);
-                        const pixelQualityScore =
+                        const isDisplayOnlyMainVariant =
+                          mainViewShowsMergedImages && !entryByPath.has(entry.path);
+                        const originalPixelQualityScore =
                           typeof entry.pixelQualityScore === "number" &&
                           Number.isFinite(entry.pixelQualityScore)
                             ? Math.round(entry.pixelQualityScore)
+                            : null;
+                        const pendingPixelQualityScore =
+                          typeof pendingAi?.pendingPixelQualityScore === "number" &&
+                          Number.isFinite(pendingAi.pendingPixelQualityScore)
+                            ? Math.round(pendingAi.pendingPixelQualityScore)
+                            : null;
+                        const pixelQualityScore =
+                          pendingPixelQualityScore ?? originalPixelQualityScore;
+                        const pixelQualityDelta =
+                          pendingPixelQualityScore !== null &&
+                          originalPixelQualityScore !== null
+                            ? pendingPixelQualityScore - originalPixelQualityScore
                             : null;
                         const pixelQualityClass =
                           pixelQualityScore === null
@@ -12282,6 +13721,15 @@ export default function DraftExplorerPage() {
                               : pixelQualityScore >= 40
                                 ? styles.mediaMetaQualityMedium
                                 : styles.mediaMetaQualityBad;
+                        const pixelQualityLabel =
+                          pixelQualityDelta === null
+                            ? `Q ${pixelQualityScore ?? "-"}`
+                            : `Q ${pixelQualityScore ?? "-"} (${
+                                pixelQualityDelta > 0
+                                  ? `+${pixelQualityDelta}`
+                                  : pixelQualityDelta
+                              })`;
+                        const hasZimageUpscaled = isImageEntryUpscaled(entry);
                         return (
                           <div
                             key={buildStableImageCardKey(entry)}
@@ -12294,8 +13742,9 @@ export default function DraftExplorerPage() {
                                 ? styles.mediaCardSelected
                                 : undefined
                             )}
-                            draggable
+                            draggable={!isDisplayOnlyMainVariant}
                             onDragStart={(event) => {
+                              if (isDisplayOnlyMainVariant) return;
                               const draggedPaths = buildDraggedPathsForEntry(entry);
                               event.dataTransfer.effectAllowed = "move";
                               event.dataTransfer.setData(
@@ -12315,6 +13764,7 @@ export default function DraftExplorerPage() {
                               setImageReorderDropPath(null);
                             }}
                             onDragOver={(event) => {
+                              if (isDisplayOnlyMainVariant) return;
                               const draggedPaths = readDraggedPaths(event.dataTransfer);
                               const hasImageDrag = draggedPaths.some((pathValue) => {
                                 const draggedEntry = entryByPath.get(pathValue);
@@ -12335,6 +13785,7 @@ export default function DraftExplorerPage() {
                               }
                             }}
                             onDrop={(event) => {
+                              if (isDisplayOnlyMainVariant) return;
                               const draggedPaths = readDraggedPaths(event.dataTransfer);
                               const hasImageDrag = draggedPaths.some((pathValue) => {
                                 const draggedEntry = entryByPath.get(pathValue);
@@ -12364,12 +13815,12 @@ export default function DraftExplorerPage() {
                           >
                             <div
                               className={styles.mediaSquare}
-                              onClick={(event) =>
+                              onClick={(event) => {
                                 handleToggleFile(entry.path, {
                                   shiftKey: event.shiftKey,
                                   imageRange: true,
-                                })
-                              }
+                                });
+                              }}
                               role="button"
                               tabIndex={0}
                               onKeyDown={(event) => {
@@ -12572,8 +14023,38 @@ export default function DraftExplorerPage() {
                                     pixelQualityClass
                                   )}
                                 >
-                                  {`Q ${pixelQualityScore ?? "-"}`}
+                                  {pixelQualityLabel}
                                 </span>
+                                {hasZimageUpscaled ? (
+                                  <>
+                                    <span className={styles.mediaMetaDivider}>|</span>
+                                    <span
+                                      className={styles.mediaMetaUpscaleIcon}
+                                      title="Upscaled with Z-image"
+                                      aria-label="Upscaled with Z-image"
+                                    >
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={styles.mediaMetaUpscaleIconSvg}
+                                        aria-hidden="true"
+                                      >
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                        <path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10" />
+                                        <path d="M7 9v2a1 1 0 0 0 1 1h1" />
+                                        <path d="M10 9v6" />
+                                        <path d="M14 9v6" />
+                                        <path d="M17 9l-2 3l2 3" />
+                                        <path d="M15 12h-1" />
+                                      </svg>
+                                    </span>
+                                  </>
+                                ) : null}
                               </Text>
                             </div>
                           </div>
@@ -13250,6 +14731,18 @@ export default function DraftExplorerPage() {
               {renderContextMenuIcon("open")}
               <span>Open</span>
             </button>
+            {contextMenu.image ? (
+              <button
+                type="button"
+                className={styles.contextMenuButton}
+                disabled={contextMenuMoveToMainDisabled}
+                onMouseEnter={() => setContextMenuSubmenu(null)}
+                onClick={() => handleContextMenuAction("move-to-main")}
+              >
+                {renderContextMenuIcon("move-main")}
+                <span>Move to Main</span>
+              </button>
+            ) : null}
 	            <button
 	              type="button"
 	              className={styles.contextMenuButton}
@@ -13680,6 +15173,7 @@ export default function DraftExplorerPage() {
 	                <button
 	                  type="button"
 	                  className={styles.contextMenuButton}
+                    disabled={contextMenuUpscaleDisabled}
 	                  onMouseEnter={() => setContextMenuSubmenu(null)}
 	                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
 	                >
@@ -13861,6 +15355,15 @@ export default function DraftExplorerPage() {
                     <Text size={300} className={styles.aiCompareLabel}>
                       AI Generated (Primary)
                     </Text>
+                    <Text size={200} className={styles.filesInfo}>
+                      {`Q ${aiReviewPendingScore ?? "-"}${
+                        aiReviewScoreDelta === null
+                          ? ""
+                          : aiReviewScoreDelta > 0
+                            ? ` (+${aiReviewScoreDelta})`
+                            : ` (${aiReviewScoreDelta})`
+                      }`}
+                    </Text>
                     <div className={styles.aiCompareImageFrame}>
                       <img
                         src={buildDraftDownloadUrl(
@@ -13875,6 +15378,9 @@ export default function DraftExplorerPage() {
                   <div className={styles.aiComparePanel}>
                     <Text size={300} className={styles.aiCompareLabel}>
                       Original (Secondary)
+                    </Text>
+                    <Text size={200} className={styles.filesInfo}>
+                      {`Q ${aiReviewOriginalScore ?? "-"}`}
                     </Text>
                     <div className={styles.aiCompareImageFrame}>
                       <img
