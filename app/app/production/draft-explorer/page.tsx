@@ -425,8 +425,8 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
   },
   spuPickerTrigger: {
-    minWidth: "120px",
-    maxWidth: "175px",
+    minWidth: "108px",
+    maxWidth: "136px",
     justifyContent: "space-between",
     paddingLeft: "12px",
     paddingRight: "10px",
@@ -434,8 +434,8 @@ const useStyles = makeStyles({
   spuPickerSurface: {
     padding: "6px",
     borderRadius: "12px",
-    minWidth: "210px",
-    maxWidth: "310px",
+    minWidth: "140px",
+    maxWidth: "190px",
     maxHeight: "520px",
     overflow: "auto",
   },
@@ -2731,7 +2731,7 @@ export default function DraftExplorerPage() {
   );
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
-  const [folderTreeHidden, setFolderTreeHidden] = useState(false);
+  const [folderTreeHidden, setFolderTreeHidden] = useState(true);
   const [movingEntry, setMovingEntry] = useState(false);
   const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
