@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
+import { canonical1688OfferUrlText } from "@/shared/1688/core";
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -566,7 +567,9 @@ const publishDraftSpusTextOnly = async (adminClient: AdminClient, spus: string[]
     vendor: null,
     mf_product_short_title: normalizeTextCell(row.draft_mf_product_short_title),
     mf_product_long_title: normalizeTextCell(row.draft_mf_product_long_title),
-    mf_product_subtitle: normalizeTextCell(row.draft_mf_product_subtitle),
+    mf_product_subtitle:
+      normalizeTextCell(row.draft_mf_product_subtitle) ??
+      normalizeTextCell(row.draft_subtitle),
     mf_product_bullets_short: normalizeTextCell(row.draft_mf_product_bullets_short),
     mf_product_bullets: normalizeTextCell(row.draft_mf_product_bullets),
     mf_product_bullets_long: normalizeTextCell(row.draft_mf_product_bullets_long),
@@ -825,7 +828,9 @@ export async function POST(request: Request) {
         row.SE_description_extended || ""
       ),
       draft_mf_product_specs: normalizeTextCell(row.SE_specifications || ""),
-      draft_supplier_1688_url: normalizeTextCell(row.url_1688 || ""),
+      draft_supplier_1688_url: normalizeTextCell(
+        canonical1688OfferUrlText(normalizeTextCell(row.url_1688 || "") || "")
+      ),
       draft_main_image_url: null,
       draft_image_folder: null,
       draft_image_urls: null,

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const escapeLikeToken = (value: string) => value.replace(/[%_]/g, "\\$&");
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -29,6 +31,11 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
+  const run = searchParams.get("run")?.trim();
+
+  if (run && (run.includes("/") || run.includes("\\") || run.includes(".."))) {
+    return NextResponse.json({ error: "Invalid run." }, { status: 400 });
+  }
 
   let supabaseQuery = adminClient
     .from("draft_products")
@@ -40,20 +47,37 @@ export async function GET(request: Request) {
     .order("draft_updated_at", { ascending: false })
     .order("draft_spu", { ascending: true });
 
-  if (query) {
+  if (run) {
+    const prefix = `images/draft_products/${run}/`;
+    const escapedPrefix = escapeLikeToken(prefix);
+    const escapedAlt = escapeLikeToken(`${run}/`);
+    const folderFilter = `draft_image_folder.like.${escapedPrefix}%,draft_image_folder.like.${escapedAlt}%`;
+    supabaseQuery = supabaseQuery.or(folderFilter);
+  } else if (query) {
     const like = `%${query}%`;
     supabaseQuery = supabaseQuery.or(
       `draft_spu.ilike.${like},draft_title.ilike.${like},draft_subtitle.ilike.${like}`
     );
   }
 
-  const { data, error, count } = await supabaseQuery;
+  const { data, error } = await supabaseQuery;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const items = data ?? [];
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const items = (data ?? []).filter((row) => {
+    if (!run || !normalizedQuery) return true;
+    const spu = String(row.draft_spu ?? "").toLowerCase();
+    const title = String(row.draft_title ?? "").toLowerCase();
+    const subtitle = String(row.draft_subtitle ?? "").toLowerCase();
+    return (
+      spu.includes(normalizedQuery) ||
+      title.includes(normalizedQuery) ||
+      subtitle.includes(normalizedQuery)
+    );
+  });
   const spus = items.map((item) => item.draft_spu).filter(Boolean);
   const variantCounts = new Map<string, number>();
 
@@ -94,5 +118,5 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ items: responseItems, count });
+  return NextResponse.json({ items: responseItems, count: responseItems.length });
 }

@@ -12,6 +12,16 @@ type PreviewTitleRow = {
   titleEn: string;
 };
 
+type PreviewVariantRow = {
+  comboIndex: number;
+  labelZh: string;
+  labelEn: string;
+  labelRaw: string;
+  imageUrl: string | null;
+  priceText: string;
+  weightText: string;
+};
+
 type PreviewTitleCache = {
   sourceMtimeMs: number;
   updatedAt: string;
@@ -136,6 +146,193 @@ const extractSupplierUrl = (entry: Record<string, unknown>) => {
   return "";
 };
 
+const normalizeVariantToken = (value: unknown) =>
+  asText(value)
+    .replace(/\s+/g, "")
+    .replace(/[（]/g, "(")
+    .replace(/[）]/g, ")")
+    .toLowerCase();
+
+const toRemoteImageUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  if (raw.startsWith("//")) return `https:${raw}`;
+  return raw;
+};
+
+const buildVariantLabelRaw = (combo: Record<string, unknown>) =>
+  [
+    combo.t1,
+    combo.t2,
+    combo.t3,
+    combo.t1_zh,
+    combo.t2_zh,
+    combo.t3_zh,
+    combo.t1_en,
+    combo.t2_en,
+    combo.t3_en,
+  ]
+    .map((value) => cleanText(asText(value)))
+    .find(Boolean) || "";
+
+const buildVariantLabelZh = (combo: Record<string, unknown>) => {
+  const fromZh = [combo.t1_zh, combo.t2_zh, combo.t3_zh]
+    .map((value) => cleanText(asText(value)))
+    .filter(Boolean);
+  if (fromZh.length > 0) return fromZh.join(" / ");
+  const fallback = [combo.t1, combo.t2, combo.t3]
+    .map((value) => cleanText(asText(value)))
+    .filter((value) => value && containsChinese(value));
+  return fallback.join(" / ");
+};
+
+const buildVariantLabelEn = (combo: Record<string, unknown>) => {
+  const fromEn = [combo.t1_en, combo.t2_en, combo.t3_en]
+    .map((value) => cleanText(asText(value)))
+    .filter(Boolean);
+  if (fromEn.length > 0) return fromEn.join(" / ");
+  const fallback = [combo.t1, combo.t2, combo.t3]
+    .map((value) => cleanText(asText(value)))
+    .filter((value) => value && !containsChinese(value));
+  return fallback.join(" / ");
+};
+
+const buildVariantPriceText = (combo: Record<string, unknown>) => {
+  const direct = cleanText(
+    asText(combo.priceRaw || combo.price_raw || combo.price_text || combo.priceText)
+  );
+  if (direct) return direct;
+  const numeric = Number(combo.price);
+  return Number.isFinite(numeric) ? `¥${numeric}` : "";
+};
+
+const buildVariantWeightText = (combo: Record<string, unknown>) => {
+  const direct = cleanText(
+    asText(
+      combo.weightRaw ||
+        combo.weight_raw ||
+        combo.weightText ||
+        combo.weight_text ||
+        combo.weight
+    )
+  );
+  if (direct) return direct;
+  const grams = Number(combo.weight_grams ?? combo.weightGrams);
+  return Number.isFinite(grams) ? `${Math.round(grams)}g` : "";
+};
+
+const collectVariantRows = (entry: Record<string, unknown>): PreviewVariantRow[] => {
+  const variations =
+    entry.variations && typeof entry.variations === "object"
+      ? (entry.variations as Record<string, unknown>)
+      : null;
+  const combos = variations && Array.isArray(variations.combos) ? variations.combos : [];
+  const variantImages = Array.isArray(entry.variant_images_1688)
+    ? (entry.variant_images_1688 as unknown[])
+    : [];
+
+  const imageRows = variantImages
+    .map((row) =>
+      row && typeof row === "object" ? (row as Record<string, unknown>) : null
+    )
+    .filter((row): row is Record<string, unknown> => Boolean(row));
+  const imageByToken = new Map<string, string>();
+  imageRows.forEach((row) => {
+    const nameToken = normalizeVariantToken(row.name || row.label || row.text);
+    const imageUrl = toRemoteImageUrl(
+      row.url_full || row.full_url || row.image_full_url || row.url || row.image_url
+    );
+    if (!nameToken || !imageUrl) return;
+    if (!imageByToken.has(nameToken)) imageByToken.set(nameToken, imageUrl);
+  });
+
+  const rows: PreviewVariantRow[] = combos
+    .map((combo, index) => {
+      const rec =
+        combo && typeof combo === "object"
+          ? (combo as Record<string, unknown>)
+          : ({} as Record<string, unknown>);
+      const comboIndex = Number(rec.index);
+      const resolvedIndex =
+        Number.isInteger(comboIndex) && comboIndex >= 0 ? comboIndex : index;
+      const labelZh = buildVariantLabelZh(rec);
+      const labelEn = buildVariantLabelEn(rec);
+      const labelRaw =
+        [rec.t1, rec.t2, rec.t3]
+          .map((value) => cleanText(asText(value)))
+          .filter(Boolean)
+          .join(" / ") || buildVariantLabelRaw(rec);
+      const labelCandidates = [
+        rec.t1_zh,
+        rec.t1,
+        rec.t1_en,
+        rec.t2_zh,
+        rec.t2,
+        rec.t2_en,
+        rec.t3_zh,
+        rec.t3,
+        rec.t3_en,
+      ]
+        .map((value) => normalizeVariantToken(value))
+        .filter(Boolean);
+
+      let imageUrl = toRemoteImageUrl(
+        rec.image_full_url || rec.image_zoom_url || rec.image_url || rec.image_thumb_url
+      );
+      if (!imageUrl) {
+        for (const token of labelCandidates) {
+          const direct = imageByToken.get(token);
+          if (direct) {
+            imageUrl = direct;
+            break;
+          }
+          const partial = imageRows.find((row) => {
+            const rowToken = normalizeVariantToken(row.name || row.label || row.text);
+            if (!rowToken) return false;
+            return rowToken.includes(token) || token.includes(rowToken);
+          });
+          if (partial) {
+            imageUrl = toRemoteImageUrl(
+              partial.url_full ||
+                partial.full_url ||
+                partial.image_full_url ||
+                partial.url ||
+                partial.image_url
+            );
+            if (imageUrl) break;
+          }
+        }
+      }
+
+      return {
+        comboIndex: resolvedIndex,
+        labelZh,
+        labelEn,
+        labelRaw,
+        imageUrl: imageUrl || null,
+        priceText: buildVariantPriceText(rec),
+        weightText: buildVariantWeightText(rec),
+      };
+    })
+    .filter((row) => row.labelZh || row.labelEn || row.labelRaw || row.imageUrl);
+
+  if (rows.length > 0) return rows;
+
+  const fallbackVariants = asText(entry.variants_1688)
+    .split(/\r?\n/)
+    .map((value) => cleanText(value))
+    .filter(Boolean);
+  return fallbackVariants.map((value, index) => ({
+    comboIndex: index,
+    labelZh: containsChinese(value) ? value : "",
+    labelEn: containsChinese(value) ? "" : value,
+    labelRaw: value,
+    imageUrl: null,
+    priceText: "",
+    weightText: "",
+  }));
+};
+
 const extractPlatformLabel = (entry: Record<string, unknown>) => {
   const labels: string[] = [];
   const seen = new Set<string>();
@@ -229,15 +426,19 @@ const normalizeAiRows = (value: unknown) => {
   if (!Array.isArray(value)) return [] as PreviewTitleRow[];
   const rows: PreviewTitleRow[] = [];
   for (const row of value) {
-    const index = Number((row as any)?.index);
+    const record =
+      row && typeof row === "object"
+        ? (row as Record<string, unknown>)
+        : ({} as Record<string, unknown>);
+    const index = Number(record.index);
     if (!Number.isInteger(index) || index < 0) continue;
-    const titleZh = cleanText(asText((row as any)?.titleZh || (row as any)?.zh));
+    const titleZh = cleanText(asText(record.titleZh || record.zh));
     const titleEn = cleanText(
       asText(
-        (row as any)?.titleEn ||
-          (row as any)?.en ||
-          (row as any)?.english ||
-          (row as any)?.translation
+        record.titleEn ||
+          record.en ||
+          record.english ||
+          record.translation
       )
     );
     if (!titleZh && !titleEn) continue;
@@ -433,12 +634,15 @@ export async function GET(
       120
     );
     const titleEn = cleanText(cached?.titleEn || fallbackTitle).slice(0, 140);
+    const variants = collectVariantRows(source);
     return {
       ...item,
+      variantCount: variants.length,
       supplierUrl: extractSupplierUrl(source),
       platformLabel: extractPlatformLabel(source),
       titleZh,
       titleEn,
+      variants,
     };
   });
 

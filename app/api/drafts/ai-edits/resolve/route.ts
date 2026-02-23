@@ -69,12 +69,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const record = await resolvePendingAiEdit({
+    const result = await resolvePendingAiEdit({
       originalPath,
       decision: decisionRaw,
       requestedBy: auth.userId,
     });
-    return NextResponse.json({ ok: true, item: record });
+    return NextResponse.json({
+      ok: true,
+      item: result.item,
+      refreshedScores: result.refreshedScores,
+      scoreRefreshErrors: result.scoreRefreshErrors,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unable to resolve AI edit." },

@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import {
+  restoreDraftImageUpscaleUndoMarker,
+  saveDraftImageUpscaleUndoMarker,
+} from "@/lib/draft-image-upscale";
 
 const UNDO_FILE_SUFFIX = ".undo-last";
 
@@ -54,6 +58,7 @@ export const saveDraftImageUndoBackup = (imageAbsolutePath: string) => {
     }
     throw new Error("Unable to create undo backup.");
   }
+  saveDraftImageUpscaleUndoMarker(imageAbsolutePath);
   return undoAbsolutePath;
 };
 
@@ -73,6 +78,7 @@ export const restoreDraftImageUndoBackup = (imageAbsolutePath: string) => {
     }
     throw new Error("Unable to restore the previous image version.");
   }
+  restoreDraftImageUpscaleUndoMarker(imageAbsolutePath);
 
   try {
     fs.unlinkSync(undoAbsolutePath);
@@ -80,4 +86,3 @@ export const restoreDraftImageUndoBackup = (imageAbsolutePath: string) => {
     // Best-effort cleanup; successful restore is the primary goal.
   }
 };
-

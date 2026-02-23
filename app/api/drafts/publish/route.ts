@@ -2,9 +2,14 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "path";
 import { spawn } from "child_process";
+import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
+  isExcludedPublishArtifactName,
+  isImageFileName,
+  isJpegFileName,
+  isPublishableImageName,
   normalizeImageNamesInFolder,
   validateImageFolder,
 } from "@/lib/image-names";
@@ -29,6 +34,8 @@ const CATALOG_ROOT =
 const MEDIA_LIBRARY_SCRIPT =
   process.env.MEDIA_LIBRARY_SCRIPT ||
   "/srv/shopify-sync/api/scripts/ingest-media-library.mjs";
+const PUBLISH_IMAGE_MAX_DIMENSION_PX = 1000;
+const PUBLISH_IMAGE_QUALITY = 90;
 const DEFAULT_TAX_CODE = "HST20";
 const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
 const PRODUCT_CATEGORIZER_SCRIPT =
@@ -185,6 +192,51 @@ const getSpuPrefix = (spu: string | null) => {
   if (!normalized) return null;
   const upper = normalized.toUpperCase();
   return upper.length >= 2 ? upper.slice(0, 2) : upper;
+};
+
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(String(value || "").trim());
+const isSrvPath = (value: string) => String(value || "").trim().startsWith("/srv/");
+
+const toImageFileName = (value: string) =>
+  path.basename(String(value || "").replace(/\\/g, "/").trim());
+
+const resolveVariantImageForPublish = (input: {
+  spu: string | null;
+  value: string | null;
+  renameMapBySpu: Map<string, Map<string, string>>;
+  finalTopLevelImagesBySpu: Map<string, Set<string>>;
+}) => {
+  const normalized = normalizeText(input.value);
+  if (!normalized) {
+    return { value: null, issue: null as string | null };
+  }
+
+  // Keep explicit URLs and absolute paths unchanged.
+  if (isHttpUrl(normalized) || isSrvPath(normalized)) {
+    return { value: normalized, issue: null as string | null };
+  }
+
+  const spu = normalizeText(input.spu);
+  const fileName = toImageFileName(normalized);
+  if (!fileName) {
+    return {
+      value: null,
+      issue: "Variant image reference is invalid after normalization.",
+    };
+  }
+
+  const renameMap = spu ? input.renameMapBySpu.get(spu) : undefined;
+  const finalName = renameMap?.get(fileName.toLowerCase()) ?? fileName;
+
+  const finalImageSet = spu ? input.finalTopLevelImagesBySpu.get(spu) : undefined;
+  if (finalImageSet && finalImageSet.size > 0 && !finalImageSet.has(finalName.toLowerCase())) {
+    return {
+      value: null,
+      issue: `Variant image "${fileName}" is not in the final top-level publish image set.`,
+    };
+  }
+
+  return { value: finalName, issue: null as string | null };
 };
 
 const buildFallbackVariant = (product: DraftProductRow): DraftVariantRow => {
@@ -360,28 +412,147 @@ const autoPromotePendingAiEdits = async (folderAbsPath: string) => {
   return { resolvedCount, errors };
 };
 
-const moveFolder = async (src: string, dest: string) => {
-  await fs.rm(dest, { recursive: true, force: true });
+const pathExists = async (absolutePath: string) => {
   try {
-    await fs.rename(src, dest);
-    return;
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== "EXDEV") throw err;
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const createTempJpegPath = (folderAbsPath: string, sourceName: string) => {
+  const parsed = path.parse(sourceName);
+  return path.join(
+    folderAbsPath,
+    `.${parsed.name}.publish-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2, 10)}.tmp.jpg`
+  );
+};
+
+const ensureUniqueJpegName = async (
+  folderAbsPath: string,
+  baseName: string,
+  keepName: string | null
+) => {
+  let candidate = `${baseName}.jpg`;
+  let index = 2;
+  while (true) {
+    if (keepName && candidate.toLowerCase() === keepName.toLowerCase()) {
+      return candidate;
+    }
+    if (!(await pathExists(path.join(folderAbsPath, candidate)))) {
+      return candidate;
+    }
+    candidate = `${baseName}-${index}.jpg`;
+    index += 1;
+  }
+};
+
+const normalizeTopLevelImageFileToJpeg = async (
+  folderAbsPath: string,
+  fileName: string
+) => {
+  const sourceAbsPath = path.join(folderAbsPath, fileName);
+  const parsed = path.parse(fileName);
+  const baseName = parsed.name.trim() || "image";
+  const keepName = isJpegFileName(fileName) ? fileName : null;
+  const targetName = await ensureUniqueJpegName(folderAbsPath, baseName, keepName);
+  const targetAbsPath = path.join(folderAbsPath, targetName);
+  const tempAbsPath = createTempJpegPath(folderAbsPath, fileName);
+
+  try {
+    await sharp(sourceAbsPath, { failOnError: false })
+      .rotate()
+      .resize({
+        width: PUBLISH_IMAGE_MAX_DIMENSION_PX,
+        height: PUBLISH_IMAGE_MAX_DIMENSION_PX,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: PUBLISH_IMAGE_QUALITY, mozjpeg: true })
+      .toFile(tempAbsPath);
+
+    await fs.rm(targetAbsPath, { force: true });
+    await fs.rename(tempAbsPath, targetAbsPath);
+
+    if (sourceAbsPath !== targetAbsPath) {
+      await fs.rm(sourceAbsPath, { force: true });
+    }
+    return targetName;
+  } catch (error) {
+    await fs.rm(tempAbsPath, { force: true });
+    throw error;
+  }
+};
+
+const prepareFolderImagesForPublish = async (folderAbsPath: string) => {
+  const entries = await fs.readdir(folderAbsPath, { withFileTypes: true });
+  const imageArtifacts = entries.filter(
+    (entry) =>
+      entry.isFile() &&
+      isImageFileName(entry.name) &&
+      isExcludedPublishArtifactName(entry.name)
+  );
+  for (const artifact of imageArtifacts) {
+    await fs.rm(path.join(folderAbsPath, artifact.name), { force: true });
   }
 
-  await fs.mkdir(dest, { recursive: true });
-  const entries = await fs.readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      await moveFolder(srcPath, destPath);
-    } else {
-      await fs.copyFile(srcPath, destPath);
+  const initialImageFiles = entries
+    .filter((entry) => entry.isFile() && isPublishableImageName(entry.name))
+    .map((entry) => entry.name);
+  const jpegRenamePairs: Array<{ sourceName: string; targetName: string }> = [];
+  for (const fileName of initialImageFiles) {
+    const targetName = await normalizeTopLevelImageFileToJpeg(folderAbsPath, fileName);
+    if (targetName !== fileName) {
+      jpegRenamePairs.push({ sourceName: fileName, targetName });
     }
   }
-  await fs.rm(src, { recursive: true, force: true });
+
+  const postEntries = await fs.readdir(folderAbsPath, { withFileTypes: true });
+  const publishableImages = postEntries
+    .filter((entry) => entry.isFile() && isPublishableImageName(entry.name))
+    .map((entry) => entry.name);
+  const nonJpgFiles = publishableImages.filter((name) => !isJpegFileName(name));
+
+  return {
+    removedArtifacts: imageArtifacts.length,
+    imagesPrepared: publishableImages.length,
+    nonJpgFiles,
+    jpegRenamePairs,
+    ignoredSubfolders: postEntries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+  };
+};
+
+const copyFinalPublishImagesToCatalog = async (src: string, dest: string) => {
+  await fs.rm(dest, { recursive: true, force: true });
+  await fs.mkdir(dest, { recursive: true });
+
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  const filesToCopy = entries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        isPublishableImageName(entry.name) &&
+        isJpegFileName(entry.name)
+    )
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+
+  for (const fileName of filesToCopy) {
+    await fs.copyFile(path.join(src, fileName), path.join(dest, fileName));
+  }
+
+  return {
+    copiedCount: filesToCopy.length,
+    ignoredSubfolders: entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+  };
 };
 
 const resolveArchivePath = (archiveRoot: string, name: string) => {
@@ -536,6 +707,8 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const runFolders = new Map<string, string[]>();
   const archivedRuns = new Map<string, string>();
+  const variantImageRenameMapBySpu = new Map<string, Map<string, string>>();
+  const finalTopLevelImagesBySpu = new Map<string, Set<string>>();
   let autoPromotedAiEdits = 0;
   const imageIssues: Array<{
     spu: string;
@@ -543,6 +716,8 @@ export async function POST(request: Request) {
     error?: string;
     missingMain?: boolean;
     invalidPrefixes?: string[];
+    nonJpgFiles?: string[];
+    ignoredSubfolders?: string[];
   }> = [];
 
   for (const row of products) {
@@ -577,15 +752,84 @@ export async function POST(request: Request) {
         });
         continue;
       }
-      await normalizeImageNamesInFolder(abs, row.draft_spu);
+      const prepare = await prepareFolderImagesForPublish(abs);
+      if (prepare.nonJpgFiles.length > 0) {
+        imageIssues.push({
+          spu: row.draft_spu,
+          folder: abs,
+          error:
+            "Publish requires JPG files only. Non-JPG files remain after conversion.",
+          nonJpgFiles: prepare.nonJpgFiles,
+          ignoredSubfolders: prepare.ignoredSubfolders,
+        });
+        continue;
+      }
+      const normalizeResult = await normalizeImageNamesInFolder(abs, row.draft_spu);
+      const renameMap = new Map<string, string>();
+      const addRenamePair = (sourceName: string, targetName: string) => {
+        const from = String(sourceName || "").trim();
+        const to = String(targetName || "").trim();
+        if (!from || !to || from.toLowerCase() === to.toLowerCase()) return;
+        renameMap.set(from.toLowerCase(), to);
+      };
+
+      for (const pair of prepare.jpegRenamePairs) {
+        addRenamePair(pair.sourceName, pair.targetName);
+      }
+      for (const pair of normalizeResult.renamePairs) {
+        addRenamePair(pair.sourceName, pair.targetName);
+      }
+      // Compose prepare-stage conversion with publish rename, e.g. file.png -> file.jpg -> SPU-3-VAR.jpg.
+      for (const pair of prepare.jpegRenamePairs) {
+        const chainedTarget =
+          renameMap.get(String(pair.targetName || "").trim().toLowerCase()) ??
+          pair.targetName;
+        addRenamePair(pair.sourceName, chainedTarget);
+      }
+      variantImageRenameMapBySpu.set(row.draft_spu, renameMap);
+
+      const postEntries = await fs.readdir(abs, { withFileTypes: true });
+      const finalTopLevelImageNames = postEntries
+        .filter(
+          (entry) =>
+            entry.isFile() &&
+            isPublishableImageName(entry.name) &&
+            isJpegFileName(entry.name)
+        )
+        .map((entry) => entry.name);
+      finalTopLevelImagesBySpu.set(
+        row.draft_spu,
+        new Set(finalTopLevelImageNames.map((name) => name.toLowerCase()))
+      );
+
       const validation = await validateImageFolder(abs, row.draft_spu);
       if (validation.count > 0) {
+        const nonJpgAfterNormalize = postEntries
+          .filter(
+            (entry) =>
+              entry.isFile() &&
+              isPublishableImageName(entry.name) &&
+              !isJpegFileName(entry.name)
+          )
+          .map((entry) => entry.name);
+        if (nonJpgAfterNormalize.length > 0) {
+          imageIssues.push({
+            spu: row.draft_spu,
+            folder: abs,
+            error:
+              "Publish gate failed: non-JPG files detected in top-level draft folder.",
+            nonJpgFiles: nonJpgAfterNormalize,
+            ignoredSubfolders: prepare.ignoredSubfolders,
+          });
+          continue;
+        }
         if (!validation.hasMain || validation.invalidPrefixes.length) {
           imageIssues.push({
             spu: row.draft_spu,
             folder: abs,
             missingMain: !validation.hasMain,
             invalidPrefixes: validation.invalidPrefixes,
+            ignoredSubfolders: prepare.ignoredSubfolders,
           });
         }
       }
@@ -606,7 +850,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Some draft image folders are missing required naming structure. Please resolve and retry.",
+          "Some draft image folders failed publish image checks. Please resolve and retry.",
         issues: imageIssues,
       },
       { status: 400 }
@@ -667,7 +911,8 @@ export async function POST(request: Request) {
     ),
     mf_product_short_title: normalizeText(row.draft_mf_product_short_title),
     mf_product_long_title: normalizeText(row.draft_mf_product_long_title),
-    mf_product_subtitle: normalizeText(row.draft_mf_product_subtitle),
+    mf_product_subtitle:
+      normalizeText(row.draft_mf_product_subtitle) ?? normalizeText(row.draft_subtitle),
     mf_product_bullets_short: normalizeText(row.draft_mf_product_bullets_short),
     mf_product_bullets: normalizeText(row.draft_mf_product_bullets),
     mf_product_bullets_long: normalizeText(row.draft_mf_product_bullets_long),
@@ -709,6 +954,13 @@ export async function POST(request: Request) {
     product_created_at: row.draft_created_at || null,
   }));
 
+  const variantImageIssues: Array<{
+    spu: string | null;
+    sku: string | null;
+    variant_image_url: string;
+    issue: string;
+  }> = [];
+
   const stgSkuRows = allVariants.map((row) => {
     const parent = row.draft_spu ? productBySpu.get(row.draft_spu) : null;
     const rawRow =
@@ -729,9 +981,24 @@ export async function POST(request: Request) {
         row.draft_price ||
         (rawRow ? getRawText(rawRow, "price") : "")
     );
+    const sku = normalizeText(row.draft_sku);
+    const resolvedVariantImage = resolveVariantImageForPublish({
+      spu: row.draft_spu,
+      value: normalizeText(row.draft_variant_image_url),
+      renameMapBySpu: variantImageRenameMapBySpu,
+      finalTopLevelImagesBySpu,
+    });
+    if (resolvedVariantImage.issue) {
+      variantImageIssues.push({
+        spu: row.draft_spu ?? null,
+        sku,
+        variant_image_url: String(row.draft_variant_image_url || ""),
+        issue: resolvedVariantImage.issue,
+      });
+    }
     return {
       spu: row.draft_spu,
-      sku: normalizeText(row.draft_sku),
+      sku,
       option1: normalizeText(row.draft_option1),
       option2: normalizeText(row.draft_option2),
       option3: normalizeText(row.draft_option3),
@@ -756,7 +1023,7 @@ export async function POST(request: Request) {
       weight_unit: normalizeText(row.draft_weight_unit),
       barcode: normalizeText(row.draft_barcode),
       ean_code: normalizeText(row.draft_barcode),
-      variant_image_url: normalizeText(row.draft_variant_image_url),
+      variant_image_url: resolvedVariantImage.value,
       shipping_name_en: normalizeText(row.draft_shipping_name_en),
       short_title_zh: normalizeText(row.draft_short_title_zh),
       shipping_name_zh: normalizeText(row.draft_shipping_name_zh),
@@ -780,6 +1047,17 @@ export async function POST(request: Request) {
       processed: false,
     };
   });
+
+  if (variantImageIssues.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Some variant image references do not resolve to the final top-level publish images. Fix variant_image_url values and retry publish.",
+        issues: variantImageIssues.slice(0, 200),
+      },
+      { status: 400 }
+    );
+  }
 
   const { error: deleteSpuError } = await adminClient
     .from("stg_import_spu")
@@ -833,7 +1111,13 @@ export async function POST(request: Request) {
   // This is async to avoid blocking publish; the DB will be updated shortly after publish completes.
   await spawnTaxonomyCategorizerForSpus(spuList);
 
-  const moveResults: Array<{ spu: string; moved: boolean; error?: string }> = [];
+  const moveResults: Array<{
+    spu: string;
+    moved: boolean;
+    error?: string;
+    copiedCount?: number;
+    ignoredSubfolders?: string[];
+  }> = [];
   for (const row of products) {
     const folderValue = row.draft_image_folder;
     if (!folderValue) {
@@ -851,8 +1135,13 @@ export async function POST(request: Request) {
     }
     const dest = path.join(NEW_CATALOG_ROOT, row.draft_spu);
     try {
-      await moveFolder(src, dest);
-      moveResults.push({ spu: row.draft_spu, moved: true });
+      const copied = await copyFinalPublishImagesToCatalog(src, dest);
+      moveResults.push({
+        spu: row.draft_spu,
+        moved: true,
+        copiedCount: copied.copiedCount,
+        ignoredSubfolders: copied.ignoredSubfolders,
+      });
     } catch (err) {
       moveResults.push({
         spu: row.draft_spu,

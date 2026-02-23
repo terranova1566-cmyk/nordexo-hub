@@ -4,6 +4,7 @@ import {
   applyDraftImageOrder,
   readDraftImageOrderSync,
 } from "@/lib/draft-image-order";
+import { isDraftImageUpscaled } from "@/lib/draft-image-upscale";
 
 export const DRAFT_ROOT = "/srv/resources/media/images/draft_products";
 
@@ -14,6 +15,7 @@ export type DraftEntry = {
   size: number;
   modifiedAt: string;
   pixelQualityScore?: number | null;
+  zimageUpscaled?: boolean;
 };
 
 const IMAGE_EXTENSIONS = new Set([
@@ -694,7 +696,9 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
       const full = path.join(absolute, entry.name);
       const stat = fs.statSync(full);
       const isDir = entry.isDirectory();
+      const isImageFile = !isDir && isImageFileName(entry.name);
       let pixelQualityScore: number | null = null;
+      let zimageUpscaled = false;
       const baseName = normalizePathToken(path.basename(full));
       const strippedBaseName = normalizePathToken(stripImageTagSuffixes(path.basename(full)));
       if (!isDir && qualityIndex) {
@@ -716,6 +720,9 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
           stage1Index?.byBaseName.get(strippedBaseName)?.technicalQualityScore ??
           null;
       }
+      if (isImageFile) {
+        zimageUpscaled = isDraftImageUpscaled(full);
+      }
       return {
         name: entry.name,
         path: toRelativePath(full),
@@ -723,6 +730,7 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
         size: isDir ? 0 : stat.size,
         modifiedAt: stat.mtime.toISOString(),
         ...(isDir ? {} : { pixelQualityScore }),
+        ...(!isDir && isImageFile ? { zimageUpscaled } : {}),
       };
     });
 

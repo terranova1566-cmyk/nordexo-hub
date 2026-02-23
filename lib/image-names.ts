@@ -2,10 +2,45 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { applyDraftImageOrder, readDraftImageOrder } from "@/lib/draft-image-order";
 
-const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const IMAGE_EXTS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".bmp",
+  ".avif",
+  ".tif",
+  ".tiff",
+]);
 
-const isImageFile = (name: string) =>
+export const isImageFileName = (name: string) =>
   IMAGE_EXTS.has(path.extname(name).toLowerCase());
+
+export const isJpegFileName = (name: string) => {
+  const ext = path.extname(name).toLowerCase();
+  return ext === ".jpg" || ext === ".jpeg";
+};
+
+const isHiddenFile = (name: string) => path.basename(name).startsWith(".");
+
+const hasExcludedArtifactToken = (name: string) => {
+  const lower = name.toLowerCase();
+  const spaced = lower.replace(/[_-]+/g, " ");
+  const hasArtifactWord = /\b(undo|pending)\b/.test(spaced);
+  return (
+    hasArtifactWord ||
+    lower.includes("last.ai") ||
+    lower.includes(".photopea-") ||
+    lower.includes(".tmp")
+  );
+};
+
+export const isExcludedPublishArtifactName = (name: string) =>
+  isHiddenFile(name) || hasExcludedArtifactToken(name);
+
+export const isPublishableImageName = (name: string) =>
+  isImageFileName(name) && !isExcludedPublishArtifactName(name);
 
 const hasTag = (name: string, tag: string) =>
   name.toUpperCase().includes(tag.toUpperCase());
@@ -21,6 +56,7 @@ export type NormalizeImageResult = {
   hadMain: boolean;
   addedMain: boolean;
   renamed: number;
+  renamePairs: Array<{ sourceName: string; targetName: string }>;
   missingMainAfter: boolean;
   invalidPrefixes: string[];
   imagesChecked: number;
@@ -32,7 +68,7 @@ export const normalizeImageNamesInFolder = async (
 ): Promise<NormalizeImageResult> => {
   const entries = await fs.readdir(folder, { withFileTypes: true });
   const imageFilesByName = entries
-    .filter((entry) => entry.isFile() && isImageFile(entry.name))
+    .filter((entry) => entry.isFile() && isPublishableImageName(entry.name))
     .map((entry) => entry.name);
   const imageFiles = applyDraftImageOrder(
     imageFilesByName,
@@ -58,6 +94,8 @@ export const normalizeImageNamesInFolder = async (
     if (index === 0) parts.push("MAIN");
     if (hasTag(name, "ENV")) parts.push("ENV");
     if (hasTag(name, "VAR")) parts.push("VAR");
+    if (hasTag(name, "INF")) parts.push("INF");
+    if (hasTag(name, "DIGI")) parts.push("DIGI");
     return {
       sourceName: name,
       targetName: `${parts.join("-")}${ext}`,
@@ -91,7 +129,7 @@ export const normalizeImageNamesInFolder = async (
 
   const nextEntries = await fs.readdir(folder, { withFileTypes: true });
   const nextImages = nextEntries
-    .filter((entry) => entry.isFile() && isImageFile(entry.name))
+    .filter((entry) => entry.isFile() && isPublishableImageName(entry.name))
     .map((entry) => entry.name);
   const missingMainAfter = !nextImages.some((name) => hasTag(name, "MAIN"));
   const invalidPrefixes = nextImages.filter(
@@ -102,6 +140,10 @@ export const normalizeImageNamesInFolder = async (
     hadMain: hasMain,
     addedMain,
     renamed,
+    renamePairs: toRename.map((item) => ({
+      sourceName: item.sourceName,
+      targetName: item.targetName,
+    })),
     missingMainAfter,
     invalidPrefixes,
     imagesChecked: imageFiles.length,
@@ -111,7 +153,7 @@ export const normalizeImageNamesInFolder = async (
 export const validateImageFolder = async (folder: string, spu: string) => {
   const entries = await fs.readdir(folder, { withFileTypes: true });
   const images = entries
-    .filter((entry) => entry.isFile() && isImageFile(entry.name))
+    .filter((entry) => entry.isFile() && isPublishableImageName(entry.name))
     .map((entry) => entry.name);
   const hasMain = images.some((name) => hasTag(name, "MAIN"));
   const invalidPrefixes = images.filter(

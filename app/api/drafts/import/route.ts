@@ -61,6 +61,14 @@ const loadSupabaseEnv = () => {
   return env;
 };
 
+const resolveVariationVerifyScriptPath = () => {
+  const configured = String(process.env.DRAFT_VARIATION_VERIFY_SCRIPT ?? "").trim();
+  if (configured) return configured;
+  const ingestScript = String(process.env.DRAFT_INGEST_SCRIPT ?? "").trim();
+  if (!ingestScript) return "";
+  return path.join(path.dirname(ingestScript), "verify-variation-skus.mjs");
+};
+
 const normalizeSku = (value: unknown) => String(value || "").trim();
 
 const readWorkbookRows = async (filePath: string) => {
@@ -665,28 +673,34 @@ export async function POST(request: Request) {
   }
 
   if (verifySpuSet.size > 0) {
-    const verifyScript = process.env.DRAFT_VARIATION_VERIFY_SCRIPT;
+    const verifyScript = resolveVariationVerifyScriptPath();
     if (verifyScript && fs.existsSync(verifyScript)) {
-      const verifyArgs = [
-        verifyScript,
-        "--spus",
-        [...verifySpuSet].join(","),
-      ];
-      if (process.env.DRAFT_VARIATION_ALLOWED_FILE) {
-        verifyArgs.push("--allowed-file", process.env.DRAFT_VARIATION_ALLOWED_FILE);
-      }
-      if (process.env.DRAFT_VARIATION_MODEL) {
-        verifyArgs.push("--model", process.env.DRAFT_VARIATION_MODEL);
-      }
-      if (process.env.DRAFT_VARIATION_DRY_RUN === "true") {
-        verifyArgs.push("--dry-run");
-      }
-      const res = spawnSync("node", verifyArgs, { stdio: "inherit", env: process.env });
+      const verifyEnv = {
+        ...process.env,
+        DRAFT_VERIFY_SCRIPT: verifyScript,
+        DRAFT_VERIFY_SPUS: [...verifySpuSet].join(","),
+        DRAFT_VERIFY_ALLOWED_FILE: process.env.DRAFT_VARIATION_ALLOWED_FILE ?? "",
+        DRAFT_VERIFY_MODEL: process.env.DRAFT_VARIATION_MODEL ?? "",
+        DRAFT_VERIFY_DRY_RUN: process.env.DRAFT_VARIATION_DRY_RUN ?? "",
+      };
+      const verifyCmd = [
+        'args=("$DRAFT_VERIFY_SCRIPT" "--spus" "$DRAFT_VERIFY_SPUS")',
+        '[ -n "$DRAFT_VERIFY_ALLOWED_FILE" ] && args+=("--allowed-file" "$DRAFT_VERIFY_ALLOWED_FILE")',
+        '[ -n "$DRAFT_VERIFY_MODEL" ] && args+=("--model" "$DRAFT_VERIFY_MODEL")',
+        '[ "$DRAFT_VERIFY_DRY_RUN" = "true" ] && args+=("--dry-run")',
+        'node "${args[@]}"',
+      ].join("; ");
+      const res = spawnSync("bash", ["-lc", verifyCmd], {
+        stdio: "inherit",
+        env: verifyEnv,
+      });
       if (res.status !== 0) {
         errors.push("Variation verification failed.");
       }
-    } else if (verifyScript) {
+    } else if (process.env.DRAFT_VARIATION_VERIFY_SCRIPT || verifyScript) {
       errors.push(`Missing variation verification script at ${verifyScript}`);
+    } else {
+      errors.push("Missing variation verification script path.");
     }
   }
 

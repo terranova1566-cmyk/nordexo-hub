@@ -3,6 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
+import { moveDraftImageUpscaleMarkers } from "@/lib/draft-image-upscale";
 
 export const runtime = "nodejs";
 
@@ -93,6 +94,9 @@ export async function POST(request: Request) {
   }
 
   fs.renameSync(sourceAbsolutePath, destinationAbsolutePath);
+  if (sourceStat.isFile()) {
+    moveDraftImageUpscaleMarkers(sourceAbsolutePath, destinationAbsolutePath);
+  }
 
   return NextResponse.json({
     ok: true,

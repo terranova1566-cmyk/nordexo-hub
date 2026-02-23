@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { canonical1688OfferUrlText } from "@/shared/1688/core";
 
 export const EXTRACTOR_UPLOAD_DIR = "/srv/node-files/1688-extractor";
 export const PRODUCTION_SUPPLIER_PAYLOAD_DIR =
@@ -36,6 +37,71 @@ type ExtractorFileSummaryCache = {
 const asString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
+const canonicalize1688UrlValue = (value: unknown) => {
+  const raw = asString(value);
+  if (!raw) return "";
+  return canonical1688OfferUrlText(raw) || raw;
+};
+
+const CANONICAL_URL_KEYS = new Set([
+  "url_1688",
+  "detail_url",
+  "detailUrl",
+  "selected_detail_url",
+  "supplier_selected_offer_detail_url",
+  "draft_supplier_1688_url",
+]);
+
+const canonicalizeOfferRecord = (value: unknown) => {
+  if (!value || typeof value !== "object") return value;
+  const offer = { ...(value as Record<string, unknown>) };
+  if (typeof offer.detailUrl === "string") {
+    offer.detailUrl = canonicalize1688UrlValue(offer.detailUrl);
+  }
+  if (typeof offer.detail_url === "string") {
+    offer.detail_url = canonicalize1688UrlValue(offer.detail_url);
+  }
+  return offer;
+};
+
+const canonicalizeEntryUrls = (entry: unknown) => {
+  if (typeof entry === "string") return canonicalize1688UrlValue(entry) || entry;
+  if (!entry || typeof entry !== "object") return entry;
+  const record = { ...(entry as Record<string, unknown>) };
+
+  Array.from(CANONICAL_URL_KEYS).forEach((key) => {
+    if (typeof record[key] !== "string") return;
+    record[key] = canonicalize1688UrlValue(record[key]);
+  });
+
+  if (Array.isArray(record.url_1688_list)) {
+    const next = record.url_1688_list
+      .map((value) => canonicalize1688UrlValue(value))
+      .filter(Boolean);
+    record.url_1688_list = Array.from(new Set(next));
+  }
+
+  if (record.selected_offer) {
+    record.selected_offer = canonicalizeOfferRecord(record.selected_offer);
+  }
+
+  return record;
+};
+
+const canonicalizePayloadEntries = (payload: unknown) => {
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => canonicalizeEntryUrls(entry));
+  }
+  if (!payload || typeof payload !== "object") return payload;
+  const record = { ...(payload as Record<string, unknown>) };
+  const keys = ["items", "urls", "data", "products", "results"];
+  keys.forEach((key) => {
+    if (!Array.isArray(record[key])) return;
+    record[key] = (record[key] as unknown[]).map((entry) => canonicalizeEntryUrls(entry));
+  });
+  return record;
+};
+
 const firstString = (record: Record<string, unknown>, keys: string[]) => {
   for (const key of keys) {
     const value = asString(record[key]);
@@ -66,19 +132,21 @@ const extractEntries = (payload: unknown): unknown[] => {
 };
 
 const extractUrl = (entry: Record<string, unknown>) =>
-  firstString(entry, [
-    "url_1688",
-    "url",
-    "link",
-    "product_url",
-    "productUrl",
-    "detail_url",
-    "detailUrl",
-    "offer_url",
-    "offerUrl",
-    "item_url",
-    "itemUrl",
-  ]);
+  canonicalize1688UrlValue(
+    firstString(entry, [
+      "url_1688",
+      "url",
+      "link",
+      "product_url",
+      "productUrl",
+      "detail_url",
+      "detailUrl",
+      "offer_url",
+      "offerUrl",
+      "item_url",
+      "itemUrl",
+    ])
+  );
 
 const extractTitle = (entry: Record<string, unknown>) =>
   firstString(entry, [
@@ -464,7 +532,7 @@ export const mergeExtractorFiles = (
     const raw = fs.readFileSync(fullPath, "utf8");
     const payload = JSON.parse(raw);
     const entries = extractEntries(payload);
-    mergedItems.push(...entries);
+    mergedItems.push(...entries.map((entry) => canonicalizeEntryUrls(entry)));
   }
 
   const createdAt = new Date().toISOString();
@@ -512,7 +580,7 @@ export const removeExtractorItems = (fileName: string, indexes: number[]) => {
     list.filter((_, idx) => !toRemove.has(idx));
 
   if (Array.isArray(payload)) {
-    const next = applyRemoval(payload);
+    const next = canonicalizePayloadEntries(applyRemoval(payload));
     fs.writeFileSync(fullPath, JSON.stringify(next, null, 2), "utf8");
     return parseExtractorPayload(next);
   }
@@ -523,11 +591,226 @@ export const removeExtractorItems = (fileName: string, indexes: number[]) => {
     for (const key of keys) {
       if (Array.isArray(record[key])) {
         record[key] = applyRemoval(record[key] as unknown[]);
-        fs.writeFileSync(fullPath, JSON.stringify(payload, null, 2), "utf8");
-        return parseExtractorPayload(payload);
+        const normalizedPayload = canonicalizePayloadEntries(payload);
+        fs.writeFileSync(fullPath, JSON.stringify(normalizedPayload, null, 2), "utf8");
+        return parseExtractorPayload(normalizedPayload);
       }
     }
   }
 
   throw new Error("Unable to update JSON file.");
+};
+
+export type ExtractorVariantSelectionUpdate = {
+  index: number;
+  selectedComboIndexes: number[];
+};
+
+type PatchExtractorItemsInput = {
+  removeIndexes?: number[];
+  variantUpdates?: ExtractorVariantSelectionUpdate[];
+};
+
+const normalizeSelectionIndexes = (value: unknown): number[] => {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set<number>();
+  value.forEach((entry) => {
+    const numeric = Number(entry);
+    if (!Number.isInteger(numeric) || numeric < 0) return;
+    unique.add(numeric);
+  });
+  return Array.from(unique).sort((a, b) => a - b);
+};
+
+const asTrimmedText = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const buildVariantLabelToken = (combo: Record<string, unknown>) => {
+  const zh = [combo.t1_zh, combo.t2_zh, combo.t3_zh]
+    .map((entry) => asTrimmedText(entry))
+    .filter(Boolean);
+  if (zh.length > 0) return zh.join(" / ");
+
+  const raw = [combo.t1, combo.t2, combo.t3]
+    .map((entry) => asTrimmedText(entry))
+    .filter(Boolean);
+  if (raw.length > 0) return raw.join(" / ");
+
+  const en = [combo.t1_en, combo.t2_en, combo.t3_en]
+    .map((entry) => asTrimmedText(entry))
+    .filter(Boolean);
+  return en.join(" / ");
+};
+
+const applyVariantSelectionToEntry = (
+  entry: Record<string, unknown>,
+  selectedComboIndexesRaw: unknown
+) => {
+  const selectedComboIndexes = normalizeSelectionIndexes(selectedComboIndexesRaw);
+  const selectedSet = new Set(selectedComboIndexes);
+
+  const existingVariations =
+    entry.variations && typeof entry.variations === "object"
+      ? ({ ...(entry.variations as Record<string, unknown>) } as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const sourceCombos = Array.isArray(existingVariations.combos)
+    ? [...(existingVariations.combos as unknown[])]
+    : [];
+
+  const keptCombos = sourceCombos.filter((combo, index) => {
+    const row =
+      combo && typeof combo === "object"
+        ? (combo as Record<string, unknown>)
+        : ({} as Record<string, unknown>);
+    const explicitIndex = Number(row.index);
+    if (Number.isInteger(explicitIndex) && explicitIndex >= 0) {
+      return selectedSet.has(explicitIndex);
+    }
+    return selectedSet.has(index);
+  });
+
+  existingVariations.combos = keptCombos;
+  existingVariations.kept = keptCombos.length;
+  entry.variations = existingVariations;
+
+  const variationTokens = keptCombos
+    .map((combo) =>
+      combo && typeof combo === "object"
+        ? buildVariantLabelToken(combo as Record<string, unknown>)
+        : ""
+    )
+    .filter(Boolean);
+  entry.variation_filter_tokens = variationTokens;
+  entry.variants_1688 = variationTokens.join("\n");
+
+  const existingSelection =
+    entry.production_variant_selection &&
+    typeof entry.production_variant_selection === "object"
+      ? {
+          ...(entry.production_variant_selection as Record<string, unknown>),
+        }
+      : {};
+  const existingOverrides = Array.isArray(existingSelection.combo_overrides)
+    ? [...(existingSelection.combo_overrides as unknown[])]
+    : [];
+  const nextOverrides = existingOverrides.filter((overrideRow) => {
+    const override =
+      overrideRow && typeof overrideRow === "object"
+        ? (overrideRow as Record<string, unknown>)
+        : null;
+    if (!override) return false;
+    const index = Number(override.index);
+    return Number.isInteger(index) && index >= 0 && selectedSet.has(index);
+  });
+
+  entry.production_variant_selection = {
+    ...existingSelection,
+    selected_combo_indexes: selectedComboIndexes,
+    combo_overrides: nextOverrides,
+    packs: Array.isArray(existingSelection.packs)
+      ? existingSelection.packs
+      : [],
+    packs_text: asTrimmedText(existingSelection.packs_text),
+  };
+};
+
+export const patchExtractorItems = (
+  fileName: string,
+  input: PatchExtractorItemsInput
+) => {
+  const safeName = path.basename(fileName);
+  if (!safeName || safeName !== fileName) {
+    throw new Error("Invalid file name.");
+  }
+  const fullPath = path.join(EXTRACTOR_UPLOAD_DIR, safeName);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error("File not found.");
+  }
+
+  const removeIndexes = normalizeSelectionIndexes(input.removeIndexes);
+  const removeSet = new Set(removeIndexes);
+  const variantUpdates = Array.isArray(input.variantUpdates)
+    ? input.variantUpdates
+    : [];
+  const variantUpdateMap = new Map<number, number[]>();
+  variantUpdates.forEach((updateRow) => {
+    const index = Number(updateRow?.index);
+    if (!Number.isInteger(index) || index < 0) return;
+    const selected = normalizeSelectionIndexes(updateRow?.selectedComboIndexes);
+    variantUpdateMap.set(index, selected);
+  });
+
+  if (removeSet.size === 0 && variantUpdateMap.size === 0) {
+    throw new Error("No changes supplied.");
+  }
+
+  const raw = fs.readFileSync(fullPath, "utf8");
+  const payload = JSON.parse(raw);
+
+  const applyPatchToEntries = (entries: unknown[]) => {
+    const updatedEntries = entries.map((entry, index) => {
+      if (!variantUpdateMap.has(index)) return entry;
+      if (!entry || typeof entry !== "object") return entry;
+      const nextEntry = { ...(entry as Record<string, unknown>) };
+      applyVariantSelectionToEntry(nextEntry, variantUpdateMap.get(index) || []);
+      return nextEntry;
+    });
+    if (removeSet.size === 0) return updatedEntries;
+    return updatedEntries.filter((_, index) => !removeSet.has(index));
+  };
+
+  if (Array.isArray(payload)) {
+    const next = canonicalizePayloadEntries(applyPatchToEntries(payload));
+    fs.writeFileSync(fullPath, JSON.stringify(next, null, 2), "utf8");
+    return parseExtractorPayload(next);
+  }
+
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const keys = ["items", "urls", "data", "products", "results"];
+    for (const key of keys) {
+      if (Array.isArray(record[key])) {
+        record[key] = applyPatchToEntries(record[key] as unknown[]);
+        const normalizedPayload = canonicalizePayloadEntries(payload);
+        fs.writeFileSync(fullPath, JSON.stringify(normalizedPayload, null, 2), "utf8");
+        return parseExtractorPayload(normalizedPayload);
+      }
+    }
+  }
+
+  throw new Error("Unable to update JSON file.");
+};
+
+export const writeExtractorFileText = (fileName: string, text: string) => {
+  const safeName = path.basename(fileName);
+  if (!safeName || safeName !== fileName) {
+    throw new Error("Invalid file name.");
+  }
+  const fullPath = path.join(EXTRACTOR_UPLOAD_DIR, safeName);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error("File not found.");
+  }
+  const rawText = text.trim();
+  if (!rawText) {
+    throw new Error("JSON content is empty.");
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    throw new Error("Invalid JSON content.");
+  }
+
+  const normalizedPayload = canonicalizePayloadEntries(parsed);
+  fs.writeFileSync(fullPath, JSON.stringify(normalizedPayload, null, 2), "utf8");
+  return parseExtractorPayload(normalizedPayload);
+};
+
+export const readExtractorFileText = (fileName: string) => {
+  const safeName = path.basename(fileName);
+  if (!safeName || safeName !== fileName) return null;
+  const fullPath = path.join(EXTRACTOR_UPLOAD_DIR, safeName);
+  if (!fs.existsSync(fullPath)) return null;
+  return fs.readFileSync(fullPath, "utf8");
 };

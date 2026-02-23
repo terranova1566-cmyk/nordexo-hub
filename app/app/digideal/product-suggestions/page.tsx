@@ -34,6 +34,7 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const PROVIDER = "partner_suggestions";
 const MIN_SUPPLIER_GALLERY_BYTES = 20 * 1024;
@@ -583,37 +584,41 @@ const useStyles = makeStyles({
     display: "block",
   },
   thumbZoomImageMain: {
-    width: "340px",
-    height: "340px",
+    width: "100%",
+    height: "100%",
     objectFit: "cover",
     objectPosition: "center",
     display: "block",
   },
   thumbZoomImage: {
-    width: "300px",
-    height: "300px",
-    objectFit: "contain",
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "center",
     display: "block",
   },
   thumbZoomTooltipContent: {
     maxWidth: "none",
     padding: "0",
+    width: "340px",
+    height: "340px",
+    overflow: "hidden",
   },
   thumbZoomTooltipMainContent: {
-    borderRadius: "12px",
+    borderRadius: "0",
     overflow: "hidden",
   },
   thumbZoomFrame: {
-    width: "340px",
-    height: "340px",
+    width: "100%",
+    height: "100%",
     boxSizing: "border-box",
-    padding: "16px",
+    padding: "0",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: "12px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "transparent",
+    borderRadius: "0",
+    border: "0",
     overflow: "hidden",
   },
   titleCell: {
@@ -1100,20 +1105,43 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     pointerEvents: "none",
   },
+  supplierImagePreviewBackdrop: {
+    position: "fixed",
+    inset: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.48)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "16px",
+    zIndex: 2147483000,
+  },
   supplierImagePreviewDialog: {
-    width: "min(560px, calc(100vw - 40px))",
-    maxWidth: "560px",
+    width: "min(536px, calc(100vw - 32px))",
+    maxWidth: "536px",
+    position: "relative",
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    boxShadow: tokens.shadow16,
   },
   supplierImagePreviewBody: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "6px",
+    padding: "14px",
+  },
+  supplierImagePreviewTitle: {
+    paddingRight: "34px",
+  },
+  supplierImagePreviewContent: {
+    paddingTop: "2px",
+    paddingBottom: "2px",
   },
   supplierImagePreviewFrame: {
-    width: "500px",
-    height: "500px",
+    width: "484px",
+    height: "484px",
     maxWidth: "100%",
-    maxHeight: "calc(100vh - 260px)",
+    maxHeight: "calc(100vh - 220px)",
     margin: "0 auto",
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -1129,8 +1157,40 @@ const useStyles = makeStyles({
     objectFit: "contain",
     backgroundColor: tokens.colorNeutralBackground1,
   },
-  supplierImagePreviewActions: {
-    justifyContent: "flex-end",
+  supplierImagePreviewCloseButton: {
+    position: "absolute",
+    top: "10px",
+    right: "10px",
+    width: "30px",
+    height: "30px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground3,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: 3,
+    transition: "color 120ms ease, border-color 120ms ease, background-color 120ms ease",
+    "&:hover": {
+      color: "#0f6cbd",
+      border: "1px solid #0f6cbd",
+      backgroundColor: "#eef6ff",
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "1px",
+    },
+  },
+  supplierImagePreviewCloseButtonActive: {
+    color: "#0f6cbd",
+    border: "1px solid #0f6cbd",
+    backgroundColor: "#eef6ff",
+  },
+  supplierImagePreviewCloseIcon: {
+    width: "16px",
+    height: "16px",
   },
   variantsSectionWrap: {
     position: "relative",
@@ -1250,7 +1310,7 @@ const useStyles = makeStyles({
   },
   offerSelectedBadge: {
     borderRadius: "999px",
-    border: "0.75px solid #2e7d32",
+    border: "1px solid #67af7b",
     color: "#2e7d32",
     backgroundColor: "#dfffd4",
     opacity: 1,
@@ -1275,6 +1335,7 @@ const useStyles = makeStyles({
   variantsTable: {
     minWidth: "100%",
     direction: "ltr",
+    tableLayout: "fixed",
   },
   variantsTableWrap: {
     overflow: "auto",
@@ -1283,7 +1344,7 @@ const useStyles = makeStyles({
     borderRadius: "10px",
   },
   variantsTableWrapLeftScroll: {
-    direction: "rtl",
+    direction: "ltr",
   },
   variantsTableWrapFlex: {
     flex: 1,
@@ -1318,17 +1379,40 @@ const useStyles = makeStyles({
     width: "70px",
     verticalAlign: "middle",
   },
+  variantNameCol: {
+    width: "auto",
+    minWidth: 0,
+  },
   variantHeaderText: {
-    fontSize: tokens.fontSizeBase100,
+    fontSize: "11px",
     fontWeight: tokens.fontWeightSemibold,
     lineHeight: "1.1",
   },
+  variantHeaderTextRight: {
+    display: "block",
+    textAlign: "right",
+    width: "100%",
+  },
   variantPickHeaderCell: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    textAlign: "right",
     paddingLeft: "0",
-    paddingRight: "0",
+    paddingRight: "8px",
+  },
+  variantPickCell: {
+    textAlign: "right",
+    paddingRight: "8px",
+  },
+  variantPickCheckWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  variantValueWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
   variantImageCellCenter: {
     width: "100%",
@@ -1338,13 +1422,15 @@ const useStyles = makeStyles({
     justifyContent: "center",
   },
   variantPriceCol: {
-    width: "90px",
+    width: "94px",
+    textAlign: "right",
   },
   variantWeightCol: {
-    width: "90px",
+    width: "94px",
+    textAlign: "right",
   },
   variantPickCol: {
-    width: "58px",
+    width: "54px",
   },
   variantImageThumb: {
     width: "44px",
@@ -1354,10 +1440,29 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground3,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
   },
+  variantImageMissingIconWrap: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  variantImageMissingIcon: {
+    width: "20px",
+    height: "20px",
+  },
   variantEditInput: {
     width: "76px",
     minWidth: "76px",
     maxWidth: "76px",
+    marginLeft: "auto",
+    "& input": {
+      textAlign: "right",
+    },
   },
   packsPopoverSurface: {
     minWidth: "260px",
@@ -1370,24 +1475,25 @@ const useStyles = makeStyles({
     gap: "6px",
   },
   packsFieldLabel: {
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: "1.05",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: "1.1",
     color: tokens.colorNeutralForeground3,
     fontWeight: tokens.fontWeightRegular,
   },
   packsInputCompact: {
     "& input": {
-      fontSize: tokens.fontSizeBase100,
-      lineHeight: "1.1",
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: "1.15",
       paddingTop: "2px",
       paddingBottom: "2px",
     },
   },
   packsBadgeWrap: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: "6px",
     flexWrap: "wrap",
+    width: "100%",
     minHeight: "24px",
   },
   packsBadgeButton: {
@@ -1405,6 +1511,7 @@ const useStyles = makeStyles({
     color: "#0f6cbd",
     backgroundColor: "#e8f3ff",
     fontWeight: tokens.fontWeightSemibold,
+    textTransform: "uppercase",
   },
   packsBadgeEmpty: {
     fontSize: tokens.fontSizeBase100,
@@ -2180,6 +2287,8 @@ export default function DigiDealProductSuggestionsPage() {
   const [supplierGalleryFiltering, setSupplierGalleryFiltering] = useState(false);
   const [supplierImagePreviewEntry, setSupplierImagePreviewEntry] =
     useState<SupplierGalleryImageEntry | null>(null);
+  const [supplierImagePreviewDialogHover, setSupplierImagePreviewDialogHover] =
+    useState(false);
 
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const [jsonDialogText, setJsonDialogText] = useState("");
@@ -3756,20 +3865,22 @@ export default function DigiDealProductSuggestionsPage() {
     const quickNonVariant = supplierGalleryCandidates.filter(
       (entry) => !supplierVariantImageIdentitySet.has(entry.identity)
     );
-    setSupplierGalleryVisibleImages(quickNonVariant.slice(0, 120));
-    if (quickNonVariant.length === 0) {
+    const quickCandidates =
+      quickNonVariant.length > 0 ? quickNonVariant : supplierGalleryCandidates;
+    setSupplierGalleryVisibleImages(quickCandidates.slice(0, 120));
+    if (quickCandidates.length === 0) {
       setSupplierGalleryFiltering(false);
       return;
     }
 
     setSupplierGalleryFiltering(true);
     const run = async () => {
-      const nonVariantImages: Array<{
+      const filteredImages: Array<{
         entry: SupplierGalleryImageEntry;
         probe: SupplierGalleryProbeResult | null;
       }> = [];
 
-      for (const entry of quickNonVariant) {
+      for (const entry of quickCandidates) {
         const cacheKey = entry.identity || entry.full || entry.thumb;
         let probe = supplierGalleryProbeCacheRef.current.get(cacheKey);
         if (probe === undefined) {
@@ -3793,7 +3904,7 @@ export default function DigiDealProductSuggestionsPage() {
         if (!hasMinimumBytes) {
           continue;
         }
-        nonVariantImages.push({ entry, probe });
+        filteredImages.push({ entry, probe });
       }
       if (cancelled) return;
 
@@ -3830,11 +3941,11 @@ export default function DigiDealProductSuggestionsPage() {
         return out;
       };
 
-      const finalImages = dedupeBySignatureKeepLargest(nonVariantImages).map(
-        (row) => row.entry
-      );
+      const finalImages = dedupeBySignatureKeepLargest(filteredImages).map((row) => row.entry);
       if (cancelled) return;
-      setSupplierGalleryVisibleImages(finalImages.slice(0, 120));
+      setSupplierGalleryVisibleImages(
+        (finalImages.length > 0 ? finalImages : quickCandidates).slice(0, 120)
+      );
       setSupplierGalleryFiltering(false);
     };
     void run();
@@ -5345,6 +5456,10 @@ export default function DigiDealProductSuggestionsPage() {
                         const offerImageUrlRaw = extractOfferImageUrl(offer);
                         const offerImageUrl =
                           buildImageProxyUrl(offerImageUrlRaw, 160, 160) || offerImageUrlRaw;
+                        const offerImageZoomUrl =
+                          buildLargePreviewImageUrl(offerImageUrlRaw || offerImageUrl, 420) ||
+                          offerImageUrlRaw ||
+                          offerImageUrl;
                         const detailUrlRaw = toText(offer.detailUrl);
                         const offerLink = /^https?:\/\//i.test(detailUrlRaw)
                           ? detailUrlRaw
@@ -5377,14 +5492,33 @@ export default function DigiDealProductSuggestionsPage() {
                             }}
                           >
                             {offerImageUrl ? (
-                              <img
-                                src={offerImageUrl}
-                                alt={offerId || "offer"}
-                                className={styles.offerImage}
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                                decoding="async"
-                              />
+                              <Tooltip
+                                relationship="label"
+                                withArrow
+                                positioning={{ position: "after", align: "center", offset: 8 }}
+                                content={{
+                                  className: styles.thumbZoomTooltipContent,
+                                  children: (
+                                    <img
+                                      src={offerImageZoomUrl}
+                                      alt={offerId || "offer"}
+                                      className={styles.thumbZoomImage}
+                                      referrerPolicy="no-referrer"
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ),
+                                }}
+                              >
+                                <img
+                                  src={offerImageUrl}
+                                  alt={offerId || "offer"}
+                                  className={styles.offerImage}
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </Tooltip>
                             ) : (
                               <div className={styles.offerImage} />
                             )}
@@ -5452,7 +5586,7 @@ export default function DigiDealProductSuggestionsPage() {
                       </div>
                     </div>
                     <div className={styles.supplierMediaPane}>
-                      <Text className={styles.supplierMediaTitle}>Supply Image</Text>
+                      <Text className={styles.supplierMediaTitle}>Supplier Images</Text>
                       <div className={styles.supplierGalleryCard}>
                         <div
                           ref={supplierGalleryStripRef}
@@ -5475,8 +5609,8 @@ export default function DigiDealProductSuggestionsPage() {
                           ) : (
                             supplierGalleryVisibleImages.map((entry) => (
                               <button
-                                type="button"
                                 key={entry.key}
+                                type="button"
                                 className={mergeClasses(
                                   styles.supplierGalleryThumbButton,
                                   isSingleSupplierGalleryImage
@@ -5552,7 +5686,7 @@ export default function DigiDealProductSuggestionsPage() {
                                   <Input
                                     className={styles.packsInputCompact}
                                     value={packsDraft}
-                                    placeholder="e.g. 1, 2, 10"
+                                    placeholder="e.g. 1, 2, 4"
                                     onChange={(_, data) =>
                                       setPacksDraft(data.value.replace(/[^\d,\s]/g, ""))
                                     }
@@ -5574,7 +5708,7 @@ export default function DigiDealProductSuggestionsPage() {
                                           onClick={() => removeDraftPack(pack)}
                                         >
                                           <Badge appearance="outline" size="small" className={styles.packsBadge}>
-                                            {pack}
+                                            {`${pack}-PACK`}
                                           </Badge>
                                         </button>
                                       </Tooltip>
@@ -5641,14 +5775,28 @@ export default function DigiDealProductSuggestionsPage() {
                             <TableHeaderCell className={styles.variantImageCol}>
                               <span className={styles.variantHeaderText}>Image</span>
                             </TableHeaderCell>
-                            <TableHeaderCell>
+                            <TableHeaderCell className={styles.variantNameCol}>
                               <span className={styles.variantHeaderText}>Variant</span>
                             </TableHeaderCell>
                             <TableHeaderCell className={styles.variantPriceCol}>
-                              <span className={styles.variantHeaderText}>Price (CNY)</span>
+                              <span
+                                className={mergeClasses(
+                                  styles.variantHeaderText,
+                                  styles.variantHeaderTextRight
+                                )}
+                              >
+                                Price (CNY)
+                              </span>
                             </TableHeaderCell>
                             <TableHeaderCell className={styles.variantWeightCol}>
-                              <span className={styles.variantHeaderText}>Weight (g)</span>
+                              <span
+                                className={mergeClasses(
+                                  styles.variantHeaderText,
+                                  styles.variantHeaderTextRight
+                                )}
+                              >
+                                Weight (g)
+                              </span>
                             </TableHeaderCell>
                             <TableHeaderCell
                               className={mergeClasses(
@@ -5656,17 +5804,19 @@ export default function DigiDealProductSuggestionsPage() {
                                 styles.variantPickHeaderCell
                               )}
                             >
-                              <Checkbox
-                                checked={
-                                  allVariantsSelected
-                                    ? true
-                                    : someVariantsSelected
-                                      ? "mixed"
-                                      : false
-                                }
-                                onChange={(_, data) => toggleAllVariants(Boolean(data.checked))}
-                                aria-label="Select all variants"
-                              />
+                              <div className={styles.variantPickCheckWrap}>
+                                <Checkbox
+                                  checked={
+                                    allVariantsSelected
+                                      ? true
+                                      : someVariantsSelected
+                                        ? "mixed"
+                                        : false
+                                  }
+                                  onChange={(_, data) => toggleAllVariants(Boolean(data.checked))}
+                                  aria-label="Select all variants"
+                                />
+                              </div>
                             </TableHeaderCell>
                           </TableRow>
                         </TableHeader>
@@ -5809,11 +5959,31 @@ export default function DigiDealProductSuggestionsPage() {
                                         />
                                       )
                                     ) : (
-                                      <Text>-</Text>
+                                      <div className={styles.variantImageMissingIconWrap}>
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className={styles.variantImageMissingIcon}
+                                        >
+                                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                          <path d="M15 8h.01" />
+                                          <path d="M6 13l2.644 -2.644a1.21 1.21 0 0 1 1.712 0l3.644 3.644" />
+                                          <path d="M13 13l1.644 -1.644a1.21 1.21 0 0 1 1.712 0l1.644 1.644" />
+                                          <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
+                                          <path d="M4 16v2a2 2 0 0 0 2 2h2" />
+                                          <path d="M16 4h2a2 2 0 0 1 2 2v2" />
+                                          <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
+                                        </svg>
+                                      </div>
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className={styles.variantNameCol}>
                                   <span className={styles.variantLabel}>
                                     <span className={styles.variantNameEn}>
                                       {variantNameEnDisplay}
@@ -5824,42 +5994,53 @@ export default function DigiDealProductSuggestionsPage() {
                                   </span>
                                 </TableCell>
                                 <TableCell className={styles.variantPriceCol}>
-                                  <Input
-                                    size="small"
-                                    className={styles.variantEditInput}
-                                    inputMode="decimal"
-                                    value={variantDraft.price}
-                                    onChange={(_, data) =>
-                                      updateVariantDraftField(
-                                        combo,
-                                        "price",
-                                        data.value.replace(/[^\d.,]/g, "")
-                                      )
-                                    }
-                                  />
+                                  <div className={styles.variantValueWrap}>
+                                    <Input
+                                      size="small"
+                                      className={styles.variantEditInput}
+                                      inputMode="decimal"
+                                      value={variantDraft.price}
+                                      onChange={(_, data) =>
+                                        updateVariantDraftField(
+                                          combo,
+                                          "price",
+                                          data.value.replace(/[^\d.,]/g, "")
+                                        )
+                                      }
+                                    />
+                                  </div>
                                 </TableCell>
                                 <TableCell className={styles.variantWeightCol}>
-                                  <Input
-                                    size="small"
-                                    className={styles.variantEditInput}
-                                    inputMode="decimal"
-                                    value={variantDraft.weightGrams}
-                                    onChange={(_, data) =>
-                                      updateVariantDraftField(
-                                        combo,
-                                        "weightGrams",
-                                        data.value.replace(/[^\d.,]/g, "")
-                                      )
-                                    }
-                                  />
+                                  <div className={styles.variantValueWrap}>
+                                    <Input
+                                      size="small"
+                                      className={styles.variantEditInput}
+                                      inputMode="decimal"
+                                      value={variantDraft.weightGrams}
+                                      onChange={(_, data) =>
+                                        updateVariantDraftField(
+                                          combo,
+                                          "weightGrams",
+                                          data.value.replace(/[^\d.,]/g, "")
+                                        )
+                                      }
+                                    />
+                                  </div>
                                 </TableCell>
-                                <TableCell className={styles.variantPickCol}>
-                                  <Checkbox
-                                    checked={checked}
-                                    onChange={(_, data) =>
-                                      toggleVariantIndex(combo.index, Boolean(data.checked))
-                                    }
-                                  />
+                                <TableCell
+                                  className={mergeClasses(
+                                    styles.variantPickCol,
+                                    styles.variantPickCell
+                                  )}
+                                >
+                                  <div className={styles.variantPickCheckWrap}>
+                                    <Checkbox
+                                      checked={checked}
+                                      onChange={(_, data) =>
+                                        toggleVariantIndex(combo.index, Boolean(data.checked))
+                                      }
+                                    />
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -5884,46 +6065,82 @@ export default function DigiDealProductSuggestionsPage() {
         </DialogSurface>
       </Dialog>
 
-      <Dialog
-        open={Boolean(supplierImagePreviewEntry)}
-        onOpenChange={(_, data) => {
-          if (!data.open) {
-            setSupplierImagePreviewEntry(null);
-          }
-        }}
-      >
-        <DialogSurface className={styles.supplierImagePreviewDialog}>
-          <DialogBody className={styles.supplierImagePreviewBody}>
-            <DialogTitle>Supplier Image Preview</DialogTitle>
-            <DialogContent>
-              <div className={styles.supplierImagePreviewFrame}>
-                {supplierImagePreviewEntry ? (
-                  <img
-                    src={
-                      buildLargePreviewImageUrl(
-                        supplierImagePreviewEntry.full || supplierImagePreviewEntry.thumb,
-                        500
-                      ) ||
-                      supplierImagePreviewEntry.full ||
-                      supplierImagePreviewEntry.thumb
-                    }
-                    alt="Supplier preview"
-                    className={styles.supplierImagePreviewImage}
-                    referrerPolicy="no-referrer"
-                    loading="eager"
-                    decoding="async"
-                  />
-                ) : null}
+      {supplierImagePreviewEntry && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={styles.supplierImagePreviewBackdrop}
+              onClick={() => {
+                setSupplierImagePreviewEntry(null);
+                setSupplierImagePreviewDialogHover(false);
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Supplier Image Preview"
+                className={styles.supplierImagePreviewDialog}
+                onClick={(event) => event.stopPropagation()}
+                onMouseEnter={() => setSupplierImagePreviewDialogHover(true)}
+                onMouseLeave={() => setSupplierImagePreviewDialogHover(false)}
+              >
+                <div className={styles.supplierImagePreviewBody}>
+                  <button
+                    type="button"
+                    aria-label="Close supplier image preview"
+                    className={mergeClasses(
+                      styles.supplierImagePreviewCloseButton,
+                      supplierImagePreviewDialogHover
+                        ? styles.supplierImagePreviewCloseButtonActive
+                        : undefined
+                    )}
+                    onClick={() => {
+                      setSupplierImagePreviewEntry(null);
+                      setSupplierImagePreviewDialogHover(false);
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.supplierImagePreviewCloseIcon}
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M18 6l-12 12" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <Text weight="semibold" className={styles.supplierImagePreviewTitle}>
+                    Supplier Image Preview
+                  </Text>
+                  <div className={styles.supplierImagePreviewContent}>
+                    <div className={styles.supplierImagePreviewFrame}>
+                      <img
+                        src={
+                          buildLargePreviewImageUrl(
+                            supplierImagePreviewEntry.full || supplierImagePreviewEntry.thumb,
+                            500
+                          ) ||
+                          supplierImagePreviewEntry.full ||
+                          supplierImagePreviewEntry.thumb
+                        }
+                        alt="Supplier preview"
+                        className={styles.supplierImagePreviewImage}
+                        referrerPolicy="no-referrer"
+                        loading="eager"
+                        decoding="async"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </DialogContent>
-            <DialogActions className={styles.supplierImagePreviewActions}>
-              <Button appearance="secondary" onClick={() => setSupplierImagePreviewEntry(null)}>
-                Close
-              </Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
+            </div>,
+            document.body
+          )
+        : null}
 
       <Dialog open={jsonDialogOpen} onOpenChange={(_, data) => setJsonDialogOpen(data.open)}>
         <DialogSurface className={styles.jsonDialog}>

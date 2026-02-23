@@ -139,7 +139,6 @@ const useStyles = makeStyles({
 
 const standaloneNavItems = [
   { label: "nav.marketTrends", href: "/app/market-trends" },
-  { label: "nav.uiKit", href: "/app/ui-kit" },
 ];
 
 const nxLabsMenuItems = [
@@ -206,6 +205,13 @@ const b2bMenuItems = [
 const shopifyMenuItems = [
   { label: "nav.shopifyStoreSettings", href: "/app/shopify/store-settings" },
   { label: "nav.shopifyWebshopTexts", href: "/app/shopify/webshop-texts" },
+];
+
+const adminMenuItems = [
+  { label: "nav.adminOverview", href: "/app/admin" },
+  { label: "nav.adminFileUpload", href: "/app/admin?tool=file-upload" },
+  { label: "nav.adminSystem", href: "/app/settings?tab=system" },
+  { label: "nav.adminUIKit", href: "/app/settings?tab=uikit" },
 ];
 
 function SettingsIcon({ className }: { className?: string }) {
@@ -296,6 +302,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     () => pathname.startsWith("/app/shopify"),
     [pathname]
   );
+  const isAdminActive = useMemo(() => pathname.startsWith("/app/admin"), [pathname]);
 
   useEffect(() => {
     let isActive = true;
@@ -340,10 +347,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     };
   }, [setLocale, supabase]);
 
-  const visibleStandaloneNavItems = useMemo(
-    () => standaloneNavItems.filter((item) => (item.href === "/app/ui-kit" ? isAdmin : true)),
-    [isAdmin]
-  );
   const visibleNxLabsItems = useMemo(
     () => nxLabsMenuItems.filter((item) => (!item.adminOnly ? true : isAdmin)),
     [isAdmin]
@@ -591,7 +594,31 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   </MenuPopover>
                 </Menu>
               ) : null}
-              {visibleStandaloneNavItems.map((item) => {
+              {isAdmin ? (
+                <Menu openOnHover hoverDelay={0}>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance={isAdminActive ? "primary" : "subtle"}
+                      className={styles.navButton}
+                    >
+                      {t("nav.admin")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover className={styles.menuPopover}>
+                    <MenuList>
+                      {adminMenuItems.map((item) => (
+                        <MenuItem
+                          key={item.href}
+                          onClick={() => router.push(item.href)}
+                        >
+                          <span className={styles.navMenuItem}>{t(item.label)}</span>
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
+              ) : null}
+              {standaloneNavItems.map((item) => {
                 const active = item.href ? pathname.startsWith(item.href) : false;
                 return (
                   <Button

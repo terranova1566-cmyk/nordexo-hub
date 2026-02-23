@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canonical1688OfferUrlText } from "@/shared/1688/core";
 
 const ALLOWED_FIELDS = new Set([
   "draft_title",
@@ -50,10 +51,14 @@ export async function POST(request: Request) {
   }
 
   const updateValue = value === "" ? null : value;
+  const normalizedUpdateValue =
+    field === "draft_supplier_1688_url" && typeof updateValue === "string"
+      ? canonical1688OfferUrlText(updateValue)
+      : updateValue;
 
   const { error } = await adminClient
     .from("draft_products")
-    .update({ [field]: updateValue })
+    .update({ [field]: normalizedUpdateValue })
     .eq("id", id);
 
   if (error) {

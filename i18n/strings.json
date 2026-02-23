@@ -347,6 +347,31 @@
       "context": "Shopify menu item"
     },
     {
+      "key": "nav.admin",
+      "text": "Admin",
+      "context": "Main navigation item"
+    },
+    {
+      "key": "nav.adminOverview",
+      "text": "Overview",
+      "context": "Admin menu item"
+    },
+    {
+      "key": "nav.adminFileUpload",
+      "text": "File Upload",
+      "context": "Admin menu item"
+    },
+    {
+      "key": "nav.adminSystem",
+      "text": "System Tools",
+      "context": "Admin menu item"
+    },
+    {
+      "key": "nav.adminUIKit",
+      "text": "UIKit in Settings",
+      "context": "Admin menu item"
+    },
+    {
       "key": "draftExplorer.title",
       "text": "Product Draft Explorer",
       "context": "Draft explorer page title"
@@ -613,12 +638,12 @@
     },
     {
       "key": "draftExplorer.spuTab",
-      "text": "SPUs (Draft Products)",
+      "text": "SPU (products)",
       "context": "Draft explorer tab"
     },
     {
       "key": "draftExplorer.skuTab",
-      "text": "SKUs (Draft Variants)",
+      "text": "SKU (only variants)",
       "context": "Draft explorer tab"
     },
     {
@@ -2354,6 +2379,11 @@
     {
       "key": "settings.aiImage.tab",
       "text": "AI Prompts",
+      "context": "Settings tab label"
+    },
+    {
+      "key": "settings.uikit.tab",
+      "text": "UIKit",
       "context": "Settings tab label"
     },
     {

@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { rewriteDraftImageOrderNamesSync } from "@/lib/draft-image-order";
+import { moveDraftImageUpscaleMarkers } from "@/lib/draft-image-upscale";
 
 export const runtime = "nodejs";
 
@@ -198,11 +199,13 @@ export async function POST(request: Request) {
   }
 
   fs.renameSync(absolute, dest);
+  moveDraftImageUpscaleMarkers(absolute, dest);
 
   const revertRename = () => {
     try {
       if (fs.existsSync(dest)) {
         fs.renameSync(dest, absolute);
+        moveDraftImageUpscaleMarkers(dest, absolute);
       }
     } catch {}
   };

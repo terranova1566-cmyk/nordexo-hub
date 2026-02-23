@@ -26,6 +26,23 @@ export type WeightReviewResult = {
       text_weight_candidates_grams: number[];
       packaging_weight_candidates_grams: number[];
       product_weight_candidates_grams: number[];
+      structured_table: {
+        has_structured_table: boolean;
+        strong_table_pass: boolean;
+        table_row_count: number;
+        table_name_count: number;
+        table_unique_weights_grams: number[];
+        combo_lookup_count: number;
+        combo_match_count: number;
+        combo_mismatch_count: number;
+        coverage_ratio: number;
+        match_ratio: number;
+        mismatch_examples: Array<{
+          label: string;
+          row_weight_grams: number;
+          table_weight_grams: number;
+        }>;
+      };
     };
   };
   ai: {
@@ -33,6 +50,7 @@ export type WeightReviewResult = {
     model: string | null;
     error: string | null;
     needs_review: boolean;
+    suppressed_by_structured_table?: boolean;
     confidence: number | null;
     reason_codes: string[];
     summary: string | null;
@@ -41,6 +59,14 @@ export type WeightReviewResult = {
     combo_count: number;
     combos_with_weight: number;
     unique_weights_grams: number[];
+    structured_table?: {
+      has_structured_table: boolean;
+      strong_table_pass: boolean;
+      table_row_count: number;
+      combo_match_count: number;
+      coverage_ratio: number;
+      match_ratio: number;
+    };
     text_weight_mentions: Array<{
       weight_grams: number;
       token: string;
@@ -59,12 +85,15 @@ export type WeightReviewResult = {
   };
 };
 
-export const reviewSupplierWeightBestEffort: (options?: {
+export const reviewSupplierWeightBestEffort = (options?: {
   extractedPayload?: unknown;
   competitor?: { title?: unknown; description?: unknown } | null;
   detailUrl?: unknown;
   apiKey?: string;
   enableAi?: string | number | boolean;
-}) => Promise<WeightReviewResult> = weightReview.reviewSupplierWeightBestEffort;
+}): Promise<WeightReviewResult> =>
+  weightReview.reviewSupplierWeightBestEffort(
+    options as Parameters<typeof weightReview.reviewSupplierWeightBestEffort>[0]
+  ) as Promise<WeightReviewResult>;
 
 export const __testables = weightReview.__testables;

@@ -1,6 +1,9 @@
 import {
   asText,
   extractJsonFromText,
+  normalizeNameLoose,
+  normalizeNameStrict,
+  parseVariantWeightTableFromReadableText,
   toWeightGrams,
 } from "./core.mjs";
 
@@ -158,15 +161,118 @@ const collectWeightFocusedText = (value, options = {}) => {
   return out.join("\n").slice(0, maxChars);
 };
 
+const normalizeVariantLookupKeys = (value) => {
+  const text = asText(value);
+  if (!text) return [];
+  const strict = normalizeNameStrict(text);
+  const loose = normalizeNameLoose(text);
+  return Array.from(new Set([strict, loose].filter(Boolean)));
+};
+
+const buildStructuredTableSignal = ({ variantRows, readableText }) => {
+  const rows = Array.isArray(variantRows) ? variantRows : [];
+  const comboCount = rows.length;
+  const parsedTable = parseVariantWeightTableFromReadableText(readableText, {
+    maxScanLines: 220,
+  });
+  const weightByName = parsedTable?.weightByName instanceof Map ? parsedTable.weightByName : new Map();
+  const tableWeights = Array.isArray(parsedTable?.weights)
+    ? parsedTable.weights
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+        .map((entry) => Math.round(entry))
+    : [];
+  const tableUniqueWeights = Array.from(new Set(tableWeights)).sort((a, b) => a - b);
+  const tableRowCount = tableWeights.length;
+  const tableNameCount = weightByName.size;
+
+  let comboLookupCount = 0;
+  let comboMatchCount = 0;
+  let comboMismatchCount = 0;
+  const mismatchExamples = [];
+
+  for (const row of rows) {
+    const keys = Array.from(
+      new Set([
+        ...normalizeVariantLookupKeys(row?.label),
+        ...normalizeVariantLookupKeys(row?.label_en),
+      ])
+    );
+    if (keys.length === 0) continue;
+
+    let tableWeight = null;
+    for (const key of keys) {
+      const candidate = Number(weightByName.get(key));
+      if (Number.isFinite(candidate) && candidate > 0) {
+        tableWeight = Math.round(candidate);
+        break;
+      }
+    }
+    if (!tableWeight) continue;
+    comboLookupCount += 1;
+
+    const rowWeight =
+      typeof row?.weight_grams === "number" &&
+      Number.isFinite(row.weight_grams) &&
+      row.weight_grams > 0
+        ? Math.round(Number(row.weight_grams))
+        : null;
+    if (rowWeight === null) continue;
+
+    if (Math.abs(rowWeight - tableWeight) <= 2) {
+      comboMatchCount += 1;
+    } else {
+      comboMismatchCount += 1;
+      if (mismatchExamples.length < 6) {
+        mismatchExamples.push({
+          label: asText(row?.label).slice(0, 120),
+          row_weight_grams: rowWeight,
+          table_weight_grams: tableWeight,
+        });
+      }
+    }
+  }
+
+  const coverageRatio = comboCount > 0 ? comboLookupCount / comboCount : 0;
+  const matchRatio = comboLookupCount > 0 ? comboMatchCount / comboLookupCount : 0;
+  const hasStructuredTable = tableRowCount >= 3 && tableNameCount >= 3;
+  const strongTablePass = Boolean(
+    comboCount >= 5 &&
+      hasStructuredTable &&
+      coverageRatio >= 0.65 &&
+      matchRatio >= 0.85 &&
+      tableUniqueWeights.length >= 2 &&
+      comboMismatchCount <= Math.max(1, Math.round(comboCount * 0.1))
+  );
+
+  return {
+    has_structured_table: hasStructuredTable,
+    strong_table_pass: strongTablePass,
+    table_row_count: tableRowCount,
+    table_name_count: tableNameCount,
+    table_unique_weights_grams: tableUniqueWeights,
+    combo_lookup_count: comboLookupCount,
+    combo_match_count: comboMatchCount,
+    combo_mismatch_count: comboMismatchCount,
+    coverage_ratio: Number(coverageRatio.toFixed(4)),
+    match_ratio: Number(matchRatio.toFixed(4)),
+    mismatch_examples: mismatchExamples,
+  };
+};
+
 const summarizeHeuristic = ({
   mode,
   reasonCodes,
   uniqueWeightCount,
   comboCount,
   distinctPackSignatures,
+  structuredTableSignal,
 }) => {
   if (!reasonCodes.length) {
     if (mode === "multi_variant") {
+      if (structuredTableSignal?.strong_table_pass) {
+        return `No obvious weight anomaly across ${comboCount} variants. Structured variant weight table matched ${structuredTableSignal.combo_match_count}/${comboCount} variants.`;
+      }
       return `No obvious weight anomaly across ${comboCount} variants.`;
     }
     return "No obvious weight anomaly in current text/weight data.";
@@ -197,6 +303,7 @@ const buildHeuristicReview = ({
   variantRows,
   textWeightMentions,
   productWeights,
+  readableText,
 }) => {
   const weightedRows = variantRows.filter(
     (row) => typeof row.weight_grams === "number" && Number.isFinite(row.weight_grams) && row.weight_grams > 0
@@ -242,6 +349,10 @@ const buildHeuristicReview = ({
     .map((entry) => toWeightGrams(entry, { allowUnitless: true }))
     .filter((entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0)
     .map((entry) => Math.round(Number(entry)));
+  const structuredTableSignal = buildStructuredTableSignal({
+    variantRows,
+    readableText,
+  });
 
   const reasonCodes = [];
   let score = 0;
@@ -278,8 +389,10 @@ const buildHeuristicReview = ({
     const min = textWeights[0];
     const max = textWeights[textWeights.length - 1];
     if (min > 0 && max / min >= 3.2) {
-      reasonCodes.push("text_has_conflicting_weight_tokens");
-      score += mode === "multi_variant" ? 0.22 : 0.48;
+      if (!(mode === "multi_variant" && structuredTableSignal.strong_table_pass)) {
+        reasonCodes.push("text_has_conflicting_weight_tokens");
+        score += mode === "multi_variant" ? 0.22 : 0.48;
+      }
     }
   }
 
@@ -292,6 +405,10 @@ const buildHeuristicReview = ({
       reasonCodes.push("table_weight_conflicts_with_text_weight");
       score += 0.28;
     }
+  }
+
+  if (mode === "multi_variant" && structuredTableSignal.strong_table_pass) {
+    score = Math.max(0, score - 0.18);
   }
 
   const dedupReasonCodes = Array.from(new Set(reasonCodes));
@@ -315,6 +432,7 @@ const buildHeuristicReview = ({
       uniqueWeightCount,
       comboCount,
       distinctPackSignatures: distinctPackSignatures.length,
+      structuredTableSignal,
     }),
     metrics: {
       combo_count: comboCount,
@@ -326,6 +444,7 @@ const buildHeuristicReview = ({
       text_weight_candidates_grams: textWeights,
       packaging_weight_candidates_grams: packagingTextWeights,
       product_weight_candidates_grams: Array.from(new Set(productWeightCandidates)).sort((a, b) => a - b),
+      structured_table: structuredTableSignal,
     },
   };
 };
@@ -367,6 +486,8 @@ const runAiReview = async ({
     "Only decide whether the weight data is likely unreliable and should be manually reviewed.",
     "Ignore carton/export-box/master-carton/gross/shipping packaging weights.",
     "Prioritize per-unit or per-variant product weight.",
+    "If the input shows a structured variant table with explicit per-row weights and high coverage, treat it as high-trust.",
+    "Do not mark suspicious only because weights vary across variants when table mapping is consistent.",
     "Return JSON only.",
     "Output schema:",
     '{"needs_review": true|false, "confidence": 0..1, "reason_codes": ["..."], "summary": "..."}',
@@ -456,6 +577,7 @@ export const reviewSupplierWeightBestEffort = async ({
     variantRows,
     textWeightMentions,
     productWeights,
+    readableText,
   });
 
   const aiAllowed = String(enableAi ?? "1").trim() !== "0";
@@ -500,11 +622,21 @@ export const reviewSupplierWeightBestEffort = async ({
     : { used: false, error: shouldRunAi ? "unknown" : "disabled" };
 
   const aiNeedsReview = Boolean(ai?.used && ai?.needs_review);
-  const needsReview = heuristic.needs_review || aiNeedsReview;
+  const aiSuppressedByStructuredTable = Boolean(
+    aiNeedsReview &&
+      !heuristic.needs_review &&
+      heuristic?.metrics?.structured_table?.strong_table_pass
+  );
+  const effectiveAiNeedsReview = aiNeedsReview && !aiSuppressedByStructuredTable;
+  const needsReview = heuristic.needs_review || effectiveAiNeedsReview;
   const reasonCodes = Array.from(
     new Set([
       ...heuristic.reason_codes,
-      ...(Array.isArray(ai?.reason_codes) ? ai.reason_codes.map((entry) => asText(entry)).filter(Boolean) : []),
+      ...(aiSuppressedByStructuredTable
+        ? []
+        : Array.isArray(ai?.reason_codes)
+          ? ai.reason_codes.map((entry) => asText(entry)).filter(Boolean)
+          : []),
     ])
   );
 
@@ -512,14 +644,17 @@ export const reviewSupplierWeightBestEffort = async ({
     typeof ai?.confidence === "number" && Number.isFinite(ai.confidence)
       ? Math.max(0, Math.min(1, Number(ai.confidence)))
       : null;
-  const confidence =
-    confidenceFromAi !== null
+  const confidence = aiSuppressedByStructuredTable
+    ? Math.max(0.86, Math.max(0.08, 1 - heuristic.score))
+    : confidenceFromAi !== null
       ? confidenceFromAi
       : needsReview
         ? Math.max(0.45, Math.min(0.92, heuristic.score))
         : Math.max(0.08, 1 - heuristic.score);
 
-  const summary = asText(ai?.summary) || heuristic.summary;
+  const summary = aiSuppressedByStructuredTable
+    ? `${heuristic.summary} AI warning suppressed due to strong structured variant-table match.`
+    : asText(ai?.summary) || heuristic.summary;
 
   return {
     version: 1,
@@ -535,7 +670,8 @@ export const reviewSupplierWeightBestEffort = async ({
       used: Boolean(ai?.used),
       model: asText(ai?.model) || null,
       error: ai?.error ? asText(ai.error) : null,
-      needs_review: Boolean(ai?.used && ai?.needs_review),
+      needs_review: effectiveAiNeedsReview,
+      suppressed_by_structured_table: aiSuppressedByStructuredTable,
       confidence:
         typeof ai?.confidence === "number" && Number.isFinite(ai.confidence)
           ? Number(ai.confidence)
@@ -549,6 +685,7 @@ export const reviewSupplierWeightBestEffort = async ({
       combo_count: heuristic.metrics.combo_count,
       combos_with_weight: heuristic.metrics.combos_with_weight,
       unique_weights_grams: heuristic.metrics.unique_weights_grams,
+      structured_table: heuristic.metrics.structured_table,
       text_weight_mentions: textWeightMentions.slice(0, 20),
       variant_snapshot: variantRows.slice(0, 20),
     },

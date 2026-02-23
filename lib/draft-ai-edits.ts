@@ -8,6 +8,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { convertImageFileToJpegInPlace } from "@/lib/image-jpeg";
 import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
 import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
+import {
+  copyDraftImageUpscaledMarker,
+  markDraftImageUpscaled,
+  moveDraftImageUpscaleMarkers,
+} from "@/lib/draft-image-upscale";
 
 export type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 export type AiPromptMode =
@@ -24,12 +29,24 @@ export type PendingAiEditRecord = {
   id: string;
   originalPath: string;
   pendingPath: string;
+  pendingPixelQualityScore?: number | null;
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
   status: "pending";
   createdAt: string;
   updatedAt: string;
+};
+
+type RefreshedAiImageScore = {
+  path: string;
+  pixelQualityScore: number | null;
+};
+
+export type ResolvePendingAiEditResult = {
+  item: PendingAiEditRecord;
+  refreshedScores: RefreshedAiImageScore[];
+  scoreRefreshErrors: string[];
 };
 
 type AiEditStateFile = {
@@ -127,6 +144,14 @@ let supabaseAdminClient: SupabaseClient<any, "public", any> | null = null;
 
 const normalizeRelativePath = (value: string) =>
   value.replace(/\\/g, "/").replace(/^\/+/, "");
+
+const normalizePixelQualityScore = (value: unknown): number | null => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  if (numeric < 0) return 0;
+  if (numeric > 100) return 100;
+  return Math.round(numeric);
+};
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -730,11 +755,15 @@ const normalizeStateRecord = (
   const prompt = String(row.prompt ?? "");
   const createdAt = String(row.createdAt ?? "").trim() || new Date().toISOString();
   const updatedAt = String(row.updatedAt ?? "").trim() || createdAt;
+  const pendingPixelQualityScore = normalizePixelQualityScore(
+    row.pendingPixelQualityScore
+  );
 
   return {
     id,
     originalPath,
     pendingPath,
+    pendingPixelQualityScore,
     provider: providerRaw,
     mode: modeRaw,
     prompt,
@@ -1622,6 +1651,16 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       throw new Error("AI edit returned no image.");
     }
 
+    let pendingPixelQualityScore: number | null = null;
+    let pendingScoreRefreshError: string | null = null;
+    try {
+      const refreshed = await refreshDraftImageScoreByAbsolutePath(pendingAbsPath);
+      pendingPixelQualityScore = refreshed.pixelQualityScore;
+    } catch (err) {
+      pendingScoreRefreshError =
+        err instanceof Error ? err.message : "score refresh failed";
+    }
+
     const state = readFolderState(folderAbsPath);
     const nextEdits: PendingAiEditRecord[] = [];
     for (const row of state.edits) {
@@ -1640,6 +1679,7 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       id: randomUUID(),
       originalPath,
       pendingPath,
+      pendingPixelQualityScore,
       provider: input.provider,
       mode: input.mode,
       prompt,
@@ -1658,6 +1698,8 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       template_preset: input.mode === "template" ? input.templatePreset ?? "standard" : undefined,
       original_path: originalPath,
       pending_path: pendingPath,
+      pending_pixel_quality_score: pendingPixelQualityScore,
+      score_refresh_error: pendingScoreRefreshError || undefined,
       timeout_ms: runtimeConfig.timeoutMs,
       max_attempts: runtimeConfig.maxAttempts,
       retry_backoff_ms: runtimeConfig.retryBackoffMs,
@@ -1667,7 +1709,7 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
   });
 
 export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
-  withEditQueue(async () => {
+  withEditQueue(async (): Promise<ResolvePendingAiEditResult> => {
     const { absolutePath: originalAbsPath, relativePath: originalPath } = resolveImagePath(
       input.originalPath
     );
@@ -1685,6 +1727,7 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
     }
 
     const scorePathsToRefresh: string[] = [];
+    const refreshedScores: RefreshedAiImageScore[] = [];
     const scoreRefreshErrors: string[] = [];
 
     if (input.decision === "replace_with_ai") {
@@ -1693,6 +1736,9 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       }
       saveDraftImageUndoBackup(originalAbsPath);
       fs.copyFileSync(pendingAbsPath, originalAbsPath);
+      if (record.provider === "zimage" && record.mode === "upscale") {
+        markDraftImageUpscaled(originalAbsPath);
+      }
       scorePathsToRefresh.push(originalAbsPath);
     } else if (input.decision === "keep_both") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
@@ -1709,9 +1755,14 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       if (!moveFileWithFallback(originalAbsPath, uneditedAbsPath)) {
         throw new Error("Unable to preserve the original image.");
       }
+      moveDraftImageUpscaleMarkers(originalAbsPath, uneditedAbsPath);
       if (!moveFileWithFallback(pendingAbsPath, editedAbsPath)) {
         moveFileWithFallback(uneditedAbsPath, originalAbsPath);
+        moveDraftImageUpscaleMarkers(uneditedAbsPath, originalAbsPath);
         throw new Error("Unable to keep the AI-edited image.");
+      }
+      if (record.provider === "zimage" && record.mode === "upscale") {
+        markDraftImageUpscaled(editedAbsPath);
       }
       scorePathsToRefresh.push(uneditedAbsPath, editedAbsPath);
     }
@@ -1723,7 +1774,11 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
 
     for (const abs of scorePathsToRefresh) {
       try {
-        await refreshDraftImageScoreByAbsolutePath(abs);
+        const refreshed = await refreshDraftImageScoreByAbsolutePath(abs);
+        refreshedScores.push({
+          path: toRelativePath(abs),
+          pixelQualityScore: refreshed.pixelQualityScore,
+        });
       } catch (err) {
         scoreRefreshErrors.push(
           `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
@@ -1741,7 +1796,11 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
         scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
     });
 
-    return record;
+    return {
+      item: record,
+      refreshedScores,
+      scoreRefreshErrors,
+    };
   });
 
 export const createCopyOfDraftFile = async (relativePath: string) => {
@@ -1770,6 +1829,7 @@ export const createCopyOfDraftFile = async (relativePath: string) => {
   }
   fs.copyFileSync(absolutePath, targetAbsPath);
   const relativeCopyPath = toRelativePath(targetAbsPath);
+  const zimageUpscaled = copyDraftImageUpscaledMarker(absolutePath, targetAbsPath);
   let pixelQualityScore: number | null = null;
   try {
     const refreshed = await refreshDraftImageScoreByAbsolutePath(targetAbsPath);
@@ -1786,5 +1846,6 @@ export const createCopyOfDraftFile = async (relativePath: string) => {
     name: path.basename(targetAbsPath),
     path: relativeCopyPath,
     pixelQualityScore,
+    zimageUpscaled,
   };
 };

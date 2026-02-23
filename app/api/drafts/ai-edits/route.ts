@@ -182,12 +182,22 @@ export async function POST(request: Request) {
       requestedBy: auth.userId,
     });
     if (apply) {
-      await resolvePendingAiEdit({
+      const resolved = await resolvePendingAiEdit({
         originalPath: record.originalPath,
         decision: "replace_with_ai",
         requestedBy: auth.userId,
       });
-      return NextResponse.json({ ok: true, applied: true, originalPath: record.originalPath });
+      const refreshedOriginal = resolved.refreshedScores.find(
+        (entry) => entry.path === record.originalPath
+      );
+      return NextResponse.json({
+        ok: true,
+        applied: true,
+        originalPath: record.originalPath,
+        pixelQualityScore: refreshedOriginal?.pixelQualityScore ?? null,
+        refreshedScores: resolved.refreshedScores,
+        scoreRefreshErrors: resolved.scoreRefreshErrors,
+      });
     }
     return NextResponse.json({ ok: true, item: record });
   } catch (err) {

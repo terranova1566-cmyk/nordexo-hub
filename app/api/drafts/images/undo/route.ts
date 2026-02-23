@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
 import { restoreDraftImageUndoBackup } from "@/lib/draft-image-undo";
 import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
+import { isDraftImageUpscaled } from "@/lib/draft-image-upscale";
 
 export const runtime = "nodejs";
 
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
     size: stat.size,
     modifiedAt: new Date().toISOString(),
     pixelQualityScore,
+    zimageUpscaled: isDraftImageUpscaled(absolute),
     scoreRefreshError,
   });
 }

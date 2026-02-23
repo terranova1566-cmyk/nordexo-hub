@@ -84,6 +84,11 @@ type RunSpuOption = {
   path: string;
 };
 
+type DraftDeletedImageUndoItem = {
+  sourcePath: string;
+  destinationPath: string;
+};
+
 type ExplorerContextMenuState = {
   entry: DraftEntry;
   image: boolean;
@@ -447,8 +452,8 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
   },
   spuPickerTrigger: {
-    minWidth: "230px",
-    maxWidth: "340px",
+    minWidth: "108px",
+    maxWidth: "136px",
     justifyContent: "space-between",
     paddingLeft: "12px",
     paddingRight: "10px",
@@ -456,8 +461,8 @@ const useStyles = makeStyles({
   spuPickerSurface: {
     padding: "6px",
     borderRadius: "12px",
-    minWidth: "280px",
-    maxWidth: "420px",
+    minWidth: "140px",
+    maxWidth: "190px",
     maxHeight: "520px",
     overflow: "auto",
   },
@@ -475,13 +480,29 @@ const useStyles = makeStyles({
   spuPickerRowActive: {
     backgroundColor: tokens.colorBrandBackground2,
   },
+  spuPickerRowCompleted: {
+    backgroundColor: "#e7f5e8",
+    ":hover": {
+      backgroundColor: "#d9efdb",
+    },
+  },
   spuPickerRowName: {
+    flex: "1 1 auto",
     overflow: "hidden",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
     fontSize: tokens.fontSizeBase200,
     lineHeight: tokens.lineHeightBase200,
     minWidth: 0,
+  },
+  spuPickerRowCheck: {
+    width: "16px",
+    height: "16px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#107c10",
+    flexShrink: 0,
   },
   runPreviewSurface: {
     width: "820px",
@@ -2737,7 +2758,7 @@ export default function DraftExplorerPage() {
   );
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
-  const [folderTreeHidden, setFolderTreeHidden] = useState(false);
+  const [folderTreeHidden, setFolderTreeHidden] = useState(true);
   const [movingEntry, setMovingEntry] = useState(false);
   const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
@@ -2823,6 +2844,9 @@ export default function DraftExplorerPage() {
   const [renameExtension, setRenameExtension] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [bulkImageActionPending, setBulkImageActionPending] = useState(false);
+  const [lastDeletedImageUndoItems, setLastDeletedImageUndoItems] = useState<
+    DraftDeletedImageUndoItem[]
+  >([]);
   const [tagImagesRunningPaths, setTagImagesRunningPaths] = useState<Set<string>>(
     new Set()
   );
@@ -2903,6 +2927,7 @@ export default function DraftExplorerPage() {
   const initialOpenSpuHandledRef = useRef(false);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
   const currentPathRef = useRef("");
+  const previousSelectedSpuPathForDraftTableRef = useRef("");
 
   const tagImagesRunning = tagImagesRunningPaths.size > 0;
   const tagImagesRunningInCurrentPath = useMemo(() => {
@@ -3206,6 +3231,7 @@ export default function DraftExplorerPage() {
     setSelectedSpus(new Set());
     setSelectedSkus(new Set());
     setExpandedSkus(new Set());
+    setDraftTableShowAll(false);
   }, [selectedFolder]);
 
   useEffect(() => {
@@ -3597,255 +3623,6 @@ export default function DraftExplorerPage() {
     [skuColumnStyles, t]
   );
 
-  const spuColumnStyles = useMemo(() => {
-    const sample = spuRows;
-    const makeStyle = (
-      headerText: string,
-      values: unknown[],
-      options: {
-        minPx: number;
-        maxPx: number;
-        headerAsMax?: boolean;
-        headerPaddingPx?: number;
-        contentPaddingPx?: number;
-      }
-    ) => {
-      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
-      return {
-        width: `${width}px`,
-        minWidth: `${options.minPx}px`,
-        maxWidth: `${options.maxPx}px`,
-      };
-    };
-
-    const detailsLabel = t("draftExplorer.detailsButton");
-    const viewLabel = "View";
-
-    return {
-      selection: {
-        width: "44px",
-        minWidth: "44px",
-        maxWidth: "44px",
-      },
-      spu: makeStyle(
-        t("draftExplorer.columns.spu"),
-        sample.map((row) => row.draft_spu),
-        { minPx: 110, maxPx: 220 }
-      ),
-      title: makeStyle(
-        t("draftExplorer.columns.title"),
-        sample.map((row) => row.draft_title ?? ""),
-        { minPx: 180, maxPx: 560, contentPaddingPx: 12 }
-      ),
-      status: makeStyle(
-        t("draftExplorer.columns.status"),
-        sample.map((row) => row.draft_status ?? ""),
-        { minPx: 90, maxPx: 150 }
-      ),
-      source: makeStyle(
-        t("draftExplorer.columns.source"),
-        sample.map((row) => row.draft_source ?? ""),
-        { minPx: 90, maxPx: 150 }
-      ),
-      supplier: makeStyle(
-        t("draftExplorer.columns.supplierUrl"),
-        sample.map((row) => row.draft_supplier_1688_url ?? ""),
-        { minPx: 130, maxPx: 360, contentPaddingPx: 8 }
-      ),
-      images: makeStyle(
-        t("draftExplorer.columns.images"),
-        sample.map(() => viewLabel),
-        { minPx: 86, maxPx: 124, headerAsMax: true }
-      ),
-      videos: makeStyle(
-        t("draftExplorer.columns.videos"),
-        sample.map((row) => String(row.video_count ?? "")),
-        { minPx: 68, maxPx: 110, headerAsMax: true }
-      ),
-      variants: makeStyle(
-        t("draftExplorer.columns.variants"),
-        sample.map((row) => `Edit (${row.variant_count ?? 0})`),
-        { minPx: 116, maxPx: 180 }
-      ),
-      updated: makeStyle(
-        t("draftExplorer.columns.updated"),
-        sample.map((row) => formatDate(row.draft_updated_at)),
-        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
-      ),
-      created: makeStyle(
-        t("draftExplorer.columns.created"),
-        sample.map((row) => formatDate(row.draft_created_at)),
-        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
-      ),
-      details: makeStyle(
-        t("draftExplorer.columns.details"),
-        sample.map(() => detailsLabel),
-        { minPx: 92, maxPx: 130, headerAsMax: true }
-      ),
-    };
-  }, [spuRows, t]);
-
-  const skuColumnStyles = useMemo(() => {
-    const sample = skuRows;
-    const makeStyle = (
-      headerText: string,
-      values: unknown[],
-      options: {
-        minPx: number;
-        maxPx: number;
-        headerAsMax?: boolean;
-        headerPaddingPx?: number;
-        contentPaddingPx?: number;
-      }
-    ) => {
-      const width = computeAdaptiveColumnWidthPx(headerText, values, options);
-      return {
-        width: `${width}px`,
-        minWidth: `${options.minPx}px`,
-        maxWidth: `${options.maxPx}px`,
-      };
-    };
-
-    const detailsExpandLabel = t("draftExplorer.expand");
-    const detailsCollapseLabel = t("draftExplorer.collapse");
-
-    return {
-      selection: {
-        width: "44px",
-        minWidth: "44px",
-        maxWidth: "44px",
-      },
-      sku: makeStyle(
-        t("draftExplorer.columns.sku"),
-        sample.map((row) => row.draft_sku ?? ""),
-        { minPx: 170, maxPx: 340 }
-      ),
-      colorSe: makeStyle(
-        t("draftExplorer.columns.colorSe"),
-        sample.map((row) => getRawValue(row.draft_raw_row, "variation_color_se")),
-        { minPx: 110, maxPx: 260 }
-      ),
-      sizeSe: makeStyle(
-        t("draftExplorer.columns.sizeSe"),
-        sample.map((row) => getRawValue(row.draft_raw_row, "variation_size_se")),
-        { minPx: 96, maxPx: 210 }
-      ),
-      otherSe: makeStyle(
-        t("draftExplorer.columns.otherSe"),
-        sample.map((row) => getRawValue(row.draft_raw_row, "variation_other_se")),
-        { minPx: 126, maxPx: 340 }
-      ),
-      amountSe: makeStyle(
-        t("draftExplorer.columns.amountSe"),
-        sample.map((row) => getRawValue(row.draft_raw_row, "variation_amount_se")),
-        { minPx: 112, maxPx: 260 }
-      ),
-      optionCombined: makeStyle(
-        t("draftExplorer.columns.optionCombined"),
-        sample.map((row) => row.draft_option_combined_zh ?? ""),
-        { minPx: 190, maxPx: 520 }
-      ),
-      price: makeStyle(
-        t("draftExplorer.columns.price"),
-        sample.map((row) => row.draft_price ?? ""),
-        { minPx: 90, maxPx: 150 }
-      ),
-      weight: makeStyle(
-        t("draftExplorer.columns.weight"),
-        sample.map((row) =>
-          `${row.draft_weight ?? ""}${row.draft_weight_unit ? ` ${row.draft_weight_unit}` : ""}`
-        ),
-        { minPx: 100, maxPx: 170 }
-      ),
-      variantImage: makeStyle(
-        t("draftExplorer.columns.variantImage"),
-        sample.map((row) => row.draft_variant_image_url ?? ""),
-        { minPx: 170, maxPx: 430 }
-      ),
-      status: makeStyle(
-        t("draftExplorer.columns.status"),
-        sample.map((row) => row.draft_status ?? ""),
-        { minPx: 90, maxPx: 150 }
-      ),
-      updated: makeStyle(
-        t("draftExplorer.columns.updated"),
-        sample.map((row) => formatDate(row.draft_updated_at)),
-        { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
-      ),
-      details: makeStyle(
-        t("draftExplorer.columns.details"),
-        sample.map(() => `${detailsExpandLabel} ${detailsCollapseLabel}`),
-        { minPx: 106, maxPx: 170 }
-      ),
-    };
-  }, [skuRows, t]);
-
-  const skuHeaderColumns = useMemo(
-    () => [
-      {
-        key: "sku",
-        label: t("draftExplorer.columns.sku"),
-        style: skuColumnStyles.sku,
-      },
-      {
-        key: "colorSe",
-        label: t("draftExplorer.columns.colorSe"),
-        style: skuColumnStyles.colorSe,
-      },
-      {
-        key: "sizeSe",
-        label: t("draftExplorer.columns.sizeSe"),
-        style: skuColumnStyles.sizeSe,
-      },
-      {
-        key: "otherSe",
-        label: t("draftExplorer.columns.otherSe"),
-        style: skuColumnStyles.otherSe,
-      },
-      {
-        key: "amountSe",
-        label: t("draftExplorer.columns.amountSe"),
-        style: skuColumnStyles.amountSe,
-      },
-      {
-        key: "optionCombined",
-        label: t("draftExplorer.columns.optionCombined"),
-        style: skuColumnStyles.optionCombined,
-      },
-      {
-        key: "price",
-        label: t("draftExplorer.columns.price"),
-        style: skuColumnStyles.price,
-      },
-      {
-        key: "weight",
-        label: t("draftExplorer.columns.weight"),
-        style: skuColumnStyles.weight,
-      },
-      {
-        key: "variantImage",
-        label: t("draftExplorer.columns.variantImage"),
-        style: skuColumnStyles.variantImage,
-      },
-      {
-        key: "status",
-        label: t("draftExplorer.columns.status"),
-        style: skuColumnStyles.status,
-      },
-      {
-        key: "updated",
-        label: t("draftExplorer.columns.updated"),
-        style: skuColumnStyles.updated,
-      },
-      {
-        key: "details",
-        label: t("draftExplorer.columns.details"),
-        style: skuColumnStyles.details,
-      },
-    ],
-    [skuColumnStyles, t]
-  );
-
   const toggleSelectAllSpus = () => {
     if (allSpuSelected) {
       setSelectedSpus(new Set());
@@ -4170,7 +3947,7 @@ export default function DraftExplorerPage() {
 
   const handleDuplicateSkuRoles = useCallback(async () => {
     if (duplicateRolesPending) return;
-    const ids = skuRows
+    const ids = visibleSkuRows
       .filter((row) => selectedSkus.has(row.id))
       .map((row) => row.id);
     if (ids.length === 0) return;
@@ -4203,7 +3980,7 @@ export default function DraftExplorerPage() {
     fetchSkuRows,
     fetchSpuRows,
     selectedSkus,
-    skuRows,
+    visibleSkuRows,
   ]);
 
   const handleDetailSave = async () => {
@@ -4767,6 +4544,19 @@ export default function DraftExplorerPage() {
     if (parts[0] !== run) return "";
     return `${parts[0]}/${parts[1]}`;
   }, [currentPath, selectedFolder]);
+
+  useEffect(() => {
+    const previousSpuPath = previousSelectedSpuPathForDraftTableRef.current;
+    const nextSpuPath = String(selectedSpuPathInRun || "").trim();
+    if (
+      draftTableShowAll &&
+      nextSpuPath &&
+      nextSpuPath !== previousSpuPath
+    ) {
+      setDraftTableShowAll(false);
+    }
+    previousSelectedSpuPathForDraftTableRef.current = nextSpuPath;
+  }, [draftTableShowAll, selectedSpuPathInRun]);
 
   const selectedRunSpuIndex = useMemo(
     () => runSpuOptions.findIndex((option) => option.path === selectedSpuPathInRun),
@@ -6419,6 +6209,14 @@ export default function DraftExplorerPage() {
     setError(null);
     const failures: string[] = [];
     const moved = new Set<string>();
+    const movedRecords: DraftDeletedImageUndoItem[] = [];
+    const normalizedTargetPath = String(targetPath || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .toLowerCase();
+    const targetIsDeletedImages =
+      normalizedTargetPath.endsWith("/deleted images") ||
+      normalizedTargetPath.includes("/deleted images/");
     try {
       for (const sourcePath of existingSources) {
         try {
@@ -6432,12 +6230,33 @@ export default function DraftExplorerPage() {
             throw new Error(payload?.error || "Move failed.");
           }
           moved.add(sourcePath);
+          const sourceBaseName = sourcePath.split("/").filter(Boolean).pop() || "";
+          const fallbackDestinationPath = sourceBaseName
+            ? `${targetPath}/${sourceBaseName}`.replace(/\/{2,}/g, "/")
+            : sourcePath;
+          const destinationPath =
+            String(payload?.path || "").trim() || fallbackDestinationPath;
+          movedRecords.push({
+            sourcePath,
+            destinationPath,
+          });
         } catch (err) {
           failures.push(`${sourcePath}: ${(err as Error).message}`);
         }
       }
 
       if (moved.size > 0) {
+        if (targetIsDeletedImages) {
+          const undoItems = movedRecords.filter(
+            (record) =>
+              moved.has(record.sourcePath) &&
+              Boolean(record.destinationPath) &&
+              record.sourcePath !== record.destinationPath
+          );
+          setLastDeletedImageUndoItems(undoItems);
+        } else {
+          setLastDeletedImageUndoItems([]);
+        }
         setEntries((prev) => prev.filter((entry) => !moved.has(entry.path)));
         setMainViewVariantImageEntries((prev) =>
           prev.filter((entry) => !moved.has(entry.path))
@@ -6864,6 +6683,97 @@ export default function DraftExplorerPage() {
       selectedFolder,
     ]
   );
+
+  const handleUndoLastDeletedImageMove = useCallback(async () => {
+    clearSelectedFilesForImageActions();
+    if (bulkImageActionPending || movingEntry) return;
+    const undoItems = lastDeletedImageUndoItems
+      .map((item) => ({
+        sourcePath: String(item.sourcePath || "").trim(),
+        destinationPath: String(item.destinationPath || "").trim(),
+      }))
+      .filter(
+        (item) =>
+          Boolean(item.sourcePath) &&
+          Boolean(item.destinationPath) &&
+          item.sourcePath !== item.destinationPath
+      );
+    if (undoItems.length === 0) return;
+
+    setBulkImageActionPending(true);
+    setError(null);
+    const failures: string[] = [];
+    const restoredKeys = new Set<string>();
+
+    try {
+      for (const item of undoItems) {
+        const sourcePath = item.destinationPath;
+        const sourceParts = item.sourcePath.split("/");
+        sourceParts.pop();
+        const targetPath = sourceParts.join("/");
+        if (!sourcePath || !targetPath) {
+          failures.push(`${item.destinationPath}: invalid undo path.`);
+          continue;
+        }
+
+        try {
+          const response = await fetch("/api/drafts/move", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourcePath, targetPath }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Undo delete failed.");
+          }
+          restoredKeys.add(`${item.sourcePath}=>${item.destinationPath}`);
+        } catch (err) {
+          failures.push(`${sourcePath}: ${(err as Error).message}`);
+        }
+      }
+
+      if (restoredKeys.size > 0) {
+        setLastDeletedImageUndoItems((prev) =>
+          prev.filter(
+            (item) =>
+              !restoredKeys.has(
+                `${String(item.sourcePath || "").trim()}=>${String(
+                  item.destinationPath || ""
+                ).trim()}`
+              )
+          )
+        );
+        if (currentPath) {
+          await refreshEntries(currentPath);
+          await fetchPendingAiEdits(currentPath);
+        }
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
+        }
+      }
+    } finally {
+      setBulkImageActionPending(false);
+      clearSelectedFilesForImageActions();
+    }
+
+    if (failures.length > 0) {
+      setError(
+        `Failed to undo ${failures.length} deleted image(s): ${failures
+          .slice(0, 3)
+          .join("; ")}${failures.length > 3 ? "..." : ""}`
+      );
+    }
+  }, [
+    bulkImageActionPending,
+    clearSelectedFilesForImageActions,
+    currentPath,
+    fetchFolderTree,
+    fetchPendingAiEdits,
+    lastDeletedImageUndoItems,
+    movingEntry,
+    refreshEntries,
+    selectedFolder,
+  ]);
 
   const runAiEditsForEntries = useCallback(
     async (
@@ -7482,6 +7392,7 @@ export default function DraftExplorerPage() {
         );
       setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
       setSelectedTreeFolders(new Set());
+      setLastDeletedImageUndoItems([]);
       setPendingAiEditsByOriginal((prev) => {
         const next: Record<string, PendingAiEditRecord> = {};
         Object.entries(prev).forEach(([pathValue, row]) => {
@@ -7553,6 +7464,7 @@ export default function DraftExplorerPage() {
       setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
       setSelectedFiles(new Set());
       setSelectedTreeFolders(new Set());
+      setLastDeletedImageUndoItems([]);
       setPendingAiEditsByOriginal((prev) => {
         const next: Record<string, PendingAiEditRecord> = {};
         Object.entries(prev).forEach(([pathValue, row]) => {
@@ -7643,6 +7555,64 @@ export default function DraftExplorerPage() {
     renamePending,
     renamingPath,
     selectedFiles,
+    variantsEditorOpen,
+  ]);
+
+  useEffect(() => {
+    const handleSelectAllImagesKey = (event: KeyboardEvent) => {
+      const key = String(event.key || "").toLowerCase();
+      const selectAllPressed =
+        key === "a" && (event.ctrlKey || event.metaKey) && !event.altKey;
+      if (!selectAllPressed) return;
+      const target = event.target as HTMLElement | null;
+      const tagName = String(target?.tagName || "").toLowerCase();
+      if (
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select"
+      ) {
+        return;
+      }
+      if (
+        !currentPath ||
+        movingEntry ||
+        renamePending ||
+        Boolean(renamingPath) ||
+        Boolean(fileViewerPath) ||
+        Boolean(previewPath) ||
+        Boolean(aiReviewOriginalPath) ||
+        aiEditTargets.length > 0 ||
+        variantsEditorOpen ||
+        detailOpen
+      ) {
+        return;
+      }
+      const visibleImagePaths = displayImageEntriesRef.current
+        .filter((entry) => entry.type === "file" && isImage(entry.name))
+        .map((entry) => entry.path);
+      if (visibleImagePaths.length === 0) return;
+      event.preventDefault();
+      selectionAnchorImagePathRef.current = visibleImagePaths[0] ?? null;
+      setSelectedTreeFolders(new Set());
+      setSelectedFiles(new Set(visibleImagePaths));
+    };
+
+    window.addEventListener("keydown", handleSelectAllImagesKey);
+    return () => {
+      window.removeEventListener("keydown", handleSelectAllImagesKey);
+    };
+  }, [
+    aiEditTargets.length,
+    aiReviewOriginalPath,
+    currentPath,
+    detailOpen,
+    fileViewerPath,
+    isImage,
+    movingEntry,
+    previewPath,
+    renamePending,
+    renamingPath,
     variantsEditorOpen,
   ]);
 
@@ -9650,6 +9620,14 @@ export default function DraftExplorerPage() {
     const spu = String(currentMainProductContext.spu || "").trim();
     const spuMainPath = run && spu ? `${run}/${spu}` : "";
     if (!run || !spu || !spuMainPath) return;
+    const currentSpuIndex = runSpuOptions.findIndex(
+      (option) => option.path === spuMainPath
+    );
+    const nextSpuPathAfterDelete =
+      runSpuOptions[currentSpuIndex + 1]?.path ||
+      runSpuOptions[currentSpuIndex - 1]?.path ||
+      runSpuOptions.find((option) => option.path !== spuMainPath)?.path ||
+      run;
 
     const confirmed = window.confirm(
       [
@@ -9717,8 +9695,7 @@ export default function DraftExplorerPage() {
       setSelectedSkus(new Set());
       setPreviewPath(null);
 
-      const nextPath = run;
-      setCurrentPath(nextPath);
+      setCurrentPath(nextSpuPathAfterDelete);
       await Promise.all([fetchSpuRows(), fetchSkuRows(), fetchFolderTree(run)]);
     } catch (err) {
       const message =
@@ -9736,6 +9713,7 @@ export default function DraftExplorerPage() {
     fetchSkuRows,
     fetchSpuRows,
     mainViewShowsMergedImages,
+    runSpuOptions,
   ]);
 
   const handleConfirmCurrentProductAiEdits = useCallback(async () => {
@@ -9908,6 +9886,22 @@ export default function DraftExplorerPage() {
   const selectedImageEntries = displayImageEntries.filter((entry) =>
     selectedFiles.has(entry.path)
   );
+  const undoLastChangeAvailable =
+    selectedImageEntries.length > 0 || lastDeletedImageUndoItems.length > 0;
+  const handleUndoLastChangeFromImageActions = useCallback(() => {
+    if (selectedImageEntries.length > 0) {
+      void handleUndoLastChangeForEntries(selectedImageEntries);
+      return;
+    }
+    if (lastDeletedImageUndoItems.length > 0) {
+      void handleUndoLastDeletedImageMove();
+    }
+  }, [
+    handleUndoLastChangeForEntries,
+    handleUndoLastDeletedImageMove,
+    lastDeletedImageUndoItems.length,
+    selectedImageEntries,
+  ]);
   const selectedImageUpscaleEligibleCount = selectedImageEntries.reduce(
     (count, entry) => count + (isImageEntryUpscaled(entry) ? 0 : 1),
     0
@@ -10462,7 +10456,15 @@ export default function DraftExplorerPage() {
             className={styles.draftToolbarTabs}
           >
             <Tab value="spu">{t("draftExplorer.spuTab")}</Tab>
-            <Tab value="sku">{t("draftExplorer.skuTab")}</Tab>
+            <Tab value="sku">
+              <span className={styles.imageTabLabel}>
+                <span>{t("draftExplorer.skuTab")}</span>
+                <span className={styles.imageTabMainBadgeSpacer} aria-hidden="true">
+                  {" "}
+                </span>
+                <span className={styles.imageTabBadge}>{visibleSkuRows.length}</span>
+              </span>
+            </Tab>
           </TabList>
           <Input
             aria-label={t("draftExplorer.searchLabel")}
@@ -11936,584 +11938,6 @@ export default function DraftExplorerPage() {
 	            </div>
 	          </DialogBody>
 	        </DialogSurface>
-	      </Dialog>
-
-      <Card className={styles.logCard}>
-        <div className={styles.explorerHeader}>
-          <div>
-            <Text size={500} weight="semibold">
-              {t("bulkProcessing.explorer.title")}
-            </Text>
-          </div>
-        </div>
-
-              {variantsEditorLoading ? (
-                <Spinner size="small" />
-              ) : (
-                <div className={styles.variantsEditorTableWrap}>
-                  <table
-                    className={mergeClasses(
-                      styles.variantsEditorTable,
-                      styles.contentSizedTable
-                    )}
-                  >
-                    <thead>
-                      <tr>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader,
-                            styles.variantsEditorCheckCol
-                          )}
-                          style={variantsEditorColumnStyles.selection}
-                        >
-                          <Checkbox
-                            checked={
-                              variantsEditorAllSelected
-                                ? true
-                                : variantsEditorSomeSelected
-                                  ? "mixed"
-                                  : false
-                            }
-                            onChange={handleVariantEditorToggleAll}
-                            aria-label="Select all variants"
-                          />
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.sku}
-                        >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("sku")}
-                          >
-                            <span>SKU</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("sku")}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.colorSe}
-                        >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("color")}
-                          >
-                            <span>Color (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("color")}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.sizeSe}
-                        >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("size")}
-                          >
-                            <span>Size (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("size")}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.otherSe}
-                        >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("order")}
-                          >
-                            <span>Other (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("order")}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.amountSe}
-                        >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("amount")}
-                          >
-                            <span>Amount (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("amount")}
-                            </span>
-                          </button>
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.optionCombinedZh}
-                        >
-                          Option Combined (ZH)
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.colorZh}
-                        >
-                          Color (ZH)
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.sizeZh}
-                        >
-                          Size (ZH)
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.otherZh}
-                        >
-                          Other (ZH)
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.amountZh}
-                        >
-                          Amount (ZH)
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.price}
-                        >
-                          Price
-                        </th>
-                        <th
-                          className={mergeClasses(
-                            styles.variantsEditorHeadCell,
-                            styles.resizableHeader
-                          )}
-                          style={variantsEditorColumnStyles.weight}
-                        >
-                          Weight
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {variantsEditorRows.length === 0 ? (
-                        <tr>
-                          <td className={styles.variantsEditorCell} colSpan={13}>
-                            No variants yet. Add one or run AI update.
-                          </td>
-                        </tr>
-                      ) : (
-                        variantsEditorSortedRows.map((row) => (
-                          <tr key={row.key}>
-                            <td
-                              className={mergeClasses(
-                                styles.variantsEditorCell,
-                                styles.variantsEditorCheckCol
-                              )}
-                              style={variantsEditorColumnStyles.selection}
-                            >
-                              <Checkbox
-                                checked={variantsEditorSelectedRows.has(row.key)}
-                                onChange={() => handleVariantEditorToggleRow(row.key)}
-                                aria-label={`Select ${row.draft_sku || row.key}`}
-                              />
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.sku}
-                            >
-                              {renderVariantEditorInput(row, "draft_sku")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.colorSe}
-                            >
-                              {renderVariantEditorInput(row, "variation_color_se")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.sizeSe}
-                            >
-                              {renderVariantEditorInput(row, "variation_size_se")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.otherSe}
-                            >
-                              {renderVariantEditorInput(row, "variation_other_se")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.amountSe}
-                            >
-                              {renderVariantEditorInput(row, "variation_amount_se")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.optionCombinedZh}
-                            >
-                              {renderVariantEditorInput(row, "draft_option_combined_zh")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.colorZh}
-                            >
-                              {renderVariantEditorInput(row, "draft_option1")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.sizeZh}
-                            >
-                              {renderVariantEditorInput(row, "draft_option2")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.otherZh}
-                            >
-                              {renderVariantEditorInput(row, "draft_option3")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.amountZh}
-                            >
-                              {renderVariantEditorInput(row, "draft_option4")}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.price}
-                            >
-                              {renderVariantEditorInput(row, "draft_price", {
-                                numeric: true,
-                              })}
-                            </td>
-                            <td
-                              className={styles.variantsEditorCell}
-                              style={variantsEditorColumnStyles.weight}
-                            >
-                              {renderVariantEditorInput(row, "draft_weight", {
-                                numeric: true,
-                              })}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <div className={styles.variantsEditorBottomSplit}>
-                <div className={styles.variantsEditorInstruction}>
-                  <Field label="AI instructions (GPT-5.2)">
-                    <Textarea
-                      value={variantsEditorAiPrompt}
-                      onChange={(_, data) => setVariantsEditorAiPrompt(data.value)}
-                      resize="vertical"
-                      rows={4}
-                      placeholder="Describe how to restructure, add, or remove variants."
-                    />
-                  </Field>
-                  <div className={styles.variantsEditorInstructionActions}>
-                    <Button
-                      appearance="primary"
-                      onClick={handleVariantEditorRunAi}
-                      disabled={
-                        variantsEditorLoading ||
-                        variantsEditorSaving ||
-                        variantsEditorAiRunning ||
-                        variantsEditorRows.length === 0
-                      }
-                    >
-                      {variantsEditorAiRunning ? "Updating..." : "Update Variants with AI"}
-                    </Button>
-                  </div>
-                </div>
-                <div className={styles.variantsEditorThumbPanel}>
-                  <Text size={200} weight="semibold">
-                    Variant images
-                  </Text>
-                  {variantsEditorThumbsLoading ? (
-                    <Spinner size="tiny" />
-                  ) : variantsEditorThumbs.length === 0 ? (
-                    <Text size={100}>No images found in the variant images folder.</Text>
-                  ) : (
-                    <div className={styles.variantsEditorThumbGrid}>
-                      {variantsEditorThumbs.map((entry) => {
-                        const label =
-                          extractVariantLabelFromFilename(entry.name, variantsEditorSpu) ||
-                          entry.name;
-                        return (
-                          <div key={entry.path} className={styles.variantsEditorThumbCard}>
-                            <button
-                              type="button"
-                              className={styles.variantsEditorThumbButton}
-                              onClick={() =>
-                                setVariantsImagePreview({
-                                  src: buildDraftDownloadUrl(entry.path, entry.modifiedAt),
-                                  label,
-                                })
-                              }
-                            >
-                              <img
-                                src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
-                                alt={label}
-                                className={mergeClasses(
-                                  styles.variantsEditorThumbImage,
-                                  styles.variantsEditorThumbImageClickable
-                                )}
-                                loading="lazy"
-                              />
-                            </button>
-                            <Text className={styles.variantsEditorThumbLabel} size={100}>
-                              {label}
-                            </Text>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            {variantsEditorAiRunning ? (
-              <div className={styles.variantsEditorOverlay}>
-                <span style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
-                  <Spinner size="small" />
-                  Updating variants with AI...
-                </span>
-              </div>
-            ) : null}
-            <DialogActions className={styles.variantsEditorActions}>
-              <Button
-                appearance="outline"
-                onClick={() => closeVariantsEditor()}
-                disabled={variantsEditorSaving || variantsEditorAiRunning}
-              >
-                {t("common.close")}
-              </Button>
-              <Button
-                appearance="primary"
-                onClick={handleVariantEditorSave}
-                disabled={variantsEditorLoading || variantsEditorSaving || variantsEditorAiRunning}
-              >
-                {variantsEditorSaving ? "Saving..." : t("common.save")}
-              </Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(variantsImagePreview)}
-        onOpenChange={(_, data) => {
-          if (!data.open) setVariantsImagePreview(null);
-        }}
-      >
-        <DialogSurface className={styles.variantsImagePreviewSurface}>
-          <DialogBody className={styles.variantsImagePreviewBody}>
-            <div className={styles.variantsImagePreviewTop}>
-              <Button
-                appearance="subtle"
-                size="small"
-                onClick={() => setVariantsImagePreview(null)}
-              >
-                Close
-              </Button>
-            </div>
-            <div className={styles.variantsImagePreviewImgWrap}>
-              {variantsImagePreview ? (
-                <img
-                  src={variantsImagePreview.src}
-                  alt={variantsImagePreview.label}
-                  className={styles.variantsImagePreviewImg}
-                />
-              ) : null}
-            </div>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
-
-	      <Dialog
-	        open={runPreviewOpen}
-	        onOpenChange={(_, data) => {
-	          if (!data.open) {
-	            setRunPreviewOpen(false);
-	            setRunPreviewRun("");
-	            setRunPreviewItems([]);
-	            setRunPreviewSelectedSpus(new Set());
-	            setRunPreviewDeletedSpus(new Set());
-	          }
-	        }}
-	      >
-	        <DialogSurface className={styles.runPreviewSurface}>
-	          <DialogBody className={styles.runPreviewBody}>
-            <DialogTitle>
-              Batch Preview{runPreviewRun ? ` - ${runPreviewRun}` : ""}
-            </DialogTitle>
-            {runPreviewLoading ? <Spinner size="small" /> : null}
-	            <div className={styles.runPreviewTableWrap}>
-	              <Table
-	                size="small"
-	                aria-label="Batch preview"
-	                className={styles.runPreviewTable}
-	              >
-		                <TableHeader>
-		                  <TableRow className={styles.runPreviewHeaderRow}>
-		                    <TableHeaderCell className={styles.runPreviewImageHeaderCell}>
-		                      Image
-		                    </TableHeaderCell>
-		                    <TableHeaderCell className={styles.runPreviewSpuHeaderCell}>
-		                      SPU
-		                    </TableHeaderCell>
-		                    <TableHeaderCell>Title</TableHeaderCell>
-		                    <TableHeaderCell className={styles.runPreviewSelectHeaderCell}>
-		                      <div className={styles.runPreviewCellCenter}>
-		                        <Checkbox
-		                          checked={
-		                            allRunPreviewSelected
-		                              ? true
-		                              : someRunPreviewSelected
-		                                ? "mixed"
-		                                : false
-		                          }
-		                          onChange={toggleSelectAllRunPreview}
-		                          aria-label={t("common.selectAll")}
-		                        />
-		                      </div>
-		                    </TableHeaderCell>
-		                    <TableHeaderCell className={styles.runPreviewDeleteHeaderCell} />
-		                  </TableRow>
-		                </TableHeader>
-		                <TableBody>
-		                  {visibleRunPreviewItems.map((item) => (
-		                      <TableRow key={item.draft_spu}>
-		                        <TableCell className={styles.runPreviewImageCell}>
-		                          <div className={styles.runPreviewCellCenter}>
-		                            {item.preview_image_path ? (
-		                              <img
-		                                src={buildDraftDownloadUrl(
-		                                  item.preview_image_path,
-		                                  item.preview_image_modified_at ?? undefined
-		                                )}
-		                                alt={item.draft_spu}
-		                                className={styles.runPreviewThumb}
-		                                loading="lazy"
-		                              />
-		                            ) : item.draft_main_image_url ? (
-		                              <img
-		                                src={item.draft_main_image_url}
-		                                alt={item.draft_spu}
-		                                className={styles.runPreviewThumb}
-		                                loading="lazy"
-		                              />
-		                            ) : (
-		                              <div
-		                                className={styles.runPreviewThumb}
-		                                style={{ display: "inline-block" }}
-		                              />
-		                            )}
-		                          </div>
-		                        </TableCell>
-		                        <TableCell>{item.draft_spu}</TableCell>
-		                        <TableCell className={styles.runPreviewTitleCell}>
-		                          <span className={styles.runPreviewTitleText}>{item.title}</span>
-		                        </TableCell>
-		                        <TableCell className={styles.runPreviewSelectCell}>
-		                          <div className={styles.runPreviewCellCenter}>
-		                            <Checkbox
-		                              checked={runPreviewSelectedSpus.has(item.draft_spu)}
-		                              onChange={() => toggleSelectRunPreviewSpu(item.draft_spu)}
-		                              aria-label={`Select ${item.draft_spu}`}
-		                            />
-		                          </div>
-		                        </TableCell>
-		                        <TableCell className={styles.runPreviewDeleteCell}>
-		                          <div className={styles.runPreviewCellCenter}>
-		                            <Button
-		                              appearance="outline"
-		                              size="small"
-		                              className={mergeClasses(
-		                                styles.runPreviewDeleteButton,
-		                                styles.whiteActionButton
-		                              )}
-		                              onClick={() => handleRunPreviewDelete(item.draft_spu)}
-		                            >
-		                              Delete
-		                            </Button>
-		                          </div>
-		                        </TableCell>
-		                      </TableRow>
-		                    ))}
-		                </TableBody>
-		              </Table>
-	            </div>
-	            <div className={styles.runPreviewActions}>
-	              <Button
-	                appearance="outline"
-	                className={styles.whiteActionButton}
-	                onClick={handleRunPreviewDeleteSelected}
-	                disabled={runPreviewSelectedSpus.size === 0 || runPreviewSaving}
-	              >
-	                Delete selected
-	              </Button>
-	              <div className={styles.runPreviewActionsRight}>
-	                <Button
-	                  appearance="outline"
-	                  onClick={() => setRunPreviewOpen(false)}
-	                  disabled={runPreviewSaving}
-	                >
-	                  Cancel
-	                </Button>
-	                <Button
-	                  appearance="primary"
-	                  onClick={() => void handleRunPreviewSave()}
-	                  disabled={runPreviewSaving}
-	                >
-	                  {runPreviewSaving ? "Saving..." : "Save"}
-	                </Button>
-	              </div>
-	            </div>
-	          </DialogBody>
-	        </DialogSurface>
       </Dialog>
 
       <Card className={styles.logCard}>
@@ -12705,12 +12129,14 @@ export default function DraftExplorerPage() {
                 ) : (
                   runSpuOptions.map((option) => {
                     const active = option.path === selectedSpuPathInRun;
+                    const isCompleted = completedSpuFolders.has(option.path);
                     return (
                       <div
                         key={option.path}
                         className={mergeClasses(
                           styles.spuPickerRow,
-                          active ? styles.spuPickerRowActive : undefined
+                          active ? styles.spuPickerRowActive : undefined,
+                          isCompleted ? styles.spuPickerRowCompleted : undefined
                         )}
                         onClick={() => handleSelectRunSpu(option.path)}
                         role="button"
@@ -12723,6 +12149,24 @@ export default function DraftExplorerPage() {
                         }}
                       >
                         <span className={styles.spuPickerRowName}>{option.name}</span>
+                        {isCompleted ? (
+                          <span className={styles.spuPickerRowCheck} aria-hidden="true">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.iconSvg}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M5 12l5 5l9 -9" />
+                            </svg>
+                          </span>
+                        ) : null}
                       </div>
                     );
                   })
@@ -12763,35 +12207,6 @@ export default function DraftExplorerPage() {
             </Menu>
             <Button
               appearance="outline"
-              onClick={() => {
-                if (!currentPath) return;
-                const parts = currentPath.split("/");
-                if (parts.length <= 1) return;
-                parts.pop();
-                setCurrentPath(parts.join("/"));
-              }}
-              disabled={!currentPath || currentPath === selectedFolder}
-              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-              aria-label={t("bulkProcessing.explorer.up")}
-              title={t("bulkProcessing.explorer.up")}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.iconSvg}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M18 18h-6a3 3 0 0 1 -3 -3v-10l-4 4m8 0l-4 -4" />
-              </svg>
-            </Button>
-            <Button
-              appearance="outline"
               onClick={handleDeleteFolder}
               disabled={!selectedFolder || deleteFolderPending}
               className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
@@ -12820,10 +12235,43 @@ export default function DraftExplorerPage() {
             <Button
               appearance="outline"
               onClick={() => setFolderTreeHidden((prev) => !prev)}
-              className={styles.explorerWhiteButton}
+              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
               disabled={!USE_NEW_FILE_EXPLORER}
+              aria-label={folderTreeHidden ? "Show folders" : "Hide folders"}
+              title={folderTreeHidden ? "Show folders" : "Hide folders"}
             >
-              {folderTreeHidden ? "Show folders" : "Hide folders"}
+              {folderTreeHidden ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M8 4h1l3 3h7a2 2 0 0 1 2 2v8m-2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 1.189 -1.829" />
+                  <path d="M3 3l18 18" />
+                </svg>
+              )}
             </Button>
           </div>
           <div className={styles.explorerControlsRight}>
@@ -13145,7 +12593,7 @@ export default function DraftExplorerPage() {
                     <MenuTrigger disableButtonEnhancement>
                       <Button
                         appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                        disabled={bulkImageActionPending}
                         className={mergeClasses(
                           styles.imageToolbarActions,
                           selectedImageEntries.length > 1 ? undefined : styles.explorerWhiteButton
@@ -13156,6 +12604,12 @@ export default function DraftExplorerPage() {
                     </MenuTrigger>
                     <MenuPopover>
                       <MenuList className={styles.compactMenuList}>
+                        <MenuItem
+                          disabled={!undoLastChangeAvailable || bulkImageActionPending}
+                          onClick={handleUndoLastChangeFromImageActions}
+                        >
+                          Undo Last Change
+                        </MenuItem>
                         <MenuItem
                           disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
                           onClick={() => handleDownloadEntries(selectedImageEntries)}

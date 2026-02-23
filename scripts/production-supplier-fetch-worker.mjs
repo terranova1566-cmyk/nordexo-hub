@@ -15,6 +15,7 @@ import {
   parseVariantWeightTableFromReadableText,
 } from "../shared/1688/core.mjs";
 import { reviewSupplierWeightBestEffort } from "../shared/1688/weight-review.mjs";
+import { enhance1688ItemWithAi } from "../shared/1688/ai-pipeline.mjs";
 
 const EXTRACTOR_CLI_PATH = "/srv/node-tools/1688-extractor/src/offer_detail_cli.js";
 const OUTPUT_DIR =
@@ -721,6 +722,12 @@ const extractImgUrlsFromHtml = (html, baseUrl) => {
   return uniqueUrls(urls);
 };
 
+const parseCsvList = (value) =>
+  asText(value)
+    .split(",")
+    .map((entry) => asText(entry))
+    .filter(Boolean);
+
 const fetchHtml = async (url) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -1266,6 +1273,10 @@ const buildExtractorItem = ({
   const variantImages = Array.isArray(extracted?.variantImages)
     ? extracted.variantImages
     : [];
+  const variations1688 =
+    extracted?.variations_enriched_1688 && typeof extracted.variations_enriched_1688 === "object"
+      ? extracted.variations_enriched_1688
+      : extracted?.variations ?? null;
 
   const variantImageUrls = uniqueUrls(
     variantImages.map((entry) => firstString(entry?.url_full, entry?.url))
@@ -1281,7 +1292,64 @@ const buildExtractorItem = ({
     );
   }
 
+  const extractedSchemaVersionRaw = Number(extracted?.schema_version);
+  const schemaVersion =
+    Number.isInteger(extractedSchemaVersionRaw) && extractedSchemaVersionRaw >= 1
+      ? extractedSchemaVersionRaw
+      : 2;
+  const extractionMeta1688 =
+    extracted?.extraction_meta_1688 && typeof extracted.extraction_meta_1688 === "object"
+      ? extracted.extraction_meta_1688
+      : {
+          generated_at: new Date().toISOString(),
+          source: "production_supplier_fetch_worker",
+          parser_version: "legacy_passthrough",
+          readable_text_chars: readable1688Full.length,
+          variant_combo_count: Array.isArray(extracted?.variations?.combos)
+            ? extracted.variations.combos.length
+            : 0,
+        };
+  const text1688 =
+    extracted?.text_1688 && typeof extracted.text_1688 === "object"
+      ? {
+          ...extracted.text_1688,
+          readable_full: asText(extracted?.text_1688?.readable_full) || readable1688Full || readable1688,
+          readable_compact:
+            asText(extracted?.text_1688?.readable_compact) ||
+            sanitizeReadable1688(readable1688Full || readable1688),
+        }
+      : {
+          readable_full: readable1688Full || readable1688,
+          readable_compact: sanitizeReadable1688(readable1688Full || readable1688),
+          weight_focused_excerpt: "",
+          stats: {
+            line_count: readable1688Full ? readable1688Full.split(/\n+/).filter(Boolean).length : 0,
+            char_count: readable1688Full.length,
+            weight_keyword_lines: 0,
+          },
+        };
+
   return {
+    schema_version: schemaVersion,
+    extraction_meta_1688: extractionMeta1688,
+    text_1688: text1688,
+    weights_1688:
+      extracted?.weights_1688 && typeof extracted.weights_1688 === "object"
+        ? extracted.weights_1688
+        : null,
+    variations_enriched_1688:
+      extracted?.variations_enriched_1688 &&
+      typeof extracted.variations_enriched_1688 === "object"
+        ? extracted.variations_enriched_1688
+        : null,
+    variant_table_1688:
+      extracted?.variant_table_1688 && typeof extracted.variant_table_1688 === "object"
+        ? extracted.variant_table_1688
+        : null,
+    quality_1688:
+      extracted?.quality_1688 && typeof extracted.quality_1688 === "object"
+        ? extracted.quality_1688
+        : null,
     sku: "",
     url_1688: detailUrl,
     url_1688_list: detailUrl ? [detailUrl] : [],
@@ -1302,7 +1370,7 @@ const buildExtractorItem = ({
       ? extracted.downloadedImages
       : [],
     product_weights_1688: Array.isArray(extracted?.weights) ? extracted.weights : [],
-    variations: extracted?.variations ?? null,
+    variations: variations1688,
     weight_review_1688:
       weightReview && typeof weightReview === "object" ? weightReview : null,
     variation_filter_tokens: [],
@@ -1487,7 +1555,7 @@ const main = async () => {
     weightReview = null;
   }
 
-  const item = buildExtractorItem({
+  let item = buildExtractorItem({
     provider,
     productId,
     detailUrl: selectedDetailUrl,
@@ -1496,6 +1564,39 @@ const main = async () => {
     competitor,
     weightReview,
   });
+  try {
+    item = await enhance1688ItemWithAi(item, {
+      source: "production_supplier_fetch_worker",
+      mode: firstString(
+        process.env.NODEXO_1688_PRODUCTION_AI_MODE,
+        process.env.NODEXO_1688_AI_MODE,
+        "full"
+      ),
+      enableWeightReview: firstString(
+        process.env.NODEXO_1688_PRODUCTION_AI_WEIGHT_REVIEW,
+        process.env.NODEXO_1688_AI_WEIGHT_REVIEW,
+        "1"
+      ),
+      enableAttributeExtract: firstString(
+        process.env.NODEXO_1688_PRODUCTION_AI_ATTRIBUTE_EXTRACT,
+        process.env.NODEXO_1688_AI_ATTRIBUTE_EXTRACT,
+        "1"
+      ),
+      modelCandidates: parseCsvList(
+        firstString(
+          process.env.NODEXO_1688_PRODUCTION_AI_MODELS,
+          process.env.NODEXO_1688_AI_MODELS
+        )
+      ),
+    });
+  } catch {
+    // Keep original extractor item when AI enhancement fails.
+  }
+
+  const finalWeightReview =
+    item?.weight_review_1688 && typeof item.weight_review_1688 === "object"
+      ? item.weight_review_1688
+      : weightReview;
 
   let saved;
   try {
@@ -1528,7 +1629,7 @@ const main = async () => {
       ? competitor.imageUrls.length
       : 0,
     competitorError: competitor.error,
-    weightReview,
+    weightReview: finalWeightReview,
   });
   await updateSelectionOffer(admin, provider, productId, readyOffer);
 };

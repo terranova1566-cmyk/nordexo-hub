@@ -75,10 +75,21 @@ type ExtractorPreviewItem = {
   imageUrl: string | null;
   spu: string;
   variantCount: number;
+  variants?: ExtractorPreviewVariant[];
   titleZh?: string;
   titleEn?: string;
   supplierUrl?: string;
   platformLabel?: string;
+};
+
+type ExtractorPreviewVariant = {
+  comboIndex: number;
+  labelZh: string;
+  labelEn: string;
+  labelRaw: string;
+  imageUrl: string | null;
+  priceText: string;
+  weightText: string;
 };
 
 type ExtractorPreview = {
@@ -139,6 +150,21 @@ const fetchWithTimeout = async (
   }
 };
 
+const normalizeVariantComboIndexes = (input: number[]) =>
+  Array.from(
+    new Set(
+      input.filter((value) => Number.isInteger(value) && Number(value) >= 0)
+    )
+  ).sort((a, b) => a - b);
+
+const hasSameIndexes = (left: number[], right: number[]) => {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+};
+
 const useStyles = makeStyles({
   page: {
     display: "flex",
@@ -180,7 +206,7 @@ const useStyles = makeStyles({
     width: "170px",
   },
   chromeColProducts: {
-    width: "75px",
+    width: "168px",
   },
   chromeColDeck: {
     width: "190px",
@@ -207,6 +233,10 @@ const useStyles = makeStyles({
   },
   chromeButton: {
     minWidth: "120px",
+  },
+  chromeViewProductsButton: {
+    whiteSpace: "nowrap",
+    minWidth: "148px",
   },
   chromeBadge: {
     minWidth: "140px",
@@ -313,8 +343,136 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
   },
   previewDialog: {
-    maxWidth: "960px",
-    width: "min(960px, 92vw)",
+    maxWidth: "1180px",
+    width: "min(1180px, 94vw)",
+  },
+  jsonDialog: {
+    maxWidth: "1080px",
+    width: "min(1080px, 96vw)",
+  },
+  jsonDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  jsonEditorWrap: {
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    minHeight: "420px",
+    overflow: "hidden",
+  },
+  jsonEditorTextarea: {
+    width: "100%",
+    minHeight: "420px",
+    border: "none",
+    outline: "none",
+    resize: "vertical",
+    padding: "12px",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase300,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground1,
+  },
+  jsonMeta: {
+    color: tokens.colorNeutralForeground2,
+  },
+  variantsDialog: {
+    maxWidth: "980px",
+    width: "min(980px, 94vw)",
+  },
+  variantsDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  variantsMeta: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+  },
+  variantsMetaActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  variantsCount: {
+    color: tokens.colorNeutralForeground2,
+  },
+  variantsTableWrap: {
+    maxHeight: "520px",
+    overflow: "auto",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsTable: {
+    width: "100%",
+  },
+  variantsColPick: {
+    width: "68px",
+  },
+  variantsColImage: {
+    width: "76px",
+  },
+  variantsColLabel: {
+    minWidth: "240px",
+  },
+  variantsColPrice: {
+    width: "120px",
+  },
+  variantsColWeight: {
+    width: "120px",
+  },
+  variantsThumb: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    objectFit: "cover",
+    display: "block",
+  },
+  variantsThumbPlaceholder: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: tokens.fontSizeBase100,
+  },
+  variantsLabelWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+  },
+  variantsLabelZh: {
+    lineHeight: tokens.lineHeightBase300,
+    fontSize: tokens.fontSizeBase200,
+    wordBreak: "break-word",
+  },
+  variantsLabelEn: {
+    color: tokens.colorNeutralForeground2,
+    lineHeight: tokens.lineHeightBase200,
+    fontSize: tokens.fontSizeBase100,
+    wordBreak: "break-word",
+  },
+  variantsLabelRaw: {
+    color: tokens.colorNeutralForeground3,
+    lineHeight: tokens.lineHeightBase200,
+    fontSize: tokens.fontSizeBase100,
+    wordBreak: "break-word",
+  },
+  variantsValue: {
+    whiteSpace: "nowrap",
   },
   mergeDialog: {
     maxWidth: "520px",
@@ -370,6 +528,10 @@ const useStyles = makeStyles({
   },
   previewColPlatform: {
     width: "130px",
+  },
+  previewColVariants: {
+    width: "126px",
+    textAlign: "left",
   },
   previewColLink: {
     width: "118px",
@@ -566,7 +728,26 @@ export default function BulkProcessingPage() {
   const [previewRemovedIndexes, setPreviewRemovedIndexes] = useState<Set<number>>(
     new Set()
   );
+  const [previewVariantUpdates, setPreviewVariantUpdates] = useState<
+    Record<number, number[]>
+  >({});
   const [previewSaving, setPreviewSaving] = useState(false);
+  const [previewVariantTarget, setPreviewVariantTarget] = useState<{
+    itemIndex: number;
+    title: string;
+    variants: ExtractorPreviewVariant[];
+    baseSelectedIndexes: number[];
+  } | null>(null);
+  const [previewVariantSelection, setPreviewVariantSelection] = useState<Set<number>>(
+    new Set()
+  );
+  const [jsonEditorTarget, setJsonEditorTarget] = useState<ExtractorFileSummary | null>(
+    null
+  );
+  const [jsonEditorText, setJsonEditorText] = useState("");
+  const [jsonEditorLoading, setJsonEditorLoading] = useState(false);
+  const [jsonEditorSaving, setJsonEditorSaving] = useState(false);
+  const [jsonEditorError, setJsonEditorError] = useState<string | null>(null);
   const [availableSpuCount, setAvailableSpuCount] = useState<number | null>(
     null
   );
@@ -1149,6 +1330,144 @@ export default function BulkProcessingPage() {
     }
   };
 
+  const closeJsonEditor = () => {
+    setJsonEditorTarget(null);
+    setJsonEditorText("");
+    setJsonEditorError(null);
+    setJsonEditorLoading(false);
+    setJsonEditorSaving(false);
+  };
+
+  const handleOpenJsonEditor = async (entry: ExtractorFileSummary) => {
+    setJsonEditorTarget(entry);
+    setJsonEditorText("");
+    setJsonEditorError(null);
+    setJsonEditorLoading(true);
+    setJsonEditorSaving(false);
+    try {
+      const response = await fetch(
+        `/api/1688-extractor/files/${encodeURIComponent(entry.name)}?mode=raw`,
+        { cache: "no-store" }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          String((payload as Record<string, unknown>)?.error || "Unable to load JSON file.")
+        );
+      }
+      setJsonEditorText(
+        typeof (payload as Record<string, unknown>)?.text === "string"
+          ? String((payload as Record<string, unknown>).text)
+          : ""
+      );
+    } catch (err) {
+      setJsonEditorError((err as Error).message || "Unable to load JSON file.");
+    } finally {
+      setJsonEditorLoading(false);
+    }
+  };
+
+  const handleSaveJsonEditor = async () => {
+    if (!jsonEditorTarget) return;
+    const text = jsonEditorText.trim();
+    if (!text) {
+      setJsonEditorError("JSON content is empty.");
+      return;
+    }
+    try {
+      JSON.parse(text);
+    } catch {
+      setJsonEditorError("Invalid JSON content.");
+      return;
+    }
+    setJsonEditorSaving(true);
+    setJsonEditorError(null);
+    try {
+      const response = await fetch(
+        `/api/1688-extractor/files/${encodeURIComponent(jsonEditorTarget.name)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          String((payload as Record<string, unknown>)?.error || "Unable to save JSON file.")
+        );
+      }
+      closeJsonEditor();
+      if (preview?.name === jsonEditorTarget.name) {
+        setPreview(null);
+        setPreviewRemovedIndexes(new Set());
+        setPreviewVariantUpdates({});
+        setPreviewVariantTarget(null);
+        setPreviewVariantSelection(new Set());
+      }
+      await loadExtractorFiles();
+    } catch (err) {
+      setJsonEditorError((err as Error).message || "Unable to save JSON file.");
+    } finally {
+      setJsonEditorSaving(false);
+    }
+  };
+
+  const closePreviewVariantDialog = () => {
+    setPreviewVariantTarget(null);
+    setPreviewVariantSelection(new Set());
+  };
+
+  const handleOpenPreviewVariantDialog = (item: ExtractorPreviewItem) => {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    const baseSelectedIndexes = normalizeVariantComboIndexes(
+      variants.map((variant) => Number(variant.comboIndex))
+    );
+    setPreviewVariantTarget({
+      itemIndex: item.index,
+      title: item.titleEn || item.titleZh || item.title || `Product #${item.index + 1}`,
+      variants,
+      baseSelectedIndexes,
+    });
+    setPreviewVariantSelection(new Set(baseSelectedIndexes));
+  };
+
+  const handleApplyPreviewVariantDialog = () => {
+    if (!previewVariantTarget) return;
+    const selectedIndexes = normalizeVariantComboIndexes(
+      Array.from(previewVariantSelection.values())
+    );
+    const selectedSet = new Set(selectedIndexes);
+    const nextVariants = previewVariantTarget.variants.filter((variant) =>
+      selectedSet.has(variant.comboIndex)
+    );
+
+    setPreview((current) => {
+      if (!current) return current;
+      const nextItems = current.items.map((item) => {
+        if (item.index !== previewVariantTarget.itemIndex) return item;
+        return {
+          ...item,
+          variants: nextVariants,
+          variantCount: nextVariants.length,
+        };
+      });
+      return { ...current, items: nextItems };
+    });
+
+    setPreviewVariantUpdates((prev) => {
+      const next = { ...prev };
+      if (hasSameIndexes(selectedIndexes, previewVariantTarget.baseSelectedIndexes)) {
+        delete next[previewVariantTarget.itemIndex];
+      } else {
+        next[previewVariantTarget.itemIndex] = selectedIndexes;
+      }
+      return next;
+    });
+
+    closePreviewVariantDialog();
+  };
+
   const handlePreview = async (entry: ExtractorFileSummary) => {
     setPreview({
       name: entry.name,
@@ -1159,6 +1478,8 @@ export default function BulkProcessingPage() {
       items: [],
     });
     setPreviewRemovedIndexes(new Set());
+    setPreviewVariantUpdates({});
+    closePreviewVariantDialog();
     setPreviewLoading(true);
     setPreviewError(null);
     try {
@@ -1172,25 +1493,84 @@ export default function BulkProcessingPage() {
       const payload = (await response.json()) as ExtractorPreview;
       const items = (
         Array.isArray(payload.items) ? payload.items : payload.previewItems ?? []
-      ).map((item) => ({
-        ...item,
-        titleZh:
-          typeof item?.titleZh === "string" && item.titleZh.trim()
-            ? item.titleZh.trim()
-            : "",
-        titleEn:
-          typeof item?.titleEn === "string" && item.titleEn.trim()
-            ? item.titleEn.trim()
-            : "",
-        supplierUrl:
-          typeof item?.supplierUrl === "string" && item.supplierUrl.trim()
-            ? item.supplierUrl.trim()
-            : "",
-        platformLabel:
-          typeof item?.platformLabel === "string" && item.platformLabel.trim()
-            ? item.platformLabel.trim()
-            : "",
-      })) as ExtractorPreviewItem[];
+      ).map((item, rowIndex) => {
+        const rawVariants = Array.isArray((item as Record<string, unknown>)?.variants)
+          ? ((item as Record<string, unknown>).variants as unknown[])
+          : [];
+        const variants = rawVariants
+          .map((rawVariant, variantIndex) => {
+            const variant =
+              rawVariant && typeof rawVariant === "object"
+                ? (rawVariant as Record<string, unknown>)
+                : {};
+            const comboIndex = Number(variant.comboIndex);
+            const resolvedComboIndex =
+              Number.isInteger(comboIndex) && comboIndex >= 0
+                ? comboIndex
+                : variantIndex;
+            return {
+              comboIndex: resolvedComboIndex,
+              labelZh:
+                typeof variant.labelZh === "string" ? variant.labelZh.trim() : "",
+              labelEn:
+                typeof variant.labelEn === "string" ? variant.labelEn.trim() : "",
+              labelRaw:
+                typeof variant.labelRaw === "string" ? variant.labelRaw.trim() : "",
+              imageUrl:
+                typeof variant.imageUrl === "string" && variant.imageUrl.trim()
+                  ? variant.imageUrl.trim()
+                  : null,
+              priceText:
+                typeof variant.priceText === "string" ? variant.priceText.trim() : "",
+              weightText:
+                typeof variant.weightText === "string"
+                  ? variant.weightText.trim()
+                  : "",
+            } as ExtractorPreviewVariant;
+          })
+          .filter(
+            (variant) =>
+              variant.labelZh ||
+              variant.labelEn ||
+              variant.labelRaw ||
+              variant.imageUrl ||
+              variant.priceText ||
+              variant.weightText
+          );
+        const fallbackVariantCount = Number(
+          (item as Record<string, unknown>)?.variantCount
+        );
+        return {
+          ...item,
+          index:
+            Number.isInteger(Number(item?.index)) && Number(item.index) >= 0
+              ? Number(item.index)
+              : rowIndex,
+          variantCount:
+            variants.length > 0
+              ? variants.length
+              : Number.isFinite(fallbackVariantCount) && fallbackVariantCount > 0
+              ? Math.round(fallbackVariantCount)
+              : 0,
+          variants,
+          titleZh:
+            typeof item?.titleZh === "string" && item.titleZh.trim()
+              ? item.titleZh.trim()
+              : "",
+          titleEn:
+            typeof item?.titleEn === "string" && item.titleEn.trim()
+              ? item.titleEn.trim()
+              : "",
+          supplierUrl:
+            typeof item?.supplierUrl === "string" && item.supplierUrl.trim()
+              ? item.supplierUrl.trim()
+              : "",
+          platformLabel:
+            typeof item?.platformLabel === "string" && item.platformLabel.trim()
+              ? item.platformLabel.trim()
+              : "",
+        };
+      }) as ExtractorPreviewItem[];
       setPreview({ ...payload, items });
     } catch (err) {
       setPreviewError((err as Error).message);
@@ -1201,8 +1581,24 @@ export default function BulkProcessingPage() {
 
   const handleSavePreview = async () => {
     if (!preview) return;
-    if (previewRemovedIndexes.size === 0) {
+    const variantUpdates = Object.entries(previewVariantUpdates)
+      .map(([indexRaw, selectedComboIndexes]) => ({
+        index: Number(indexRaw),
+        selectedComboIndexes: normalizeVariantComboIndexes(
+          Array.isArray(selectedComboIndexes) ? selectedComboIndexes : []
+        ),
+      }))
+      .filter(
+        (row) =>
+          Number.isInteger(row.index) &&
+          row.index >= 0 &&
+          Array.isArray(row.selectedComboIndexes)
+      );
+    if (previewRemovedIndexes.size === 0 && variantUpdates.length === 0) {
       setPreview(null);
+      setPreviewRemovedIndexes(new Set());
+      setPreviewVariantUpdates({});
+      closePreviewVariantDialog();
       return;
     }
     setPreviewSaving(true);
@@ -1214,6 +1610,7 @@ export default function BulkProcessingPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             removeIndexes: Array.from(previewRemovedIndexes.values()),
+            variantUpdates,
           }),
         }
       );
@@ -1223,6 +1620,8 @@ export default function BulkProcessingPage() {
       }
       setPreview(null);
       setPreviewRemovedIndexes(new Set());
+      setPreviewVariantUpdates({});
+      closePreviewVariantDialog();
       await loadExtractorFiles();
     } catch (err) {
       setPreviewError((err as Error).message);
@@ -1265,6 +1664,12 @@ export default function BulkProcessingPage() {
         });
         if (preview && deletedNames.includes(preview.name)) {
           setPreview(null);
+          setPreviewRemovedIndexes(new Set());
+          setPreviewVariantUpdates({});
+          closePreviewVariantDialog();
+        }
+        if (jsonEditorTarget && deletedNames.includes(jsonEditorTarget.name)) {
+          closeJsonEditor();
         }
         await loadExtractorFiles();
       }
@@ -1293,6 +1698,12 @@ export default function BulkProcessingPage() {
       }
       if (preview?.name === name) {
         setPreview(null);
+        setPreviewRemovedIndexes(new Set());
+        setPreviewVariantUpdates({});
+        closePreviewVariantDialog();
+      }
+      if (jsonEditorTarget?.name === name) {
+        closeJsonEditor();
       }
       await loadExtractorFiles();
     } catch (err) {
@@ -1686,13 +2097,24 @@ export default function BulkProcessingPage() {
                     </Text>
                   </TableCell>
                   <TableCell className={styles.chromeColProducts}>
-                    {entry.productCount || entry.urlCount}
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      className={styles.chromeViewProductsButton}
+                      onClick={() => void handlePreview(entry)}
+                    >
+                      View Products ({entry.productCount || entry.urlCount || 0})
+                    </Button>
                   </TableCell>
                   <TableCell className={styles.chromeColCreated}>
                     {formatDateTime(entry.receivedAt)}
                   </TableCell>
                   <TableCell className={styles.chromeColJson}>
-                    <Button appearance="primary" size="small" onClick={() => handlePreview(entry)}>
+                    <Button
+                      appearance="primary"
+                      size="small"
+                      onClick={() => void handleOpenJsonEditor(entry)}
+                    >
                       JSON file
                     </Button>
                   </TableCell>
@@ -1947,6 +2369,8 @@ export default function BulkProcessingPage() {
           if (!data.open) {
             setPreview(null);
             setPreviewRemovedIndexes(new Set());
+            setPreviewVariantUpdates({});
+            closePreviewVariantDialog();
           }
         }}
       >
@@ -1992,6 +2416,9 @@ export default function BulkProcessingPage() {
                         </TableHeaderCell>
                         <TableHeaderCell className={styles.previewColPlatform}>
                           Platform
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.previewColVariants}>
+                          Variants
                         </TableHeaderCell>
                         <TableHeaderCell className={styles.previewColLink}>
                           Supplier Link
@@ -2058,6 +2485,16 @@ export default function BulkProcessingPage() {
                                 {item.platformLabel || "1688 only"}
                               </Text>
                             </TableCell>
+                            <TableCell className={styles.previewCell}>
+                              <Button
+                                appearance="outline"
+                                size="small"
+                                className={styles.previewWhiteButton}
+                                onClick={() => handleOpenPreviewVariantDialog(item)}
+                              >
+                                Variants ({item.variantCount || 0})
+                              </Button>
+                            </TableCell>
                             <TableCell
                               className={`${styles.previewCell} ${styles.previewLinkCell}`}
                             >
@@ -2104,6 +2541,17 @@ export default function BulkProcessingPage() {
                                         next.add(item.index);
                                         return next;
                                       });
+                                      setPreviewVariantUpdates((prev) => {
+                                        if (!Object.prototype.hasOwnProperty.call(prev, item.index)) {
+                                          return prev;
+                                        }
+                                        const next = { ...prev };
+                                        delete next[item.index];
+                                        return next;
+                                      });
+                                      if (previewVariantTarget?.itemIndex === item.index) {
+                                        closePreviewVariantDialog();
+                                      }
                                       return { ...current, items: nextItems };
                                     })
                                   }
@@ -2124,11 +2572,225 @@ export default function BulkProcessingPage() {
               <Button
                 appearance="primary"
                 onClick={handleSavePreview}
-                disabled={previewSaving || previewRemovedIndexes.size === 0}
+                disabled={
+                  previewSaving ||
+                  (previewRemovedIndexes.size === 0 &&
+                    Object.keys(previewVariantUpdates).length === 0)
+                }
               >
                 {previewSaving ? <Spinner size="tiny" /> : t("common.save")}
               </Button>
-              <Button appearance="outline" onClick={() => setPreview(null)}>
+              <Button
+                appearance="outline"
+                onClick={() => {
+                  setPreview(null);
+                  setPreviewRemovedIndexes(new Set());
+                  setPreviewVariantUpdates({});
+                  closePreviewVariantDialog();
+                }}
+              >
+                {t("common.close")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(previewVariantTarget)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closePreviewVariantDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.variantsDialog}>
+          <DialogBody className={styles.variantsDialogBody}>
+            <DialogTitle>Variants</DialogTitle>
+            {previewVariantTarget ? (
+              <>
+                <div className={styles.variantsMeta}>
+                  <Text size={200} className={styles.variantsCount}>
+                    {previewVariantTarget.title || `Product #${previewVariantTarget.itemIndex + 1}`}
+                  </Text>
+                  <div className={styles.variantsMetaActions}>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      onClick={() =>
+                        setPreviewVariantSelection(
+                          new Set(
+                            previewVariantTarget.variants.map((variant) => variant.comboIndex)
+                          )
+                        )
+                      }
+                      disabled={previewVariantTarget.variants.length === 0}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      onClick={() => setPreviewVariantSelection(new Set())}
+                      disabled={previewVariantTarget.variants.length === 0}
+                    >
+                      Clear
+                    </Button>
+                    <Text size={200} className={styles.variantsCount}>
+                      Keep {previewVariantSelection.size}
+                    </Text>
+                  </div>
+                </div>
+                <div className={styles.variantsTableWrap}>
+                  <Table size="small" className={styles.variantsTable}>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHeaderCell className={styles.variantsColPick}>
+                          Keep
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.variantsColImage}>
+                          Image
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.variantsColLabel}>
+                          Variant
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.variantsColPrice}>
+                          Price
+                        </TableHeaderCell>
+                        <TableHeaderCell className={styles.variantsColWeight}>
+                          Weight
+                        </TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewVariantTarget.variants.map((variant, index) => {
+                        const checked = previewVariantSelection.has(variant.comboIndex);
+                        const variantLabel =
+                          variant.labelZh || variant.labelEn || variant.labelRaw || "-";
+                        return (
+                          <TableRow key={`${variant.comboIndex}-${index}`}>
+                            <TableCell>
+                              <Checkbox
+                                checked={checked}
+                                onChange={(_, data) => {
+                                  setPreviewVariantSelection((prev) => {
+                                    const next = new Set(prev);
+                                    if (data.checked) {
+                                      next.add(variant.comboIndex);
+                                    } else {
+                                      next.delete(variant.comboIndex);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                aria-label={`Keep variant ${variantLabel}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {variant.imageUrl ? (
+                                <img
+                                  src={toImageProxyUrl(variant.imageUrl, {
+                                    width: 56,
+                                    height: 56,
+                                  })}
+                                  alt=""
+                                  className={styles.variantsThumb}
+                                />
+                              ) : (
+                                <div className={styles.variantsThumbPlaceholder}>-</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className={styles.variantsLabelWrap}>
+                                <Text className={styles.variantsLabelZh}>
+                                  {variant.labelZh || variantLabel}
+                                </Text>
+                                {variant.labelEn &&
+                                variant.labelEn !== variant.labelZh ? (
+                                  <Text className={styles.variantsLabelEn}>
+                                    {variant.labelEn}
+                                  </Text>
+                                ) : null}
+                                {variant.labelRaw &&
+                                variant.labelRaw !== variant.labelZh &&
+                                variant.labelRaw !== variant.labelEn ? (
+                                  <Text className={styles.variantsLabelRaw}>
+                                    {variant.labelRaw}
+                                  </Text>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Text className={styles.variantsValue}>
+                                {variant.priceText || "-"}
+                              </Text>
+                            </TableCell>
+                            <TableCell>
+                              <Text className={styles.variantsValue}>
+                                {variant.weightText || "-"}
+                              </Text>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            ) : null}
+            <DialogActions>
+              <Button appearance="primary" onClick={handleApplyPreviewVariantDialog}>
+                Apply
+              </Button>
+              <Button appearance="outline" onClick={closePreviewVariantDialog}>
+                Close
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(jsonEditorTarget)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeJsonEditor();
+          }
+        }}
+      >
+        <DialogSurface className={styles.jsonDialog}>
+          <DialogBody className={styles.jsonDialogBody}>
+            <DialogTitle>
+              {jsonEditorTarget ? `JSON file: ${jsonEditorTarget.name}` : "JSON file"}
+            </DialogTitle>
+            <Text size={200} className={styles.jsonMeta}>
+              Edit and save raw JSON for this incoming batch.
+            </Text>
+            {jsonEditorError ? (
+              <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                {jsonEditorError}
+              </Text>
+            ) : null}
+            {jsonEditorLoading ? (
+              <Spinner />
+            ) : (
+              <div className={styles.jsonEditorWrap}>
+                <textarea
+                  value={jsonEditorText}
+                  onChange={(event) => setJsonEditorText(event.target.value)}
+                  className={styles.jsonEditorTextarea}
+                />
+              </div>
+            )}
+            <DialogActions>
+              <Button
+                appearance="primary"
+                onClick={handleSaveJsonEditor}
+                disabled={jsonEditorLoading || jsonEditorSaving}
+              >
+                {jsonEditorSaving ? <Spinner size="tiny" /> : t("common.save")}
+              </Button>
+              <Button appearance="outline" onClick={closeJsonEditor}>
                 {t("common.close")}
               </Button>
             </DialogActions>

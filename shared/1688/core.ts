@@ -11,6 +11,9 @@ export const asText: (value: unknown) => string = core.asText;
 export const toOfferId: (offer: CanonicalOfferInput | null | undefined) => string | null =
   core.toOfferId;
 
+export const canonical1688OfferUrlText: (value: unknown) => string =
+  core.canonical1688OfferUrlText;
+
 export const canonical1688OfferUrl: (
   offer: CanonicalOfferInput | null | undefined
 ) => string | null = core.canonical1688OfferUrl;

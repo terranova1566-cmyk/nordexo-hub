@@ -39,6 +39,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { useI18n } from "@/components/i18n-provider";
+import UIKitShowcase from "@/components/ui-kit-showcase";
 import { formatDateTime } from "@/lib/format";
 import ShopifySyncerPanel from "./shopify-syncer-panel";
 
@@ -748,6 +749,18 @@ const splitForHighlight = (text: string, query: string) => {
   return parts;
 };
 
+const SETTINGS_TAB_VALUES = [
+  "discovery",
+  "user",
+  "production",
+  "zimage",
+  "ai-image-edit",
+  "uikit",
+  "ui-audit",
+  "shopify-syncer",
+  "system",
+] as const;
+
 export default function SettingsPage() {
   const styles = useStyles();
   const { t, locale, setLocale } = useI18n();
@@ -876,6 +889,22 @@ export default function SettingsPage() {
   const [spuDownloadStatus, setSpuDownloadStatus] = useState("all");
   const spuUploadRef = useRef<HTMLInputElement | null>(null);
   const aiImageEditorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const applyTabFromLocation = () => {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(window.location.search);
+      const tabFromQuery = String(params.get("tab") || "").trim();
+      if (!tabFromQuery) return;
+      if (!(SETTINGS_TAB_VALUES as readonly string[]).includes(tabFromQuery)) return;
+      setActiveTab((current) => (current === tabFromQuery ? current : tabFromQuery));
+    };
+    applyTabFromLocation();
+    window.addEventListener("popstate", applyTabFromLocation);
+    return () => {
+      window.removeEventListener("popstate", applyTabFromLocation);
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -2126,6 +2155,7 @@ export default function SettingsPage() {
           <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
           <Tab value="ai-image-edit">{t("settings.aiImage.tab")}</Tab>
+          <Tab value="uikit">{t("settings.uikit.tab")}</Tab>
           <Tab value="ui-audit">UI Audit</Tab>
           <Tab value="shopify-syncer">Shopify Syncer</Tab>
           <Tab value="system">{t("settings.system.tab")}</Tab>
@@ -3288,6 +3318,12 @@ export default function SettingsPage() {
               </DialogBody>
             </DialogSurface>
           </Dialog>
+        </div>
+      ) : null}
+
+      {activeTab === "uikit" ? (
+        <div className={styles.sectionGrid}>
+          <UIKitShowcase />
         </div>
       ) : null}
 

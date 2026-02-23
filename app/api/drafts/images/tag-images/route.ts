@@ -27,6 +27,7 @@ const IMAGE_EXTENSIONS = new Set([
 const ALLOWED_TAGS = new Set(["MAIN", "ENV", "INF", "VAR"]);
 const ALLOWED_MAIN_SUBTYPES = new Set(["main_only", "main_composite"]);
 const DIGI_TAG_PATTERN = /\(\s*DIGI\s*\)/i;
+const AUTO_DIGI_DIMENSION_PX = 1424;
 
 const normalizePathValue = (value: unknown) =>
   String(value ?? "")
@@ -141,6 +142,36 @@ type SheetItem = {
   relativePath: string;
   fileName: string;
   absolutePath: string;
+};
+
+type TagDecision = {
+  id: string;
+  path: string;
+  file_name: string;
+  primary_tag: "MAIN" | "ENV" | "INF" | "VAR" | "DIGI" | null;
+  main_subtype: string | null;
+  confidence: number | null;
+  reason: string;
+};
+
+const isDdPrefixFileName = (fileName: string) =>
+  String(fileName || "").trim().toUpperCase().startsWith("DD");
+
+const resolveAutoDigiReason = async (absolutePath: string, fileName: string) => {
+  if (isDdPrefixFileName(fileName)) {
+    return 'Auto-tagged DIGI: filename starts with "DD".';
+  }
+  try {
+    const metadata = await sharp(absolutePath).metadata();
+    const width = Number(metadata.width);
+    const height = Number(metadata.height);
+    if (width === AUTO_DIGI_DIMENSION_PX || height === AUTO_DIGI_DIMENSION_PX) {
+      return `Auto-tagged DIGI: image dimension includes ${AUTO_DIGI_DIMENSION_PX}px.`;
+    }
+  } catch {
+    // Keep image in classifier pool if metadata cannot be read.
+  }
+  return null;
 };
 
 const buildContactSheet = async (items: SheetItem[]) => {
@@ -399,7 +430,11 @@ export async function POST(request: Request) {
   }
 
   const normalizedPathSet = new Set<string>();
-  const imageItems: SheetItem[] = [];
+  const candidateItems: Array<{
+    relativePath: string;
+    fileName: string;
+    absolutePath: string;
+  }> = [];
   requestedPaths.forEach((value) => {
     const relative = normalizePathValue(value);
     if (!relative || normalizedPathSet.has(relative)) return;
@@ -412,22 +447,50 @@ export async function POST(request: Request) {
     const ext = path.extname(absolute).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(ext)) return;
     normalizedPathSet.add(relative);
-    imageItems.push({
-      id: `C${String(imageItems.length + 1).padStart(3, "0")}`,
-      index: imageItems.length,
+    candidateItems.push({
       relativePath: relative,
       fileName: path.basename(relative),
       absolutePath: absolute,
     });
   });
+  const autoDigiDecisions: TagDecision[] = [];
+  const imageItems: SheetItem[] = [];
+  for (const candidate of candidateItems) {
+    const autoDigiReason = await resolveAutoDigiReason(
+      candidate.absolutePath,
+      candidate.fileName
+    );
+    if (autoDigiReason) {
+      autoDigiDecisions.push({
+        id: `A${String(autoDigiDecisions.length + 1).padStart(3, "0")}`,
+        path: candidate.relativePath,
+        file_name: candidate.fileName,
+        primary_tag: "DIGI",
+        main_subtype: null,
+        confidence: 1,
+        reason: autoDigiReason,
+      });
+      continue;
+    }
+    imageItems.push({
+      id: `C${String(imageItems.length + 1).padStart(3, "0")}`,
+      index: imageItems.length,
+      relativePath: candidate.relativePath,
+      fileName: candidate.fileName,
+      absolutePath: candidate.absolutePath,
+    });
+  }
 
   const limitedItems = imageItems.slice(0, 16);
   if (limitedItems.length === 0) {
     return NextResponse.json({
       ok: true,
       model: null,
-      decisions: [],
-      skippedReason: "No valid non-DIGI images to classify.",
+      decisions: autoDigiDecisions,
+      skippedReason:
+        autoDigiDecisions.length > 0
+          ? "All valid images were auto-tagged as DIGI."
+          : "No valid non-DIGI images to classify.",
     });
   }
 
@@ -464,7 +527,7 @@ export async function POST(request: Request) {
     const byId = new Map(limitedItems.map((item) => [item.id, item]));
 
     const decisions = rawCandidates
-      .map((value) => {
+      .map((value): TagDecision | null => {
         if (!value || typeof value !== "object" || Array.isArray(value)) return null;
         const row = value as Record<string, unknown>;
         const id = String(row.id || "").trim().toUpperCase();
@@ -491,22 +554,10 @@ export async function POST(request: Request) {
           reason,
         };
       })
-      .filter(
-        (
-          entry
-        ): entry is {
-          id: string;
-          path: string;
-          file_name: string;
-          primary_tag: "MAIN" | "ENV" | "INF" | "VAR" | null;
-          main_subtype: string | null;
-          confidence: number | null;
-          reason: string;
-        } => Boolean(entry)
-      );
+      .filter((entry): entry is TagDecision => Boolean(entry));
 
     const decisionsByPath = new Map(decisions.map((row) => [row.path, row]));
-    let normalizedDecisions = limitedItems.map((item) => {
+    let normalizedDecisions: TagDecision[] = limitedItems.map((item) => {
       const decided = decisionsByPath.get(item.relativePath);
       if (decided) return decided;
       return {
@@ -542,6 +593,8 @@ export async function POST(request: Request) {
       });
     }
 
+    const combinedDecisions = [...autoDigiDecisions, ...normalizedDecisions];
+
     const summary = {
       ok: true,
       model: modelResult.model,
@@ -553,8 +606,9 @@ export async function POST(request: Request) {
         tile_size: 350,
         max_sheet_size: "2000x2000",
       },
+      auto_tagged_digi_count: autoDigiDecisions.length,
       variant_hints: variantHints,
-      decisions: normalizedDecisions,
+      decisions: combinedDecisions,
       summary:
         typeof modelResult.parsed.summary === "string"
           ? modelResult.parsed.summary

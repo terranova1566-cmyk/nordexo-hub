@@ -7,16 +7,37 @@ export const toOfferId = (offer) => {
   return text || null;
 };
 
+export const canonical1688OfferUrlText = (value) => {
+  const raw = asText(value);
+  if (!raw) return "";
+
+  const idMatch = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
+  if (idMatch?.[1]) {
+    return `https://detail.1688.com/offer/${idMatch[1]}.html`;
+  }
+
+  if (/1688\.com/i.test(raw) && /\.html(?:[?#].*)$/i.test(raw)) {
+    return raw.replace(/(\.html)(?:[?#].*)+$/i, "$1");
+  }
+
+  return raw;
+};
+
 export const canonical1688OfferUrl = (offer) => {
   const id = toOfferId(offer);
   if (id && /^\d{6,}$/.test(id)) {
     return `https://detail.1688.com/offer/${id}.html`;
   }
-  const raw = asText(offer?.detailUrl);
+  const raw = asText(
+    offer?.detailUrl ||
+      offer?.detail_url ||
+      offer?.url_1688 ||
+      offer?.url ||
+      offer?.link
+  );
   if (!raw) return null;
-  const match = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
-  if (match?.[1]) return `https://detail.1688.com/offer/${match[1]}.html`;
-  return raw;
+  const canonical = canonical1688OfferUrlText(raw);
+  return canonical || null;
 };
 
 export const extractJsonFromText = (text) => {

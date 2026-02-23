@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_FIELDS = new Set([
+  "draft_sku",
   "draft_option1",
   "draft_option2",
   "draft_option_combined_zh",

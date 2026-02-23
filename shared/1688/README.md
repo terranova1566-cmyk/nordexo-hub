@@ -22,12 +22,18 @@ This folder is the backend source of truth for shared 1688 logic used by product
   - warning-only output (`needs_review`, reason codes, evidence), never edits weights
   - used by production supplier payload worker to persist `weight_review_1688`
 
+- `ai-pipeline.mjs`
+  - shared post-processing orchestrator for server-side 1688 JSON enhancement
+  - runs weight review and attribute extraction in one additive pass
+  - writes only additive fields (`weight_review_1688`, `ai_1688`) and never mutates source extraction values
+
 ## Current Callers
 
 - `app/api/production/suppliers/route.ts`
 - `app/api/production/suppliers/recrop-search/route.ts`
 - `app/api/1688/image-search/route.ts`
 - `app/api/production/suppliers/variants/route.ts`
+- `app/api/1688-extractor/upload/route.ts`
 - `scripts/product-suggestions-supplier-search-worker.mjs`
 - `scripts/production-supplier-fetch-worker.mjs`
 

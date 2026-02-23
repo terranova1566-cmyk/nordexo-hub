@@ -1,0 +1,532 @@
+{
+  "report": {
+    "root": "/srv/resources/media/images/draft_products",
+    "scannedVariantDirs": 35,
+    "renamedCount": 89,
+    "skippedCount": 0,
+    "conflictCount": 0,
+    "sampleRenamed": [
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-白色（8件套）.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-白色（8件套） (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-黑色（8件套）.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-黑色（8件套） (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22556/Variant images/ND-22556-三件套（opp袋）.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22556/Variant images/ND-22556-三件套（opp袋） (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22557/Variant images/ND-22557-黑色.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22557/Variant images/ND-22557-黑色 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22558/Variant images/ND-22558-White (waterproof + standard cover).jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22558/Variant images/ND-22558-White (waterproof + standard cover) (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22560/Variant images/ND-22560-NE3黑色款+8件套.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22560/Variant images/ND-22560-NE3黑色款+8件套 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22561/Variant images/ND-22561-六管-黑紫.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22561/Variant images/ND-22561-六管-黑紫 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22564/Variant images/ND-22564-钻石亮白 白.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22564/Variant images/ND-22564-钻石亮白 白 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【35cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【35cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【40cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【40cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【35cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【35cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【40cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【40cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【35cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【35cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【40cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【40cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径35cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径35cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径40cm】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径40cm】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-军绿色.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-军绿色 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-青灰色.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-青灰色 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+10米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+10米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+2米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+2米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+3米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+3米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+5米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+5米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+10米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+10米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+2米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+2米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+3米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+3米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+5米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+5米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色基础款1喷头2米管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色基础款1喷头2米管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+10米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+10米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+2米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+2米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+3米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+3米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+5米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+5米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+10米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+10米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+2米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+2米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+3米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+3米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+5米吸水管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+5米吸水管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色基础款1喷头2米管.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色基础款1喷头2米管 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22597/Variant Images (V)/ND-22597-米白（带电池）.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22597/Variant Images (V)/ND-22597-米白（带电池） (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22600/Variant Images (V)/ND-22600-七彩LED面罩.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22600/Variant Images (V)/ND-22600-七彩LED面罩 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A2 磨脚器增强版+跨境版+【黑色】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A2 磨脚器增强版+跨境版+【黑色】 (VAR).jpg"
+      },
+      {
+        "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【白色】.jpg",
+        "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【白色】 (VAR).jpg"
+      }
+    ],
+    "sampleConflicts": []
+  },
+  "renamed": [
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-白色（8件套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-白色（8件套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-黑色（8件套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-2-SBU-merged-20260215-152904/ND-22547/Variant images/ND-22547-黑色（8件套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22556/Variant images/ND-22556-三件套（opp袋）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22556/Variant images/ND-22556-三件套（opp袋） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22557/Variant images/ND-22557-黑色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22557/Variant images/ND-22557-黑色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22558/Variant images/ND-22558-White (waterproof + standard cover).jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22558/Variant images/ND-22558-White (waterproof + standard cover) (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22560/Variant images/ND-22560-NE3黑色款+8件套.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22560/Variant images/ND-22560-NE3黑色款+8件套 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22561/Variant images/ND-22561-六管-黑紫.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22561/Variant images/ND-22561-六管-黑紫 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22564/Variant images/ND-22564-钻石亮白 白.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Draft Products-7-SPU-merged-20260221-075934/ND-22564/Variant images/ND-22564-钻石亮白 白 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【35cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【35cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【40cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-实心款【40cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【35cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【35cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【40cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-原木色-镂空款【40cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【35cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【35cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【40cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-实心款【40cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径35cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径35cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径40cm】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22592/Variant Images (V)/ND-22592-胡桃色-镂空款【直径40cm】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-军绿色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-军绿色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-青灰色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22595/Variant Images (V)/ND-22595-青灰色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+10米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+10米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+2米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+2米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+3米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+3米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+5米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 标配3喷头+5米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+10米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+10米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+2米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+2米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+3米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+3米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+5米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色 续航3喷头+5米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色基础款1喷头2米管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-绿色基础款1喷头2米管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+10米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+10米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+2米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+2米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+3米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+3米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+5米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 标配3喷头+5米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+10米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+10米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+2米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+2米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+3米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+3米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+5米吸水管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色 续航3喷头+5米吸水管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色基础款1喷头2米管.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22596/Variant Images (V)/ND-22596-黑色基础款1喷头2米管 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22597/Variant Images (V)/ND-22597-米白（带电池）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22597/Variant Images (V)/ND-22597-米白（带电池） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22600/Variant Images (V)/ND-22600-七彩LED面罩.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22600/Variant Images (V)/ND-22600-七彩LED面罩 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A2 磨脚器增强版+跨境版+【黑色】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A2 磨脚器增强版+跨境版+【黑色】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【白色】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【白色】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【黑色】.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22601/Variant Images (V)/ND-22601-A3 磨脚器增强版+跨境版+【黑色】 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22602/Variant Images (V)/ND-22602-抽拉项链金色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22602/Variant Images (V)/ND-22602-抽拉项链金色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22602/Variant Images (V)/ND-22602-抽拉项链银色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22602/Variant Images (V)/ND-22602-抽拉项链银色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-咖啡色皮面【升级版】现货.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-咖啡色皮面【升级版】现货 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-咖啡色绒面【升级版】现货.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-咖啡色绒面【升级版】现货 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-白色绒面【升级版】现货.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-白色绒面【升级版】现货 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-黑色皮面【升级版】现货.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-黑色皮面【升级版】现货 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-黑色绒面【升级版】现货.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22603/Variant Images (V)/ND-22603-黑色绒面【升级版】现货 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5L锥形款（不带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5L锥形款（不带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5L锥形款（带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5L锥形款（带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5升圆肚款（不带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5升圆肚款（不带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5升圆肚款（带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1.5升圆肚款（带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L直身款（带瓶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L直身款（带瓶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L锥形款（不带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L锥形款（不带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L锥形款（带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1L锥形款（带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1升圆肚款（不带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1升圆肚款（不带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1升圆肚款（带黑硅胶套）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22604/Variant Images (V)/ND-22604-1升圆肚款（带黑硅胶套） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22605/Variant Images (V)/ND-22605-NL202 哑光黑耳环.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22605/Variant Images (V)/ND-22605-NL202 哑光黑耳环 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22605/Variant Images (V)/ND-22605-NL202 白色耳环.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22605/Variant Images (V)/ND-22605-NL202 白色耳环 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22606/Variant Images (V)/ND-22606-金色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22606/Variant Images (V)/ND-22606-金色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22606/Variant Images (V)/ND-22606-银色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22606/Variant Images (V)/ND-22606-银色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-金色大号.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-金色大号 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-金色小号.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-金色小号 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-银色大号.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-银色大号 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-银色小号.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22607/Variant Images (V)/ND-22607-银色小号 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/.ND-22609-胡桃木猫头鹰.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/.ND-22609-胡桃木猫头鹰.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-兔子.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-兔子 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-小尾巴松鼠小号.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-小尾巴松鼠小号 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人 A.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人 A (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人 B.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人 B (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人C.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-维京人C (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-胡桃木猫头鹰.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-胡桃木猫头鹰 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-花大号小夜灯.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-花大号小夜灯 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-花小号小夜灯.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22609/Variant Images (V)/ND-22609-花小号小夜灯 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/.ND-22611-白橡 高12cm.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/.ND-22611-白橡 高12cm.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/.ND-22611-胡桃木 高12CM.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/.ND-22611-胡桃木 高12CM.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/ND-22611-白橡 高12cm.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/ND-22611-白橡 高12cm (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/ND-22611-胡桃木 高12CM.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22611/Variant Images (V)/ND-22611-胡桃木 高12CM (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-柚木色小猴 高20cm.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-柚木色小猴 高20cm.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-缅甸柚木小猴 高20cm.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-缅甸柚木小猴 高20cm.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-胡桃木小猴 高20cm.undo-last.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/.ND-22612-胡桃木小猴 高20cm.undo-last (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-柚木色小猴 高20cm.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-柚木色小猴 高20cm (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-缅甸柚木小猴 高20cm.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-缅甸柚木小猴 高20cm (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-胡桃木小猴 高20cm.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-21-spu-20260221-193542/ND-22612/Variant Images (V)/ND-22612-胡桃木小猴 高20cm (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22556/Variant images/ND-22556-三件套（opp袋）.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22556/Variant images/ND-22556-三件套（opp袋） (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22557/Variant images/ND-22557-黑色.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22557/Variant images/ND-22557-黑色 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22558/Variant images/ND-22558-White (waterproof + standard cover).jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22558/Variant images/ND-22558-White (waterproof + standard cover) (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22560/Variant images/ND-22560-NE3黑色款+8件套.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22560/Variant images/ND-22560-NE3黑色款+8件套 (VAR).jpg"
+    },
+    {
+      "oldPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22561/Variant images/ND-22561-六管-黑紫.jpg",
+      "newPath": "/srv/resources/media/images/draft_products/Drafted-Products-6-spu-20260220-061618/ND-22561/Variant images/ND-22561-六管-黑紫 (VAR).jpg"
+    }
+  ],
+  "skipped": [],
+  "conflicts": []
+}

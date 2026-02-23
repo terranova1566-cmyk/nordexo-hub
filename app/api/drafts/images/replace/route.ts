@@ -7,6 +7,10 @@ import { convertBufferToJpeg } from "@/lib/image-jpeg";
 import { runAutoCenterWhiteInPlace } from "@/lib/draft-ai-edits";
 import { saveDraftImageUndoBackup } from "@/lib/draft-image-undo";
 import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
+import {
+  clearDraftImageUpscaled,
+  isDraftImageUpscaled,
+} from "@/lib/draft-image-upscale";
 
 export const runtime = "nodejs";
 
@@ -171,6 +175,10 @@ export async function POST(request: Request) {
       // Best-effort cleanup.
     }
   }
+  clearDraftImageUpscaled(finalAbsolute);
+  if (finalAbsolute !== absolute) {
+    clearDraftImageUpscaled(absolute);
+  }
 
   const finalStat = fs.statSync(finalAbsolute);
   let pixelQualityScore: number | null = null;
@@ -189,6 +197,7 @@ export async function POST(request: Request) {
     size: finalStat.size,
     modifiedAt: nowIso,
     pixelQualityScore,
+    zimageUpscaled: isDraftImageUpscaled(finalAbsolute),
     scoreRefreshError,
   });
 }
