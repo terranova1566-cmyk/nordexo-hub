@@ -26,7 +26,7 @@ const IMAGE_EXTENSIONS = new Set([
 
 const ALLOWED_TAGS = new Set(["MAIN", "ENV", "INF", "VAR"]);
 const ALLOWED_MAIN_SUBTYPES = new Set(["main_only", "main_composite"]);
-const DIGI_TAG_PATTERN = /\(\s*DIGI\s*\)/i;
+const DIGI_TAG_PATTERN = /(?:\(\s*DIGI\s*\)|(?:^|[-_ ])DIGI(?=$|[-_ .)]))/i;
 const AUTO_DIGI_DIMENSION_PX = 1424;
 
 const normalizePathValue = (value: unknown) =>
@@ -287,6 +287,8 @@ const buildPrompt = (input: {
     "   - main_only = only product visible.",
     "   - main_composite = still white-background main image but includes hand/person/accessories.",
     "2) ENV: environmental scene / lifestyle / in-use context photo.",
+    "   - ENV must look like a real scene (home/outdoor/room), not a plain studio backdrop.",
+    "   - Hand/person demonstrating product on plain/white background is NOT ENV.",
     "3) INF: infographic, text-heavy, dimensions, graphics, instructions, technical layout.",
     "4) VAR: variant-series image set (color/count/type variants).",
     "5) UNTAGGED (null): use when image does not clearly fit MAIN/ENV/INF/VAR.",

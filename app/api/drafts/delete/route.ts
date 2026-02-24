@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveDraftPath, safeRemoveDraftPath } from "@/lib/drafts";
+import { archiveDraftImageVersion } from "@/lib/draft-image-versions";
 
 export const runtime = "nodejs";
 
@@ -45,10 +46,17 @@ export async function POST(request: Request) {
       invalid.push(String(relativePath));
       return;
     }
+    try {
+      archiveDraftImageVersion({
+        imageAbsolutePath: resolved,
+        reason: "before-delete",
+      });
+    } catch {
+      // Best effort; do not block delete if archive copy fails.
+    }
     safeRemoveDraftPath(resolved);
     deleted += 1;
   });
 
   return NextResponse.json({ deleted, invalid });
 }
-

@@ -4,7 +4,7 @@ import path from "path";
 import { spawn } from "child_process";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   isExcludedPublishArtifactName,
   isImageFileName,
@@ -14,6 +14,7 @@ import {
   validateImageFolder,
 } from "@/lib/image-names";
 import { DRAFT_ROOT } from "@/lib/drafts";
+import { archiveDraftImageVersion } from "@/lib/draft-image-versions";
 import {
   listPendingAiEdits,
   resolvePendingAiEdit,
@@ -38,9 +39,14 @@ const PUBLISH_IMAGE_MAX_DIMENSION_PX = 1000;
 const PUBLISH_IMAGE_QUALITY = 90;
 const DEFAULT_TAX_CODE = "HST20";
 const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
+const DIGI_TAG_IN_FILE_NAME = /(?:\(\s*DIGI\s*\)|(?:^|[-_ ])DIGI(?:[-_ .)]|$))/i;
 const PRODUCT_CATEGORIZER_SCRIPT =
   process.env.PRODUCT_CATEGORIZER_SCRIPT ||
   "/srv/node-tools/product-categorizer/scripts/product_categorizer.mjs";
+const DISCOVERY_PROVIDER_TABLE_BY_KEY: Record<string, "cdon_products" | "fyndiq_products"> = {
+  cdon: "cdon_products",
+  fyndiq: "fyndiq_products",
+};
 
 const shouldDisableTaxonomyCategorizer = () => {
   const raw = String(process.env.DISABLE_PRODUCT_TAXONOMY_CATEGORIZER || "")
@@ -192,6 +198,169 @@ const getSpuPrefix = (spu: string | null) => {
   if (!normalized) return null;
   const upper = normalized.toUpperCase();
   return upper.length >= 2 ? upper.slice(0, 2) : upper;
+};
+
+const normalizeSpu = (value: unknown) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const matched = raw.match(/[A-Za-z]{1,5}-\d+/);
+  if (matched?.[0]) return matched[0].toUpperCase();
+  return raw.toUpperCase();
+};
+
+type ProductionSpuLinkRow = {
+  provider: string;
+  product_id: string;
+  spu: string | null;
+  assigned_at: string | null;
+};
+
+const syncDiscoveryIdenticalSpuLinks = async (
+  adminClient: SupabaseClient,
+  spus: string[]
+) => {
+  const uniqueSpus = Array.from(
+    new Set(spus.map((spu) => normalizeSpu(spu)).filter(Boolean))
+  ) as string[];
+  if (uniqueSpus.length === 0) {
+    return {
+      candidates: 0,
+      updated: 0,
+      skipped_existing: 0,
+      skipped_missing_product_row: 0,
+    };
+  }
+
+  const { data: linkRows, error: linkError } = await adminClient
+    .from("discovery_production_item_spus")
+    .select("provider, product_id, spu, assigned_at")
+    .in("spu", uniqueSpus);
+
+  if (linkError) {
+    throw new Error(linkError.message);
+  }
+
+  const latestByKey = new Map<
+    string,
+    {
+      provider: string;
+      product_id: string;
+      spu: string;
+      assigned_at: string | null;
+    }
+  >();
+
+  (linkRows as ProductionSpuLinkRow[] | null)?.forEach((row) => {
+    const provider = String(row.provider || "").trim().toLowerCase();
+    const productId = String(row.product_id || "").trim();
+    const spu = normalizeSpu(row.spu);
+    if (!provider || !productId || !spu) return;
+    if (!DISCOVERY_PROVIDER_TABLE_BY_KEY[provider]) return;
+    const key = `${provider}:${productId}`;
+    const existing = latestByKey.get(key);
+    if (!existing) {
+      latestByKey.set(key, {
+        provider,
+        product_id: productId,
+        spu,
+        assigned_at: row.assigned_at ?? null,
+      });
+      return;
+    }
+    const existingTs = existing.assigned_at ? Date.parse(existing.assigned_at) : 0;
+    const nextTs = row.assigned_at ? Date.parse(row.assigned_at) : 0;
+    if (nextTs >= existingTs) {
+      latestByKey.set(key, {
+        provider,
+        product_id: productId,
+        spu,
+        assigned_at: row.assigned_at ?? null,
+      });
+    }
+  });
+
+  const linksByProvider = new Map<
+    string,
+    Array<{
+      product_id: string;
+      spu: string;
+    }>
+  >();
+  latestByKey.forEach((entry) => {
+    const list = linksByProvider.get(entry.provider) ?? [];
+    list.push({ product_id: entry.product_id, spu: entry.spu });
+    linksByProvider.set(entry.provider, list);
+  });
+
+  let updated = 0;
+  let skippedExisting = 0;
+  let skippedMissingRow = 0;
+
+  for (const [provider, links] of linksByProvider.entries()) {
+    const table = DISCOVERY_PROVIDER_TABLE_BY_KEY[provider];
+    if (!table || links.length === 0) continue;
+    const productIds = Array.from(new Set(links.map((row) => row.product_id)));
+
+    const { data: existingRows, error: existingError } = await adminClient
+      .from(table)
+      .select("product_id, identical_spu")
+      .in("product_id", productIds);
+    if (existingError) {
+      throw new Error(existingError.message);
+    }
+
+    const existingById = new Map<
+      string,
+      {
+        product_id: string;
+        identical_spu: string | null;
+      }
+    >();
+    (
+      existingRows as
+        | Array<{
+            product_id: string;
+            identical_spu: string | null;
+          }>
+        | null
+    )?.forEach((row) => {
+      const id = String(row.product_id ?? "").trim();
+      if (!id) return;
+      existingById.set(id, {
+        product_id: id,
+        identical_spu: row.identical_spu ?? null,
+      });
+    });
+
+    for (const row of links) {
+      const existing = existingById.get(row.product_id);
+      if (!existing) {
+        skippedMissingRow += 1;
+        continue;
+      }
+      const existingSpu = String(existing.identical_spu ?? "").trim();
+      if (existingSpu.length > 0) {
+        skippedExisting += 1;
+        continue;
+      }
+
+      const { error: updateError } = await adminClient
+        .from(table)
+        .update({ identical_spu: row.spu })
+        .eq("product_id", row.product_id);
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+      updated += 1;
+    }
+  }
+
+  return {
+    candidates: latestByKey.size,
+    updated,
+    skipped_existing: skippedExisting,
+    skipped_missing_product_row: skippedMissingRow,
+  };
 };
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(String(value || "").trim());
@@ -455,6 +624,11 @@ const normalizeTopLevelImageFileToJpeg = async (
   fileName: string
 ) => {
   const sourceAbsPath = path.join(folderAbsPath, fileName);
+  const preserveDigiResolution = DIGI_TAG_IN_FILE_NAME.test(fileName);
+  if (preserveDigiResolution && isJpegFileName(fileName)) {
+    // DIGI images must not be re-encoded/downscaled once they are already JPEG.
+    return fileName;
+  }
   const parsed = path.parse(fileName);
   const baseName = parsed.name.trim() || "image";
   const keepName = isJpegFileName(fileName) ? fileName : null;
@@ -463,14 +637,16 @@ const normalizeTopLevelImageFileToJpeg = async (
   const tempAbsPath = createTempJpegPath(folderAbsPath, fileName);
 
   try {
-    await sharp(sourceAbsPath, { failOnError: false })
-      .rotate()
-      .resize({
-        width: PUBLISH_IMAGE_MAX_DIMENSION_PX,
-        height: PUBLISH_IMAGE_MAX_DIMENSION_PX,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
+    const image = sharp(sourceAbsPath, { failOnError: false }).rotate();
+    const prepared = preserveDigiResolution
+      ? image
+      : image.resize({
+          width: PUBLISH_IMAGE_MAX_DIMENSION_PX,
+          height: PUBLISH_IMAGE_MAX_DIMENSION_PX,
+          fit: "inside",
+          withoutEnlargement: true,
+        });
+    await prepared
       .flatten({ background: "#ffffff" })
       .jpeg({ quality: PUBLISH_IMAGE_QUALITY, mozjpeg: true })
       .toFile(tempAbsPath);
@@ -505,6 +681,14 @@ const prepareFolderImagesForPublish = async (folderAbsPath: string) => {
     .map((entry) => entry.name);
   const jpegRenamePairs: Array<{ sourceName: string; targetName: string }> = [];
   for (const fileName of initialImageFiles) {
+    try {
+      archiveDraftImageVersion({
+        imageAbsolutePath: path.join(folderAbsPath, fileName),
+        reason: "before-publish",
+      });
+    } catch {
+      // Best effort only; publish should continue if archive copy fails.
+    }
     const targetName = await normalizeTopLevelImageFileToJpeg(folderAbsPath, fileName);
     if (targetName !== fileName) {
       jpegRenamePairs.push({ sourceName: fileName, targetName });
@@ -646,19 +830,28 @@ export async function POST(request: Request) {
   const spus: string[] = Array.isArray(body?.spus)
     ? body.spus.map((entry: unknown) => String(entry || "").trim()).filter(Boolean)
     : [];
-  const publishAll = Boolean(body?.publishAll) || spus.length === 0;
+  const publishAllRequested = Boolean(body?.publishAll);
+  if (publishAllRequested) {
+    return NextResponse.json(
+      { error: "Global publishAll is disabled. Provide explicit SPUs." },
+      { status: 400 }
+    );
+  }
+  if (spus.length === 0) {
+    return NextResponse.json(
+      { error: "No SPUs selected for publish." },
+      { status: 400 }
+    );
+  }
 
-  let productQuery = adminClient
+  const productQuery = adminClient
     .from("draft_products")
     .select(
       "id,draft_spu,draft_title,draft_subtitle,draft_description_html,draft_product_description_main_html,draft_mf_product_short_title,draft_mf_product_long_title,draft_mf_product_subtitle,draft_mf_product_bullets_short,draft_mf_product_bullets,draft_mf_product_bullets_long,draft_mf_product_specs,draft_mf_product_description_short_html,draft_mf_product_description_extended_html,draft_option1_name,draft_option2_name,draft_option3_name,draft_option4_name,draft_legacy_title_sv,draft_legacy_description_sv,draft_legacy_bullets_sv,draft_supplier_1688_url,draft_image_folder,draft_main_image_url,draft_image_urls,draft_raw_row,draft_created_at",
       { count: "exact" }
     )
-    .eq("draft_status", "draft");
-
-  if (!publishAll) {
-    productQuery = productQuery.in("draft_spu", spus);
-  }
+    .eq("draft_status", "draft")
+    .in("draft_spu", spus);
 
   const { data: productRows, error: productError } = await productQuery;
   if (productError) {
@@ -1167,12 +1360,19 @@ export async function POST(request: Request) {
     moveResults.map((entry) => [entry.spu, entry.moved])
   );
 
-  for (const [runFolder, spusForRun] of runFolders.entries()) {
-    const allMoved = spusForRun.every((spu) => moveBySpu.get(spu));
-    if (!allMoved) continue;
+  const removedDraftFolders = new Set<string>();
+  for (const row of products) {
+    const spu = String(row.draft_spu || "").trim();
+    if (!spu || !moveBySpu.get(spu)) continue;
+    if (!row.draft_image_folder) continue;
+    const productFolder = resolveDraftFolder(row.draft_image_folder);
+    if (!productFolder || removedDraftFolders.has(productFolder)) continue;
+    if (!existsSync(productFolder)) continue;
     try {
-      await fs.rm(runFolder, { recursive: true, force: true });
+      await fs.rm(productFolder, { recursive: true, force: true });
+      removedDraftFolders.add(productFolder);
     } catch (err) {
+      const runFolder = path.dirname(productFolder);
       upsertArchiveResult(runFolder, {
         archived: Boolean(archivedRuns.get(runFolder)),
         archivePath: archivedRuns.get(runFolder),
@@ -1195,6 +1395,12 @@ export async function POST(request: Request) {
     console.error("Meili index update failed after publish:", meiliIndex.error);
   }
 
+  let discoveryLinkSyncResult: {
+    candidates: number;
+    updated: number;
+    skipped_existing: number;
+    skipped_missing_product_row: number;
+  } | null = null;
   try {
     const refs = await getProductionRefsBySpus(adminClient, spuList);
     if (refs.length > 0) {
@@ -1202,6 +1408,10 @@ export async function POST(request: Request) {
         status: "production_done",
       });
     }
+    discoveryLinkSyncResult = await syncDiscoveryIdenticalSpuLinks(
+      adminClient,
+      spuList
+    );
   } catch (error) {
     console.error("Unable to sync production queue done status:", error);
   }
@@ -1215,5 +1425,6 @@ export async function POST(request: Request) {
     archived: archiveResults,
     meili_index_ok: meiliIndex.ok,
     meili_index_error: meiliIndex.ok ? null : meiliIndex.error,
+    discovery_identical_link_sync: discoveryLinkSyncResult,
   });
 }

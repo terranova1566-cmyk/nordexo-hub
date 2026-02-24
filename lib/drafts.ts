@@ -16,6 +16,10 @@ export type DraftEntry = {
   modifiedAt: string;
   pixelQualityScore?: number | null;
   zimageUpscaled?: boolean;
+  whiteSides?: number | null;
+  borderWhiteDensity?: number | null;
+  hasNonChineseText?: boolean | null;
+  densityProxyKb?: number | null;
 };
 
 const IMAGE_EXTENSIONS = new Set([
@@ -109,12 +113,35 @@ const normalizePathToken = (value: string) =>
     .replace(/^\/+/, "")
     .toLowerCase();
 
+const TAG_SUFFIX_PAREN_REGEX = /\s*\((?:MAIN|ENV|INF|ENF|VAR|DIGI)\)\s*$/i;
+const TAG_SUFFIX_TOKEN_REGEX = /(?:[-_ ]+)(?:MAIN|ENV|INF|ENF|VAR|DIGI)\s*$/i;
+const TAG_TOKEN_REGEX = (tag: string) =>
+  new RegExp(
+    `(?:\\(\\s*${tag}\\s*\\)|(?:^|[-_ ])${tag}(?=$|[-_ .)]))`,
+    "i"
+  );
+
 const stripImageTagSuffixes = (fileName: string) => {
   const raw = String(fileName || "");
   if (!raw) return raw;
   const ext = path.extname(raw);
   const base = ext ? raw.slice(0, -ext.length) : raw;
-  const cleanedBase = base.replace(/\s+\((?:MAIN|ENV|INF|VAR|DIGI)\)/gi, "").trim();
+  let cleanedBase = base.trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const noParen = cleanedBase.replace(TAG_SUFFIX_PAREN_REGEX, "").trim();
+    if (noParen !== cleanedBase) {
+      cleanedBase = noParen;
+      changed = true;
+      continue;
+    }
+    const noToken = cleanedBase.replace(TAG_SUFFIX_TOKEN_REGEX, "").trim();
+    if (noToken !== cleanedBase) {
+      cleanedBase = noToken;
+      changed = true;
+    }
+  }
   return `${cleanedBase || base}${ext}`;
 };
 
@@ -239,47 +266,162 @@ const readNestedNumber = (
   return asNumber((nested as Record<string, unknown>)[nestedKey]);
 };
 
-const computeCombinedPixelScore = (row: Record<string, unknown>) => {
-  const baseScore = toScore(row.pixel_quality_score);
-  const blurScore =
-    toScore(readNestedNumber(row, "pixel_quality_external", "external_blur_score_mapped")) ??
-    (() => {
-      const liveGrad = readNestedNumber(row, "pixel_quality_raw", "live_grad_mean");
-      if (liveGrad === null) return null;
-      return Math.round(20 + scale(liveGrad, 6, 36) * 75);
-    })();
+const readBorderRatios = (row: Record<string, unknown>) => {
+  const borderDetection = row.border_detection;
+  if (!borderDetection || typeof borderDetection !== "object") return null;
+  const borderRatios = (borderDetection as Record<string, unknown>).border_ratios;
+  if (!borderRatios || typeof borderRatios !== "object") return null;
+  const top = asNumber((borderRatios as Record<string, unknown>).top);
+  const bottom = asNumber((borderRatios as Record<string, unknown>).bottom);
+  const left = asNumber((borderRatios as Record<string, unknown>).left);
+  const right = asNumber((borderRatios as Record<string, unknown>).right);
+  if (
+    top === null ||
+    bottom === null ||
+    left === null ||
+    right === null
+  ) {
+    return null;
+  }
+  return { top, bottom, left, right };
+};
 
-  const upscaleSignal = readNestedNumber(
+const scoreFromBlockinessArtifacts = (row: Record<string, unknown>) => {
+  const ratio = readNestedNumber(row, "pixel_quality_raw", "blockiness_ratio");
+  if (ratio === null) return null;
+  const excess = Math.max(0, ratio - 1);
+  const compressionPenalty = scale(excess, 0.02, 0.42) * 90;
+  const smallBonus =
+    ratio < 1 ? scale(1 - ratio, 0.01, 0.2) * 8 : 0;
+  return Math.round(clamp(100 - compressionPenalty + smallBonus, 10, 100));
+};
+
+const scoreFromUpscaleIntegrity = (row: Record<string, unknown>) => {
+  const mad = readNestedNumber(row, "pixel_quality_raw", "downscale_upscale_mad");
+  if (mad === null) return null;
+  const density = readImageByteDensity(row);
+  const ratio = readNestedNumber(row, "pixel_quality_raw", "blockiness_ratio");
+
+  // Smooth/low-detail products are valid; penalize low MAD only when paired with
+  // compression/blockiness signals that suggest true quality breakdown.
+  const weakDetail = scale(2.4 - mad, 0, 2.0);
+  const blockinessSignal =
+    ratio === null ? 0 : scale(Math.max(0, ratio - 1.02), 0, 0.35);
+  const lowDensitySignal = density
+    ? scale(
+        (density.minSide >= 1000 ? 0.09 : 0.075) - density.bytesPerPixel,
+        0,
+        density.minSide >= 1000 ? 0.07 : 0.055
+      )
+    : 0;
+  const penalty = weakDetail * (blockinessSignal * 0.55 + lowDensitySignal * 0.45) * 70;
+  const gentleBonus = scale(mad, 2.4, 9.5) * 8;
+  return Math.round(clamp(88 + gentleBonus - penalty, 25, 100));
+};
+
+const scoreFromEdgeStability = (row: Record<string, unknown>) => {
+  const boundaryMean = readNestedNumber(
     row,
     "pixel_quality_raw",
-    "downscale_upscale_mad"
+    "blockiness_boundary_mean"
   );
-  const upscaleScore =
-    upscaleSignal === null
-      ? null
-      : Math.round(20 + scale(upscaleSignal, 2.5, 11.5) * 75);
+  const baselineMean = readNestedNumber(
+    row,
+    "pixel_quality_raw",
+    "blockiness_baseline_mean"
+  );
+  if (boundaryMean === null || baselineMean === null) return null;
+  if (baselineMean <= 0) return null;
+  const drift = Math.abs(boundaryMean - baselineMean) / Math.max(1, baselineMean);
+  return Math.round(clamp(100 - scale(drift, 0.06, 0.75) * 70, 20, 100));
+};
 
-  const blockinessRatio = readNestedNumber(row, "pixel_quality_raw", "blockiness_ratio");
-  const artifactScore =
-    blockinessRatio === null
-      ? null
-      : (() => {
-          const distanceFromNeutral = Math.abs(blockinessRatio - 1);
-          const penalty = scale(distanceFromNeutral, 0.05, 0.8) * 55;
-          return Math.round(clamp(100 - penalty, 35, 100));
-        })();
+const readImageByteDensity = (row: Record<string, unknown>) => {
+  const width =
+    asNumber(row.normalized_width) ??
+    asNumber(row.width);
+  const height =
+    asNumber(row.normalized_height) ??
+    asNumber(row.height);
+  const sizeKb =
+    asNumber(row.normalized_filesize_kb) ??
+    asNumber(row.file_size_kb);
+  if (width === null || height === null || width <= 0 || height <= 0 || sizeKb === null) {
+    return null as { bytesPerPixel: number; minSide: number } | null;
+  }
+  return {
+    bytesPerPixel: (sizeKb * 1024) / (width * height),
+    minSide: Math.min(width, height),
+  };
+};
 
-  const liveGrad = readNestedNumber(row, "pixel_quality_raw", "live_grad_mean");
-  const infoDensityScore =
-    liveGrad === null ? null : Math.round(15 + scale(liveGrad, 6, 36) * 85);
+const scoreFromCompressionDensity = (row: Record<string, unknown>) => {
+  const density = readImageByteDensity(row);
+  if (!density) return null;
 
-  const liveRatio =
-    asNumber(row.live_pixel_ratio) ??
-    readNestedNumber(row, "pixel_quality_raw", "live_tile_ratio");
-  const livePixelScore =
-    liveRatio === null
-      ? null
-      : Math.round(55 + scale(liveRatio, 0.04, 0.28) * 45);
+  const { bytesPerPixel, minSide } = density;
+  const floor = minSide >= 1000 ? 0.05 : 0.04;
+  const healthy = minSide >= 1000 ? 0.22 : 0.18;
+  let score = 58 + scale(bytesPerPixel, floor, healthy) * 42;
+
+  // Very low byte density is only strongly penalized when artifact signals exist.
+  const ratio = readNestedNumber(row, "pixel_quality_raw", "blockiness_ratio");
+  const boundaryMean = readNestedNumber(
+    row,
+    "pixel_quality_raw",
+    "blockiness_boundary_mean"
+  );
+  const baselineMean = readNestedNumber(
+    row,
+    "pixel_quality_raw",
+    "blockiness_baseline_mean"
+  );
+  const blockinessSignal =
+    ratio === null ? 0 : scale(Math.max(0, ratio - 1.02), 0, 0.35);
+  const boundaryDrift =
+    boundaryMean !== null && baselineMean !== null && baselineMean > 0
+      ? scale(Math.abs(boundaryMean - baselineMean) / Math.max(1, baselineMean), 0.08, 0.65)
+      : 0;
+  const veryLowDensity = scale(
+    (minSide >= 1000 ? 0.085 : 0.07) - bytesPerPixel,
+    0,
+    minSide >= 1000 ? 0.06 : 0.05
+  );
+  const artifactWeight = 0.25 + blockinessSignal * 0.55 + boundaryDrift * 0.2;
+  score -= veryLowDensity * artifactWeight * 65;
+  return Math.round(clamp(score, 12, 100));
+};
+
+const scoreFromBorderConsistency = (row: Record<string, unknown>) => {
+  const backgroundType = String(row.background_type || "").toLowerCase();
+  if (backgroundType !== "white" && backgroundType !== "mixed") return null;
+  const ratios = readBorderRatios(row);
+  if (!ratios) return null;
+  const values = [ratios.top, ratios.bottom, ratios.left, ratios.right];
+  const spread = Math.max(...values) - Math.min(...values);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const uniformity = 1 - scale(spread, 0.04, 0.35);
+  const whiteness = scale(mean, 0.55, 0.995);
+  return Math.round(clamp(35 + uniformity * 45 + whiteness * 20, 0, 100));
+};
+
+const scoreFromResolution = (row: Record<string, unknown>) => {
+  const existing = asNumber(row.resolution_score);
+  if (existing !== null) return Math.round(clamp(existing, 0, 100));
+  const width = asNumber(row.normalized_width) ?? asNumber(row.width);
+  const height = asNumber(row.normalized_height) ?? asNumber(row.height);
+  if (width === null || height === null || width <= 0 || height <= 0) return null;
+  return Math.round(clamp((Math.min(width, height) / 1200) * 100, 0, 100));
+};
+
+export const computeDisplayPixelQualityScore = (row: Record<string, unknown>) => {
+  const baseScore = toScore(row.pixel_quality_score);
+  const artifactScore = scoreFromBlockinessArtifacts(row);
+  const upscaleScore = scoreFromUpscaleIntegrity(row);
+  const edgeStabilityScore = scoreFromEdgeStability(row);
+  const compressionDensityScore = scoreFromCompressionDensity(row);
+  const borderConsistencyScore = scoreFromBorderConsistency(row);
+  const resolutionScore = scoreFromResolution(row);
 
   let weightedSum = 0;
   let totalWeight = 0;
@@ -289,18 +431,21 @@ const computeCombinedPixelScore = (row: Record<string, unknown>) => {
     totalWeight += weight;
   };
 
-  push(blurScore, 0.34);
-  push(upscaleScore, 0.23);
-  push(artifactScore, 0.18);
-  push(infoDensityScore, 0.10);
-  push(baseScore, 0.13);
-  push(livePixelScore, 0.02); // intentionally tiny weight so white-bg listings are not punished
+  // Blur/smoothness is intentionally not a primary quality signal.
+  // We focus on compression artifacts, upscale breakdown, and edge integrity.
+  push(artifactScore, 0.39);
+  push(compressionDensityScore, 0.22);
+  push(upscaleScore, 0.11);
+  push(edgeStabilityScore, 0.15);
+  push(resolutionScore, 0.08);
+  push(baseScore, 0.04);
+  push(borderConsistencyScore, 0.01);
 
   if (totalWeight <= 0) return baseScore;
 
   let combined = Math.round(weightedSum / totalWeight);
   if (row.pixel_quality_reliable === false) {
-    combined = Math.round(combined * 0.92);
+    combined = Math.round(combined * 0.94);
   }
   return clamp(combined, 0, 100);
 };
@@ -347,7 +492,7 @@ const loadImageQualityIndex = (
     for (const item of images) {
       if (!item || typeof item !== "object") continue;
       const row = item as Record<string, unknown>;
-      const score = computeCombinedPixelScore(row);
+      const score = computeDisplayPixelQualityScore(row);
       if (score === null) continue;
 
       const entry: ImageQualityEntry = {
@@ -472,10 +617,14 @@ const loadOcrTextIndex = (ocrFile: string, productRoot: string, mtimeMs: number)
 };
 
 const extractTagHints = (fileName: string) => {
-  const normalized = String(fileName || "").toUpperCase();
+  const source = String(fileName || "");
   return {
-    isMain: normalized.includes("(MAIN)"),
-    isInf: normalized.includes("(INF)"),
+    isMain: TAG_TOKEN_REGEX("MAIN").test(source),
+    isEnv: TAG_TOKEN_REGEX("ENV").test(source),
+    isInf:
+      TAG_TOKEN_REGEX("INF").test(source) || TAG_TOKEN_REGEX("ENF").test(source),
+    isDigi: TAG_TOKEN_REGEX("DIGI").test(source),
+    isVar: TAG_TOKEN_REGEX("VAR").test(source),
   };
 };
 
@@ -614,6 +763,56 @@ const compareImagesForSmartView = (
   leftMeta: ImageSortSnapshot,
   rightMeta: ImageSortSnapshot
 ) => {
+  const leftTags = extractTagHints(left.name);
+  const rightTags = extractTagHints(right.name);
+
+  const isWhiteBackgroundPriority = (meta: ImageSortSnapshot) =>
+    meta.whiteSides >= 4 || meta.borderWhiteDensity >= 0.97;
+
+  const isWhiteBorderPriority = (meta: ImageSortSnapshot) => {
+    const whiteBorderBySides = meta.whiteSides >= 2 && meta.whiteSides < 4;
+    const whiteBorderByDensity =
+      meta.borderWhiteDensity >= 0.88 && meta.borderWhiteDensity < 0.97;
+    return whiteBorderBySides || whiteBorderByDensity;
+  };
+
+  const getPrimaryRank = (tags: ReturnType<typeof extractTagHints>, meta: ImageSortSnapshot) => {
+    if (tags.isMain) return 0;
+    const hasNonMainTag = tags.isEnv || tags.isInf || tags.isDigi || tags.isVar;
+    // White-priority is only for untagged images after MAIN.
+    if (!hasNonMainTag) {
+      if (isWhiteBackgroundPriority(meta)) return 1;
+      if (isWhiteBorderPriority(meta)) return 2;
+      return 3;
+    }
+    // Tagged images come after all untagged buckets.
+    return 4;
+  };
+
+  const getTagRank = (tags: ReturnType<typeof extractTagHints>) => {
+    // Tagged section order:
+    // INF/ENF -> ENV -> DIGI -> VAR
+    if (tags.isInf) return 1;
+    if (tags.isEnv) return 2;
+    if (tags.isDigi) return 3;
+    if (tags.isVar) return 4;
+    return 0;
+  };
+
+  const leftPrimaryRank = getPrimaryRank(leftTags, leftMeta);
+  const rightPrimaryRank = getPrimaryRank(rightTags, rightMeta);
+  if (leftPrimaryRank !== rightPrimaryRank) {
+    return leftPrimaryRank - rightPrimaryRank;
+  }
+
+  if (leftPrimaryRank === 4 && rightPrimaryRank === 4) {
+    const leftTagRank = getTagRank(leftTags);
+    const rightTagRank = getTagRank(rightTags);
+    if (leftTagRank !== rightTagRank) {
+      return leftTagRank - rightTagRank;
+    }
+  }
+
   if (leftMeta.hasNonChineseText !== rightMeta.hasNonChineseText) {
     return leftMeta.hasNonChineseText ? 1 : -1;
   }
@@ -699,12 +898,18 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
       const isImageFile = !isDir && isImageFileName(entry.name);
       let pixelQualityScore: number | null = null;
       let zimageUpscaled = false;
+      let whiteSides: number | null = null;
+      let borderWhiteDensity: number | null = null;
+      let hasNonChineseText: boolean | null = null;
+      let densityProxyKb: number | null = null;
       const baseName = normalizePathToken(path.basename(full));
       const strippedBaseName = normalizePathToken(stripImageTagSuffixes(path.basename(full)));
+      const tagHints = extractTagHints(entry.name);
+      let resolvedQualityEntry: ImageQualityEntry | null = null;
       if (!isDir && qualityIndex) {
         const relativeToProductRootRaw = path.relative(qualityIndex.productRoot, full);
         const relativeLookup = normalizeLookupPathVariants(relativeToProductRootRaw);
-        const resolvedEntry =
+        resolvedQualityEntry =
           qualityIndex.byRelativePath.get(relativeLookup.normalized) ??
           qualityIndex.byRelativePath.get(relativeLookup.stripped) ??
           qualityIndex.byRelativePath.get(baseName) ??
@@ -712,7 +917,31 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
           qualityIndex.byBaseName.get(baseName) ??
           qualityIndex.byBaseName.get(strippedBaseName) ??
           null;
-        pixelQualityScore = resolvedEntry?.pixelQualityScore ?? null;
+        pixelQualityScore = resolvedQualityEntry?.pixelQualityScore ?? null;
+      }
+      if (!isDir && isImageFile) {
+        const stage1Entry =
+          stage1Index?.byBaseName.get(baseName) ??
+          stage1Index?.byBaseName.get(strippedBaseName) ??
+          null;
+        const ocrEntry =
+          ocrIndex?.byBaseName.get(baseName) ??
+          ocrIndex?.byBaseName.get(strippedBaseName) ??
+          null;
+
+        hasNonChineseText =
+          resolvedQualityEntry?.hasNonChineseText === true ||
+          ocrEntry?.hasNonChineseText === true ||
+          stage1Entry?.hasTextOverlay === true ||
+          tagHints.isInf;
+        whiteSides = resolvedQualityEntry?.whiteSides ?? (tagHints.isMain ? 4 : 0);
+        borderWhiteDensity =
+          resolvedQualityEntry?.borderWhiteDensity ?? (tagHints.isMain ? 1 : 0);
+        densityProxyKb = resolvedQualityEntry?.densityProxyKb ?? stat.size / 1024;
+
+        if (pixelQualityScore === null) {
+          pixelQualityScore = stage1Entry?.technicalQualityScore ?? null;
+        }
       }
       if (!isDir && pixelQualityScore === null) {
         pixelQualityScore =
@@ -730,7 +959,15 @@ export const listEntries = (relativePath: string): DraftEntry[] => {
         size: isDir ? 0 : stat.size,
         modifiedAt: stat.mtime.toISOString(),
         ...(isDir ? {} : { pixelQualityScore }),
-        ...(!isDir && isImageFile ? { zimageUpscaled } : {}),
+        ...(!isDir && isImageFile
+          ? {
+              zimageUpscaled,
+              whiteSides,
+              borderWhiteDensity,
+              hasNonChineseText,
+              densityProxyKb,
+            }
+          : {}),
       };
     });
 

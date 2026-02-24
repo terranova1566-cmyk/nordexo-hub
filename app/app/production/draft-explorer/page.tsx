@@ -37,6 +37,7 @@ import {
 } from "@fluentui/react-components";
 import {
   Fragment,
+  PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -55,6 +56,10 @@ type DraftEntry = {
   modifiedAt: string;
   pixelQualityScore?: number | null;
   zimageUpscaled?: boolean;
+  whiteSides?: number | null;
+  borderWhiteDensity?: number | null;
+  hasNonChineseText?: boolean | null;
+  densityProxyKb?: number | null;
 };
 
 type DraftFolder = {
@@ -84,6 +89,32 @@ type RunSpuOption = {
   path: string;
 };
 
+type RunSpuStatus = {
+  hasPendingAi: boolean;
+  hasDigi: boolean;
+  hasTaggedImage: boolean;
+  hasImageIssue: boolean;
+  hasUnseenAiUpdate: boolean;
+};
+
+type DraftExplorerUrlState = {
+  run: string;
+  spu: string;
+  path: string;
+  tab: "spu" | "sku" | "";
+  showAll: boolean;
+};
+
+type DraftProductFlagNote = {
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy?: {
+    id?: string | null;
+    email?: string | null;
+  } | null;
+};
+
 type DraftDeletedImageUndoItem = {
   sourcePath: string;
   destinationPath: string;
@@ -104,9 +135,26 @@ type AiPromptMode =
   | "auto_center_white"
   | "eraser"
   | "upscale";
-type AiTemplatePreset = "standard" | "digideal_main" | "product_scene";
+type AiTemplatePreset =
+  | "standard"
+  | "digideal_main"
+  | "digideal_main_dual"
+  | "product_scene"
+  | "product_collection";
 type AiResolveDecision = "keep_original" | "replace_with_ai" | "keep_both";
 type AiEditJobStatus = "queued" | "running";
+
+type AiDualDialogState = {
+  provider: Exclude<AiEditProvider, "zimage">;
+  outputCount: number;
+  productEntry: DraftEntry;
+  guidanceEntry: DraftEntry;
+};
+
+type AiCollectionDialogState = {
+  provider: Exclude<AiEditProvider, "zimage">;
+  entries: DraftEntry[];
+};
 
 type PendingAiEditRecord = {
   id: string;
@@ -205,6 +253,11 @@ type DraftVariantEditorRow = {
   draft_raw_row: Record<string, unknown>;
 };
 
+type SpuJsonViewerState = {
+  spu: string;
+  content: string;
+};
+
 type DraftVariantEditorEditableField =
   | "draft_sku"
   | "variation_color_se"
@@ -222,6 +275,7 @@ type DraftVariantEditorEditableField =
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
 type ImageFolderTabValue = "main" | "variants" | "ocr" | "others";
+type MainImageViewFilter = "all" | "var_only";
 
 const useStyles = makeStyles({
   page: {
@@ -278,7 +332,7 @@ const useStyles = makeStyles({
     gap: "6px",
   },
   draftSearch: {
-    width: "560px",
+    width: "280px",
     maxWidth: "100%",
   },
   draftToolbarRow: {
@@ -290,11 +344,21 @@ const useStyles = makeStyles({
   draftToolbarTabs: {
     flexShrink: 0,
   },
+  draftTabLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  draftTabDescription: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: 1,
+  },
   draftSearchOffset: {
-    marginLeft: "40px",
-    flex: "1 1 320px",
-    minWidth: "220px",
-    maxWidth: "560px",
+    marginLeft: "20px",
+    flex: "1 1 160px",
+    minWidth: "140px",
+    maxWidth: "280px",
   },
   draftToolbarActions: {
     display: "flex",
@@ -302,6 +366,43 @@ const useStyles = makeStyles({
     gap: "8px",
     alignItems: "center",
     marginLeft: "auto",
+  },
+  draftToolbarActionButton: {
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+    ":disabled": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
+  draftToolbarActionButtonActive: {
+    borderColor: tokens.colorBrandStroke1,
+    color: tokens.colorBrandForeground1,
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  draftToolbarFlagButton: {
+    minWidth: "34px",
+    width: "34px",
+    height: "34px",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  draftToolbarFlagIcon: {
+    width: "17px",
+    height: "17px",
+    display: "block",
+  },
+  draftToolbarFlagIconHasNote: {
+    color: "#d13438",
   },
   explorerControls: {
     display: "flex",
@@ -365,6 +466,25 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "6px",
   },
+  actionMenuTriggerButton: {
+    minWidth: "auto",
+    width: "auto",
+    paddingLeft: "10px",
+    paddingRight: "10px",
+  },
+  actionMenuTriggerContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    whiteSpace: "nowrap",
+  },
+  actionMenuCaretIcon: {
+    width: "16px",
+    height: "16px",
+    flexShrink: 0,
+    opacity: 0.8,
+    transition: "transform 140ms ease",
+  },
   iconSvg: {
     width: "18px",
     height: "18px",
@@ -376,8 +496,8 @@ const useStyles = makeStyles({
     flexShrink: 0,
   },
   batchPickerTrigger: {
-    minWidth: "432px",
-    maxWidth: "605px",
+    minWidth: "346px",
+    maxWidth: "484px",
     justifyContent: "space-between",
     paddingLeft: "12px",
     paddingRight: "10px",
@@ -399,8 +519,8 @@ const useStyles = makeStyles({
   batchPickerSurface: {
     padding: "6px",
     borderRadius: "12px",
-    minWidth: "560px",
-    maxWidth: "720px",
+    minWidth: "360px",
+    maxWidth: "460px",
     maxHeight: "520px",
     overflow: "auto",
   },
@@ -431,6 +551,39 @@ const useStyles = makeStyles({
     height: "26px",
     padding: "0 9px",
   },
+  batchPickerActionButton: {
+    minWidth: "48px",
+    height: "26px",
+    padding: "0 9px",
+  },
+  batchPickerArchiveDivider: {
+    marginTop: "6px",
+    paddingTop: "6px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  batchPickerRowArchive: {
+    gridTemplateColumns: "minmax(0, 1fr)",
+  },
+  batchPickerMergeCheckbox: {
+    "& .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+    },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator, &[aria-checked='true'] .fui-Checkbox__indicator, &[aria-checked='mixed'] .fui-Checkbox__indicator":
+      {
+        backgroundColor: tokens.colorBrandBackground,
+        color: "#ffffff",
+      },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator svg, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator svg, &[aria-checked='true'] .fui-Checkbox__indicator svg, &[aria-checked='mixed'] .fui-Checkbox__indicator svg":
+      {
+        color: "#ffffff",
+        fill: "#ffffff",
+      },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator path, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator path, &[aria-checked='true'] .fui-Checkbox__indicator path, &[aria-checked='mixed'] .fui-Checkbox__indicator path":
+      {
+        stroke: "#ffffff",
+        fill: "#ffffff",
+      },
+  },
   whiteActionButton: {
     backgroundColor: "#ffffff",
     ":hover": {
@@ -452,8 +605,6 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
   },
   spuPickerTrigger: {
-    minWidth: "108px",
-    maxWidth: "136px",
     justifyContent: "space-between",
     paddingLeft: "12px",
     paddingRight: "10px",
@@ -461,15 +612,16 @@ const useStyles = makeStyles({
   spuPickerSurface: {
     padding: "6px",
     borderRadius: "12px",
-    minWidth: "140px",
-    maxWidth: "190px",
+  },
+  spuPickerSurfaceScrollable: {
     maxHeight: "520px",
-    overflow: "auto",
+    overflowY: "auto",
   },
   spuPickerRow: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
+    justifyContent: "space-between",
+    gap: "4px",
     padding: "5px 8px",
     borderRadius: "8px",
     cursor: "pointer",
@@ -486,23 +638,93 @@ const useStyles = makeStyles({
       backgroundColor: "#d9efdb",
     },
   },
-  spuPickerRowName: {
+  spuPickerRowText: {
     flex: "1 1 auto",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    minWidth: 0,
     overflow: "hidden",
+  },
+  spuPickerRowName: {
+    flexShrink: 0,
     whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
     fontSize: tokens.fontSizeBase200,
     lineHeight: tokens.lineHeightBase200,
-    minWidth: 0,
   },
-  spuPickerRowCheck: {
+  spuPickerRowSeparator: {
+    flexShrink: 0,
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  spuPickerRowTitleWord: {
+    flexShrink: 1,
+    whiteSpace: "nowrap",
+    color: tokens.colorNeutralForeground1,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  spuPickerRowStatusIcon: {
     width: "16px",
     height: "16px",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#107c10",
     flexShrink: 0,
+  },
+  spuPickerRowStatusIconComplete: {
+    color: "#107c10",
+  },
+  spuPickerRowStatusIconIncomplete: {
+    color: tokens.colorNeutralForeground3,
+  },
+  spuPickerRowIndicators: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: "4px",
+    marginLeft: "auto",
+    flexShrink: 0,
+  },
+  spuPickerRowIndicatorIcon: {
+    width: "14px",
+    height: "14px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  spuPickerIndicatorSvg: {
+    width: "14px",
+    height: "14px",
+    display: "block",
+  },
+  spuPickerTagSvg: {
+    width: "12px",
+    height: "12px",
+    display: "block",
+  },
+  spuPickerRowAiIcon: {
+    color: "#a77ce6",
+  },
+  spuPickerRowAiNeedsReviewIcon: {
+    color: "#dc6d78",
+  },
+  spuPickerRowImageIssueIcon: {
+    color: "#dc6d78",
+  },
+  spuPickerRowDigiIconPresent: {
+    color: "#107c10",
+  },
+  spuPickerRowDigiIconMissing: {
+    color: "#dc6d78",
+  },
+  spuPickerRowTagIconPresent: {
+    color: "#107c10",
+  },
+  spuPickerRowTagIconMissing: {
+    color: "#dc6d78",
   },
   runPreviewSurface: {
     width: "820px",
@@ -1009,6 +1231,19 @@ const useStyles = makeStyles({
   mediaMetaQuality: {
     fontWeight: tokens.fontWeightSemibold,
   },
+  mediaMetaQualityPendingInline: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    verticalAlign: "middle",
+  },
+  mediaMetaQualityPendingSpinner: {
+    transform: "scale(0.72)",
+    transformOrigin: "center",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   mediaMetaQualityUnknown: {
     color: tokens.colorNeutralForeground3,
   },
@@ -1162,6 +1397,75 @@ const useStyles = makeStyles({
   },
   textViewerActions: {
     justifyContent: "flex-end",
+  },
+  jsonViewerSurface: {
+    width: "min(2200px, 99.5vw)",
+    maxWidth: "99.5vw",
+    height: "96vh",
+    maxHeight: "96vh",
+    padding: "14px",
+  },
+  jsonViewerBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    height: "100%",
+    minHeight: 0,
+  },
+  jsonViewerArea: {
+    flex: 1,
+    minHeight: 0,
+    fontFamily:
+      '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase300,
+    "& textarea": {
+      minHeight: "78vh",
+      height: "100%",
+      fontFamily:
+        '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase300,
+    },
+  },
+  supplierEditorSurface: {
+    width: "min(560px, 92vw)",
+    padding: "14px",
+  },
+  supplierEditorBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  productNoteDialogSurface: {
+    width: "min(560px, 92vw)",
+    padding: "14px",
+  },
+  productNoteDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  productNoteCurrentWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  productNoteCurrentText: {
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    padding: "8px 10px",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    maxHeight: "150px",
+    overflow: "auto",
+  },
+  productNoteTextarea: {
+    "& textarea": {
+      minHeight: "92px",
+      height: "92px",
+    },
   },
   photopeaSurface: {
     width: "min(1500px, 94vw)",
@@ -1461,12 +1765,9 @@ const useStyles = makeStyles({
   filesUploadRow: {
     marginTop: "10px",
     display: "grid",
-    gridTemplateColumns: "minmax(0, 50fr) minmax(0, 35fr) minmax(0, 15fr)",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gap: "10px",
     alignItems: "stretch",
-    "@media (max-width: 960px)": {
-      gridTemplateColumns: "1fr",
-    },
   },
   uploadDropHint: {
     color: tokens.colorNeutralForeground3,
@@ -1524,6 +1825,59 @@ const useStyles = makeStyles({
     display: "flex",
     justifyContent: "flex-end",
     marginTop: "auto",
+  },
+  addImagesDialogSurface: {
+    width: "min(760px, 94vw)",
+    maxWidth: "94vw",
+    padding: "14px",
+  },
+  addImagesDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  addImagesDialogSection: {
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    padding: "12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  addImagesDialogDropZone: {
+    borderRadius: "10px",
+    border: `1px dashed ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    color: tokens.colorNeutralForeground3,
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minHeight: "140px",
+    padding: "12px",
+    justifyContent: "space-between",
+  },
+  addImagesDialogDropZoneActive: {
+    border: `1px dashed ${tokens.colorBrandStroke1}`,
+    backgroundColor: tokens.colorBrandBackground2,
+    color: tokens.colorBrandForeground1,
+  },
+  addImagesDialogFileList: {
+    margin: 0,
+    paddingLeft: "18px",
+    maxHeight: "124px",
+    overflowY: "auto",
+    color: tokens.colorNeutralForeground2,
+  },
+  addImagesDialogFileItem: {
+    lineHeight: tokens.lineHeightBase200,
+    fontSize: tokens.fontSizeBase100,
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+  },
+  addImagesDialogActions: {
+    justifyContent: "flex-end",
   },
   previewDialog: {
     width: "min(900px, 95vw)",
@@ -1712,6 +2066,179 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground2,
+  },
+  aiDualSurface: {
+    width: "min(980px, 96vw)",
+    padding: "14px",
+  },
+  aiDualBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  aiDualGrid: {
+    display: "grid",
+    gap: "12px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    "@media (max-width: 880px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  aiDualCard: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    cursor: "grab",
+    userSelect: "none",
+  },
+  aiDualCardDropTarget: {
+    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+  },
+  aiDualCardDragging: {
+    opacity: 0.6,
+  },
+  aiDualCardTitle: {
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  aiDualCardHint: {
+    color: tokens.colorNeutralForeground3,
+  },
+  aiDualPreviewFrame: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    minHeight: "220px",
+    borderRadius: "10px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiDualPreviewImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    backgroundColor: "#ffffff",
+  },
+  aiDualSwapRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "8px",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  aiCollectionSurface: {
+    width: "min(980px, 96vw)",
+    padding: "14px",
+  },
+  aiCollectionBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  aiCollectionPreviewBox: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    padding: "12px",
+  },
+  aiCollectionGrid: {
+    display: "grid",
+    gap: "12px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  },
+  aiCollectionCard: {
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  aiCollectionCardTitle: {
+    color: tokens.colorNeutralForeground2,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  aiCollectionThumbFrame: {
+    width: "100%",
+    maxWidth: "300px",
+    aspectRatio: "1 / 1",
+    margin: "0 auto",
+    borderRadius: "8px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiCollectionThumbImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    backgroundColor: "#ffffff",
+  },
+  aiCollectionHint: {
+    color: tokens.colorNeutralForeground3,
+  },
+  aiMaskEditor: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  aiMaskStage: {
+    position: "relative",
+    width: "100%",
+    maxWidth: "500px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    overflow: "hidden",
+    marginInline: "auto",
+  },
+  aiMaskBaseImage: {
+    display: "block",
+    width: "100%",
+    height: "auto",
+    maxHeight: "500px",
+    objectFit: "contain",
+    userSelect: "none",
+    pointerEvents: "none",
+  },
+  aiMaskCanvas: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    touchAction: "none",
+    cursor: "none",
+  },
+  aiMaskCursor: {
+    position: "absolute",
+    pointerEvents: "none",
+    borderRadius: "999px",
+    border: "1px solid rgba(36, 116, 255, 0.95)",
+    backgroundColor: "rgba(36, 116, 255, 0.5)",
+    boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.35)",
+    zIndex: 4,
+    transform: "translate(-50%, -50%)",
+  },
+  aiMaskToolbar: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  aiMaskBrushSlider: {
+    width: "100%",
+  },
+  aiMaskHint: {
+    color: tokens.colorNeutralForeground3,
   },
   aiCompareSurface: {
     width: "70vw",
@@ -1905,6 +2432,53 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground3,
     },
   },
+  supplierSplitGroup: {
+    display: "inline-flex",
+    alignItems: "stretch",
+    maxWidth: "100%",
+  },
+  supplierLinkButton: {
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    minHeight: "24px",
+    height: "24px",
+    maxHeight: "24px",
+  },
+  supplierMenuButton: {
+    minWidth: "24px",
+    width: "24px",
+    minHeight: "24px",
+    height: "24px",
+    maxHeight: "24px",
+    paddingLeft: 0,
+    paddingRight: 0,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    marginLeft: "-1px",
+  },
+  supplierMenuPopover: {
+    padding: "2px",
+  },
+  supplierMenuList: {
+    paddingTop: 0,
+    paddingBottom: 0,
+    minWidth: "104px",
+    "& [role='menuitem']": {
+      minHeight: "24px",
+      paddingTop: "3px",
+      paddingBottom: "3px",
+      paddingLeft: "8px",
+      paddingRight: "8px",
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase200,
+    },
+  },
+  supplierMenuIcon: {
+    width: "12px",
+    height: "12px",
+    flexShrink: 0,
+    opacity: 0.85,
+  },
   tableActionButtonCompleted: {
     backgroundColor: "#e7f5e8",
     ":hover": {
@@ -1922,6 +2496,50 @@ const useStyles = makeStyles({
     maxWidth: "44px",
     paddingLeft: "6px",
     paddingRight: "6px",
+  },
+  selectionCheckbox: {
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    padding: 0,
+    boxSizing: "border-box",
+    "& .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+      color: "transparent",
+    },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator, &[aria-checked='true'] .fui-Checkbox__indicator, &[aria-checked='mixed'] .fui-Checkbox__indicator":
+      {
+        backgroundColor: tokens.colorBrandBackground,
+        color: "#ffffff",
+      },
+    "& .fui-Checkbox__input:checked:hover + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate:hover + .fui-Checkbox__indicator, &[aria-checked='true']:hover .fui-Checkbox__indicator, &[aria-checked='mixed']:hover .fui-Checkbox__indicator":
+      {
+        backgroundColor: tokens.colorBrandBackgroundHover,
+      },
+    "& .fui-Checkbox__input:checked:active + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate:active + .fui-Checkbox__indicator, &[aria-checked='true']:active .fui-Checkbox__indicator, &[aria-checked='mixed']:active .fui-Checkbox__indicator":
+      {
+        backgroundColor: tokens.colorBrandBackgroundPressed,
+      },
+    "& .fui-Checkbox__input:disabled + .fui-Checkbox__indicator, &[aria-disabled='true'] .fui-Checkbox__indicator":
+      {
+        backgroundColor: tokens.colorNeutralBackgroundDisabled,
+        color: tokens.colorNeutralForegroundDisabled,
+      },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator svg, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator svg, &[aria-checked='true'] .fui-Checkbox__indicator svg, &[aria-checked='mixed'] .fui-Checkbox__indicator svg":
+      {
+        color: "#ffffff",
+        fill: "#ffffff",
+      },
+    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator path, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator path, &[aria-checked='true'] .fui-Checkbox__indicator path, &[aria-checked='mixed'] .fui-Checkbox__indicator path":
+      {
+        stroke: "#ffffff",
+        fill: "#ffffff",
+      },
+    ":hover": {
+      backgroundColor: "transparent",
+    },
+    ":active": {
+      backgroundColor: "transparent",
+    },
   },
   spuCol: {
     width: "140px",
@@ -1962,6 +2580,10 @@ const useStyles = makeStyles({
   detailsCol: {
     width: "90px",
     maxWidth: "90px",
+  },
+  jsonCol: {
+    width: "98px",
+    maxWidth: "98px",
   },
   numericCell: {
     textAlign: "right",
@@ -2326,6 +2948,9 @@ const stripHtml = (value: string | null | undefined) => {
   return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 };
 
+const getShortTitleLabel = (value: string | null | undefined) =>
+  stripHtml(value).replace(/\s+/g, " ").trim();
+
 const getRawValue = (raw: Record<string, unknown> | null | undefined, key: string) => {
   if (!raw || typeof raw !== "object") return "";
   const value = (raw as Record<string, unknown>)[key];
@@ -2334,6 +2959,22 @@ const getRawValue = (raw: Record<string, unknown> | null | undefined, key: strin
 
 const normalizeDraftRelativePath = (value: string) =>
   value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\.\.+/g, "");
+
+const normalizeExplorerLocationPath = (value: string) =>
+  normalizeDraftRelativePath(String(value || "").trim()).replace(/^\/+|\/+$/g, "");
+
+const parseRunFromExplorerPath = (pathValue: string) => {
+  const normalizedPath = normalizeExplorerLocationPath(pathValue);
+  if (!normalizedPath) return "";
+  const parts = normalizedPath.split("/").filter(Boolean);
+  return String(parts[0] || "").trim();
+};
+
+const normalizeDraftSpuCode = (value: string) =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .toUpperCase();
 
 const tryExtractDraftRelativePath = (value: string | null | undefined) => {
   const raw = String(value || "").trim();
@@ -2456,7 +3097,9 @@ const splitFileNameAndExtension = (fileName: string) => {
 
 const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
 type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
-const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "TAG IMAGE"] as const;
+const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "ENF", "TAG IMAGE"] as const;
+const IMAGE_TAG_MATCH_REGEX =
+  /(?:\(\s*(MAIN|ENV|VAR|INF|ENF|DIGI)\s*\)|(?:^|[-_ ])(MAIN|ENV|VAR|INF|ENF|DIGI)(?=$|[-_ .)]))/gi;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2467,13 +3110,23 @@ const stripTrailingImageTagSuffixes = (baseName: string) => {
   while (changed) {
     changed = false;
     TAG_IMAGE_SUFFIXES_TO_STRIP.forEach((tagValue) => {
-      const pattern = new RegExp(
+      const parenPattern = new RegExp(
         `\\s*\\(${escapeRegExp(tagValue)}\\)\\s*$`,
         "i"
       );
-      const replaced = nextBase.replace(pattern, "").trim();
-      if (replaced !== nextBase) {
-        nextBase = replaced;
+      const tokenPattern = new RegExp(
+        `(?:[-_ ]+${escapeRegExp(tagValue).replace(/\\ /g, "[-_ ]+")})\\s*$`,
+        "i"
+      );
+      const strippedParen = nextBase.replace(parenPattern, "").trim();
+      if (strippedParen !== nextBase) {
+        nextBase = strippedParen;
+        changed = true;
+        return;
+      }
+      const strippedToken = nextBase.replace(tokenPattern, "").trim();
+      if (strippedToken !== nextBase) {
+        nextBase = strippedToken;
         changed = true;
       }
     });
@@ -2500,10 +3153,14 @@ const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
 };
 
 const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
-  const matches = String(fileName || "").match(/\((MAIN|ENV|VAR|INF|DIGI)\)/gi) ?? [];
   const ordered: ImageTagOption[] = [];
-  matches.forEach((value) => {
-    const normalized = value.replace(/[()]/g, "").trim().toUpperCase();
+  const source = String(fileName || "");
+  for (const match of source.matchAll(IMAGE_TAG_MATCH_REGEX)) {
+    const normalizedRaw = String(match[1] || match[2] || "")
+      .trim()
+      .toUpperCase();
+    const normalized = normalizedRaw === "ENF" ? "INF" : normalizedRaw;
+    if (!normalized) continue;
     if (
       (normalized === "MAIN" ||
         normalized === "ENV" ||
@@ -2514,18 +3171,52 @@ const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
     ) {
       ordered.push(normalized as ImageTagOption);
     }
-  });
+  }
   return normalizeImageTags(ordered);
 };
 
-const getImageTagSortRank = (fileName: string) => {
-  const tags = extractImageTagsFromFileName(fileName);
-  if (tags.includes("MAIN")) return 0;
-  if (tags.length === 0) return 1;
-  if (tags.includes("DIGI")) return 5;
+const getWhiteSignalsFromEntry = (entry: DraftEntry) => {
+  const whiteSidesRaw = Number(entry.whiteSides);
+  const whiteSides = Number.isFinite(whiteSidesRaw) ? whiteSidesRaw : 0;
+  const borderWhiteDensityRaw = Number(entry.borderWhiteDensity);
+  const borderWhiteDensity = Number.isFinite(borderWhiteDensityRaw)
+    ? borderWhiteDensityRaw
+    : 0;
+  return { whiteSides, borderWhiteDensity };
+};
+
+const isWhiteBackgroundPriorityImage = (entry: DraftEntry) => {
+  const { whiteSides, borderWhiteDensity } = getWhiteSignalsFromEntry(entry);
+  return whiteSides >= 4 || borderWhiteDensity >= 0.97;
+};
+
+const isWhiteBorderPriorityImage = (entry: DraftEntry) => {
+  const { whiteSides, borderWhiteDensity } = getWhiteSignalsFromEntry(entry);
+  const whiteBorderBySides = whiteSides >= 2 && whiteSides < 4;
+  const whiteBorderByDensity = borderWhiteDensity >= 0.88 && borderWhiteDensity < 0.97;
+  return whiteBorderBySides || whiteBorderByDensity;
+};
+
+const getTagGroupSortRank = (tags: ImageTagOption[]) => {
+  // Tagged section order:
+  // INF/ENF -> ENV -> DIGI -> VAR
+  if (tags.includes("INF")) return 1;
   if (tags.includes("ENV")) return 2;
-  if (tags.includes("INF")) return 3;
+  if (tags.includes("DIGI")) return 3;
   if (tags.includes("VAR")) return 4;
+  return 0;
+};
+
+const getImagePrimarySortRank = (entry: DraftEntry) => {
+  const tags = extractImageTagsFromFileName(entry.name);
+  if (tags.includes("MAIN")) return 0;
+  // White-priority is only for untagged images after MAIN.
+  if (tags.length === 0) {
+    if (isWhiteBackgroundPriorityImage(entry)) return 1;
+    if (isWhiteBorderPriorityImage(entry)) return 2;
+    return 3;
+  }
+  // Tagged images come after all untagged buckets.
   return 4;
 };
 
@@ -2537,8 +3228,48 @@ const buildTaggedImageOrderPaths = (imageEntries: DraftEntry[]) => {
 
   return [...imageEntries]
     .sort((left, right) => {
-      const rankDiff = getImageTagSortRank(left.name) - getImageTagSortRank(right.name);
+      const leftPrimaryRank = getImagePrimarySortRank(left);
+      const rightPrimaryRank = getImagePrimarySortRank(right);
+      const rankDiff = leftPrimaryRank - rightPrimaryRank;
       if (rankDiff !== 0) return rankDiff;
+
+      if (leftPrimaryRank === 4 && rightPrimaryRank === 4) {
+        const leftTagRank = getTagGroupSortRank(extractImageTagsFromFileName(left.name));
+        const rightTagRank = getTagGroupSortRank(extractImageTagsFromFileName(right.name));
+        if (leftTagRank !== rightTagRank) {
+          return leftTagRank - rightTagRank;
+        }
+      }
+
+      const leftWhiteSides = Number.isFinite(Number(left.whiteSides))
+        ? Number(left.whiteSides)
+        : 0;
+      const rightWhiteSides = Number.isFinite(Number(right.whiteSides))
+        ? Number(right.whiteSides)
+        : 0;
+      if (leftWhiteSides !== rightWhiteSides) {
+        return rightWhiteSides - leftWhiteSides;
+      }
+
+      const leftBorderDensity = Number.isFinite(Number(left.borderWhiteDensity))
+        ? Number(left.borderWhiteDensity)
+        : 0;
+      const rightBorderDensity = Number.isFinite(Number(right.borderWhiteDensity))
+        ? Number(right.borderWhiteDensity)
+        : 0;
+      if (leftBorderDensity !== rightBorderDensity) {
+        return rightBorderDensity - leftBorderDensity;
+      }
+
+      const leftQualityScore = Number.isFinite(Number(left.pixelQualityScore))
+        ? Number(left.pixelQualityScore)
+        : -1;
+      const rightQualityScore = Number.isFinite(Number(right.pixelQualityScore))
+        ? Number(right.pixelQualityScore)
+        : -1;
+      if (leftQualityScore !== rightQualityScore) {
+        return rightQualityScore - leftQualityScore;
+      }
 
       const leftIndex = originalOrder.get(left.path) ?? 0;
       const rightIndex = originalOrder.get(right.path) ?? 0;
@@ -2567,6 +3298,13 @@ const extractFileNameFromPath = (pathValue: string) => {
   } catch {
     return tail;
   }
+};
+
+const getParentFolderPathFromEntryPath = (pathValue: string) => {
+  const parts = String(pathValue || "").split("/").filter(Boolean);
+  if (parts.length <= 1) return "";
+  parts.pop();
+  return parts.join("/");
 };
 
 const buildStableImageCardKey = (entry: DraftEntry) => {
@@ -2638,6 +3376,20 @@ const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
 
 const USE_NEW_FILE_EXPLORER = true;
 const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
+const UNSEEN_AI_UPDATES_STORAGE_KEY = "draftExplorer.unseenAiUpdatesBySpu.v1";
+
+const getSpuRootFromDraftPath = (pathValue: string) => {
+  const normalized = String(pathValue || "").trim().replace(/^\/+|\/+$/g, "");
+  if (!normalized) return "";
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length < 2) return "";
+  const run = String(parts[0] || "").trim();
+  const spu = String(parts[1] || "").trim();
+  if (!run || !spu) return "";
+  const normalizedSpu = spu.toLowerCase().replace(/[\s_-]+/g, "");
+  if (normalizedSpu === "chunks") return "";
+  return `${run}/${spu}`;
+};
 
 const estimateExpandedInputWidthPx = (
   value: string,
@@ -2706,7 +3458,15 @@ export default function DraftExplorerPage() {
   const [currentPath, setCurrentPath] = useState<string>("");
   const [batchPickerOpen, setBatchPickerOpen] = useState(false);
   const [spuPickerOpen, setSpuPickerOpen] = useState(false);
+  const [explorerActionsMenuOpen, setExplorerActionsMenuOpen] = useState(false);
+  const [imageActionsMenuOpen, setImageActionsMenuOpen] = useState(false);
   const [runSpuOptions, setRunSpuOptions] = useState<RunSpuOption[]>([]);
+  const [runSpuStatusByPath, setRunSpuStatusByPath] = useState<
+    Record<string, RunSpuStatus>
+  >({});
+  const [unseenAiUpdateSpuPaths, setUnseenAiUpdateSpuPaths] = useState<Set<string>>(
+    new Set()
+  );
   const [selectedRunsForMerge, setSelectedRunsForMerge] = useState<Set<string>>(
     new Set()
   );
@@ -2739,6 +3499,11 @@ export default function DraftExplorerPage() {
   });
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
+  const [pendingImageScorePaths, setPendingImageScorePaths] = useState<Set<string>>(
+    new Set()
+  );
+  const [mainImageViewFilter, setMainImageViewFilter] =
+    useState<MainImageViewFilter>("all");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [completedSpuFolders, setCompletedSpuFolders] = useState<Set<string>>(
     new Set()
@@ -2759,6 +3524,7 @@ export default function DraftExplorerPage() {
   const [folderTree, setFolderTree] = useState<DraftFolderTreeNode | null>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
   const [folderTreeHidden, setFolderTreeHidden] = useState(true);
+  const [filesPaneHidden, setFilesPaneHidden] = useState(true);
   const [movingEntry, setMovingEntry] = useState(false);
   const [draggingEntryPaths, setDraggingEntryPaths] = useState<string[]>([]);
   const [folderDropTargetPath, setFolderDropTargetPath] = useState<string | null>(
@@ -2775,9 +3541,11 @@ export default function DraftExplorerPage() {
     "tag-image" | "edit-chatgpt" | "edit-gemini" | null
   >(null);
   const [contextMenuNestedSubmenu, setContextMenuNestedSubmenu] = useState<
-    | "chatgpt-digideal"
+    | "chatgpt-digideal-single"
+    | "chatgpt-digideal-dual"
     | "chatgpt-scene"
-    | "gemini-digideal"
+    | "gemini-digideal-single"
+    | "gemini-digideal-dual"
     | "gemini-scene"
     | null
   >(null);
@@ -2796,8 +3564,39 @@ export default function DraftExplorerPage() {
     useState<AiTemplatePreset>("standard");
   const [aiEditOutputCount, setAiEditOutputCount] = useState(1);
   const [aiEditPrompt, setAiEditPrompt] = useState("");
+  const [aiEraserRunMode, setAiEraserRunMode] = useState<"prompt" | "mask">("prompt");
   const [aiEditSubmitting, setAiEditSubmitting] = useState(false);
   const [aiEditError, setAiEditError] = useState<string | null>(null);
+  const [aiDualDialog, setAiDualDialog] = useState<AiDualDialogState | null>(null);
+  const [aiDualPrompt, setAiDualPrompt] = useState("");
+  const [aiDualSubmitting, setAiDualSubmitting] = useState(false);
+  const [aiDualError, setAiDualError] = useState<string | null>(null);
+  const [aiDualDragRole, setAiDualDragRole] = useState<"product" | "guidance" | null>(
+    null
+  );
+  const [aiCollectionDialog, setAiCollectionDialog] =
+    useState<AiCollectionDialogState | null>(null);
+  const [aiCollectionPrompt, setAiCollectionPrompt] = useState("");
+  const [aiCollectionSubmitting, setAiCollectionSubmitting] = useState(false);
+  const [aiCollectionError, setAiCollectionError] = useState<string | null>(null);
+  const [aiMaskBrushSize, setAiMaskBrushSize] = useState(36);
+  const [aiMaskHasPaint, setAiMaskHasPaint] = useState(false);
+  const [aiMaskCursor, setAiMaskCursor] = useState<{
+    x: number;
+    y: number;
+    size: number;
+    visible: boolean;
+  }>({
+    x: 0,
+    y: 0,
+    size: 18,
+    visible: false,
+  });
+  const aiMaskImageRef = useRef<HTMLImageElement | null>(null);
+  const aiMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const aiMaskDrawingRef = useRef(false);
+  const aiMaskPointerIdRef = useRef<number | null>(null);
+  const aiMaskLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const [aiEditJobsByPath, setAiEditJobsByPath] = useState<Record<string, AiEditRuntimeJob>>(
     {}
   );
@@ -2835,9 +3634,16 @@ export default function DraftExplorerPage() {
     src: string;
     label: string;
   } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const [addImagesDialogOpen, setAddImagesDialogOpen] = useState(false);
+  const [addImagesDialogDragActive, setAddImagesDialogDragActive] = useState(false);
+  const [addImagesDialogFiles, setAddImagesDialogFiles] = useState<File[]>([]);
+  const [addImagesSubmitting, setAddImagesSubmitting] = useState(false);
+  const addImagesFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importEditsDialogOpen, setImportEditsDialogOpen] = useState(false);
+  const [importEditsSubmitting, setImportEditsSubmitting] = useState(false);
+  const importEditsExcelInputRef = useRef<HTMLInputElement | null>(null);
+  const importEditsZipInputRef = useRef<HTMLInputElement | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState("");
-  const [addingImageUrls, setAddingImageUrls] = useState(false);
   const [explorerView, setExplorerView] = useState<"list" | "grid">("list");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -2866,6 +3672,7 @@ export default function DraftExplorerPage() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [spuRows, setSpuRows] = useState<DraftSpuRow[]>([]);
   const [skuRows, setSkuRows] = useState<DraftSkuRow[]>([]);
+  const [skuBadgeCountPrefetch, setSkuBadgeCountPrefetch] = useState<number>(0);
   const [draftTableShowAll, setDraftTableShowAll] = useState(false);
   const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -2873,6 +3680,14 @@ export default function DraftExplorerPage() {
   const [, setIsSaving] = useState(false);
   const [selectedSpus, setSelectedSpus] = useState<Set<string>>(new Set());
   const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [productNotesByKey, setProductNotesByKey] = useState<
+    Record<string, DraftProductFlagNote | null>
+  >({});
+  const [productNoteDialogOpen, setProductNoteDialogOpen] = useState(false);
+  const [productNoteValue, setProductNoteValue] = useState("");
+  const [productNoteLoading, setProductNoteLoading] = useState(false);
+  const [productNoteSaving, setProductNoteSaving] = useState(false);
+  const [productNoteError, setProductNoteError] = useState<string | null>(null);
   const [deleteRowsPending, setDeleteRowsPending] = useState(false);
   const [duplicateRolesPending, setDuplicateRolesPending] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -2886,7 +3701,20 @@ export default function DraftExplorerPage() {
   const [detailInstruction, setDetailInstruction] = useState("");
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailRegenerating, setDetailRegenerating] = useState(false);
+  const [detailBackgroundRegeneratingRowIds, setDetailBackgroundRegeneratingRowIds] =
+    useState<Set<string>>(new Set());
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [spuJsonViewer, setSpuJsonViewer] = useState<SpuJsonViewerState | null>(
+    null
+  );
+  const [supplierEditorOpen, setSupplierEditorOpen] = useState(false);
+  const [supplierEditorRowId, setSupplierEditorRowId] = useState<string | null>(null);
+  const [supplierEditorSpu, setSupplierEditorSpu] = useState("");
+  const [supplierEditorValue, setSupplierEditorValue] = useState("");
+  const [supplierEditorSaving, setSupplierEditorSaving] = useState(false);
+  const [supplierEditorError, setSupplierEditorError] = useState<string | null>(
+    null
+  );
   const [publishStatus, setPublishStatus] = useState<
     "idle" | "running" | "done" | "error"
   >("idle");
@@ -2924,12 +3752,24 @@ export default function DraftExplorerPage() {
   });
   const [initialOpenSpu, setInitialOpenSpu] = useState("");
   const pendingFolderOpenPathRef = useRef<string | null>(null);
+  const initialUrlStateRef = useRef<DraftExplorerUrlState | null>(null);
+  const initialUrlStateParsedRef = useRef(false);
+  const initialUrlShowAllPendingRef = useRef(false);
   const initialOpenSpuHandledRef = useRef(false);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
   const currentPathRef = useRef("");
+  const currentMainPathRef = useRef("");
+  const currentVariantsPathRef = useRef("");
   const previousSelectedSpuPathForDraftTableRef = useRef("");
+  const previousRunSpuPendingAiByPathRef = useRef<Record<string, boolean>>({});
+  const autoMainSortPersistSignatureRef = useRef("");
+  const imageOrderSaveQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+  const entriesRequestSeqRef = useRef(0);
+  const variantEntriesCacheRef = useRef<Map<string, DraftEntry[]>>(new Map());
 
   const tagImagesRunning = tagImagesRunningPaths.size > 0;
+  const hasPendingDetailAiRewrite =
+    detailRegenerating || detailBackgroundRegeneratingRowIds.size > 0;
   const tagImagesRunningInCurrentPath = useMemo(() => {
     const pathValue = String(currentPath || "").trim();
     return Boolean(pathValue && tagImagesRunningPaths.has(pathValue));
@@ -2960,6 +3800,93 @@ export default function DraftExplorerPage() {
       // ignore storage failures
     }
   }, [completedSpuFolders]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(UNSEEN_AI_UPDATES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      const paths = parsed
+        .map((value) => getSpuRootFromDraftPath(String(value || "")))
+        .filter((value) => Boolean(value));
+      setUnseenAiUpdateSpuPaths(new Set(paths));
+    } catch {
+      // ignore bad local storage payloads
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        UNSEEN_AI_UPDATES_STORAGE_KEY,
+        JSON.stringify(Array.from(unseenAiUpdateSpuPaths))
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, [unseenAiUpdateSpuPaths]);
+
+  const markSpuNeedsAiReview = useCallback((pathValues: string[] | string) => {
+    const values = Array.isArray(pathValues) ? pathValues : [pathValues];
+    const currentViewedSpuPath = getSpuRootFromDraftPath(
+      String(currentPathRef.current || "")
+    );
+    const normalized = Array.from(
+      new Set(
+        values
+          .map((value) => getSpuRootFromDraftPath(String(value || "")))
+          .filter((value) => Boolean(value) && value !== currentViewedSpuPath)
+      )
+    );
+    if (normalized.length === 0) return;
+    setUnseenAiUpdateSpuPaths((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      normalized.forEach((pathValue) => {
+        if (!next.has(pathValue)) {
+          next.add(pathValue);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    setRunSpuStatusByPath((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      normalized.forEach((pathValue) => {
+        const currentStatus = next[pathValue];
+        if (!currentStatus) return;
+        if (!currentStatus.hasUnseenAiUpdate) {
+          next[pathValue] = { ...currentStatus, hasUnseenAiUpdate: true };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const clearSpuNeedsAiReview = useCallback((pathValue: string) => {
+    const spuPath = getSpuRootFromDraftPath(pathValue);
+    if (!spuPath) return;
+    setUnseenAiUpdateSpuPaths((prev) => {
+      if (!prev.has(spuPath)) return prev;
+      const next = new Set(prev);
+      next.delete(spuPath);
+      return next;
+    });
+    setRunSpuStatusByPath((prev) => {
+      const currentStatus = prev[spuPath];
+      if (!currentStatus?.hasUnseenAiUpdate) return prev;
+      return {
+        ...prev,
+        [spuPath]: {
+          ...currentStatus,
+          hasUnseenAiUpdate: false,
+        },
+      };
+    });
+  }, []);
 
   const imageExtensions = useMemo(
     () => [".png", ".jpg", ".jpeg", ".webp", ".gif"],
@@ -3212,11 +4139,45 @@ export default function DraftExplorerPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedSpu =
-      String(params.get("open_spu") || params.get("spu") || "").trim();
-    if (!requestedSpu) return;
-    setDraftTab("spu");
-    setInitialOpenSpu(requestedSpu.toUpperCase());
+    const requestedTabRaw = String(params.get("tab") || "").trim().toLowerCase();
+    const requestedTab =
+      requestedTabRaw === "spu" || requestedTabRaw === "sku" ? requestedTabRaw : "";
+    const requestedRun = normalizeExplorerLocationPath(params.get("run") || "");
+    const requestedPath = normalizeExplorerLocationPath(params.get("path") || "");
+    const requestedSpu = normalizeDraftSpuCode(params.get("spu") || "");
+    const requestedOpenSpu = normalizeDraftSpuCode(params.get("open_spu") || "");
+    const requestedSpuCode = requestedSpu || requestedOpenSpu;
+    const runFromPath = parseRunFromExplorerPath(requestedPath);
+    const resolvedRun = requestedRun || runFromPath;
+    const showAllRaw = String(
+      params.get("showAll") || params.get("show_all") || ""
+    )
+      .trim()
+      .toLowerCase();
+    const requestedShowAll =
+      showAllRaw === "1" || showAllRaw === "true" || showAllRaw === "yes";
+
+    initialUrlStateRef.current = {
+      run: resolvedRun,
+      spu: requestedSpuCode,
+      path: requestedPath,
+      tab: requestedTab,
+      showAll: requestedShowAll,
+    };
+    initialUrlStateParsedRef.current = true;
+    initialUrlShowAllPendingRef.current = requestedShowAll;
+
+    if (requestedTab) {
+      setDraftTab(requestedTab);
+    }
+
+    const shouldResolveSpuByRowLookup = Boolean(requestedSpuCode && !resolvedRun && !requestedPath);
+    if (shouldResolveSpuByRowLookup) {
+      if (!requestedTab) {
+        setDraftTab("spu");
+      }
+      setInitialOpenSpu(requestedSpuCode);
+    }
   }, []);
 
   useEffect(() => {
@@ -3232,6 +4193,13 @@ export default function DraftExplorerPage() {
     setSelectedSkus(new Set());
     setExpandedSkus(new Set());
     setDraftTableShowAll(false);
+  }, [selectedFolder]);
+
+  useEffect(() => {
+    if (!initialUrlShowAllPendingRef.current) return;
+    if (!selectedFolder) return;
+    setDraftTableShowAll(true);
+    initialUrlShowAllPendingRef.current = false;
   }, [selectedFolder]);
 
   useEffect(() => {
@@ -3268,6 +4236,15 @@ export default function DraftExplorerPage() {
     return () => clearTimeout(handle);
   }, [skuStatus, skuMessage]);
 
+  useEffect(() => {
+    if (publishStatus !== "done" || !publishMessage) return;
+    const handle = setTimeout(() => {
+      setPublishMessage(null);
+      setPublishStatus((prev) => (prev === "done" ? "idle" : prev));
+    }, 2500);
+    return () => clearTimeout(handle);
+  }, [publishMessage, publishStatus]);
+
   const currentImageSpuForDraftFilter = useMemo(() => {
     const run = String(selectedFolder || "").trim();
     const pathValue = String(currentPath || "").trim();
@@ -3284,6 +4261,126 @@ export default function DraftExplorerPage() {
 
   const draftTableSpuFilterActive =
     Boolean(currentImageSpuForDraftFilter) && !draftTableShowAll;
+
+  const activeNoteRun = String(selectedFolder || "").trim();
+  const activeNoteSpu = String(currentImageSpuForDraftFilter || "")
+    .trim()
+    .toUpperCase();
+  const activeProductNoteKey =
+    activeNoteRun && activeNoteSpu ? `${activeNoteRun}::${activeNoteSpu}` : "";
+  const activeProductNote = activeProductNoteKey
+    ? productNotesByKey[activeProductNoteKey] ?? null
+    : null;
+  const hasActiveProductNote = Boolean(
+    activeProductNote && String(activeProductNote.note || "").trim()
+  );
+
+  const loadActiveProductNote = useCallback(async () => {
+    if (!activeNoteRun || !activeNoteSpu) {
+      return null;
+    }
+    const key = `${activeNoteRun}::${activeNoteSpu}`;
+    try {
+      const url = new URL("/api/drafts/notes", window.location.origin);
+      url.searchParams.set("run", activeNoteRun);
+      url.searchParams.set("spu", activeNoteSpu);
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text) as { error?: string; message?: string };
+          message = parsed?.error || parsed?.message || message;
+        } catch {
+          // Keep raw response text.
+        }
+        throw new Error(message || "Unable to load product note.");
+      }
+      const payload = (await response.json()) as { note?: DraftProductFlagNote | null };
+      const nextNote =
+        payload && payload.note && typeof payload.note === "object"
+          ? payload.note
+          : null;
+      setProductNotesByKey((prev) => ({ ...prev, [key]: nextNote }));
+      return nextNote;
+    } catch (err) {
+      setProductNoteError((err as Error).message);
+      return null;
+    }
+  }, [activeNoteRun, activeNoteSpu]);
+
+  const openProductNoteDialog = useCallback(async () => {
+    if (!activeNoteRun || !activeNoteSpu) return;
+    setProductNoteError(null);
+    setProductNoteLoading(true);
+    setProductNoteDialogOpen(true);
+    const loaded = await loadActiveProductNote();
+    const fallback = activeProductNoteKey ? productNotesByKey[activeProductNoteKey] : null;
+    setProductNoteValue(String((loaded ?? fallback)?.note || ""));
+    setProductNoteLoading(false);
+  }, [
+    activeNoteRun,
+    activeNoteSpu,
+    activeProductNoteKey,
+    loadActiveProductNote,
+    productNotesByKey,
+  ]);
+
+  const closeProductNoteDialog = useCallback(() => {
+    if (productNoteSaving) return;
+    setProductNoteDialogOpen(false);
+    setProductNoteError(null);
+  }, [productNoteSaving]);
+
+  const saveProductNote = useCallback(async () => {
+    if (!activeNoteRun || !activeNoteSpu) return;
+    setProductNoteSaving(true);
+    setProductNoteError(null);
+    try {
+      const response = await fetch("/api/drafts/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run: activeNoteRun,
+          spu: activeNoteSpu,
+          note: productNoteValue,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text) as { error?: string; message?: string };
+          message = parsed?.error || parsed?.message || message;
+        } catch {
+          // Keep raw text.
+        }
+        throw new Error(message || "Unable to save note.");
+      }
+      const payload = (await response.json()) as { note?: DraftProductFlagNote | null };
+      const key = `${activeNoteRun}::${activeNoteSpu}`;
+      const nextNote =
+        payload && payload.note && typeof payload.note === "object"
+          ? payload.note
+          : null;
+      setProductNotesByKey((prev) => ({ ...prev, [key]: nextNote }));
+      setProductNoteDialogOpen(false);
+    } catch (err) {
+      setProductNoteError((err as Error).message);
+    } finally {
+      setProductNoteSaving(false);
+    }
+  }, [activeNoteRun, activeNoteSpu, productNoteValue]);
+
+  useEffect(() => {
+    setProductNoteError(null);
+    if (!activeNoteRun || !activeNoteSpu) return;
+    const key = `${activeNoteRun}::${activeNoteSpu}`;
+    if (Object.prototype.hasOwnProperty.call(productNotesByKey, key)) return;
+    loadActiveProductNote().catch(() => {
+      // Best effort in background.
+    });
+  }, [activeNoteRun, activeNoteSpu, loadActiveProductNote, productNotesByKey]);
 
   const visibleSpuRows = useMemo(() => {
     if (!draftTableSpuFilterActive) return spuRows;
@@ -3302,6 +4399,65 @@ export default function DraftExplorerPage() {
       (row) => String(row.draft_spu || "").trim().toUpperCase() === filterSpu
     );
   }, [currentImageSpuForDraftFilter, draftTableSpuFilterActive, skuRows]);
+
+  useEffect(() => {
+    if (draftTab === "sku") {
+      setSkuBadgeCountPrefetch(visibleSkuRows.length);
+      return;
+    }
+
+    const runFilter = String(selectedFolder || "").trim();
+    if (!runFilter) {
+      setSkuBadgeCountPrefetch(0);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchSkuBadgeCount = async () => {
+      try {
+        const url = new URL("/api/drafts/variants", window.location.origin);
+        url.searchParams.set("run", runFilter);
+        url.searchParams.set("countOnly", "1");
+        if (searchQuery) {
+          url.searchParams.set("q", searchQuery);
+        }
+        if (draftTableSpuFilterActive && currentImageSpuForDraftFilter) {
+          url.searchParams.set("spu", currentImageSpuForDraftFilter);
+        }
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          throw new Error("Unable to load SKU count.");
+        }
+        const payload = await response.json().catch(() => ({}));
+        const count =
+          typeof payload?.count === "number" && Number.isFinite(payload.count)
+            ? Math.max(0, Math.trunc(payload.count))
+            : 0;
+        if (!cancelled) {
+          setSkuBadgeCountPrefetch(count);
+        }
+      } catch {
+        if (!cancelled) {
+          setSkuBadgeCountPrefetch(0);
+        }
+      }
+    };
+
+    void fetchSkuBadgeCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentImageSpuForDraftFilter,
+    draftTab,
+    draftTableSpuFilterActive,
+    searchQuery,
+    selectedFolder,
+    visibleSkuRows.length,
+  ]);
+
+  const skuTabBadgeCount =
+    draftTab === "sku" ? visibleSkuRows.length : skuBadgeCountPrefetch;
 
   useEffect(() => {
     const visibleIds = new Set(visibleSpuRows.map((row) => row.id));
@@ -3395,7 +4551,7 @@ export default function DraftExplorerPage() {
       };
     };
 
-    const detailsLabel = t("draftExplorer.detailsButton");
+    const detailsLabel = "Edit";
     const viewLabel = "View";
 
     return {
@@ -3414,20 +4570,15 @@ export default function DraftExplorerPage() {
         sample.map((row) => row.draft_title ?? ""),
         { minPx: 180, maxPx: 560, contentPaddingPx: 12 }
       ),
-      status: makeStyle(
-        t("draftExplorer.columns.status"),
-        sample.map((row) => row.draft_status ?? ""),
-        { minPx: 90, maxPx: 150 }
-      ),
       source: makeStyle(
         t("draftExplorer.columns.source"),
         sample.map((row) => row.draft_source ?? ""),
         { minPx: 90, maxPx: 150 }
       ),
       supplier: makeStyle(
-        t("draftExplorer.columns.supplierUrl"),
-        sample.map((row) => row.draft_supplier_1688_url ?? ""),
-        { minPx: 130, maxPx: 360, contentPaddingPx: 8 }
+        "Supplier",
+        sample.map(() => "Supplier Link"),
+        { minPx: 126, maxPx: 170, headerAsMax: true }
       ),
       images: makeStyle(
         t("draftExplorer.columns.images"),
@@ -3436,7 +4587,9 @@ export default function DraftExplorerPage() {
       ),
       videos: makeStyle(
         t("draftExplorer.columns.videos"),
-        sample.map((row) => String(row.video_count ?? "")),
+        sample.map((row) =>
+          Number(row.video_count ?? 0) > 0 ? String(row.video_count) : "-"
+        ),
         { minPx: 68, maxPx: 110, headerAsMax: true }
       ),
       variants: makeStyle(
@@ -3455,9 +4608,14 @@ export default function DraftExplorerPage() {
         { minPx: 92, maxPx: 124, headerAsMax: true, contentPaddingPx: 12 }
       ),
       details: makeStyle(
-        t("draftExplorer.columns.details"),
+        "Descriptions",
         sample.map(() => detailsLabel),
         { minPx: 92, maxPx: 130, headerAsMax: true }
+      ),
+      json: makeStyle(
+        "JSON",
+        sample.map(() => "JSON File"),
+        { minPx: 94, maxPx: 130, headerAsMax: true }
       ),
     };
   }, [t, visibleSpuRows]);
@@ -3764,6 +4922,97 @@ export default function DraftExplorerPage() {
     fetchDetailImages(detailTarget);
   }, [detailOpen, detailTarget, fetchDetailImages]);
 
+  const handleOpenSpuJsonViewer = useCallback((row: DraftSpuRow) => {
+    const raw = row.draft_raw_row ?? {};
+    let content = "{}";
+    try {
+      content = JSON.stringify(raw, null, 2) || "{}";
+    } catch {
+      content = "{}";
+    }
+    setSpuJsonViewer({
+      spu: String(row.draft_spu || "").trim(),
+      content,
+    });
+  }, []);
+
+  const normalizeSupplierExternalUrl = useCallback((value: string | null | undefined) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    return `https://${trimmed}`;
+  }, []);
+
+  const handleOpenSupplierLink = useCallback(
+    (value: string | null | undefined) => {
+      const normalized = normalizeSupplierExternalUrl(value);
+      if (!normalized) {
+        setDraftError("Supplier URL is empty.");
+        return;
+      }
+      window.open(normalized, "_blank", "noopener,noreferrer");
+    },
+    [normalizeSupplierExternalUrl]
+  );
+
+  const openSupplierEditor = useCallback((row: DraftSpuRow) => {
+    setSupplierEditorRowId(row.id);
+    setSupplierEditorSpu(String(row.draft_spu || "").trim());
+    setSupplierEditorValue(String(row.draft_supplier_1688_url || ""));
+    setSupplierEditorError(null);
+    setSupplierEditorOpen(true);
+  }, []);
+
+  const closeSupplierEditor = useCallback(() => {
+    if (supplierEditorSaving) return;
+    setSupplierEditorOpen(false);
+    setSupplierEditorRowId(null);
+    setSupplierEditorSpu("");
+    setSupplierEditorValue("");
+    setSupplierEditorError(null);
+  }, [supplierEditorSaving]);
+
+  const handleSaveSupplierEditor = useCallback(async () => {
+    if (!supplierEditorRowId || supplierEditorSaving) return;
+    setSupplierEditorSaving(true);
+    setSupplierEditorError(null);
+    try {
+      const nextValueRaw = supplierEditorValue.trim();
+      const nextValue = nextValueRaw === "" ? null : nextValueRaw;
+      const response = await fetch("/api/drafts/products/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: supplierEditorRowId,
+          field: "draft_supplier_1688_url",
+          value: nextValue,
+        }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to update supplier URL.");
+      }
+      setSpuRows((prev) =>
+        prev.map((row) =>
+          row.id === supplierEditorRowId
+            ? { ...row, draft_supplier_1688_url: nextValue }
+            : row
+        )
+      );
+      setSupplierEditorOpen(false);
+      setSupplierEditorRowId(null);
+      setSupplierEditorSpu("");
+      setSupplierEditorValue("");
+      setSupplierEditorError(null);
+    } catch (err) {
+      setSupplierEditorError((err as Error).message);
+    } finally {
+      setSupplierEditorSaving(false);
+    }
+  }, [supplierEditorRowId, supplierEditorSaving, supplierEditorValue]);
+
   const skuReady =
     skuMissingCount !== null &&
     skuMissingCount === 0 &&
@@ -3772,6 +5021,13 @@ export default function DraftExplorerPage() {
   const handlePublishDrafts = async () => {
     if (draftTab !== "spu") return;
     setPublishMessage(null);
+    if (hasPendingDetailAiRewrite) {
+      setPublishStatus("error");
+      setPublishMessage(
+        "Wait for AI product description updates to finish before saving to database."
+      );
+      return;
+    }
     if (skuStatus === "running") {
       setPublishStatus("error");
       setPublishMessage(t("draftExplorer.publishBlockedSkuRunning"));
@@ -3783,36 +5039,44 @@ export default function DraftExplorerPage() {
       return;
     }
     setPublishStatus("running");
+    const runAtStart = String(selectedFolder || "").trim();
+    const currentPathAtStart = String(currentPath || "").trim();
+    const foldersAtStart = [...folders];
+    const runSpuOptionsAtStart = [...runSpuOptions];
+    const currentPathParts = currentPathAtStart.split("/").filter(Boolean);
+    const currentSpuPathAtStart =
+      runAtStart && currentPathParts.length >= 2 && currentPathParts[0] === runAtStart
+        ? `${currentPathParts[0]}/${currentPathParts[1]}`
+        : "";
+    const currentSpuAtStart = currentSpuPathAtStart.split("/")[1] ?? "";
     const selectedRows = visibleSpuRows.filter((row) => selectedSpus.has(row.id));
     const selectedSpuValues = selectedRows
       .map((row) => row.draft_spu)
       .filter(Boolean);
-    if (selectedSpuValues.length === 0) {
-      const confirmAll = window.confirm(
-        t("draftExplorer.publishConfirmAll")
+    const targetSpuValues = selectedSpuValues;
+    if (targetSpuValues.length === 0) {
+      setPublishStatus("error");
+      setPublishMessage(
+        "Select at least one SPU to save. Use Actions > Save to Database to publish a full draft folder."
       );
-      if (!confirmAll) {
-        setPublishStatus("idle");
-        return;
-      }
-    } else {
-      const confirmSelected = window.confirm(
-        t("draftExplorer.publishConfirmSelected", {
-          count: selectedSpuValues.length,
-        })
-      );
-      if (!confirmSelected) {
-        setPublishStatus("idle");
-        return;
-      }
+      return;
+    }
+
+    const confirmSelected = window.confirm(
+      t("draftExplorer.publishConfirmSelected", {
+        count: targetSpuValues.length,
+      })
+    );
+    if (!confirmSelected) {
+      setPublishStatus("idle");
+      return;
     }
     try {
       const response = await fetch("/api/drafts/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spus: selectedSpuValues.length ? selectedSpuValues : undefined,
-          publishAll: selectedSpuValues.length === 0,
+          spus: targetSpuValues,
         }),
       });
       if (!response.ok) {
@@ -3820,11 +5084,103 @@ export default function DraftExplorerPage() {
         throw new Error(message || "Publish failed.");
       }
       const payload = await response.json();
-      const count = Array.isArray(payload?.spus) ? payload.spus.length : 0;
+      const publishedSpus: string[] = Array.isArray(payload?.spus)
+        ? payload.spus
+            .map((entry: unknown) => String(entry || "").trim())
+            .filter(Boolean)
+        : [];
+      const publishedSpuSet = new Set(
+        publishedSpus.map((value) => value.toUpperCase())
+      );
+      const count = publishedSpus.length;
       setPublishMessage(t("draftExplorer.publishSuccess", { count }));
       setPublishStatus("done");
       setSelectedSpus(new Set());
-      fetchSpuRows();
+      await Promise.all([fetchSpuRows(), fetchSkuRows()]);
+      const refreshedFolders = (await fetchFolders()) ?? foldersAtStart;
+
+      const shouldAdvanceFromCurrentSpu =
+        Boolean(currentSpuAtStart) &&
+        publishedSpuSet.has(currentSpuAtStart.toUpperCase());
+
+      if (shouldAdvanceFromCurrentSpu) {
+        const isPublishedRunOption = (option: RunSpuOption) => {
+          const parts = String(option.path || "").split("/").filter(Boolean);
+          const spu = String(parts[1] || option.name || "").trim();
+          return Boolean(spu) && publishedSpuSet.has(spu.toUpperCase());
+        };
+
+        let nextSpuPath = "";
+        const currentRunSpuIndex = runSpuOptionsAtStart.findIndex(
+          (option) => option.path === currentSpuPathAtStart
+        );
+        if (currentRunSpuIndex >= 0) {
+          for (
+            let idx = currentRunSpuIndex + 1;
+            idx < runSpuOptionsAtStart.length;
+            idx += 1
+          ) {
+            const option = runSpuOptionsAtStart[idx];
+            if (!option?.path || isPublishedRunOption(option)) continue;
+            nextSpuPath = option.path;
+            break;
+          }
+        }
+        if (!nextSpuPath) {
+          nextSpuPath =
+            runSpuOptionsAtStart.find((option) => !isPublishedRunOption(option))
+              ?.path ?? "";
+        }
+
+        if (nextSpuPath) {
+          pendingFolderOpenPathRef.current = nextSpuPath;
+          setCurrentPath(nextSpuPath);
+          if (runAtStart) {
+            void fetchFolderTree(runAtStart);
+          }
+          return;
+        }
+
+        const refreshedSet = new Set(
+          refreshedFolders.map((folder) => folder.path)
+        );
+        const previousOrder = foldersAtStart.map((folder) => folder.path);
+        let nextRunPath = "";
+        const startIndex = previousOrder.indexOf(runAtStart);
+        if (startIndex >= 0) {
+          for (let idx = startIndex + 1; idx < previousOrder.length; idx += 1) {
+            const candidate = previousOrder[idx];
+            if (refreshedSet.has(candidate)) {
+              nextRunPath = candidate;
+              break;
+            }
+          }
+        }
+        if (!nextRunPath) {
+          nextRunPath =
+            refreshedFolders.find((folder) => folder.path !== runAtStart)?.path ??
+            refreshedFolders[0]?.path ??
+            "";
+        }
+
+        if (nextRunPath) {
+          await handleSelectFolder(nextRunPath);
+        } else {
+          setSelectedFolder("");
+          setCurrentPath("");
+          setEntries([]);
+          setFolderTree(null);
+        }
+        return;
+      }
+
+      if (currentPathAtStart) {
+        await refreshEntries(currentPathAtStart);
+        await fetchPendingAiEdits(currentPathAtStart);
+      }
+      if (runAtStart) {
+        await fetchFolderTree(runAtStart);
+      }
     } catch (err) {
       setPublishStatus("error");
       setPublishMessage((err as Error).message);
@@ -4042,7 +5398,15 @@ export default function DraftExplorerPage() {
       return;
     }
     const targetId = detailTarget.id;
+    const backgroundMode = mode === "close";
     setDetailRegenerating(true);
+    if (backgroundMode) {
+      setDetailBackgroundRegeneratingRowIds((prev) => {
+        const next = new Set(prev);
+        next.add(targetId);
+        return next;
+      });
+    }
     setDetailError(null);
     if (mode === "close") {
       setDetailOpen(false);
@@ -4093,6 +5457,14 @@ export default function DraftExplorerPage() {
       }
     } finally {
       setDetailRegenerating(false);
+      if (backgroundMode) {
+        setDetailBackgroundRegeneratingRowIds((prev) => {
+          if (!prev.has(targetId)) return prev;
+          const next = new Set(prev);
+          next.delete(targetId);
+          return next;
+        });
+      }
     }
   };
 
@@ -4140,10 +5512,9 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleImport = async (type: "excel" | "zip") => {
-    setError(null);
+  const handleImport = async (type: "excel" | "zip"): Promise<boolean> => {
     const file = type === "excel" ? excelFile : zipFile;
-    if (!file) return;
+    if (!file) return true;
     type === "excel" ? setExcelStatus("uploading") : setZipStatus("uploading");
     try {
       type ImportCollisionStrategy =
@@ -4267,11 +5638,47 @@ export default function DraftExplorerPage() {
       } else {
         fetchSkuRows();
       }
+      return errors.length === 0;
     } catch (err) {
       type === "excel" ? setExcelStatus("error") : setZipStatus("error");
       setError((err as Error).message);
+      return false;
     }
   };
+
+  const handleSubmitImportEditsDialog = useCallback(async () => {
+    if (importEditsSubmitting) return;
+    if (!excelFile && !zipFile) {
+      setError("Upload an Excel file and optionally a ZIP file.");
+      return;
+    }
+    setImportEditsSubmitting(true);
+    setError(null);
+    try {
+      let allSucceeded = true;
+      if (excelFile) {
+        allSucceeded = (await handleImport("excel")) && allSucceeded;
+      }
+      if (zipFile) {
+        allSucceeded = (await handleImport("zip")) && allSucceeded;
+      }
+      if (allSucceeded) {
+        setImportEditsDialogOpen(false);
+        setExcelFile(null);
+        setZipFile(null);
+        setExcelStatus("idle");
+        setZipStatus("idle");
+        if (importEditsExcelInputRef.current) {
+          importEditsExcelInputRef.current.value = "";
+        }
+        if (importEditsZipInputRef.current) {
+          importEditsZipInputRef.current.value = "";
+        }
+      }
+    } finally {
+      setImportEditsSubmitting(false);
+    }
+  }, [excelFile, handleImport, importEditsSubmitting, zipFile]);
 
   const listPathEntries = useCallback(async (pathValue: string) => {
     if (!pathValue) return [] as DraftEntry[];
@@ -4292,6 +5699,14 @@ export default function DraftExplorerPage() {
     const payload = await response.json();
     return (payload.items ?? []) as DraftEntry[];
   }, []);
+
+  const listImageFileEntriesForPath = useCallback(
+    async (pathValue: string) => {
+      const items = await listPathEntries(pathValue);
+      return items.filter((entry) => entry.type === "file" && isImage(entry.name));
+    },
+    [isImage, listPathEntries]
+  );
 
   const fetchFolderTree = useCallback(async (pathValue: string) => {
     if (!pathValue) {
@@ -4363,10 +5778,67 @@ export default function DraftExplorerPage() {
     [isChunksDirectory, listPathEntries]
   );
 
+  const resolveRequestedExplorerPathForRun = useCallback(
+    async (runPath: string) => {
+      const normalizedRunPath = normalizeExplorerLocationPath(runPath);
+      if (!normalizedRunPath) return "";
+      const requested = initialUrlStateRef.current;
+      if (!requested) {
+        return resolveInitialExplorerPath(normalizedRunPath);
+      }
+
+      const validatePathWithinRun = async (candidatePath: string) => {
+        const normalizedCandidate = normalizeExplorerLocationPath(candidatePath);
+        if (!normalizedCandidate) return null;
+        if (
+          normalizedCandidate !== normalizedRunPath &&
+          !normalizedCandidate.startsWith(`${normalizedRunPath}/`)
+        ) {
+          return null;
+        }
+        try {
+          await listPathEntries(normalizedCandidate);
+          return normalizedCandidate;
+        } catch {
+          return null;
+        }
+      };
+
+      const requestedPath = normalizeExplorerLocationPath(requested.path);
+      if (
+        requestedPath &&
+        (requestedPath === normalizedRunPath ||
+          requestedPath.startsWith(`${normalizedRunPath}/`))
+      ) {
+        const pathParts = requestedPath.split("/").filter(Boolean);
+        while (pathParts.length > 0) {
+          const candidate = pathParts.join("/");
+          const validated = await validatePathWithinRun(candidate);
+          if (validated) {
+            return validated;
+          }
+          pathParts.pop();
+        }
+      }
+
+      const requestedSpu = normalizeDraftSpuCode(requested.spu);
+      if (requestedSpu) {
+        const requestedSpuPath = `${normalizedRunPath}/${requestedSpu}`;
+        const validated = await validatePathWithinRun(requestedSpuPath);
+        if (validated) {
+          return validated;
+        }
+      }
+
+      return resolveInitialExplorerPath(normalizedRunPath);
+    },
+    [listPathEntries, resolveInitialExplorerPath]
+  );
+
   const fetchFolders = useCallback(async () => {
     try {
       const response = await fetch("/api/drafts/folders");
-      if (!response.ok) return;
+      if (!response.ok) return null;
       const payload = await response.json();
       const items = (payload.items ?? []) as DraftFolder[];
       setFolders(items);
@@ -4374,53 +5846,145 @@ export default function DraftExplorerPage() {
         setSelectedFolder("");
         setCurrentPath("");
         setFolderTree(null);
-        return;
+        return items;
       }
       const selectedStillExists = items.some((item) => item.path === selectedFolder);
       if (selectedFolder && selectedStillExists) {
-        return;
+        return items;
       }
 
-      const preferredRun = pickPreferredRunFolder(items);
-      const nextRunPath = preferredRun?.path ?? items[0]?.path ?? "";
-      if (!nextRunPath) return;
-      const nextPath = await resolveInitialExplorerPath(nextRunPath);
+      let nextRunPath = "";
+      const requested = initialUrlStateRef.current;
+      if (requested) {
+        const requestedRunCandidates = Array.from(
+          new Set(
+            [requested.run, parseRunFromExplorerPath(requested.path)]
+              .map((value) => normalizeExplorerLocationPath(value))
+              .filter(Boolean)
+          )
+        );
+        for (const candidate of requestedRunCandidates) {
+          const match = items.find((item) => item.path === candidate);
+          if (match) {
+            nextRunPath = match.path;
+            break;
+          }
+        }
+      }
+      if (!nextRunPath) {
+        const preferredRun = pickPreferredRunFolder(items);
+        nextRunPath = preferredRun?.path ?? items[0]?.path ?? "";
+      }
+      if (!nextRunPath) return items;
+      const nextPath = await resolveRequestedExplorerPathForRun(nextRunPath);
       pendingFolderOpenPathRef.current = nextPath;
       setSelectedFolder(nextRunPath);
       setCurrentPath(nextPath);
+      initialUrlStateRef.current = null;
+      return items;
     } catch {
-      return;
+      return null;
     }
-  }, [pickPreferredRunFolder, resolveInitialExplorerPath, selectedFolder]);
+  }, [
+    pickPreferredRunFolder,
+    resolveRequestedExplorerPathForRun,
+    selectedFolder,
+  ]);
 
   const fetchEntries = useCallback(
-    async (pathValue: string) => {
+    async (pathValue: string, options?: { variantsPath?: string | null }) => {
       if (!pathValue) {
         setEntries([]);
+        setMainViewVariantImageEntries([]);
         return;
       }
+      const normalizedVariantsPath = String(options?.variantsPath || "").trim();
+      const shouldLoadVariants = Boolean(normalizedVariantsPath);
+      if (shouldLoadVariants) {
+        const cachedVariantEntries = variantEntriesCacheRef.current.get(normalizedVariantsPath);
+        setMainViewVariantImageEntries(cachedVariantEntries ? [...cachedVariantEntries] : []);
+      } else {
+        setMainViewVariantImageEntries([]);
+      }
+      const requestSeq = entriesRequestSeqRef.current + 1;
+      entriesRequestSeqRef.current = requestSeq;
       setEntriesLoading(true);
       try {
-        const items = await listPathEntries(pathValue);
+        const [items, variantImages] = await Promise.all([
+          listPathEntries(pathValue),
+          shouldLoadVariants
+            ? listImageFileEntriesForPath(normalizedVariantsPath).catch(
+                () => [] as DraftEntry[]
+              )
+            : Promise.resolve([] as DraftEntry[]),
+        ]);
+        if (entriesRequestSeqRef.current !== requestSeq) return;
         setEntries(items);
+        if (shouldLoadVariants) {
+          variantEntriesCacheRef.current.set(normalizedVariantsPath, variantImages);
+          setMainViewVariantImageEntries(variantImages);
+        } else {
+          setMainViewVariantImageEntries([]);
+        }
+        clearSpuNeedsAiReview(pathValue);
         setSelectedFiles(new Set());
         setPreviewPath(null);
       } catch {
+        if (entriesRequestSeqRef.current !== requestSeq) return;
         setEntries([]);
+        if (shouldLoadVariants) {
+          variantEntriesCacheRef.current.set(normalizedVariantsPath, []);
+        }
+        setMainViewVariantImageEntries([]);
       } finally {
-        setEntriesLoading(false);
+        if (entriesRequestSeqRef.current === requestSeq) {
+          setEntriesLoading(false);
+        }
       }
     },
-    [listPathEntries]
+    [clearSpuNeedsAiReview, listImageFileEntriesForPath, listPathEntries]
   );
 
   const refreshEntries = useCallback(
     async (pathValue: string) => {
       if (!pathValue || entriesRefreshing) return;
+      const normalizedPath = String(pathValue || "").trim();
+      const activePath = String(currentPathRef.current || "").trim();
+      const normalizedMainPath = String(currentMainPathRef.current || "").trim();
+      const normalizedVariantsPath = String(currentVariantsPathRef.current || "").trim();
+      const shouldLoadVariants =
+        Boolean(normalizedPath) &&
+        Boolean(normalizedMainPath) &&
+        Boolean(normalizedVariantsPath) &&
+        normalizedPath === normalizedMainPath &&
+        activePath === normalizedMainPath;
+      if (shouldLoadVariants) {
+        const cachedVariantEntries = variantEntriesCacheRef.current.get(
+          normalizedVariantsPath
+        );
+        setMainViewVariantImageEntries(cachedVariantEntries ? [...cachedVariantEntries] : []);
+      }
       setEntriesRefreshing(true);
       try {
-        const items = await listPathEntries(pathValue);
+        const [items, variantImages] = await Promise.all([
+          listPathEntries(pathValue),
+          shouldLoadVariants
+            ? listImageFileEntriesForPath(normalizedVariantsPath).catch(
+                () => [] as DraftEntry[]
+              )
+            : Promise.resolve([] as DraftEntry[]),
+        ]);
         const available = new Set(items.map((entry) => entry.path));
+        const includeMergedVisiblePaths =
+          activePath === normalizedPath;
+        const mergedVisiblePaths = includeMergedVisiblePaths
+          ? new Set(displayImageEntriesRef.current.map((entry) => entry.path))
+          : new Set<string>();
+        if (shouldLoadVariants) {
+          variantEntriesCacheRef.current.set(normalizedVariantsPath, variantImages);
+          variantImages.forEach((entry) => mergedVisiblePaths.add(entry.path));
+          setMainViewVariantImageEntries(variantImages);
+        }
         setEntries(items);
         setSelectedFiles((prev) => {
           if (prev.size === 0) return prev;
@@ -4434,7 +5998,7 @@ export default function DraftExplorerPage() {
         setImageDimensions((prev) => {
           const next: Record<string, { width: number; height: number }> = {};
           Object.entries(prev).forEach(([pathValue, dims]) => {
-            if (available.has(pathValue)) {
+            if (available.has(pathValue) || mergedVisiblePaths.has(pathValue)) {
               next[pathValue] = dims;
             }
           });
@@ -4446,7 +6010,262 @@ export default function DraftExplorerPage() {
         setEntriesRefreshing(false);
       }
     },
-    [entriesRefreshing, listPathEntries]
+    [entriesRefreshing, listImageFileEntriesForPath, listPathEntries]
+  );
+
+  const refreshImageScoresForPaths = useCallback(
+    async (paths: string[]) => {
+      const normalizedPaths = Array.from(
+        new Set(
+          (Array.isArray(paths) ? paths : [])
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (normalizedPaths.length === 0) return;
+
+      setPendingImageScorePaths((prev) => {
+        const next = new Set(prev);
+        normalizedPaths.forEach((pathValue) => next.add(pathValue));
+        return next;
+      });
+
+      try {
+        const response = await fetch("/api/drafts/images/refresh-scores", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: normalizedPaths }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to refresh image scores.");
+        }
+
+        const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
+          ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
+          : [];
+        const refreshedScoreByPath = new Map<string, number | null>();
+        refreshedScoresRaw.forEach((row) => {
+          const pathValue = String(row?.path || "").trim();
+          if (!pathValue) return;
+          const scoreValue =
+            typeof row?.pixelQualityScore === "number" &&
+            Number.isFinite(row.pixelQualityScore)
+              ? Math.round(row.pixelQualityScore)
+              : null;
+          refreshedScoreByPath.set(pathValue, scoreValue);
+        });
+
+        if (refreshedScoreByPath.size > 0) {
+          const now = new Date().toISOString();
+          setEntries((prev) =>
+            prev.map((item) => {
+              if (!refreshedScoreByPath.has(item.path)) return item;
+              return {
+                ...item,
+                modifiedAt: now,
+                pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
+              };
+            })
+          );
+          setMainViewVariantImageEntries((prev) =>
+            prev.map((item) => {
+              if (!refreshedScoreByPath.has(item.path)) return item;
+              return {
+                ...item,
+                modifiedAt: now,
+                pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
+              };
+            })
+          );
+        }
+      } catch (err) {
+        setError((err as Error).message || "Unable to refresh image scores.");
+      } finally {
+        setPendingImageScorePaths((prev) => {
+          const next = new Set(prev);
+          normalizedPaths.forEach((pathValue) => next.delete(pathValue));
+          return next;
+        });
+      }
+
+      const activePath = String(currentPathRef.current || "").trim();
+      if (activePath) {
+        void refreshEntries(activePath);
+      }
+    },
+    [refreshEntries]
+  );
+
+  const postImageOrderForFolder = useCallback(
+    async (folderPath: string, orderedPaths: string[]) => {
+      const response = await fetch("/api/drafts/images/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folderPath,
+          orderedPaths,
+        }),
+      });
+
+      const raw = await response.text();
+      let payload: Record<string, unknown> = {};
+      if (raw) {
+        try {
+          payload = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          payload = {};
+        }
+      }
+
+      if (!response.ok) {
+        const payloadError =
+          typeof payload?.error === "string" ? payload.error.trim() : "";
+        const fallbackError = raw.trim();
+        throw new Error(
+          payloadError ||
+            fallbackError ||
+            `Unable to save image order (HTTP ${response.status}).`
+        );
+      }
+    },
+    []
+  );
+
+  const saveImageOrderForFolder = useCallback(
+    async (folderPath: string, orderedPaths: string[]) => {
+      const normalizedFolderPath = String(folderPath || "").trim();
+      if (!normalizedFolderPath) return;
+
+      const normalizeOrderedPaths = (values: string[]) =>
+        Array.from(
+          new Set(
+            (Array.isArray(values) ? values : [])
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          )
+        );
+
+      let candidateOrder = normalizeOrderedPaths(orderedPaths);
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await postImageOrderForFolder(normalizedFolderPath, candidateOrder);
+          return;
+        } catch (error) {
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error("Unable to save image order.");
+          if (attempt >= 1) break;
+
+          await new Promise((resolve) => setTimeout(resolve, 160 * (attempt + 1)));
+
+          try {
+            const refreshedEntries = await listPathEntries(normalizedFolderPath);
+            const availableImagePaths = refreshedEntries
+              .filter((entry) => entry.type === "file" && isImage(entry.name))
+              .map((entry) => entry.path);
+            if (availableImagePaths.length > 0) {
+              const availableSet = new Set(availableImagePaths);
+              const filtered = candidateOrder.filter((pathValue) =>
+                availableSet.has(pathValue)
+              );
+              candidateOrder =
+                filtered.length > 0 ? filtered : [...availableImagePaths];
+            } else {
+              candidateOrder = [];
+            }
+          } catch {
+            // Keep existing candidate order if refresh fails.
+          }
+        }
+      }
+
+      throw lastError ?? new Error("Unable to save image order.");
+    },
+    [isImage, listPathEntries, postImageOrderForFolder]
+  );
+
+  const enqueueImageOrderSaveForFolder = useCallback(
+    async (folderPath: string, orderedPaths: string[]) => {
+      const normalizedFolderPath = String(folderPath || "").trim();
+      if (!normalizedFolderPath) return;
+
+      const queue = imageOrderSaveQueueRef.current;
+      const previous = queue.get(normalizedFolderPath) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(() => saveImageOrderForFolder(normalizedFolderPath, orderedPaths));
+      queue.set(normalizedFolderPath, next);
+      try {
+        await next;
+      } finally {
+        if (queue.get(normalizedFolderPath) === next) {
+          queue.delete(normalizedFolderPath);
+        }
+      }
+    },
+    [saveImageOrderForFolder]
+  );
+
+  const resortImageFoldersByHierarchy = useCallback(
+    async (folderPaths: Iterable<string>) => {
+      const normalizedFolders = Array.from(
+        new Set(
+          Array.from(folderPaths)
+            .map((pathValue) => String(pathValue || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (normalizedFolders.length === 0) {
+        return [] as string[];
+      }
+
+      const failures: string[] = [];
+      for (const folderPath of normalizedFolders) {
+        try {
+          const folderEntries = await listPathEntries(folderPath);
+          const folderImageEntries = folderEntries.filter(
+            (entry) => entry.type === "file" && isImage(entry.name)
+          );
+          if (folderImageEntries.length <= 1) continue;
+
+          const currentOrder = folderImageEntries.map((entry) => entry.path);
+          const nextOrder = buildTaggedImageOrderPaths(folderImageEntries);
+          if (nextOrder.length !== currentOrder.length) continue;
+          const changed = nextOrder.some(
+            (pathValue, index) => pathValue !== currentOrder[index]
+          );
+          if (!changed) continue;
+
+          await enqueueImageOrderSaveForFolder(folderPath, nextOrder);
+
+          if (String(currentPathRef.current || "").trim() === folderPath) {
+            const byPath = new Map(folderEntries.map((entry) => [entry.path, entry]));
+            const dirs = folderEntries.filter((entry) => entry.type === "dir");
+            const nonImageFiles = folderEntries.filter(
+              (entry) => entry.type === "file" && !isImage(entry.name)
+            );
+            const sortedImages = nextOrder
+              .map((pathValue) => byPath.get(pathValue))
+              .filter(
+                (entry): entry is DraftEntry =>
+                  Boolean(entry && entry.type === "file" && isImage(entry.name))
+              );
+            setEntries([...dirs, ...sortedImages, ...nonImageFiles]);
+          }
+        } catch (err) {
+          failures.push(
+            `${folderPath}: ${err instanceof Error ? err.message : "Unable to reorder images."}`
+          );
+        }
+      }
+
+      return failures;
+    },
+    [enqueueImageOrderSaveForFolder, isImage, listPathEntries]
   );
 
   const fetchPendingAiEdits = useCallback(async (pathValue: string) => {
@@ -4535,6 +6354,132 @@ export default function DraftExplorerPage() {
     };
   }, [folderTree, isChunksDirectory, listPathEntries, selectedFolder]);
 
+  useEffect(() => {
+    const run = String(selectedFolder || "").trim();
+    if (!run) {
+      setRunSpuStatusByPath({});
+      return;
+    }
+    if (runSpuOptions.length === 0) {
+      setRunSpuStatusByPath({});
+      return;
+    }
+
+    let cancelled = false;
+    const loadRunSpuStatuses = async () => {
+      const optionPathSet = new Set(
+        runSpuOptions
+          .map((option) => String(option.path || "").trim())
+          .filter(Boolean)
+      );
+      try {
+        const response = await fetch(
+          `/api/drafts/folders/${encodeURIComponent(run)}/spu-status`
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load SPU status.");
+        }
+
+        const items = Array.isArray(payload?.items)
+          ? (payload.items as Array<Record<string, unknown>>)
+          : [];
+        const next: Record<string, RunSpuStatus> = {};
+
+        for (const row of items) {
+          const rowPath = String(row.path || "").trim();
+          if (!rowPath || !optionPathSet.has(rowPath)) continue;
+          next[rowPath] = {
+            hasPendingAi: Boolean(row.hasPendingAi),
+            hasDigi: Boolean(row.hasDigi),
+            hasTaggedImage: Boolean(row.hasTaggedImage),
+            hasImageIssue: Boolean(row.hasImageIssue),
+            hasUnseenAiUpdate: false,
+          };
+        }
+
+        optionPathSet.forEach((pathValue) => {
+          if (!next[pathValue]) {
+            next[pathValue] = {
+              hasPendingAi: false,
+              hasDigi: false,
+              hasTaggedImage: false,
+              hasImageIssue: false,
+              hasUnseenAiUpdate: false,
+            };
+          }
+        });
+
+        if (!cancelled) {
+          setRunSpuStatusByPath(next);
+        }
+      } catch {
+        if (!cancelled) {
+          const fallback: Record<string, RunSpuStatus> = {};
+          optionPathSet.forEach((pathValue) => {
+            fallback[pathValue] = {
+              hasPendingAi: false,
+              hasDigi: false,
+              hasTaggedImage: false,
+              hasImageIssue: false,
+              hasUnseenAiUpdate: false,
+            };
+          });
+          setRunSpuStatusByPath(fallback);
+        }
+      }
+    };
+
+    void loadRunSpuStatuses();
+    return () => {
+      cancelled = true;
+    };
+  }, [runSpuOptions, selectedFolder]);
+
+  useEffect(() => {
+    setRunSpuStatusByPath((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next: Record<string, RunSpuStatus> = {};
+      keys.forEach((pathValue) => {
+        const row = prev[pathValue];
+        const hasUnseenAiUpdate = unseenAiUpdateSpuPaths.has(pathValue);
+        if ((row?.hasUnseenAiUpdate ?? false) !== hasUnseenAiUpdate) {
+          changed = true;
+        }
+        next[pathValue] = {
+          hasPendingAi: Boolean(row?.hasPendingAi),
+          hasDigi: Boolean(row?.hasDigi),
+          hasTaggedImage: Boolean(row?.hasTaggedImage),
+          hasImageIssue: Boolean(row?.hasImageIssue),
+          hasUnseenAiUpdate,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [unseenAiUpdateSpuPaths]);
+
+  useEffect(() => {
+    const currentSpuPath = getSpuRootFromDraftPath(currentPath);
+    const previous = previousRunSpuPendingAiByPathRef.current;
+    const snapshot: Record<string, boolean> = {};
+    const newlyPendingElsewhere: string[] = [];
+
+    Object.entries(runSpuStatusByPath).forEach(([pathValue, row]) => {
+      const pending = Boolean(row?.hasPendingAi);
+      snapshot[pathValue] = pending;
+      if (pending && !previous[pathValue] && pathValue !== currentSpuPath) {
+        newlyPendingElsewhere.push(pathValue);
+      }
+    });
+
+    previousRunSpuPendingAiByPathRef.current = snapshot;
+    if (newlyPendingElsewhere.length > 0) {
+      markSpuNeedsAiReview(newlyPendingElsewhere);
+    }
+  }, [currentPath, markSpuNeedsAiReview, runSpuStatusByPath]);
+
   const selectedSpuPathInRun = useMemo(() => {
     const run = String(selectedFolder || "").trim();
     const pathValue = String(currentPath || "").trim();
@@ -4544,6 +6489,53 @@ export default function DraftExplorerPage() {
     if (parts[0] !== run) return "";
     return `${parts[0]}/${parts[1]}`;
   }, [currentPath, selectedFolder]);
+
+  useEffect(() => {
+    if (!initialUrlStateParsedRef.current) return;
+    const runValue = normalizeExplorerLocationPath(selectedFolder);
+    const pathValue = normalizeExplorerLocationPath(currentPath);
+    if (!runValue && !pathValue) return;
+
+    const spuRoot = getSpuRootFromDraftPath(pathValue);
+    const spuValue = normalizeDraftSpuCode(spuRoot.split("/").filter(Boolean)[1] || "");
+
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    if (runValue) {
+      params.set("run", runValue);
+    } else {
+      params.delete("run");
+    }
+    if (spuValue) {
+      params.set("spu", spuValue);
+    } else {
+      params.delete("spu");
+    }
+    if (pathValue) {
+      params.set("path", pathValue);
+    } else {
+      params.delete("path");
+    }
+    if (draftTab !== "spu") {
+      params.set("tab", draftTab);
+    } else {
+      params.delete("tab");
+    }
+    if (draftTableShowAll) {
+      params.set("showAll", "1");
+    } else {
+      params.delete("showAll");
+    }
+    params.delete("open_spu");
+    params.delete("show_all");
+
+    const nextSearch = params.toString();
+    const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
+    const currentUrl = `${url.pathname}${url.search}${url.hash}`;
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [currentPath, draftTab, draftTableShowAll, selectedFolder]);
 
   useEffect(() => {
     const previousSpuPath = previousSelectedSpuPathForDraftTableRef.current;
@@ -4582,6 +6574,142 @@ export default function DraftExplorerPage() {
   const canNavigateNextSpu =
     selectedRunSpuIndex >= 0 &&
     selectedRunSpuIndex < runSpuOptions.length - 1;
+  const currentBatchSpuValues = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          runSpuOptions
+            .map((option) => String(option.name || "").trim())
+            .filter(Boolean)
+        )
+      ),
+    [runSpuOptions]
+  );
+  const currentBatchSpuCount = currentBatchSpuValues.length;
+  const runSpuShortTitleByCode = useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const row of spuRows) {
+      const code = String(row.draft_spu || "").trim().toUpperCase();
+      if (!code || next[code]) continue;
+      const shortTitle = getShortTitleLabel(
+        row.draft_mf_product_short_title || row.draft_title || row.draft_mf_product_long_title
+      );
+      if (shortTitle) {
+        next[code] = shortTitle;
+      }
+    }
+    return next;
+  }, [spuRows]);
+
+  const spuPickerMenuWidthPx = useMemo(() => {
+    const labels = runSpuOptions.map((option) => {
+      const code = String(option.name || "").trim();
+      const title = runSpuShortTitleByCode[code.toUpperCase()] || "";
+      return title ? `${code} - ${title}` : code;
+    });
+    const baseLabel = selectedRunSpuLabel || "Select SPU";
+    const longestTextWidth = Math.max(
+      estimateTableTextWidthPx(baseLabel),
+      ...labels.map((value) => estimateTableTextWidthPx(value))
+    );
+    const indicatorAllowance = 112;
+    const padded = longestTextWidth + indicatorAllowance;
+    return clampNumber(Math.round(padded), 220, 1020);
+  }, [runSpuOptions, runSpuShortTitleByCode, selectedRunSpuLabel]);
+
+  const spuPickerTriggerWidthPx = useMemo(() => {
+    const label = selectedRunSpuLabel || "Select SPU";
+    const padded = estimateTableTextWidthPx(label) + 56;
+    const widened = padded * 1.6;
+    return clampNumber(Math.round(widened), 173, 352);
+  }, [selectedRunSpuLabel]);
+  const spuPickerMenuShouldScroll = runSpuOptions.length > 20;
+
+  const handlePublishCurrentBatchDrafts = useCallback(async () => {
+    if (!selectedFolder) return;
+    setPublishMessage(null);
+    if (hasPendingDetailAiRewrite) {
+      setPublishStatus("error");
+      setPublishMessage(
+        "Wait for AI product description updates to finish before saving to database."
+      );
+      return;
+    }
+    if (skuStatus === "running") {
+      setPublishStatus("error");
+      setPublishMessage(t("draftExplorer.publishBlockedSkuRunning"));
+      return;
+    }
+    if (!skuReady) {
+      setPublishStatus("error");
+      setPublishMessage(t("draftExplorer.publishBlockedSkusMissing"));
+      return;
+    }
+
+    const spus = [...currentBatchSpuValues];
+    if (spus.length === 0) {
+      setPublishStatus("error");
+      setPublishMessage("No SPUs found in the selected draft folder.");
+      return;
+    }
+
+    const confirmSave = window.confirm(
+      t("draftExplorer.publishConfirmSelected", { count: spus.length })
+    );
+    if (!confirmSave) {
+      setPublishStatus("idle");
+      return;
+    }
+
+    setPublishStatus("running");
+    try {
+      const response = await fetch("/api/drafts/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spus }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Publish failed.");
+      }
+      const payload = await response.json();
+      const publishedSpus: string[] = Array.isArray(payload?.spus)
+        ? payload.spus
+            .map((entry: unknown) => String(entry || "").trim())
+            .filter(Boolean)
+        : [];
+      const count = publishedSpus.length;
+      setPublishMessage(t("draftExplorer.publishSuccess", { count }));
+      setPublishStatus("done");
+      setSelectedSpus(new Set());
+      await Promise.all([fetchSpuRows(), fetchSkuRows()]);
+      await fetchFolders();
+      if (selectedFolder) {
+        await fetchFolderTree(selectedFolder);
+      }
+      if (currentPath) {
+        await refreshEntries(currentPath);
+        await fetchPendingAiEdits(currentPath);
+      }
+    } catch (err) {
+      setPublishStatus("error");
+      setPublishMessage((err as Error).message);
+    }
+  }, [
+    currentBatchSpuValues,
+    currentPath,
+    fetchFolderTree,
+    fetchFolders,
+    fetchPendingAiEdits,
+    fetchSkuRows,
+    fetchSpuRows,
+    hasPendingDetailAiRewrite,
+    refreshEntries,
+    selectedFolder,
+    skuReady,
+    skuStatus,
+    t,
+  ]);
 
   const handleNavigateRunSpu = useCallback(
     (direction: -1 | 1) => {
@@ -4615,14 +6743,19 @@ export default function DraftExplorerPage() {
 
   const handleDeleteFolder = useCallback(async () => {
     if (!selectedFolder) return;
+    if (isArchiveFolder(selectedFolder)) {
+      setError("Draft Archive is permanent and cannot be deleted.");
+      return;
+    }
     if (selectedFolder.includes("/") || selectedFolder.includes("\\")) {
       setError(t("bulkProcessing.explorer.deleteFolderError"));
       return;
     }
+    const productCount = currentBatchSpuCount;
     const confirmed = window.confirm(
-      t("bulkProcessing.explorer.deleteFolderConfirm", {
-        folder: selectedFolder,
-      })
+      `Delete draft folder "${selectedFolder}" and all ${productCount} product${
+        productCount === 1 ? "" : "s"
+      } inside it? This will also delete related SPU and SKU draft data.`
     );
     if (!confirmed) return;
     setDeleteFolderPending(true);
@@ -4638,6 +6771,23 @@ export default function DraftExplorerPage() {
           payload?.error || t("bulkProcessing.explorer.deleteFolderError")
         );
       }
+      const deletedRunPrefix = `${selectedFolder}/`;
+      setUnseenAiUpdateSpuPaths((prev) => {
+        if (prev.size === 0) return prev;
+        let changed = false;
+        const next = new Set<string>();
+        prev.forEach((pathValue) => {
+          if (
+            pathValue === selectedFolder ||
+            pathValue.startsWith(deletedRunPrefix)
+          ) {
+            changed = true;
+            return;
+          }
+          next.add(pathValue);
+        });
+        return changed ? next : prev;
+      });
       setSelectedFolder("");
       setCurrentPath("");
       setEntries([]);
@@ -4655,27 +6805,46 @@ export default function DraftExplorerPage() {
     } finally {
       setDeleteFolderPending(false);
     }
-  }, [selectedFolder, fetchFolders, t]);
+  }, [currentBatchSpuCount, selectedFolder, fetchFolders, isArchiveFolder, t]);
 
   const handleSelectAllRunsForMerge = useCallback(() => {
-    setSelectedRunsForMerge(new Set(folders.map((folder) => folder.path)));
-  }, [folders]);
+    setSelectedRunsForMerge(
+      new Set(
+        folders
+          .filter((folder) => !isArchiveFolder(`${folder.name} ${folder.path}`))
+          .map((folder) => folder.path)
+      )
+    );
+  }, [folders, isArchiveFolder]);
 
   const handleUnselectRunsForMerge = useCallback(() => {
     setSelectedRunsForMerge(new Set());
   }, []);
 
+  useEffect(() => {
+    setSelectedRunsForMerge((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(
+        Array.from(prev).filter((run) => !isArchiveFolder(run))
+      );
+      return next.size === prev.size ? prev : next;
+    });
+  }, [isArchiveFolder, folders]);
+
   const toggleRunForMerge = useCallback((run: string) => {
+    if (isArchiveFolder(run)) return;
     setSelectedRunsForMerge((prev) => {
       const next = new Set(prev);
       if (next.has(run)) next.delete(run);
       else next.add(run);
       return next;
     });
-  }, []);
+  }, [isArchiveFolder]);
 
   const handleDeleteRuns = useCallback(async () => {
-    const runs = Array.from(selectedRunsForMerge);
+    const runs = Array.from(selectedRunsForMerge).filter(
+      (run) => !isArchiveFolder(run)
+    );
     if (runs.length === 0 || deleteRunsPending) return;
     const confirmed = window.confirm(
       `Delete ${runs.length} selected batch folder${
@@ -4716,6 +6885,25 @@ export default function DraftExplorerPage() {
     if (failedRuns.length === 0) {
       setBatchPickerOpen(false);
     }
+    const deletedRunSet = new Set(
+      runs.filter((run) => !failedRuns.includes(run))
+    );
+    if (deletedRunSet.size > 0) {
+      setUnseenAiUpdateSpuPaths((prev) => {
+        if (prev.size === 0) return prev;
+        let changed = false;
+        const next = new Set<string>();
+        prev.forEach((pathValue) => {
+          const runName = String(pathValue || "").split("/").filter(Boolean)[0] || "";
+          if (runName && deletedRunSet.has(runName)) {
+            changed = true;
+            return;
+          }
+          next.add(pathValue);
+        });
+        return changed ? next : prev;
+      });
+    }
 
     await fetchFolders();
     if (draftTab === "spu") {
@@ -4740,6 +6928,7 @@ export default function DraftExplorerPage() {
     draftTab,
     fetchSpuRows,
     fetchSkuRows,
+    isArchiveFolder,
   ]);
 
 	  const openRunPreview = useCallback(async (run: string) => {
@@ -4873,7 +7062,9 @@ export default function DraftExplorerPage() {
   ]);
 
   const handleMergeRuns = useCallback(async () => {
-    const runs = Array.from(selectedRunsForMerge);
+    const runs = Array.from(selectedRunsForMerge).filter(
+      (run) => !isArchiveFolder(run)
+    );
     if (runs.length < 2 || mergeRunsPending) return;
     const confirmed = window.confirm(
       `Merge ${runs.length} batches into one? This will copy folders and update draft pointers.`
@@ -4905,7 +7096,13 @@ export default function DraftExplorerPage() {
     } finally {
       setMergeRunsPending(false);
     }
-  }, [selectedRunsForMerge, mergeRunsPending, fetchFolders, handleSelectFolder]);
+  }, [
+    selectedRunsForMerge,
+    mergeRunsPending,
+    fetchFolders,
+    handleSelectFolder,
+    isArchiveFolder,
+  ]);
 
   useEffect(() => {
     fetchFolders();
@@ -4933,11 +7130,39 @@ export default function DraftExplorerPage() {
   }, [currentPath]);
 
   useEffect(() => {
+    const currentSpuPath = getSpuRootFromDraftPath(currentPath);
+    const runningElsewhere = Object.keys(aiEditJobsByPath)
+      .map((pathValue) => getSpuRootFromDraftPath(pathValue))
+      .filter((pathValue) => Boolean(pathValue) && pathValue !== currentSpuPath);
+    if (runningElsewhere.length > 0) {
+      markSpuNeedsAiReview(runningElsewhere);
+    }
+  }, [aiEditJobsByPath, currentPath, markSpuNeedsAiReview]);
+
+  useEffect(() => {
     if (!currentPath) {
       setPendingAiEditsByOriginal({});
+      setMainViewVariantImageEntries([]);
       return;
     }
-    fetchEntries(currentPath);
+    const normalizedCurrentPath = String(currentPath || "").trim();
+    const normalizedMainPath = String(currentMainPathRef.current || "").trim();
+    const shouldLoadMergedVariants =
+      Boolean(normalizedCurrentPath) &&
+      Boolean(normalizedMainPath) &&
+      normalizedCurrentPath === normalizedMainPath;
+    const variantsPathForCurrentMain = shouldLoadMergedVariants
+      ? String(currentVariantsPathRef.current || "").trim()
+      : "";
+    if (shouldLoadMergedVariants) {
+      // Main path with merged variants is hydrated by the imageTabTargets effect below.
+      // Fall back to main-only load if variants path is not available yet.
+      if (!variantsPathForCurrentMain) {
+        void fetchEntries(currentPath, { variantsPath: null });
+      }
+    } else {
+      void fetchEntries(currentPath, { variantsPath: null });
+    }
     fetchPendingAiEdits(currentPath);
     setImageDimensions({});
     setAiReviewOriginalPath(null);
@@ -6167,6 +8392,13 @@ export default function DraftExplorerPage() {
     if (!targetPath || movingEntry) {
       return;
     }
+    const normalizedTargetPath = String(targetPath || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .toLowerCase();
+    const targetIsDeletedImages =
+      normalizedTargetPath.endsWith("/deleted images") ||
+      normalizedTargetPath.includes("/deleted images/");
     const uniqueSources = Array.from(
       new Set(
         sourcePaths
@@ -6185,10 +8417,28 @@ export default function DraftExplorerPage() {
     const visibleImageSourcePaths = new Set(
       displayImageEntriesRef.current.map((entry) => entry.path)
     );
-    const existingSources = validSources.filter(
-      (sourcePath) =>
-        entryByPath.has(sourcePath) || visibleImageSourcePaths.has(sourcePath)
+    const hiddenPendingSourcePaths = new Set(
+      Object.values(pendingAiEditsByOriginal)
+        .map((row) => String(row.pendingPath || "").trim())
+        .filter(Boolean)
     );
+    let existingSources = validSources.filter(
+      (sourcePath) =>
+        entryByPath.has(sourcePath) ||
+        visibleImageSourcePaths.has(sourcePath) ||
+        (targetIsDeletedImages && hiddenPendingSourcePaths.has(sourcePath))
+    );
+    if (targetIsDeletedImages) {
+      const expanded = new Set(existingSources);
+      existingSources.forEach((sourcePath) => {
+        const pendingRecord = pendingAiEditsByOriginal[sourcePath];
+        const pendingPath = String(pendingRecord?.pendingPath || "").trim();
+        if (pendingPath) {
+          expanded.add(pendingPath);
+        }
+      });
+      existingSources = Array.from(expanded);
+    }
     if (existingSources.length === 0) {
       setFolderDropTargetPath(null);
       setDraggingEntryPaths([]);
@@ -6197,11 +8447,15 @@ export default function DraftExplorerPage() {
 
     const locked = existingSources.filter(
       (sourcePath) =>
-        Boolean(pendingAiEditsByOriginal[sourcePath]) ||
+        (!targetIsDeletedImages && Boolean(pendingAiEditsByOriginal[sourcePath])) ||
         Boolean(aiEditJobsByPath[sourcePath])
     );
     if (locked.length > 0) {
-      setError("Resolve pending/running AI edits before moving those files.");
+      setError(
+        targetIsDeletedImages
+          ? "Resolve running AI edits before deleting those files."
+          : "Resolve pending/running AI edits before moving those files."
+      );
       return;
     }
 
@@ -6210,13 +8464,6 @@ export default function DraftExplorerPage() {
     const failures: string[] = [];
     const moved = new Set<string>();
     const movedRecords: DraftDeletedImageUndoItem[] = [];
-    const normalizedTargetPath = String(targetPath || "")
-      .trim()
-      .replace(/\\/g, "/")
-      .toLowerCase();
-    const targetIsDeletedImages =
-      normalizedTargetPath.endsWith("/deleted images") ||
-      normalizedTargetPath.includes("/deleted images/");
     try {
       for (const sourcePath of existingSources) {
         try {
@@ -6291,6 +8538,21 @@ export default function DraftExplorerPage() {
           return next;
         });
         setPreviewPath((prev) => (prev && moved.has(prev) ? null : prev));
+      }
+
+      if (moved.size > 0) {
+        const foldersNeedingResort = new Set<string>();
+        foldersNeedingResort.add(String(targetPath || "").trim());
+        movedRecords.forEach((record) => {
+          const sourceFolderPath = getParentFolderPathFromEntryPath(record.sourcePath);
+          const destinationFolderPath = getParentFolderPathFromEntryPath(
+            record.destinationPath
+          );
+          if (sourceFolderPath) foldersNeedingResort.add(sourceFolderPath);
+          if (destinationFolderPath) foldersNeedingResort.add(destinationFolderPath);
+        });
+        const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+        reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
       }
 
       if (selectedFolder) {
@@ -6775,13 +9037,213 @@ export default function DraftExplorerPage() {
     selectedFolder,
   ]);
 
+  const aiMaskTargetPath =
+    aiEditMode === "eraser" && aiEditTargets.length === 1 ? aiEditTargets[0].path : "";
+
+  const syncAiMaskCanvasToImage = useCallback((resetMask: boolean) => {
+    const imageEl = aiMaskImageRef.current;
+    const canvasEl = aiMaskCanvasRef.current;
+    if (!imageEl || !canvasEl) return;
+    const naturalWidth = Number(imageEl.naturalWidth || 0);
+    const naturalHeight = Number(imageEl.naturalHeight || 0);
+    if (!naturalWidth || !naturalHeight) return;
+    const displayWidth = Number(imageEl.clientWidth || naturalWidth);
+    const displayHeight = Number(imageEl.clientHeight || naturalHeight);
+    canvasEl.style.width = `${displayWidth}px`;
+    canvasEl.style.height = `${displayHeight}px`;
+    if (resetMask || canvasEl.width !== naturalWidth || canvasEl.height !== naturalHeight) {
+      canvasEl.width = naturalWidth;
+      canvasEl.height = naturalHeight;
+      const ctx = canvasEl.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+      }
+      setAiMaskHasPaint(false);
+    }
+  }, []);
+
+  const getAiMaskPointer = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const canvasEl = aiMaskCanvasRef.current;
+      if (!canvasEl) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const canvasWidth = canvasEl.width || rect.width;
+      const canvasHeight = canvasEl.height || rect.height;
+      const displayX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+      const displayY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+      const imageX = (displayX / rect.width) * canvasWidth;
+      const imageY = (displayY / rect.height) * canvasHeight;
+      const brushWidth = Math.max(2, Math.round(aiMaskBrushSize));
+      const displayScale = rect.width / canvasWidth;
+      return {
+        imagePoint: {
+          x: Math.max(0, Math.min(canvasWidth, imageX)),
+          y: Math.max(0, Math.min(canvasHeight, imageY)),
+        },
+        displayPoint: { x: displayX, y: displayY },
+        displayBrushSize: Math.max(6, Math.round(brushWidth * displayScale)),
+      };
+    },
+    [aiMaskBrushSize]
+  );
+
+  const setAiMaskCursorFromPointer = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>, visible: boolean) => {
+      const pointer = getAiMaskPointer(event);
+      if (!pointer) {
+        setAiMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        return null;
+      }
+      setAiMaskCursor({
+        x: pointer.displayPoint.x,
+        y: pointer.displayPoint.y,
+        size: pointer.displayBrushSize,
+        visible,
+      });
+      return pointer.imagePoint;
+    },
+    [getAiMaskPointer]
+  );
+
+  const drawAiMaskStroke = useCallback(
+    (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const canvasEl = aiMaskCanvasRef.current;
+      if (!canvasEl) return;
+      const ctx = canvasEl.getContext("2d");
+      if (!ctx) return;
+      const brushWidth = Math.max(2, Math.round(aiMaskBrushSize));
+      const brushRadius = Math.max(1, brushWidth / 2);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      // 50% transparency so masked area remains visible while painting.
+      ctx.strokeStyle = "rgba(36, 116, 255, 0.5)";
+      ctx.fillStyle = "rgba(36, 116, 255, 0.5)";
+      ctx.lineWidth = brushWidth;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(to.x, to.y, brushRadius, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    [aiMaskBrushSize]
+  );
+
+  const stopAiMaskDrawing = useCallback((pointerId?: number) => {
+    aiMaskDrawingRef.current = false;
+    aiMaskLastPointRef.current = null;
+    const canvasEl = aiMaskCanvasRef.current;
+    const activePointerId =
+      typeof pointerId === "number" ? pointerId : aiMaskPointerIdRef.current;
+    if (canvasEl && typeof activePointerId === "number") {
+      try {
+        if (canvasEl.hasPointerCapture(activePointerId)) {
+          canvasEl.releasePointerCapture(activePointerId);
+        }
+      } catch {}
+    }
+    aiMaskPointerIdRef.current = null;
+  }, []);
+
+  const handleAiMaskPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      if (event.button !== 0 && event.pointerType !== "touch") return;
+      const point = setAiMaskCursorFromPointer(event, true);
+      if (!point) return;
+      aiMaskDrawingRef.current = true;
+      aiMaskPointerIdRef.current = event.pointerId;
+      aiMaskLastPointRef.current = point;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {}
+      drawAiMaskStroke(point, point);
+      setAiMaskHasPaint(true);
+      event.preventDefault();
+    },
+    [drawAiMaskStroke, setAiMaskCursorFromPointer]
+  );
+
+  const handleAiMaskPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const point = setAiMaskCursorFromPointer(event, true);
+      if (!point) return;
+      if (!aiMaskDrawingRef.current) return;
+      if (
+        typeof aiMaskPointerIdRef.current === "number" &&
+        aiMaskPointerIdRef.current !== event.pointerId
+      ) {
+        return;
+      }
+      const lastPoint = aiMaskLastPointRef.current ?? point;
+      drawAiMaskStroke(lastPoint, point);
+      aiMaskLastPointRef.current = point;
+      setAiMaskHasPaint(true);
+      event.preventDefault();
+    },
+    [drawAiMaskStroke, setAiMaskCursorFromPointer]
+  );
+
+  const clearAiMaskCanvas = useCallback(() => {
+    const canvasEl = aiMaskCanvasRef.current;
+    if (!canvasEl) {
+      setAiMaskHasPaint(false);
+      return;
+    }
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    setAiMaskHasPaint(false);
+  }, []);
+
+  const buildAiMaskDataUrl = useCallback(() => {
+    const canvasEl = aiMaskCanvasRef.current;
+    if (!canvasEl || !aiMaskHasPaint || !canvasEl.width || !canvasEl.height) {
+      return "";
+    }
+    const srcCtx = canvasEl.getContext("2d");
+    if (!srcCtx) return "";
+    const srcImage = srcCtx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+    const maskCanvas = document.createElement("canvas");
+    maskCanvas.width = canvasEl.width;
+    maskCanvas.height = canvasEl.height;
+    const maskCtx = maskCanvas.getContext("2d");
+    if (!maskCtx) return "";
+    const maskImage = maskCtx.createImageData(maskCanvas.width, maskCanvas.height);
+    for (let index = 0; index < srcImage.data.length; index += 4) {
+      const painted = srcImage.data[index + 3] > 8;
+      const color = painted ? 255 : 0;
+      maskImage.data[index] = color;
+      maskImage.data[index + 1] = color;
+      maskImage.data[index + 2] = color;
+      maskImage.data[index + 3] = 255;
+    }
+    maskCtx.putImageData(maskImage, 0, 0);
+    return maskCanvas.toDataURL("image/png");
+  }, [aiMaskHasPaint]);
+
+  useEffect(() => {
+    aiMaskDrawingRef.current = false;
+    aiMaskPointerIdRef.current = null;
+    aiMaskLastPointRef.current = null;
+    setAiMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    clearAiMaskCanvas();
+    if (!aiMaskTargetPath) return;
+    const handleResize = () => syncAiMaskCanvasToImage(false);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [aiMaskTargetPath, clearAiMaskCanvas, syncAiMaskCanvasToImage]);
+
   const runAiEditsForEntries = useCallback(
     async (
       sourceEntries: DraftEntry[],
       provider: AiEditProvider,
       mode: AiPromptMode,
       promptText: string,
-      options?: { templatePreset?: AiTemplatePreset; outputCount?: number }
+      options?: { templatePreset?: AiTemplatePreset; outputCount?: number; maskDataUrl?: string }
     ) => {
       clearSelectedFilesForImageActions();
       const pathAtStart = String(currentPathRef.current || "");
@@ -6797,10 +9259,14 @@ export default function DraftExplorerPage() {
           provider === "chatgpt" ? "ChatGPT" : provider === "gemini" ? "Gemini" : "Z-Image";
         const modeLabel =
           options?.templatePreset === "digideal_main"
-            ? "Digideal Main"
+            ? "DigiDeal Main Single"
+            : options?.templatePreset === "digideal_main_dual"
+              ? "DigiDeal Main Dual"
             : options?.templatePreset === "product_scene"
               ? "Product Scene"
-              : mode === "template"
+            : options?.templatePreset === "product_collection"
+              ? "Product Collection"
+            : mode === "template"
                 ? "Standard Template"
                 : mode === "direct"
                   ? "Direct"
@@ -6866,6 +9332,8 @@ export default function DraftExplorerPage() {
       });
 
       const failures: string[] = [];
+      const spuPathsNeedingReview = new Set<string>();
+      const foldersNeedingResort = new Set<string>();
       let nextIndex = 0;
       const maxWorkers = Math.min(3, runnable.length);
       const worker = async () => {
@@ -6884,28 +9352,48 @@ export default function DraftExplorerPage() {
             },
           }));
 	          try {
-	            const response = await fetch("/api/drafts/ai-edits", {
-	              method: "POST",
-	              headers: { "Content-Type": "application/json" },
-	              body: JSON.stringify({
-	                path: entry.path,
-	                provider,
-	                mode,
-	                prompt: promptText,
-	                templatePreset: options?.templatePreset,
+		            const response = await fetch("/api/drafts/ai-edits", {
+		              method: "POST",
+		              headers: { "Content-Type": "application/json" },
+		              body: JSON.stringify({
+		                path: entry.path,
+		                provider,
+		                mode,
+		                prompt: promptText,
+                    maskDataUrl:
+                      mode === "eraser" && runnable.length === 1
+                        ? options?.maskDataUrl
+                        : undefined,
+		                templatePreset: options?.templatePreset,
                   outputCount: options?.outputCount,
-	              }),
-	            });
+		              }),
+		            });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
               throw new Error(payload?.error || "AI image edit failed.");
             }
-            if (
-              payload?.applied === true &&
-              typeof payload?.originalPath === "string" &&
-              payload.originalPath.trim()
-            ) {
-              const originalPath = String(payload.originalPath).trim();
+            const payloadOriginalPath =
+              typeof payload?.originalPath === "string"
+                ? String(payload.originalPath).trim()
+                : "";
+            if (payloadOriginalPath) {
+              const targetSpuPath = getSpuRootFromDraftPath(payloadOriginalPath);
+              if (targetSpuPath) {
+                spuPathsNeedingReview.add(targetSpuPath);
+              }
+            } else {
+              const fallbackSpuPath = getSpuRootFromDraftPath(entry.path);
+              if (fallbackSpuPath) {
+                spuPathsNeedingReview.add(fallbackSpuPath);
+              }
+            }
+            if (payload?.applied === true) {
+              const originalPath = payloadOriginalPath || entry.path;
+              const originalFolderPath =
+                getParentFolderPathFromEntryPath(originalPath);
+              if (originalFolderPath) {
+                foldersNeedingResort.add(originalFolderPath);
+              }
               const now = new Date().toISOString();
               const nextPixelQualityScore =
                 typeof payload?.pixelQualityScore === "number" &&
@@ -6947,6 +9435,10 @@ export default function DraftExplorerPage() {
             }
             const item = payload?.item as PendingAiEditRecord | undefined;
             if (item?.originalPath) {
+              const itemSpuPath = getSpuRootFromDraftPath(item.originalPath);
+              if (itemSpuPath) {
+                spuPathsNeedingReview.add(itemSpuPath);
+              }
               setPendingAiEditsByOriginal((prev) => ({
                 ...prev,
                 [item.originalPath]: item,
@@ -6965,6 +9457,14 @@ export default function DraftExplorerPage() {
       };
       try {
         await Promise.all(Array.from({ length: maxWorkers }, () => worker()));
+        if (spuPathsNeedingReview.size > 0) {
+          markSpuNeedsAiReview(Array.from(spuPathsNeedingReview));
+        }
+
+        let reorderFailures: string[] = [];
+        if (foldersNeedingResort.size > 0) {
+          reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+        }
 
         const latestPath = String(currentPathRef.current || "");
         if (pathAtStart && latestPath === pathAtStart) {
@@ -6990,6 +9490,13 @@ export default function DraftExplorerPage() {
               .join("; ")}${failures.length > 3 ? "..." : ""}`
           );
         }
+        if (reorderFailures.length > 0) {
+          messages.push(
+            `Re-sort failed in ${reorderFailures.length} folder(s): ${reorderFailures
+              .slice(0, 2)
+              .join("; ")}${reorderFailures.length > 2 ? "..." : ""}`
+          );
+        }
         if (messages.length > 0) {
           setError(messages.join(" "));
         }
@@ -7001,7 +9508,9 @@ export default function DraftExplorerPage() {
       aiEditJobsByPath,
       clearSelectedFilesForImageActions,
       fetchPendingAiEdits,
+      markSpuNeedsAiReview,
       refreshEntries,
+      resortImageFoldersByHierarchy,
       isImage,
       isImageEntryUpscaled,
       pendingAiEditsByOriginal,
@@ -7028,7 +9537,9 @@ export default function DraftExplorerPage() {
         setAiEditTemplatePreset("standard");
         setAiEditOutputCount(1);
         setAiEditPrompt("");
+        setAiEraserRunMode("prompt");
         setAiEditError(null);
+        setAiMaskHasPaint(false);
         setError(null);
         void runAiEditsForEntries(targets, provider, mode, "");
         return;
@@ -7039,7 +9550,9 @@ export default function DraftExplorerPage() {
       setAiEditTemplatePreset("standard");
       setAiEditOutputCount(1);
       setAiEditPrompt("");
+      setAiEraserRunMode("prompt");
       setAiEditError(null);
+      setAiMaskHasPaint(false);
     },
     [clearSelectedFilesForImageActions, isImage, runAiEditsForEntries]
   );
@@ -7069,11 +9582,324 @@ export default function DraftExplorerPage() {
           : 1
       );
       setAiEditPrompt("");
+      setAiEraserRunMode("prompt");
       setAiEditError(null);
+      setAiMaskHasPaint(false);
       setError(null);
     },
     [clearSelectedFilesForImageActions, isImage]
   );
+
+  const closeAiDualDialog = useCallback(() => {
+    setAiDualDialog(null);
+    setAiDualPrompt("");
+    setAiDualError(null);
+    setAiDualDragRole(null);
+  }, []);
+
+  const startAiDualTemplatePresetForEntries = useCallback(
+    (
+      sourceEntries: DraftEntry[],
+      provider: Exclude<AiEditProvider, "zimage">,
+      outputCount: number
+    ) => {
+      clearSelectedFilesForImageActions();
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length !== 2) {
+        setError("DigiDeal Main Dual requires exactly two selected images.");
+        return;
+      }
+      const blocked = targets.filter(
+        (entry) => pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]
+      );
+      if (blocked.length > 0) {
+        setError("Resolve pending/running AI edits before using DigiDeal Main Dual.");
+        return;
+      }
+      const scoreForProductRole = (entry: DraftEntry) => {
+        const whiteSides = Number(entry.whiteSides ?? 0);
+        const borderWhiteDensity = Number(entry.borderWhiteDensity ?? 0);
+        const sideScore = Number.isFinite(whiteSides) ? whiteSides : 0;
+        const borderScore = Number.isFinite(borderWhiteDensity) ? borderWhiteDensity : 0;
+        return sideScore * 100 + borderScore;
+      };
+      const ordered = [...targets].sort((a, b) => {
+        const scoreDiff = scoreForProductRole(b) - scoreForProductRole(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.name.localeCompare(b.name);
+      });
+      setAiDualDialog({
+        provider,
+        outputCount: Number.isFinite(outputCount)
+          ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+          : 1,
+        productEntry: ordered[0],
+        guidanceEntry: ordered[1],
+      });
+      setAiDualPrompt("");
+      setAiDualError(null);
+      setAiDualDragRole(null);
+      setError(null);
+    },
+    [
+      aiEditJobsByPath,
+      clearSelectedFilesForImageActions,
+      isImage,
+      pendingAiEditsByOriginal,
+    ]
+  );
+
+  const swapAiDualRoles = useCallback(() => {
+    setAiDualDialog((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        productEntry: prev.guidanceEntry,
+        guidanceEntry: prev.productEntry,
+      };
+    });
+  }, []);
+
+  const handleAiDualRoleDrop = useCallback(
+    (targetRole: "product" | "guidance") => {
+      if (!aiDualDragRole || aiDualDragRole === targetRole) {
+        setAiDualDragRole(null);
+        return;
+      }
+      swapAiDualRoles();
+      setAiDualDragRole(null);
+    },
+    [aiDualDragRole, swapAiDualRoles]
+  );
+
+  const submitAiDualTemplatePreset = useCallback(async () => {
+    if (!aiDualDialog || aiDualSubmitting) return;
+    const pathAtStart = String(currentPathRef.current || "");
+    const nextPrompt = aiDualPrompt.trim();
+    const productPath = aiDualDialog.productEntry.path;
+    const guidancePath = aiDualDialog.guidanceEntry.path;
+    const provider = aiDualDialog.provider;
+    const outputCount = aiDualDialog.outputCount;
+
+    setAiDualSubmitting(true);
+    setAiDualError(null);
+    setError(null);
+    setAiEditJobsByPath((prev) => ({
+      ...prev,
+      [productPath]: {
+        provider,
+        mode: "template",
+        status: "running",
+        startedAt: Date.now(),
+      },
+      [guidancePath]: {
+        provider,
+        mode: "template",
+        status: "running",
+        startedAt: Date.now(),
+      },
+    }));
+    // Submit in background: close the dialog immediately after trigger.
+    setAiDualDialog(null);
+    setAiDualPrompt("");
+    setAiDualError(null);
+    setAiDualDragRole(null);
+    clearSelectedFilesForImageActions();
+    try {
+      const response = await fetch("/api/drafts/ai-edits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: productPath,
+          secondaryPath: guidancePath,
+          provider,
+          mode: "template",
+          templatePreset: "digideal_main_dual",
+          outputCount,
+          prompt: nextPrompt,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Dual image generation failed.");
+      }
+
+      const targetSpuPath = getSpuRootFromDraftPath(productPath);
+      if (targetSpuPath) {
+        markSpuNeedsAiReview([targetSpuPath]);
+      }
+
+      const latestPath = String(currentPathRef.current || "");
+      if (pathAtStart && latestPath === pathAtStart) {
+        await refreshEntries(pathAtStart);
+        await fetchPendingAiEdits(pathAtStart);
+      }
+    } catch (err) {
+      const message = (err as Error).message;
+      setAiDualError(message);
+      setError(`DigiDeal Main Dual failed: ${message}`);
+    } finally {
+      setAiDualSubmitting(false);
+      setAiEditJobsByPath((prev) => {
+        const next = { ...prev };
+        if (next[productPath]?.provider === provider && next[productPath]?.mode === "template") {
+          delete next[productPath];
+        }
+        if (
+          next[guidancePath]?.provider === provider &&
+          next[guidancePath]?.mode === "template"
+        ) {
+          delete next[guidancePath];
+        }
+        return next;
+      });
+    }
+  }, [
+    aiDualDialog,
+    aiDualPrompt,
+    aiDualSubmitting,
+    clearSelectedFilesForImageActions,
+    fetchPendingAiEdits,
+    markSpuNeedsAiReview,
+    refreshEntries,
+  ]);
+
+  const closeAiCollectionDialog = useCallback(() => {
+    setAiCollectionDialog(null);
+    setAiCollectionPrompt("");
+    setAiCollectionError(null);
+  }, []);
+
+  const startAiProductCollectionForEntries = useCallback(
+    (
+      sourceEntries: DraftEntry[],
+      provider: Exclude<AiEditProvider, "zimage">
+    ) => {
+      clearSelectedFilesForImageActions();
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length < 2 || targets.length > 4) {
+        setError("Product Collection requires selecting 2 to 4 images.");
+        return;
+      }
+      const blocked = targets.filter(
+        (entry) => pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]
+      );
+      if (blocked.length > 0) {
+        setError("Resolve pending/running AI edits before using Product Collection.");
+        return;
+      }
+      setAiCollectionDialog({
+        provider,
+        entries: [...targets],
+      });
+      setAiCollectionPrompt("");
+      setAiCollectionError(null);
+      setError(null);
+    },
+    [
+      aiEditJobsByPath,
+      clearSelectedFilesForImageActions,
+      isImage,
+      pendingAiEditsByOriginal,
+    ]
+  );
+
+  const submitAiCollection = useCallback(async () => {
+    if (!aiCollectionDialog || aiCollectionSubmitting) return;
+    const pathAtStart = String(currentPathRef.current || "");
+    const provider = aiCollectionDialog.provider;
+    const selectedEntries = [...aiCollectionDialog.entries];
+    const collectionPaths = selectedEntries.map((entry) => entry.path);
+    if (collectionPaths.length < 2 || collectionPaths.length > 4) {
+      setAiCollectionError("Product Collection requires selecting 2 to 4 images.");
+      return;
+    }
+    const promptText = aiCollectionPrompt.trim();
+
+    setAiCollectionSubmitting(true);
+    setAiCollectionError(null);
+    setError(null);
+    setAiEditJobsByPath((prev) => {
+      const next = { ...prev };
+      for (const path of collectionPaths) {
+        next[path] = {
+          provider,
+          mode: "template",
+          status: "running",
+          startedAt: Date.now(),
+        };
+      }
+      return next;
+    });
+    // Run in background: close the window immediately after trigger.
+    setAiCollectionDialog(null);
+    setAiCollectionPrompt("");
+    setAiCollectionError(null);
+    clearSelectedFilesForImageActions();
+    try {
+      const response = await fetch("/api/drafts/ai-edits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: collectionPaths[0],
+          collectionPaths,
+          provider,
+          mode: "template",
+          templatePreset: "product_collection",
+          outputCount: 1,
+          prompt: promptText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Product Collection generation failed.");
+      }
+
+      const targetSpuPath = getSpuRootFromDraftPath(collectionPaths[0]);
+      if (targetSpuPath) {
+        markSpuNeedsAiReview([targetSpuPath]);
+      }
+
+      const latestPath = String(currentPathRef.current || "");
+      if (pathAtStart && latestPath === pathAtStart) {
+        await refreshEntries(pathAtStart);
+        await fetchPendingAiEdits(pathAtStart);
+      }
+    } catch (err) {
+      const message = (err as Error).message;
+      setAiCollectionError(message);
+      setError(`Product Collection failed: ${message}`);
+    } finally {
+      setAiCollectionSubmitting(false);
+      setAiEditJobsByPath((prev) => {
+        const next = { ...prev };
+        for (const path of collectionPaths) {
+          if (next[path]?.provider === provider && next[path]?.mode === "template") {
+            delete next[path];
+          }
+        }
+        return next;
+      });
+    }
+  }, [
+    aiCollectionDialog,
+    aiCollectionPrompt,
+    aiCollectionSubmitting,
+    clearSelectedFilesForImageActions,
+    fetchPendingAiEdits,
+    markSpuNeedsAiReview,
+    refreshEntries,
+  ]);
 
   const startAiEdit = useCallback(
     (entry: DraftEntry, provider: AiEditProvider, mode: AiPromptMode) => {
@@ -7084,12 +9910,16 @@ export default function DraftExplorerPage() {
 
   const cancelAiEdit = useCallback(() => {
     if (aiEditSubmitting) return;
+    stopAiMaskDrawing();
+    setAiMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    clearAiMaskCanvas();
     setAiEditTargets([]);
     setAiEditTemplatePreset("standard");
     setAiEditOutputCount(1);
     setAiEditPrompt("");
+    setAiEraserRunMode("prompt");
     setAiEditError(null);
-  }, [aiEditSubmitting]);
+  }, [aiEditSubmitting, clearAiMaskCanvas, stopAiMaskDrawing]);
 
   const submitAiEdit = useCallback(async () => {
     if (aiEditTargets.length === 0 || aiEditSubmitting) return;
@@ -7110,19 +9940,41 @@ export default function DraftExplorerPage() {
       mode === "template" && aiEditTemplatePreset !== "standard"
         ? aiEditOutputCount
         : undefined;
+    let maskDataUrl: string | undefined;
+    if (mode === "eraser" && aiEraserRunMode === "mask") {
+      if (targets.length !== 1) {
+        setAiEditError("Mask mode supports one image at a time.");
+        return;
+      }
+      if (!aiMaskHasPaint) {
+        setAiEditError("Paint the mask area first, then run eraser.");
+        return;
+      }
+      const nextMask = buildAiMaskDataUrl();
+      if (!nextMask) {
+        setAiEditError("Unable to build mask image. Please paint again.");
+        return;
+      }
+      maskDataUrl = nextMask;
+    }
     setAiEditSubmitting(true);
     setAiEditTargets([]);
     setAiEditTemplatePreset("standard");
     setAiEditOutputCount(1);
     setAiEditPrompt("");
+    setAiEraserRunMode("prompt");
     setAiEditError(null);
+    setAiMaskHasPaint(false);
     setError(null);
     setAiEditSubmitting(false);
     void runAiEditsForEntries(targets, provider, mode, promptText, {
       templatePreset,
       outputCount,
+      maskDataUrl,
     });
   }, [
+    aiMaskHasPaint,
+    aiEraserRunMode,
     aiEditOutputCount,
     aiEditTemplatePreset,
     aiEditTargets,
@@ -7130,6 +9982,7 @@ export default function DraftExplorerPage() {
     aiEditPrompt,
     aiEditProvider,
     aiEditSubmitting,
+    buildAiMaskDataUrl,
     runAiEditsForEntries,
   ]);
 
@@ -7157,7 +10010,21 @@ export default function DraftExplorerPage() {
         const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
           ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
           : [];
+        const discardedMovesRaw = Array.isArray(payload?.discardedMoves)
+          ? (payload.discardedMoves as Array<{ sourcePath?: unknown; destinationPath?: unknown }>)
+          : [];
         const refreshedScoreByPath = new Map<string, number | null>();
+        const discardedUndoItems = discardedMovesRaw
+          .map((row) => ({
+            sourcePath: String(row?.sourcePath || "").trim(),
+            destinationPath: String(row?.destinationPath || "").trim(),
+          }))
+          .filter(
+            (row) =>
+              Boolean(row.sourcePath) &&
+              Boolean(row.destinationPath) &&
+              row.sourcePath !== row.destinationPath
+          );
         refreshedScoresRaw.forEach((row) => {
           const pathValue = String(row?.path || "").trim();
           if (!pathValue) return;
@@ -7166,8 +10033,9 @@ export default function DraftExplorerPage() {
             Number.isFinite(row.pixelQualityScore)
               ? Math.round(row.pixelQualityScore)
               : null;
-          refreshedScoreByPath.set(pathValue, scoreValue);
+            refreshedScoreByPath.set(pathValue, scoreValue);
         });
+        setLastDeletedImageUndoItems(discardedUndoItems);
         if (refreshedScoreByPath.size > 0) {
           const now = new Date().toISOString();
           setEntries((prev) =>
@@ -7183,11 +10051,11 @@ export default function DraftExplorerPage() {
         }
         const latestPath = String(currentPathRef.current || "");
         const canRefreshActiveFolder = Boolean(pathAtStart && latestPath === pathAtStart);
+        const shouldRefreshActiveFolder =
+          canRefreshActiveFolder &&
+          (decision === "replace_with_ai" || decision === "keep_both");
         if (decision === "replace_with_ai") {
-          if (canRefreshActiveFolder) {
-            await refreshEntries(pathAtStart);
-            await fetchPendingAiEdits(pathAtStart);
-          } else {
+          if (!canRefreshActiveFolder) {
             const now = new Date().toISOString();
             setEntries((prev) =>
               prev.map((item) =>
@@ -7195,18 +10063,43 @@ export default function DraftExplorerPage() {
               )
             );
           }
-        } else if (decision === "keep_both" && canRefreshActiveFolder) {
-          await refreshEntries(pathAtStart);
-          await fetchPendingAiEdits(pathAtStart);
+        }
+        if (decision !== "keep_original") {
+          markSpuNeedsAiReview(originalPath);
+        }
+        if (decision === "replace_with_ai" || decision === "keep_both") {
+          const folderPath = getParentFolderPathFromEntryPath(originalPath);
+          if (folderPath) {
+            const reorderFailures = await resortImageFoldersByHierarchy([folderPath]);
+            if (reorderFailures.length > 0) {
+              setError(
+                `AI edit saved, but re-sort failed: ${reorderFailures
+                  .slice(0, 2)
+                  .join("; ")}${reorderFailures.length > 2 ? "..." : ""}`
+              );
+            }
+          }
         }
         setAiReviewOriginalPath(null);
+        if (shouldRefreshActiveFolder && pathAtStart) {
+          void (async () => {
+            await refreshEntries(pathAtStart);
+            await fetchPendingAiEdits(pathAtStart);
+          })();
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
         setAiReviewSubmitting(false);
       }
     },
-    [aiReviewSubmitting, fetchPendingAiEdits, refreshEntries]
+    [
+      aiReviewSubmitting,
+      fetchPendingAiEdits,
+      markSpuNeedsAiReview,
+      refreshEntries,
+      resortImageFoldersByHierarchy,
+    ]
   );
 
   const startRename = (entry: DraftEntry) => {
@@ -7434,14 +10327,49 @@ export default function DraftExplorerPage() {
     }
   };
 
-  const handleDeleteSelected = async () => {
-    const paths = Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
+  const collectDeletePathsWithPendingCompanions = useCallback(
+    (basePaths: string[]) => {
+      const next = new Set(
+        (Array.isArray(basePaths) ? basePaths : [])
+          .map((pathValue) => String(pathValue || "").trim())
+          .filter(Boolean)
+      );
+      Array.from(next).forEach((pathValue) => {
+        const pending = pendingAiEditsByOriginal[pathValue];
+        const pendingPath = String(pending?.pendingPath || "").trim();
+        if (pendingPath) {
+          next.add(pendingPath);
+        }
+      });
+      return Array.from(next);
+    },
+    [pendingAiEditsByOriginal]
+  );
+
+  const handleDeleteSelected = async (explicitPaths?: string[]) => {
+    const selectedPaths = Array.isArray(explicitPaths)
+      ? Array.from(
+          new Set(
+            explicitPaths
+              .map((pathValue) => String(pathValue || "").trim())
+              .filter(Boolean)
+          )
+        )
+      : Array.from(new Set([...selectedFiles, ...selectedTreeFolders]));
+    const paths = collectDeletePathsWithPendingCompanions(selectedPaths);
     if (paths.length === 0) return;
-    const locked = paths.filter(
-      (item) => Boolean(pendingAiEditsByOriginal[item]) || Boolean(aiEditJobsByPath[item])
-    );
+    const locked = selectedPaths.filter((item) => Boolean(aiEditJobsByPath[item]));
     if (locked.length > 0) {
-      setError("Resolve pending/running AI edits before deleting those files.");
+      setError("Resolve running AI edits before deleting those files.");
+      return;
+    }
+    const lockedPendingCompanions = paths.filter(
+      (item) =>
+        !selectedPaths.includes(item) &&
+        Boolean(aiEditJobsByPath[item])
+    );
+    if (lockedPendingCompanions.length > 0) {
+      setError("Resolve running AI edits before deleting those files.");
       return;
     }
     const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
@@ -7627,14 +10555,39 @@ export default function DraftExplorerPage() {
           method: "POST",
           body: formData,
         });
-        if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || "Upload failed.");
+        const raw = await response.text();
+        let payload: Record<string, unknown> = {};
+        if (raw) {
+          try {
+            payload = JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            payload = { error: raw };
+          }
         }
-        refreshEntries(currentPath);
-        fetchPendingAiEdits(currentPath);
+        if (!response.ok) {
+          throw new Error(String(payload?.error || "").trim() || "Upload failed.");
+        }
+        const uploadedPaths: string[] = (Array.isArray(payload?.items) ? payload.items : [])
+          .map((item: unknown) =>
+            item && typeof item === "object"
+              ? String((item as { path?: unknown }).path || "").trim()
+              : ""
+          )
+          .filter(Boolean);
+        if (uploadedPaths.length > 0) {
+          setPendingImageScorePaths((prev) => {
+            const next = new Set(prev);
+            uploadedPaths.forEach((pathValue) => next.add(pathValue));
+            return next;
+          });
+        }
+        await refreshEntries(currentPath);
+        void fetchPendingAiEdits(currentPath);
+        if (uploadedPaths.length > 0) {
+          void refreshImageScoresForPaths(uploadedPaths);
+        }
         if (selectedFolder) {
-          fetchFolderTree(selectedFolder);
+          void fetchFolderTree(selectedFolder);
         }
       } catch (err) {
         setError((err as Error).message);
@@ -7644,28 +10597,17 @@ export default function DraftExplorerPage() {
       currentPath,
       fetchPendingAiEdits,
       fetchFolderTree,
+      refreshImageScoresForPaths,
       refreshEntries,
       selectedFolder,
     ]
   );
 
-  const handleUploadFiles = useCallback(
-    async (files: File[]) => {
-      await uploadFilesToCurrentPath(files);
-    },
-    [uploadFilesToCurrentPath]
-  );
-
-  const handleAddImageUrls = useCallback(async () => {
-    if (!currentPath) return;
-    const urls = parseImageUrlsInput(imageUrlInput);
-    if (urls.length === 0) {
-      setError("Add at least one valid image URL.");
-      return;
-    }
-    setAddingImageUrls(true);
-    setError(null);
-    try {
+  const uploadImageUrlsToCurrentPath = useCallback(
+    async (urls: string[]) => {
+      if (!currentPath || urls.length === 0) {
+        return { uploaded: 0, failed: 0 } as Record<string, unknown>;
+      }
       const response = await fetch("/api/drafts/upload-urls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7678,28 +10620,113 @@ export default function DraftExplorerPage() {
       if (!response.ok) {
         throw new Error(payload?.error || "Unable to add images from URL.");
       }
-      setImageUrlInput("");
-      refreshEntries(currentPath);
-      fetchPendingAiEdits(currentPath);
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
+      const uploadedPaths: string[] = (Array.isArray(payload?.items) ? payload.items : [])
+        .map((item: unknown) =>
+          item && typeof item === "object"
+            ? String((item as { path?: unknown }).path || "").trim()
+            : ""
+        )
+        .filter(Boolean);
+      if (uploadedPaths.length > 0) {
+        setPendingImageScorePaths((prev) => {
+          const next = new Set(prev);
+          uploadedPaths.forEach((pathValue) => next.add(pathValue));
+          return next;
+        });
       }
-      const failed = Number(payload?.failed || 0);
-      if (failed > 0) {
-        setError(`Added ${payload?.uploaded || 0} image(s), ${failed} failed.`);
+      await refreshEntries(currentPath);
+      void fetchPendingAiEdits(currentPath);
+      if (uploadedPaths.length > 0) {
+        void refreshImageScoresForPaths(uploadedPaths);
+      }
+      if (selectedFolder) {
+        void fetchFolderTree(selectedFolder);
+      }
+      return payload as Record<string, unknown>;
+    },
+    [
+      currentPath,
+      fetchPendingAiEdits,
+      fetchFolderTree,
+      refreshImageScoresForPaths,
+      refreshEntries,
+      selectedFolder,
+    ]
+  );
+
+  const queueAddImagesDialogFiles = useCallback((files: File[]) => {
+    const nextFiles = Array.from(files || []).filter((file): file is File => file instanceof File);
+    if (nextFiles.length === 0) return;
+    setAddImagesDialogFiles((prev) => [...prev, ...nextFiles]);
+  }, []);
+
+  const closeAddImagesDialog = useCallback(() => {
+    if (addImagesSubmitting) return;
+    setAddImagesDialogOpen(false);
+    setAddImagesDialogDragActive(false);
+    setAddImagesDialogFiles([]);
+    setImageUrlInput("");
+    if (addImagesFileInputRef.current) {
+      addImagesFileInputRef.current.value = "";
+    }
+  }, [addImagesSubmitting]);
+
+  const closeImportEditsDialog = useCallback(() => {
+    if (importEditsSubmitting) return;
+    setImportEditsDialogOpen(false);
+    setExcelFile(null);
+    setZipFile(null);
+    setExcelStatus("idle");
+    setZipStatus("idle");
+    if (importEditsExcelInputRef.current) {
+      importEditsExcelInputRef.current.value = "";
+    }
+    if (importEditsZipInputRef.current) {
+      importEditsZipInputRef.current.value = "";
+    }
+  }, [importEditsSubmitting]);
+
+  const handleSubmitAddImagesDialog = useCallback(async () => {
+    if (!currentPath || addImagesSubmitting) return;
+    const urls = parseImageUrlsInput(imageUrlInput);
+    const files = [...addImagesDialogFiles];
+    if (urls.length === 0 && files.length === 0) {
+      setError("Add at least one valid image URL or upload file.");
+      return;
+    }
+
+    setAddImagesSubmitting(true);
+    setError(null);
+    try {
+      if (files.length > 0) {
+        await uploadFilesToCurrentPath(files);
+      }
+      if (urls.length > 0) {
+        const payload = await uploadImageUrlsToCurrentPath(urls);
+        const failed = Number(payload?.failed || 0);
+        if (failed > 0) {
+          setError(`Added ${payload?.uploaded || 0} image(s), ${failed} failed.`);
+        }
+      }
+      setImageUrlInput("");
+      setAddImagesDialogFiles([]);
+      setAddImagesDialogDragActive(false);
+      setAddImagesDialogOpen(false);
+      if (addImagesFileInputRef.current) {
+        addImagesFileInputRef.current.value = "";
       }
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setAddingImageUrls(false);
+      setAddImagesSubmitting(false);
     }
   }, [
+    addImagesDialogFiles,
+    addImagesSubmitting,
     currentPath,
     imageUrlInput,
-    selectedFolder,
-    fetchPendingAiEdits,
-    fetchFolderTree,
-    refreshEntries,
+    uploadFilesToCurrentPath,
+    uploadImageUrlsToCurrentPath,
   ]);
 
   useEffect(() => {
@@ -8065,6 +11092,18 @@ export default function DraftExplorerPage() {
               },
             };
           });
+
+          const foldersNeedingResort = new Set<string>();
+          Object.entries(renames).forEach(([oldPath, renamed]) => {
+            const oldFolderPath = getParentFolderPathFromEntryPath(oldPath);
+            const renamedFolderPath = getParentFolderPathFromEntryPath(renamed.path);
+            if (oldFolderPath) foldersNeedingResort.add(oldFolderPath);
+            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
+          });
+          if (foldersNeedingResort.size > 0) {
+            const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+            reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
+          }
         }
       } finally {
         setBulkImageActionPending(false);
@@ -8073,7 +11112,7 @@ export default function DraftExplorerPage() {
 
       if (failures.length > 0) {
         setError(
-          `Failed to tag ${failures.length} image(s): ${failures
+          `Tag update completed with ${failures.length} issue(s): ${failures
             .slice(0, 3)
             .join("; ")}${failures.length > 3 ? "..." : ""}`
         );
@@ -8085,6 +11124,7 @@ export default function DraftExplorerPage() {
       clearSelectedFilesForImageActions,
       isImage,
       pendingAiEditsByOriginal,
+      resortImageFoldersByHierarchy,
     ]
   );
 
@@ -8177,6 +11217,18 @@ export default function DraftExplorerPage() {
               },
             };
           });
+
+          const foldersNeedingResort = new Set<string>();
+          Object.entries(renames).forEach(([oldPath, renamed]) => {
+            const oldFolderPath = getParentFolderPathFromEntryPath(oldPath);
+            const renamedFolderPath = getParentFolderPathFromEntryPath(renamed.path);
+            if (oldFolderPath) foldersNeedingResort.add(oldFolderPath);
+            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
+          });
+          if (foldersNeedingResort.size > 0) {
+            const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+            reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
+          }
         }
       } finally {
         setBulkImageActionPending(false);
@@ -8185,7 +11237,7 @@ export default function DraftExplorerPage() {
 
       if (failures.length > 0) {
         setError(
-          `Failed to update tags for ${failures.length} image(s): ${failures
+          `Tag update completed with ${failures.length} issue(s): ${failures
             .slice(0, 3)
             .join("; ")}${failures.length > 3 ? "..." : ""}`
         );
@@ -8198,6 +11250,7 @@ export default function DraftExplorerPage() {
       entryByPath,
       isImage,
       pendingAiEditsByOriginal,
+      resortImageFoldersByHierarchy,
     ]
   );
 
@@ -8393,18 +11446,7 @@ export default function DraftExplorerPage() {
       if (!normalizedFolderPath) return;
       setImageOrderPersisting(true);
       try {
-        const response = await fetch("/api/drafts/images/order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            folderPath: normalizedFolderPath,
-            orderedPaths,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to save image order.");
-        }
+        await enqueueImageOrderSaveForFolder(normalizedFolderPath, orderedPaths);
       } catch (err) {
         setError((err as Error).message);
         if (currentPathRef.current === normalizedFolderPath) {
@@ -8415,7 +11457,7 @@ export default function DraftExplorerPage() {
         setImageOrderPersisting(false);
       }
     },
-    [refreshEntries]
+    [enqueueImageOrderSaveForFolder, refreshEntries]
   );
 
   const persistImageOrder = useCallback(
@@ -8753,6 +11795,17 @@ export default function DraftExplorerPage() {
     isImage(contextMenuLiveEntry.name)
       ? isImageEntryUpscaled(contextMenuLiveEntry)
       : false;
+  const contextMenuImageTargets = useMemo(
+    () =>
+      contextMenu?.image
+        ? resolveContextActionTargets(contextMenu.entry, {
+            imageOnly: true,
+          })
+        : [],
+    [contextMenu, resolveContextActionTargets]
+  );
+  const contextMenuCollectionAllowed =
+    contextMenuImageTargets.length >= 2 && contextMenuImageTargets.length <= 4;
   const contextMenuMoveToMainPath = useMemo(() => {
     if (!contextMenu?.image) return "";
     const targets = resolveContextActionTargets(contextMenu.entry, {
@@ -8898,23 +11951,42 @@ export default function DraftExplorerPage() {
       }
       return;
     }
-	    if (action.startsWith("ai-chatgpt-digideal-main")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-          startAiTemplatePresetForEntries(
-            targets,
-            "chatgpt",
-            "digideal_main",
-            Number.isFinite(outputCount)
-              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
-              : 1
-          );
-	      }
-	      return;
-	    }
+    if (action.startsWith("ai-chatgpt-digideal-main-dual")) {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+        const outputCount = countRaw ? Number(countRaw) : 1;
+        startAiDualTemplatePresetForEntries(
+          targets,
+          "chatgpt",
+          Number.isFinite(outputCount)
+            ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+            : 1
+        );
+      }
+      return;
+    }
+    if (
+      action.startsWith("ai-chatgpt-digideal-main-single") ||
+      action.startsWith("ai-chatgpt-digideal-main")
+    ) {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+        const outputCount = countRaw ? Number(countRaw) : 1;
+        startAiTemplatePresetForEntries(
+          targets,
+          "chatgpt",
+          "digideal_main",
+          Number.isFinite(outputCount)
+            ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+            : 1
+        );
+      }
+      return;
+    }
 	    if (action.startsWith("ai-chatgpt-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
@@ -8929,6 +12001,14 @@ export default function DraftExplorerPage() {
 	      }
 	      return;
 	    }
+    if (action === "ai-chatgpt-product-collection") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiProductCollectionForEntries(targets, "chatgpt");
+      }
+      return;
+    }
     if (action === "ai-chatgpt-direct") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
@@ -8945,23 +12025,42 @@ export default function DraftExplorerPage() {
       }
       return;
     }
-	    if (action.startsWith("ai-gemini-digideal-main")) {
-	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
-	      if (targets.length > 0) {
-          restoreSelectionAfterContextAction(targets);
-          const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
-          const outputCount = countRaw ? Number(countRaw) : 1;
-          startAiTemplatePresetForEntries(
-            targets,
-            "gemini",
-            "digideal_main",
-            Number.isFinite(outputCount)
-              ? Math.max(1, Math.min(3, Math.floor(outputCount)))
-              : 1
-          );
-	      }
-	      return;
-	    }
+    if (action.startsWith("ai-gemini-digideal-main-dual")) {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+        const outputCount = countRaw ? Number(countRaw) : 1;
+        startAiDualTemplatePresetForEntries(
+          targets,
+          "gemini",
+          Number.isFinite(outputCount)
+            ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+            : 1
+        );
+      }
+      return;
+    }
+    if (
+      action.startsWith("ai-gemini-digideal-main-single") ||
+      action.startsWith("ai-gemini-digideal-main")
+    ) {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        const countRaw = action.includes(":") ? action.split(":").pop() : undefined;
+        const outputCount = countRaw ? Number(countRaw) : 1;
+        startAiTemplatePresetForEntries(
+          targets,
+          "gemini",
+          "digideal_main",
+          Number.isFinite(outputCount)
+            ? Math.max(1, Math.min(3, Math.floor(outputCount)))
+            : 1
+        );
+      }
+      return;
+    }
 	    if (action.startsWith("ai-gemini-product-scene")) {
 	      const targets = resolveContextActionTargets(entry, { imageOnly: true });
 	      if (targets.length > 0) {
@@ -8976,6 +12075,14 @@ export default function DraftExplorerPage() {
 	      }
 	      return;
 	    }
+    if (action === "ai-gemini-product-collection") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        startAiProductCollectionForEntries(targets, "gemini");
+      }
+      return;
+    }
     if (action === "ai-gemini-direct") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
@@ -9417,6 +12524,22 @@ export default function DraftExplorerPage() {
     normalizeFolderToken,
   ]);
 
+  useEffect(() => {
+    currentMainPathRef.current = String(imageTabTargets.mainPath || "").trim();
+    currentVariantsPathRef.current = String(imageTabTargets.variantsPath || "").trim();
+  }, [imageTabTargets.mainPath, imageTabTargets.variantsPath]);
+
+  useEffect(() => {
+    const normalizedCurrentPath = String(currentPath || "").trim();
+    const normalizedMainPath = String(imageTabTargets.mainPath || "").trim();
+    const normalizedVariantsPath = String(imageTabTargets.variantsPath || "").trim();
+    if (!normalizedCurrentPath || !normalizedMainPath) return;
+    if (normalizedCurrentPath !== normalizedMainPath) return;
+    void fetchEntries(normalizedCurrentPath, {
+      variantsPath: normalizedVariantsPath || null,
+    });
+  }, [currentPath, fetchEntries, imageTabTargets.mainPath, imageTabTargets.variantsPath]);
+
   const countImagesInEntryList = useCallback(
     (items: DraftEntry[]) =>
       items.reduce(
@@ -9444,6 +12567,48 @@ export default function DraftExplorerPage() {
     [countImagesInEntryList, currentPath, entries, listPathEntries]
   );
 
+  const countTaggedImagesForPaths = useCallback(
+    async (pathValues: Array<string | null>, tag: ImageTagOption) => {
+      const uniquePaths = Array.from(
+        new Set(
+          pathValues
+            .map((pathValue) => String(pathValue || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (uniquePaths.length === 0) return 0;
+
+      const seenImagePaths = new Set<string>();
+      let count = 0;
+
+      for (const pathValue of uniquePaths) {
+        let items: DraftEntry[] = [];
+        if (pathValue === currentPath) {
+          items = entries;
+        } else {
+          try {
+            items = await listPathEntries(pathValue);
+          } catch {
+            continue;
+          }
+        }
+
+        items.forEach((entry) => {
+          if (entry.type !== "file" || !isImage(entry.name)) return;
+          if (seenImagePaths.has(entry.path)) return;
+          seenImagePaths.add(entry.path);
+          const tags = extractImageTagsFromFileName(entry.name);
+          if (tags.includes(tag)) {
+            count += 1;
+          }
+        });
+      }
+
+      return count;
+    },
+    [currentPath, entries, isImage, listPathEntries]
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -9456,12 +12621,16 @@ export default function DraftExplorerPage() {
         )
       );
 
-      const [mainDirectCount, variantsCount, ocrCount, othersCounts] =
+      const [mainDirectCount, variantsCount, ocrCount, othersCounts, variantTagCount] =
         await Promise.all([
           countImagesForPath(imageTabTargets.mainPath),
           countImagesForPath(imageTabTargets.variantsPath),
           countImagesForPath(imageTabTargets.ocrPath),
           Promise.all(uniqueOthersPaths.map((pathValue) => countImagesForPath(pathValue))),
+          countTaggedImagesForPaths(
+            [imageTabTargets.mainPath, imageTabTargets.variantsPath],
+            "VAR"
+          ),
         ]);
 
       if (cancelled) return;
@@ -9470,7 +12639,7 @@ export default function DraftExplorerPage() {
       setImageTabImageCounts({
         // Main view intentionally includes merged variant images.
         main: mainDirectCount + variantsCount,
-        variants: variantsCount,
+        variants: variantTagCount,
         ocr: ocrCount,
         others: othersCount,
       });
@@ -9482,6 +12651,7 @@ export default function DraftExplorerPage() {
     };
   }, [
     countImagesForPath,
+    countTaggedImagesForPaths,
     imageTabTargets.mainPath,
     imageTabTargets.ocrPath,
     imageTabTargets.othersPaths,
@@ -9489,46 +12659,88 @@ export default function DraftExplorerPage() {
   ]);
 
   const mainViewShowsMergedImages =
-    imageTabTargets.active === "main" && currentPath === imageTabTargets.mainPath;
+    Boolean(imageTabTargets.mainPath) && currentPath === imageTabTargets.mainPath;
 
   useEffect(() => {
-    let cancelled = false;
-    const variantsPath = mainViewShowsMergedImages
-      ? imageTabTargets.variantsPath
-      : null;
-    if (!variantsPath) {
-      setMainViewVariantImageEntries([]);
-      return () => {
-        cancelled = true;
-      };
+    if (mainImageViewFilter !== "var_only") return;
+    if (!mainViewShowsMergedImages || imageTabImageCounts.variants === 0) {
+      setMainImageViewFilter("all");
     }
+  }, [imageTabImageCounts.variants, mainImageViewFilter, mainViewShowsMergedImages]);
 
-    const loadVariantEntries = async () => {
-      try {
-        const items = await listPathEntries(variantsPath);
-        if (cancelled) return;
-        const variantImages = items.filter(
-          (entry) => entry.type === "file" && isImage(entry.name)
-        );
-        setMainViewVariantImageEntries(variantImages);
-      } catch {
-        if (!cancelled) {
-          setMainViewVariantImageEntries([]);
-        }
-      }
-    };
+  const selectedImageTabValue: ImageFolderTabValue | undefined = useMemo(() => {
+    if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
+      return "variants";
+    }
+    return imageTabTargets.active ?? undefined;
+  }, [imageTabTargets.active, mainImageViewFilter, mainViewShowsMergedImages]);
 
-    void loadVariantEntries();
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    const variantsPath = String(imageTabTargets.variantsPath || "").trim();
+    const mainPath = String(imageTabTargets.mainPath || "").trim();
+    const normalizedCurrentPath = String(currentPath || "").trim();
+    if (!variantsPath || !mainPath || !normalizedCurrentPath) return;
+    const isInsideVariantsPath =
+      normalizedCurrentPath === variantsPath ||
+      normalizedCurrentPath.startsWith(`${variantsPath}/`);
+    if (!isInsideVariantsPath) return;
+
+    setMainImageViewFilter("var_only");
+    if (normalizedCurrentPath !== mainPath) {
+      setCurrentPath(mainPath);
+    }
+  }, [currentPath, imageTabTargets.mainPath, imageTabTargets.variantsPath]);
+
+  useEffect(() => {
+    const pathValue = String(currentPath || "").trim();
+    if (!pathValue) return;
+    if (entriesLoading || movingEntry) return;
+
+    const folderImageEntries = entries.filter(
+      (entry) => entry.type === "file" && isImage(entry.name)
+    );
+    if (folderImageEntries.length <= 1) return;
+
+    const currentOrder = folderImageEntries.map((entry) => entry.path);
+    const nextOrder = buildTaggedImageOrderPaths(folderImageEntries);
+    if (nextOrder.length !== currentOrder.length) return;
+    const changed = nextOrder.some((pathAtIndex, index) => pathAtIndex !== currentOrder[index]);
+    if (!changed) return;
+
+    const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+    const dirs = entries.filter((entry) => entry.type === "dir");
+    const nonImageFiles = entries.filter(
+      (entry) => entry.type === "file" && !isImage(entry.name)
+    );
+    const sortedImages = nextOrder
+      .map((pathEntry) => byPath.get(pathEntry))
+      .filter(
+        (entry): entry is DraftEntry =>
+          Boolean(entry && entry.type === "file" && isImage(entry.name))
+      );
+
+    setEntries([...dirs, ...sortedImages, ...nonImageFiles]);
+
+    const signature = `${pathValue}::${nextOrder.join("|")}`;
+    if (autoMainSortPersistSignatureRef.current === signature) return;
+    autoMainSortPersistSignatureRef.current = signature;
+    void persistImageOrderForFolder(pathValue, nextOrder).catch(() => {
+      autoMainSortPersistSignatureRef.current = "";
+    });
   }, [
+    currentPath,
     entries,
-    imageTabTargets.variantsPath,
+    entriesLoading,
     isImage,
-    listPathEntries,
-    mainViewShowsMergedImages,
+    movingEntry,
+    persistImageOrderForFolder,
   ]);
+
+  useEffect(() => {
+    const variantsPath = String(imageTabTargets.variantsPath || "").trim();
+    if (!variantsPath) return;
+    variantEntriesCacheRef.current.set(variantsPath, mainViewVariantImageEntries);
+  }, [imageTabTargets.variantsPath, mainViewVariantImageEntries]);
 
   const displayImageEntries = useMemo(() => {
     const combined: DraftEntry[] = [];
@@ -9547,28 +12759,25 @@ export default function DraftExplorerPage() {
 
     if (combined.length <= 1) return combined;
 
-    const variantPath = String(imageTabTargets.variantsPath || "").trim();
-    const variantPathPrefix = variantPath ? `${variantPath}/` : "";
-    const regular: DraftEntry[] = [];
-    const variantTail: DraftEntry[] = [];
+    const nextOrder = buildTaggedImageOrderPaths(combined);
+    if (nextOrder.length !== combined.length) return combined;
+    const byPath = new Map(combined.map((entry) => [entry.path, entry]));
+    const sorted = nextOrder
+      .map((pathValue) => byPath.get(pathValue))
+      .filter((entry): entry is DraftEntry => Boolean(entry));
+    if (sorted.length !== combined.length) return combined;
 
-    combined.forEach((entry) => {
-      const tags = extractImageTagsFromFileName(entry.name);
-      const taggedVariant = tags.includes("VAR");
-      const fromVariantFolder =
-        variantPath &&
-        (entry.path === variantPath || entry.path.startsWith(variantPathPrefix));
-      if (taggedVariant || fromVariantFolder) {
-        variantTail.push(entry);
-      } else {
-        regular.push(entry);
-      }
-    });
-
-    return [...regular, ...variantTail];
+    if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
+      return sorted.filter((entry) =>
+        extractImageTagsFromFileName(entry.name).includes("VAR")
+      );
+    }
+    return sorted;
   }, [
+    buildTaggedImageOrderPaths,
     imageEntries,
     imageTabTargets.variantsPath,
+    mainImageViewFilter,
     mainViewShowsMergedImages,
     mainViewVariantImageEntries,
   ]);
@@ -9669,6 +12878,13 @@ export default function DraftExplorerPage() {
         });
         return next;
       });
+      setUnseenAiUpdateSpuPaths((prev) => {
+        if (prev.size === 0) return prev;
+        if (!prev.has(spuMainPath)) return prev;
+        const next = new Set(prev);
+        next.delete(spuMainPath);
+        return next;
+      });
       setSelectedTreeFolders((prev) => {
         if (prev.size === 0) return prev;
         const next = new Set(prev);
@@ -9733,8 +12949,15 @@ export default function DraftExplorerPage() {
     if (!confirmed) return;
 
     const pendingPaths = [...confirmablePendingAiPaths];
+    const foldersNeedingResort = new Set(
+      pendingPaths
+        .map((pathValue) => getParentFolderPathFromEntryPath(pathValue))
+        .filter((pathValue) => Boolean(pathValue))
+    );
     const refreshedScoreByPath = new Map<string, number | null>();
-    const failures: string[] = [];
+    const discardedUndoItems: DraftDeletedImageUndoItem[] = [];
+    const resolveFailures: string[] = [];
+    const reorderFailures: string[] = [];
     const pathAtStart = String(currentPathRef.current || "");
 
     setConfirmAiEditsPending(true);
@@ -9765,6 +12988,9 @@ export default function DraftExplorerPage() {
           const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
             ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
             : [];
+          const discardedMovesRaw = Array.isArray(payload?.discardedMoves)
+            ? (payload.discardedMoves as Array<{ sourcePath?: unknown; destinationPath?: unknown }>)
+            : [];
           refreshedScoresRaw.forEach((row) => {
             const pathValue = String(row?.path || "").trim();
             if (!pathValue) return;
@@ -9775,8 +13001,22 @@ export default function DraftExplorerPage() {
                 : null;
             refreshedScoreByPath.set(pathValue, scoreValue);
           });
+          discardedMovesRaw
+            .map((row) => ({
+              sourcePath: String(row?.sourcePath || "").trim(),
+              destinationPath: String(row?.destinationPath || "").trim(),
+            }))
+            .filter(
+              (row) =>
+                Boolean(row.sourcePath) &&
+                Boolean(row.destinationPath) &&
+                row.sourcePath !== row.destinationPath
+            )
+            .forEach((row) => {
+              discardedUndoItems.push(row);
+            });
         } catch (err) {
-          failures.push(
+          resolveFailures.push(
             `${originalPath.split("/").filter(Boolean).pop() || originalPath}: ${
               (err as Error).message
             }`
@@ -9797,20 +13037,44 @@ export default function DraftExplorerPage() {
           })
         );
       }
+      setLastDeletedImageUndoItems(discardedUndoItems);
+
+      if (foldersNeedingResort.size > 0) {
+        const reorderFailuresResult = await resortImageFoldersByHierarchy(
+          foldersNeedingResort
+        );
+        reorderFailures.push(...reorderFailuresResult);
+      }
 
       const latestPath = String(currentPathRef.current || "");
       if (pathAtStart && latestPath === pathAtStart) {
         await refreshEntries(pathAtStart);
         await fetchPendingAiEdits(pathAtStart);
       }
+      if (pendingPaths.length > 0) {
+        markSpuNeedsAiReview(pendingPaths);
+      }
 
-      if (failures.length > 0) {
+      if (resolveFailures.length > 0 || reorderFailures.length > 0) {
+        const issueDetails: string[] = [];
+        if (resolveFailures.length > 0) {
+          issueDetails.push(
+            `resolve: ${resolveFailures.slice(0, 2).join("; ")}${
+              resolveFailures.length > 2 ? "..." : ""
+            }`
+          );
+        }
+        if (reorderFailures.length > 0) {
+          issueDetails.push(
+            `re-sort: ${reorderFailures.slice(0, 2).join("; ")}${
+              reorderFailures.length > 2 ? "..." : ""
+            }`
+          );
+        }
         setError(
           `Confirmed ${
-            pendingPaths.length - failures.length
-          }/${pendingPaths.length} pending AI edits. Failed: ${failures
-            .slice(0, 3)
-            .join("; ")}${failures.length > 3 ? "..." : ""}`
+            pendingPaths.length - resolveFailures.length
+          }/${pendingPaths.length} pending AI edits. Issues: ${issueDetails.join(" | ")}`
         );
       }
     } finally {
@@ -9822,7 +13086,9 @@ export default function DraftExplorerPage() {
     confirmablePendingAiPaths,
     fetchPendingAiEdits,
     mainViewShowsMergedImages,
+    markSpuNeedsAiReview,
     refreshEntries,
+    resortImageFoldersByHierarchy,
   ]);
 
   const reorderImagesInGrid = useCallback(
@@ -9886,6 +13152,8 @@ export default function DraftExplorerPage() {
   const selectedImageEntries = displayImageEntries.filter((entry) =>
     selectedFiles.has(entry.path)
   );
+  const selectedImageCollectionAllowed =
+    selectedImageEntries.length >= 2 && selectedImageEntries.length <= 4;
   const undoLastChangeAvailable =
     selectedImageEntries.length > 0 || lastDeletedImageUndoItems.length > 0;
   const handleUndoLastChangeFromImageActions = useCallback(() => {
@@ -9906,6 +13174,26 @@ export default function DraftExplorerPage() {
     (count, entry) => count + (isImageEntryUpscaled(entry) ? 0 : 1),
     0
   );
+  const regularBatchFolders = useMemo(
+    () =>
+      folders.filter(
+        (folder) => !isArchiveFolder(`${folder.name} ${folder.path}`)
+      ),
+    [folders, isArchiveFolder]
+  );
+  const archiveBatchFolders = useMemo(
+    () =>
+      folders.filter((folder) => isArchiveFolder(`${folder.name} ${folder.path}`)),
+    [folders, isArchiveFolder]
+  );
+  const selectedMergeableRunsCount = useMemo(
+    () =>
+      Array.from(selectedRunsForMerge).filter(
+        (run) => !isArchiveFolder(run)
+      ).length,
+    [selectedRunsForMerge, isArchiveFolder]
+  );
+  const isSelectedFolderArchive = isArchiveFolder(selectedFolder);
   const nonImageFileEntries = entries.filter(
     (entry) => entry.type === "file" && !isImage(entry.name)
   );
@@ -9921,7 +13209,7 @@ export default function DraftExplorerPage() {
   const mainTabDisabled =
     !imageTabTargets.mainPath || movingEntry || imageTabImageCounts.main === 0;
   const variantsTabDisabled =
-    !imageTabTargets.variantsPath ||
+    !imageTabTargets.mainPath ||
     movingEntry ||
     imageTabImageCounts.variants === 0;
   const ocrTabDisabled =
@@ -10043,8 +13331,8 @@ export default function DraftExplorerPage() {
 
   const handlePreviewDelete = useCallback(async () => {
     if (!previewPath || !currentPath || previewDeletePending) return;
-    if (pendingAiEditsByOriginal[previewPath] || aiEditJobsByPath[previewPath]) {
-      setError("Resolve pending/running AI edits before deleting this image.");
+    if (aiEditJobsByPath[previewPath]) {
+      setError("Resolve running AI edits before deleting this image.");
       return;
     }
     const nextPreviewPath = previewNav.nextPath ?? previewNav.prevPath ?? null;
@@ -10052,58 +13340,8 @@ export default function DraftExplorerPage() {
     setError(null);
     try {
       const deletedImagesPath = `${currentPath}/deleted images`.replace(/\/{2,}/g, "/");
-      const response = await fetch("/api/drafts/move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourcePath: previewPath,
-          targetPath: deletedImagesPath,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Delete failed.");
-      }
-
-      setEntries((prev) => prev.filter((entry) => entry.path !== previewPath));
-      setMainViewVariantImageEntries((prev) =>
-        prev.filter((entry) => entry.path !== previewPath)
-      );
-      setSelectedFiles((prev) => {
-        if (!prev.has(previewPath)) return prev;
-        const next = new Set(prev);
-        next.delete(previewPath);
-        return next;
-      });
-      setPendingAiEditsByOriginal((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, PendingAiEditRecord> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setAiEditJobsByPath((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, AiEditRuntimeJob> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setImageDimensions((prev) => {
-        if (!prev[previewPath]) return prev;
-        const next: Record<string, { width: number; height: number }> = { ...prev };
-        delete next[previewPath];
-        return next;
-      });
-      setReloadingImagePaths((prev) => {
-        if (!prev.has(previewPath)) return prev;
-        const next = new Set(prev);
-        next.delete(previewPath);
-        return next;
-      });
-
+      await handleMoveEntriesToFolder([previewPath], deletedImagesPath);
       setPreviewPath(nextPreviewPath);
-      if (selectedFolder) {
-        fetchFolderTree(selectedFolder);
-      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -10112,16 +13350,17 @@ export default function DraftExplorerPage() {
   }, [
     aiEditJobsByPath,
     currentPath,
-    fetchFolderTree,
-    pendingAiEditsByOriginal,
+    handleMoveEntriesToFolder,
     previewDeletePending,
     previewNav.nextPath,
     previewNav.prevPath,
     previewPath,
-    selectedFolder,
   ]);
   const aiEditHasPromptInput =
     aiEditMode === "template" || aiEditMode === "direct" || aiEditMode === "eraser";
+  const aiEditShowPromptTemplates =
+    aiEditMode === "direct" &&
+    (aiEditProvider === "chatgpt" || aiEditProvider === "gemini");
   const aiEditProviderLabel =
     aiEditProvider === "chatgpt"
       ? "ChatGPT"
@@ -10131,9 +13370,13 @@ export default function DraftExplorerPage() {
   const aiEditModeLabel =
     aiEditMode === "template"
       ? aiEditTemplatePreset === "digideal_main"
-        ? "DigiDL Main"
+        ? "DigiDeal Main Single"
+        : aiEditTemplatePreset === "digideal_main_dual"
+          ? "DigiDeal Main Dual"
         : aiEditTemplatePreset === "product_scene"
           ? "Product Scene"
+        : aiEditTemplatePreset === "product_collection"
+          ? "Product Collection"
           : "Standard Template"
       : aiEditMode === "direct"
         ? "Direct"
@@ -10144,6 +13387,49 @@ export default function DraftExplorerPage() {
             : aiEditMode === "eraser"
               ? "Eraser"
               : "Upscale";
+  const aiEditSingleTarget = aiEditTargets.length === 1 ? aiEditTargets[0] : null;
+  const aiEditSingleTargetPreviewUrl = aiEditSingleTarget
+    ? buildDraftDownloadUrl(
+        aiEditSingleTarget.path,
+        entryByPath.get(aiEditSingleTarget.path)?.modifiedAt
+      )
+    : "";
+  const aiEditShowMaskPainter =
+    aiEditMode === "eraser" && aiEraserRunMode === "mask" && Boolean(aiEditSingleTarget);
+  const aiDualProviderLabel = aiDualDialog
+    ? aiDualDialog.provider === "chatgpt"
+      ? "ChatGPT"
+      : "Gemini"
+    : "";
+  const aiDualProductPreviewUrl = aiDualDialog
+    ? buildDraftDownloadUrl(
+        aiDualDialog.productEntry.path,
+        entryByPath.get(aiDualDialog.productEntry.path)?.modifiedAt ??
+          aiDualDialog.productEntry.modifiedAt
+      )
+    : "";
+  const aiDualGuidancePreviewUrl = aiDualDialog
+    ? buildDraftDownloadUrl(
+        aiDualDialog.guidanceEntry.path,
+        entryByPath.get(aiDualDialog.guidanceEntry.path)?.modifiedAt ??
+          aiDualDialog.guidanceEntry.modifiedAt
+      )
+    : "";
+  const aiCollectionProviderLabel = aiCollectionDialog
+    ? aiCollectionDialog.provider === "chatgpt"
+      ? "ChatGPT"
+      : "Gemini"
+    : "";
+  const aiCollectionPreviewItems = aiCollectionDialog
+    ? aiCollectionDialog.entries.map((entry, index) => ({
+        key: entry.path || `${entry.name}-${index}`,
+        name: entry.name,
+        url: buildDraftDownloadUrl(
+          entry.path,
+          entryByPath.get(entry.path)?.modifiedAt ?? entry.modifiedAt
+        ),
+      }))
+    : [];
   const variantsEditorAllSelected =
     variantsEditorRows.length > 0 &&
     variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
@@ -10442,12 +13728,6 @@ export default function DraftExplorerPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <Text size={700} weight="semibold">
-          {t("draftExplorer.title")}
-        </Text>
-      </div>
-
       <Card className={styles.tableCard}>
         <div className={styles.draftToolbarRow}>
           <TabList
@@ -10455,14 +13735,16 @@ export default function DraftExplorerPage() {
             onTabSelect={(_, data) => setDraftTab(data.value as "spu" | "sku")}
             className={styles.draftToolbarTabs}
           >
-            <Tab value="spu">{t("draftExplorer.spuTab")}</Tab>
+            <Tab value="spu">
+              <span className={styles.draftTabLabel}>Products</span>
+            </Tab>
             <Tab value="sku">
-              <span className={styles.imageTabLabel}>
-                <span>{t("draftExplorer.skuTab")}</span>
+              <span className={styles.draftTabLabel}>
+                <span>Variations</span>
                 <span className={styles.imageTabMainBadgeSpacer} aria-hidden="true">
                   {" "}
                 </span>
-                <span className={styles.imageTabBadge}>{visibleSkuRows.length}</span>
+                <span className={styles.imageTabBadge}>{skuTabBadgeCount}</span>
               </span>
             </Tab>
           </TabList>
@@ -10475,7 +13757,8 @@ export default function DraftExplorerPage() {
           />
           <div className={styles.draftToolbarActions}>
             <Button
-              appearance={skuReady ? "outline" : "primary"}
+              appearance="outline"
+              className={styles.draftToolbarActionButton}
               onClick={handleGenerateSkus}
               disabled={skuStatus === "running"}
             >
@@ -10493,18 +13776,75 @@ export default function DraftExplorerPage() {
               )}
             </Button>
             <Button
-              appearance={draftTableShowAll ? "primary" : "outline"}
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                draftTableShowAll ? styles.draftToolbarActionButtonActive : undefined
+              )}
               onClick={() => setDraftTableShowAll(true)}
               disabled={!currentImageSpuForDraftFilter || draftTableShowAll}
             >
               Show All
             </Button>
             <Button
-              appearance={
-                (draftTab === "spu" ? someSpuSelected : someSkuSelected)
-                  ? "primary"
-                  : "outline"
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                styles.draftToolbarFlagButton
+              )}
+              onClick={openProductNoteDialog}
+              disabled={!activeNoteRun || !activeNoteSpu}
+              title={
+                hasActiveProductNote
+                  ? "Flag note added"
+                  : "No flag note"
               }
+              aria-label={
+                hasActiveProductNote
+                  ? "Edit product flag note"
+                  : "Add product flag note"
+              }
+            >
+              {hasActiveProductNote ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className={mergeClasses(
+                    styles.draftToolbarFlagIcon,
+                    styles.draftToolbarFlagIconHasNote
+                  )}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M4 5a1 1 0 0 1 .3 -.714a6 6 0 0 1 8.213 -.176l.351 .328a4 4 0 0 0 5.272 0l.249 -.227c.61 -.483 1.527 -.097 1.61 .676l.005 .113v9a1 1 0 0 1 -.3 .714a6 6 0 0 1 -8.213 .176l-.351 -.328a4 4 0 0 0 -5.136 -.114v6.552a1 1 0 0 1 -1.993 .117l-.007 -.117v-16z" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.draftToolbarFlagIcon}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9" />
+                  <path d="M5 21v-7" />
+                </svg>
+              )}
+            </Button>
+            <Button
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                draftTab === "spu" ? someSpuSelected : someSkuSelected
+                  ? styles.draftToolbarActionButtonActive
+                  : undefined
+              )}
               onClick={handleDeleteRows}
               disabled={
                 !(draftTab === "spu" ? someSpuSelected : someSkuSelected) ||
@@ -10521,7 +13861,13 @@ export default function DraftExplorerPage() {
               )}
             </Button>
             <Button
-              appearance={draftTab === "sku" && someSkuSelected ? "primary" : "outline"}
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                draftTab === "sku" && someSkuSelected
+                  ? styles.draftToolbarActionButtonActive
+                  : undefined
+              )}
               onClick={handleDuplicateSkuRoles}
               disabled={draftTab !== "sku" || !someSkuSelected || duplicateRolesPending}
             >
@@ -10531,17 +13877,25 @@ export default function DraftExplorerPage() {
                   Duplicating...
                 </span>
               ) : (
-                "Duplicate Role"
+                "Duplicate row"
               )}
             </Button>
             <Button
-              appearance="primary"
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                draftTab === "spu" && someSpuSelected
+                  ? styles.draftToolbarActionButtonActive
+                  : undefined
+              )}
               onClick={handlePublishDrafts}
               disabled={
                 draftTab !== "spu" ||
+                !someSpuSelected ||
                 publishStatus === "running" ||
                 !skuReady ||
-                skuStatus === "running"
+                skuStatus === "running" ||
+                hasPendingDetailAiRewrite
               }
             >
               {t("draftExplorer.publishButton")}
@@ -10567,14 +13921,11 @@ export default function DraftExplorerPage() {
             {publishMessage}
           </Text>
         ) : null}
-        {skuMessage ? (
+        {skuStatus === "error" && skuMessage ? (
           <Text
             size={200}
             style={{
-              color:
-                skuStatus === "error"
-                  ? tokens.colorStatusDangerForeground1
-                  : tokens.colorStatusSuccessForeground1,
+              color: tokens.colorStatusDangerForeground1,
             }}
           >
             {skuMessage}
@@ -10598,6 +13949,7 @@ export default function DraftExplorerPage() {
                     style={spuColumnStyles.selection}
                   >
                     <Checkbox
+                      className={styles.selectionCheckbox}
                       checked={allSpuSelected ? true : someSpuSelected ? "mixed" : false}
                       onChange={toggleSelectAllSpus}
                       aria-label={t("common.selectAll")}
@@ -10623,16 +13975,6 @@ export default function DraftExplorerPage() {
                     className={mergeClasses(
                       styles.stickyHeader,
                       styles.resizableHeader,
-                      styles.statusCol
-                    )}
-                    style={spuColumnStyles.status}
-                  >
-                    {t("draftExplorer.columns.status")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(
-                      styles.stickyHeader,
-                      styles.resizableHeader,
                       styles.sourceCol
                     )}
                     style={spuColumnStyles.source}
@@ -10647,7 +13989,7 @@ export default function DraftExplorerPage() {
                     )}
                     style={spuColumnStyles.supplier}
                   >
-                    {t("draftExplorer.columns.supplierUrl")}
+                    Supplier
                   </TableHeaderCell>
                   <TableHeaderCell
                     className={mergeClasses(
@@ -10707,7 +14049,17 @@ export default function DraftExplorerPage() {
                     )}
                     style={spuColumnStyles.details}
                   >
-                    {t("draftExplorer.columns.details")}
+                    Descriptions
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(
+                      styles.stickyHeader,
+                      styles.resizableHeader,
+                      styles.jsonCol
+                    )}
+                    style={spuColumnStyles.json}
+                  >
+                    JSON
                   </TableHeaderCell>
                 </TableRow>
               </TableHeader>
@@ -10725,6 +14077,7 @@ export default function DraftExplorerPage() {
                     const imagesMarkedCompleted = Boolean(
                       spuMainFolderPath && completedSpuFolders.has(spuMainFolderPath)
                     );
+                    const detailsAiRunning = detailBackgroundRegeneratingRowIds.has(row.id);
                     const rowClass = imagesMarkedCompleted
                       ? styles.tableRowCompleted
                       : altClass;
@@ -10742,6 +14095,7 @@ export default function DraftExplorerPage() {
                             style={spuColumnStyles.selection}
                           >
                             <Checkbox
+                              className={styles.selectionCheckbox}
                               checked={selectedSpus.has(row.id)}
                               onChange={() => toggleSelectSpu(row.id)}
                               aria-label={t("common.selectItem", { item: row.draft_spu })}
@@ -10770,12 +14124,6 @@ export default function DraftExplorerPage() {
                             )}
                           </TableCell>
                           <TableCell
-                            className={mergeClasses(styles.tableCell, styles.statusCol)}
-                            style={spuColumnStyles.status}
-                          >
-                            <Text size={200}>{row.draft_status ?? ""}</Text>
-                          </TableCell>
-                          <TableCell
                             className={mergeClasses(styles.tableCell, styles.sourceCol)}
                             style={spuColumnStyles.source}
                           >
@@ -10790,13 +14138,58 @@ export default function DraftExplorerPage() {
                             className={mergeClasses(styles.tableCell, styles.supplierCol)}
                             style={spuColumnStyles.supplier}
                           >
-                            {renderEditableCell(
-                              "spu",
-                              row.id,
-                              "draft_supplier_1688_url",
-                              row.draft_supplier_1688_url,
-                              { clamp: true }
-                            )}
+                            <div className={styles.supplierSplitGroup}>
+                              <Button
+                                size="small"
+                                appearance="outline"
+                                className={mergeClasses(
+                                  styles.tableActionButton,
+                                  styles.supplierLinkButton
+                                )}
+                                onClick={() =>
+                                  handleOpenSupplierLink(row.draft_supplier_1688_url)
+                                }
+                                disabled={!String(row.draft_supplier_1688_url || "").trim()}
+                              >
+                                Supplier Link
+                              </Button>
+                              <Menu>
+                                <MenuTrigger disableButtonEnhancement>
+                                  <Button
+                                    size="small"
+                                    appearance="outline"
+                                    className={mergeClasses(
+                                      styles.tableActionButton,
+                                      styles.supplierMenuButton
+                                    )}
+                                    aria-label="Supplier actions"
+                                    title="Supplier actions"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className={styles.supplierMenuIcon}
+                                      aria-hidden="true"
+                                    >
+                                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                      <path d="M6 9l6 6l6 -6" />
+                                    </svg>
+                                  </Button>
+                                </MenuTrigger>
+                                <MenuPopover className={styles.supplierMenuPopover}>
+                                  <MenuList className={styles.supplierMenuList}>
+                                    <MenuItem onClick={() => openSupplierEditor(row)}>
+                                      Change Supplier
+                                    </MenuItem>
+                                  </MenuList>
+                                </MenuPopover>
+                              </Menu>
+                            </div>
                           </TableCell>
                           <TableCell
                             className={mergeClasses(
@@ -10822,7 +14215,7 @@ export default function DraftExplorerPage() {
                             )}
                             style={spuColumnStyles.videos}
                           >
-                            {row.video_count}
+                            {Number(row.video_count ?? 0) > 0 ? row.video_count : "-"}
                           </TableCell>
                           <TableCell
                             className={mergeClasses(
@@ -10862,8 +14255,38 @@ export default function DraftExplorerPage() {
                               appearance="outline"
                               className={styles.tableActionButton}
                               onClick={() => openDetails(row)}
+                              aria-busy={detailsAiRunning}
                             >
-                              {t("draftExplorer.detailsButton")}
+                              {detailsAiRunning ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    gap: "6px",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <Spinner
+                                    size="tiny"
+                                    style={{ color: tokens.colorNeutralForeground3 }}
+                                  />
+                                  Edit
+                                </span>
+                              ) : (
+                                "Edit"
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell
+                            className={mergeClasses(styles.tableCell, styles.jsonCol)}
+                            style={spuColumnStyles.json}
+                          >
+                            <Button
+                              size="small"
+                              appearance="outline"
+                              className={styles.tableActionButton}
+                              onClick={() => handleOpenSpuJsonViewer(row)}
+                            >
+                              JSON File
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -10886,6 +14309,7 @@ export default function DraftExplorerPage() {
                     style={skuColumnStyles.selection}
                   >
                     <Checkbox
+                      className={styles.selectionCheckbox}
                       checked={allSkuSelected ? true : someSkuSelected ? "mixed" : false}
                       onChange={toggleSelectAllSkus}
                       aria-label={t("common.selectAll")}
@@ -10935,6 +14359,7 @@ export default function DraftExplorerPage() {
                             style={skuColumnStyles.selection}
                           >
                             <Checkbox
+                              className={styles.selectionCheckbox}
                               checked={selectedSkus.has(row.id)}
                               onChange={() => toggleSelectSku(row.id)}
                               aria-label={t("common.selectItem", { item: row.draft_sku ?? "" })}
@@ -11084,6 +14509,91 @@ export default function DraftExplorerPage() {
           )}
         </div>
       </Card>
+
+      <Dialog
+        open={productNoteDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeProductNoteDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.productNoteDialogSurface}>
+          <DialogBody className={styles.productNoteDialogBody}>
+            <DialogTitle>
+              Flag Note
+              {activeNoteSpu ? ` - ${activeNoteSpu}` : ""}
+            </DialogTitle>
+            {productNoteError ? (
+              <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                {productNoteError}
+              </Text>
+            ) : null}
+            <div className={styles.productNoteCurrentWrap}>
+              <Text size={200} weight="semibold">
+                Current note
+              </Text>
+              {activeProductNote && String(activeProductNote.note || "").trim() ? (
+                <div className={styles.productNoteCurrentText}>
+                  <Text size={200}>{activeProductNote.note}</Text>
+                  <Text
+                    size={100}
+                    style={{
+                      display: "block",
+                      marginTop: "6px",
+                      color: tokens.colorNeutralForeground3,
+                    }}
+                  >
+                    Updated: {formatDateTime(activeProductNote.updatedAt)}
+                  </Text>
+                </div>
+              ) : (
+                <Text size={100} style={{ color: tokens.colorNeutralForeground3 }}>
+                  No note added.
+                </Text>
+              )}
+            </div>
+            <Field label="Note">
+              <Textarea
+                value={productNoteValue}
+                onChange={(_, data) => setProductNoteValue(data.value)}
+                placeholder="Add a short problem note for this product."
+                className={styles.productNoteTextarea}
+                disabled={productNoteLoading || productNoteSaving}
+              />
+            </Field>
+            <DialogActions>
+              <Button
+                appearance="secondary"
+                onClick={closeProductNoteDialog}
+                disabled={productNoteSaving}
+              >
+                Close
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={saveProductNote}
+                disabled={productNoteLoading || productNoteSaving}
+              >
+                {productNoteSaving ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      gap: "6px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Spinner size="tiny" />
+                    Saving...
+                  </span>
+                ) : (
+                  "Save and Close"
+                )}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
 
       <Dialog
         open={detailOpen}
@@ -11985,7 +15495,7 @@ export default function DraftExplorerPage() {
                 </Button>
               </PopoverTrigger>
               <PopoverSurface className={styles.batchPickerSurface}>
-                {folders.map((folder) => {
+                {regularBatchFolders.map((folder) => {
                   const active = folder.path === selectedFolder;
                   const checked = selectedRunsForMerge.has(folder.path);
                   return (
@@ -12009,9 +15519,7 @@ export default function DraftExplorerPage() {
                         }
                       }}
                     >
-                      <span className={styles.batchPickerRowName}>
-                        {folder.name}
-                      </span>
+                      <span className={styles.batchPickerRowName}>{folder.name}</span>
                       <Button
                         size="small"
                         appearance="outline"
@@ -12039,49 +15547,99 @@ export default function DraftExplorerPage() {
                         <Checkbox
                           checked={checked}
                           onChange={() => toggleRunForMerge(folder.path)}
+                          className={styles.batchPickerMergeCheckbox}
                         />
                       </span>
                     </div>
                   );
                 })}
+                {archiveBatchFolders.length > 0 ? (
+                  <div className={styles.batchPickerArchiveDivider}>
+                    {archiveBatchFolders.map((folder) => {
+                      const active = folder.path === selectedFolder;
+                      return (
+                        <div
+                          key={folder.path}
+                          className={mergeClasses(
+                            styles.batchPickerRow,
+                            styles.batchPickerRowArchive,
+                            active ? styles.batchPickerRowActive : undefined
+                          )}
+                          onClick={() => {
+                            setBatchPickerOpen(false);
+                            void handleSelectFolder(folder.path);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setBatchPickerOpen(false);
+                              void handleSelectFolder(folder.path);
+                            }
+                          }}
+                        >
+                          <span className={styles.batchPickerRowName}>{folder.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 <div className={styles.batchPickerActions}>
                   <Button
                     appearance="outline"
+                    size="small"
                     onClick={handleSelectAllRunsForMerge}
                     disabled={mergeRunsPending || deleteRunsPending}
+                    className={mergeClasses(
+                      styles.batchPickerActionButton,
+                      styles.whiteActionButton
+                    )}
                   >
                     Select All
                   </Button>
                   <Button
                     appearance="outline"
+                    size="small"
                     onClick={handleUnselectRunsForMerge}
                     disabled={
                       selectedRunsForMerge.size === 0 ||
                       mergeRunsPending ||
                       deleteRunsPending
                     }
+                    className={mergeClasses(
+                      styles.batchPickerActionButton,
+                      styles.whiteActionButton
+                    )}
                   >
                     Unselect
                   </Button>
                   <Button
                     appearance="primary"
+                    size="small"
                     disabled={
-                      selectedRunsForMerge.size < 2 ||
+                      selectedMergeableRunsCount < 2 ||
                       mergeRunsPending ||
                       deleteRunsPending
                     }
                     onClick={() => void handleMergeRuns()}
+                    className={styles.batchPickerActionButton}
                   >
                     {mergeRunsPending ? "Merging..." : "Merge"}
                   </Button>
                   <Button
                     appearance="outline"
+                    size="small"
                     disabled={
-                      selectedRunsForMerge.size === 0 ||
+                      selectedMergeableRunsCount === 0 ||
                       mergeRunsPending ||
                       deleteRunsPending
                     }
                     onClick={() => void handleDeleteRuns()}
+                    className={mergeClasses(
+                      styles.batchPickerActionButton,
+                      styles.whiteActionButton
+                    )}
                   >
                     {deleteRunsPending ? "Deleting..." : "Delete"}
                   </Button>
@@ -12101,6 +15659,11 @@ export default function DraftExplorerPage() {
                     styles.spuPickerTrigger,
                     styles.explorerWhiteButton
                   )}
+                  style={{
+                    width: `${spuPickerTriggerWidthPx}px`,
+                    minWidth: `${spuPickerTriggerWidthPx}px`,
+                    maxWidth: "92vw",
+                  }}
                   aria-label="Select SPU folder"
                   title="Select SPU folder"
                 >
@@ -12123,13 +15686,40 @@ export default function DraftExplorerPage() {
                   </svg>
                 </Button>
               </PopoverTrigger>
-              <PopoverSurface className={styles.spuPickerSurface}>
+              <PopoverSurface
+                className={mergeClasses(
+                  styles.spuPickerSurface,
+                  spuPickerMenuShouldScroll
+                    ? styles.spuPickerSurfaceScrollable
+                    : undefined
+                )}
+                style={{
+                  width: `${spuPickerMenuWidthPx}px`,
+                  minWidth: `${spuPickerMenuWidthPx}px`,
+                  maxWidth: "92vw",
+                }}
+              >
                 {runSpuOptions.length === 0 ? (
                   <Text size={100}>No SPU folders in this batch.</Text>
                 ) : (
                   runSpuOptions.map((option) => {
                     const active = option.path === selectedSpuPathInRun;
                     const isCompleted = completedSpuFolders.has(option.path);
+                    const status = runSpuStatusByPath[option.path] ?? {
+                      hasPendingAi: false,
+                      hasDigi: false,
+                      hasTaggedImage: false,
+                      hasImageIssue: false,
+                      hasUnseenAiUpdate: false,
+                    };
+                    const hasPendingAi = Boolean(status?.hasPendingAi);
+                    const hasDigi = Boolean(status?.hasDigi);
+                    const hasTaggedImage = Boolean(status?.hasTaggedImage);
+                    const hasImageIssue = Boolean(status?.hasImageIssue);
+                    const hasUnseenAiUpdate = Boolean(status?.hasUnseenAiUpdate);
+                    const shortTitleLabel =
+                      runSpuShortTitleByCode[String(option.name || "").trim().toUpperCase()] ||
+                      "";
                     return (
                       <div
                         key={option.path}
@@ -12148,32 +15738,177 @@ export default function DraftExplorerPage() {
                           }
                         }}
                       >
-                        <span className={styles.spuPickerRowName}>{option.name}</span>
-                        {isCompleted ? (
-                          <span className={styles.spuPickerRowCheck} aria-hidden="true">
+                        <span className={styles.spuPickerRowText}>
+                          <span className={styles.spuPickerRowName}>{option.name}</span>
+                          {shortTitleLabel ? (
+                            <>
+                              <span className={styles.spuPickerRowSeparator} aria-hidden="true">
+                                {" - "}
+                              </span>
+                              <span className={styles.spuPickerRowTitleWord}>
+                                {shortTitleLabel}
+                              </span>
+                            </>
+                          ) : null}
+                        </span>
+                        <span className={styles.spuPickerRowIndicators}>
+                          <span
+                            className={mergeClasses(
+                              styles.spuPickerRowIndicatorIcon,
+                              hasTaggedImage
+                                ? styles.spuPickerRowTagIconPresent
+                                : styles.spuPickerRowTagIconMissing
+                            )}
+                            aria-hidden="true"
+                            title={
+                              hasTaggedImage
+                                ? "One or more images have tags"
+                                : "No tagged images in this SPU folder"
+                            }
+                          >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="none"
                               stroke="currentColor"
-                              strokeWidth="2.4"
+                              strokeWidth="2"
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              className={styles.iconSvg}
+                              className={styles.spuPickerTagSvg}
                               aria-hidden="true"
                             >
                               <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                              <path d="M5 12l5 5l9 -9" />
+                              <path d="M6.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                              <path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3" />
                             </svg>
                           </span>
-                        ) : null}
+                          <span
+                            className={mergeClasses(
+                              styles.spuPickerRowIndicatorIcon,
+                              hasDigi
+                                ? styles.spuPickerRowDigiIconPresent
+                                : styles.spuPickerRowDigiIconMissing
+                            )}
+                            aria-hidden="true"
+                            title={
+                              hasDigi
+                                ? "DIGI tagged image found"
+                                : "Missing DIGI tagged image"
+                            }
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={styles.spuPickerIndicatorSvg}
+                              aria-hidden="true"
+                            >
+                              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                              <path d="M4 10a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -4" />
+                            </svg>
+                          </span>
+                          {hasImageIssue ? (
+                            <span
+                              className={mergeClasses(
+                                styles.spuPickerRowIndicatorIcon,
+                                styles.spuPickerRowImageIssueIcon
+                              )}
+                              aria-hidden="true"
+                              title="Image issue: low size, low quality score, or non-square format"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={styles.spuPickerIndicatorSvg}
+                                aria-hidden="true"
+                              >
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                <path d="M15 8h.01" />
+                                <path d="M15 21h-9a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v6" />
+                                <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l4 4" />
+                                <path d="M14 14l1 -1c.665 -.64 1.44 -.821 2.167 -.545" />
+                                <path d="M19 16v3" />
+                                <path d="M19 22v.01" />
+                              </svg>
+                            </span>
+                          ) : null}
+                          {hasPendingAi ? (
+                            <span
+                              className={mergeClasses(
+                                styles.spuPickerRowIndicatorIcon,
+                                styles.spuPickerRowAiIcon
+                              )}
+                              aria-hidden="true"
+                              title="Pending AI image decisions"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={styles.spuPickerIndicatorSvg}
+                                aria-hidden="true"
+                              >
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                <path d="M15 8h.01" />
+                                <path d="M10 21h-4a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v5" />
+                                <path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l1 1" />
+                                <path d="M14 21v-4a2 2 0 1 1 4 0v4" />
+                                <path d="M14 19h4" />
+                                <path d="M21 15v6" />
+                              </svg>
+                            </span>
+                          ) : null}
+                          {hasUnseenAiUpdate ? (
+                            <span
+                              className={mergeClasses(
+                                styles.spuPickerRowIndicatorIcon,
+                                styles.spuPickerRowAiNeedsReviewIcon
+                              )}
+                              aria-hidden="true"
+                              title="AI updates available to review"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={styles.spuPickerIndicatorSvg}
+                                aria-hidden="true"
+                              >
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+                                <path d="M11.102 17.957c-3.204 -.307 -5.904 -2.294 -8.102 -5.957c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6a19.5 19.5 0 0 1 -.663 1.032" />
+                                <path d="M15 19l2 2l4 -4" />
+                              </svg>
+                            </span>
+                          ) : null}
+                        </span>
                       </div>
                     );
                   })
                 )}
               </PopoverSurface>
             </Popover>
-            <Menu>
+            <Menu
+              open={explorerActionsMenuOpen}
+              onOpenChange={(_, data) => setExplorerActionsMenuOpen(data.open)}
+            >
               <MenuTrigger disableButtonEnhancement>
                 <Button
                   appearance="outline"
@@ -12181,11 +15916,32 @@ export default function DraftExplorerPage() {
                     !selectedFolder ||
                     tagAllImagesRunning ||
                     tagImagesRunning ||
-                    bulkImageActionPending
+                    bulkImageActionPending ||
+                    publishStatus === "running" ||
+                    deleteFolderPending
                   }
-                  className={styles.explorerWhiteButton}
+                  className={mergeClasses(
+                    styles.explorerWhiteButton,
+                    styles.actionMenuTriggerButton
+                  )}
                 >
-                  {tagAllImagesRunning ? "Working..." : "Actions"}
+                  <span className={styles.actionMenuTriggerContent}>
+                    <span>{tagAllImagesRunning ? "Working..." : "Actions"}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={styles.actionMenuCaretIcon}
+                      aria-hidden="true"
+                    >
+                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                      <path d="M6 9l6 6l6 -6" />
+                    </svg>
+                  </span>
                 </Button>
               </MenuTrigger>
               <MenuPopover>
@@ -12202,36 +15958,32 @@ export default function DraftExplorerPage() {
                   >
                     Tag All Images
                   </MenuItem>
+                  <MenuItem
+                    disabled={
+                      !selectedFolder ||
+                      currentBatchSpuCount === 0 ||
+                      publishStatus === "running" ||
+                      !skuReady ||
+                      skuStatus === "running" ||
+                      hasPendingDetailAiRewrite
+                    }
+                    onClick={() => void handlePublishCurrentBatchDrafts()}
+                  >
+                    {`${t("draftExplorer.publishButton")} (${currentBatchSpuCount})`}
+                  </MenuItem>
+                  <MenuItem
+                    disabled={
+                      !selectedFolder || deleteFolderPending || isSelectedFolderArchive
+                    }
+                    onClick={() => void handleDeleteFolder()}
+                  >
+                    {deleteFolderPending
+                      ? "Deleting..."
+                      : `Delete draft folder (${currentBatchSpuCount})`}
+                  </MenuItem>
                 </MenuList>
               </MenuPopover>
             </Menu>
-            <Button
-              appearance="outline"
-              onClick={handleDeleteFolder}
-              disabled={!selectedFolder || deleteFolderPending}
-              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-              aria-label={t("bulkProcessing.explorer.deleteFolder")}
-              title={t("bulkProcessing.explorer.deleteFolder")}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.iconSvg}
-                aria-hidden="true"
-              >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M4 7l16 0" />
-                <path d="M10 11l0 6" />
-                <path d="M14 11l0 6" />
-                <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-              </svg>
-            </Button>
             <Button
               appearance="outline"
               onClick={() => setFolderTreeHidden((prev) => !prev)}
@@ -12253,7 +16005,8 @@ export default function DraftExplorerPage() {
                   aria-hidden="true"
                 >
                   <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" />
+                  <path d="M8 4h1l3 3h7a2 2 0 0 1 2 2v8m-2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 1.189 -1.829" />
+                  <path d="M3 3l18 18" />
                 </svg>
               ) : (
                 <svg
@@ -12268,8 +16021,51 @@ export default function DraftExplorerPage() {
                   aria-hidden="true"
                 >
                   <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                  <path d="M8 4h1l3 3h7a2 2 0 0 1 2 2v8m-2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 1.189 -1.829" />
+                  <path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" />
+                </svg>
+              )}
+            </Button>
+            <Button
+              appearance="outline"
+              onClick={() => setFilesPaneHidden((prev) => !prev)}
+              className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+              aria-label={filesPaneHidden ? "Show files" : "Hide files"}
+              title={filesPaneHidden ? "Show files" : "Hide files"}
+            >
+              {filesPaneHidden ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M15 3v4a1 1 0 0 0 1 1h4" />
+                  <path d="M17 17h-6a2 2 0 0 1 -2 -2v-6m0 -4a2 2 0 0 1 2 -2h4l5 5v7c0 .294 -.063 .572 -.177 .823" />
+                  <path d="M16 17v2a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2" />
                   <path d="M3 3l18 18" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.iconSvg}
+                  aria-hidden="true"
+                >
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M15 3v4a1 1 0 0 0 1 1h4" />
+                  <path d="M18 17h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h4l5 5v7a2 2 0 0 1 -2 2" />
+                  <path d="M16 17v2a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h2" />
                 </svg>
               )}
             </Button>
@@ -12478,19 +16274,22 @@ export default function DraftExplorerPage() {
                 <div className={styles.imageToolbarTabs}>
                   <TabList
                     size="small"
-                    selectedValue={imageTabTargets.active ?? undefined}
+                    selectedValue={selectedImageTabValue}
                     onTabSelect={(_, data) => {
                       const value = data.value as ImageFolderTabValue;
+                      if (value === "variants") {
+                        setMainImageViewFilter("var_only");
+                      } else {
+                        setMainImageViewFilter("all");
+                      }
                       const nextPath =
-                        value === "main"
+                        value === "main" || value === "variants"
                           ? imageTabTargets.mainPath
-                          : value === "variants"
-                            ? imageTabTargets.variantsPath
-                            : value === "ocr"
-                              ? imageTabTargets.ocrPath
-                              : value === "others"
-                                ? imageTabTargets.othersPaths[0] ?? null
-                                : null;
+                          : value === "ocr"
+                            ? imageTabTargets.ocrPath
+                            : value === "others"
+                              ? imageTabTargets.othersPaths[0] ?? null
+                              : null;
                       if (nextPath) setCurrentPath(nextPath);
                     }}
                   >
@@ -12526,19 +16325,6 @@ export default function DraftExplorerPage() {
                         </span>
                       </span>
                     </Tab>
-                    <Tab value="ocr" disabled={ocrTabDisabled}>
-                      <span className={styles.imageTabLabel}>
-                        <span>OCR</span>
-                        <span
-                          className={mergeClasses(
-                            styles.imageTabBadge,
-                            ocrTabDisabled ? styles.imageTabBadgeDisabled : undefined
-                          )}
-                        >
-                          {imageTabImageCounts.ocr}
-                        </span>
-                      </span>
-                    </Tab>
                     <Tab value="others" disabled={othersTabDisabled}>
                       <span className={styles.imageTabLabel}>
                         <span>Others</span>
@@ -12552,362 +16338,176 @@ export default function DraftExplorerPage() {
                         </span>
                       </span>
                     </Tab>
+                    <Tab value="ocr" disabled={ocrTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>OCR</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            ocrTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.ocr}
+                        </span>
+                      </span>
+                    </Tab>
                   </TabList>
                 </div>
 
                 <div className={styles.imageToolbarRight}>
                   {mainViewShowsMergedImages && currentMainProductContext.spu ? (
-                    <>
+                    <Button
+                      appearance="outline"
+                      disabled={
+                        confirmAiEditsPending ||
+                        deleteProductPending ||
+                        aiReviewSubmitting ||
+                        movingEntry ||
+                        confirmablePendingAiPaths.length === 0
+                      }
+                      className={mergeClasses(
+                        styles.imageToolbarActions,
+                        styles.explorerWhiteButton
+                      )}
+                      onClick={() => void handleConfirmCurrentProductAiEdits()}
+                    >
+                      {confirmAiEditsPending ? "Confirming..." : "Confirm AI Edits"}
+                    </Button>
+                  ) : null}
+                  <Menu
+                    open={imageActionsMenuOpen}
+                    onOpenChange={(_, data) => setImageActionsMenuOpen(data.open)}
+                  >
+                    <MenuTrigger disableButtonEnhancement>
                       <Button
                         appearance="outline"
                         disabled={
-                          confirmAiEditsPending ||
-                          deleteProductPending ||
-                          aiReviewSubmitting ||
-                          movingEntry ||
-                          confirmablePendingAiPaths.length === 0
+                          bulkImageActionPending || addImagesSubmitting || deleteProductPending
                         }
                         className={mergeClasses(
                           styles.imageToolbarActions,
-                          styles.explorerWhiteButton
-                        )}
-                        onClick={() => void handleConfirmCurrentProductAiEdits()}
-                      >
-                        {confirmAiEditsPending ? "Confirming..." : "Confirm AI Edits"}
-                      </Button>
-                      <Button
-                        appearance="outline"
-                        disabled={confirmAiEditsPending || deleteProductPending || movingEntry}
-                        className={mergeClasses(
-                          styles.imageToolbarActions,
                           styles.explorerWhiteButton,
-                          styles.dangerOutlineButton
-                        )}
-                        onClick={() => void handleDeleteCurrentProduct()}
-                      >
-                        {deleteProductPending ? "Deleting..." : "Delete product"}
-                      </Button>
-                    </>
-                  ) : null}
-                  <Menu>
-                    <MenuTrigger disableButtonEnhancement>
-                      <Button
-                        appearance={selectedImageEntries.length > 1 ? "primary" : "outline"}
-                        disabled={bulkImageActionPending}
-                        className={mergeClasses(
-                          styles.imageToolbarActions,
-                          selectedImageEntries.length > 1 ? undefined : styles.explorerWhiteButton
+                          styles.actionMenuTriggerButton
                         )}
                       >
-                        {bulkImageActionPending ? "Working..." : "Actions"}
+                        <span className={styles.actionMenuTriggerContent}>
+                          <span>
+                            {bulkImageActionPending || addImagesSubmitting || deleteProductPending
+                              ? "Working..."
+                              : "Actions"}
+                          </span>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={styles.actionMenuCaretIcon}
+                            aria-hidden="true"
+                          >
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <path d="M6 9l6 6l6 -6" />
+                          </svg>
+                        </span>
                       </Button>
                     </MenuTrigger>
                     <MenuPopover>
                       <MenuList className={styles.compactMenuList}>
                         <MenuItem
-                          disabled={!undoLastChangeAvailable || bulkImageActionPending}
+                          disabled={
+                            !currentPath ||
+                            bulkImageActionPending ||
+                            addImagesSubmitting ||
+                            deleteProductPending
+                          }
+                          onClick={() => setAddImagesDialogOpen(true)}
+                        >
+                          Add Images
+                        </MenuItem>
+                        <MenuItem
+                          disabled={
+                            importEditsSubmitting ||
+                            bulkImageActionPending ||
+                            addImagesSubmitting ||
+                            deleteProductPending
+                          }
+                          onClick={() => {
+                            setExcelFile(null);
+                            setZipFile(null);
+                            setExcelStatus("idle");
+                            setZipStatus("idle");
+                            setImportEditsDialogOpen(true);
+                            if (importEditsExcelInputRef.current) {
+                              importEditsExcelInputRef.current.value = "";
+                            }
+                            if (importEditsZipInputRef.current) {
+                              importEditsZipInputRef.current.value = "";
+                            }
+                          }}
+                        >
+                          Import Edits
+                        </MenuItem>
+                        <MenuItem
+                          disabled={
+                            !undoLastChangeAvailable ||
+                            bulkImageActionPending ||
+                            addImagesSubmitting ||
+                            deleteProductPending
+                          }
                           onClick={handleUndoLastChangeFromImageActions}
                         >
                           Undo Last Change
                         </MenuItem>
                         <MenuItem
-                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                          disabled={
+                            !mainViewShowsMergedImages ||
+                            !currentMainProductContext.spu ||
+                            confirmAiEditsPending ||
+                            deleteProductPending ||
+                            aiReviewSubmitting ||
+                            movingEntry ||
+                            bulkImageActionPending ||
+                            addImagesSubmitting
+                          }
+                          onClick={() => void handleDeleteCurrentProduct()}
+                        >
+                          {deleteProductPending ? "Deleting..." : "Delete product"}
+                        </MenuItem>
+                        <MenuItem
+                          disabled={
+                            selectedImageEntries.length === 0 || bulkImageActionPending
+                          }
                           onClick={() => handleDownloadEntries(selectedImageEntries)}
                         >
                           Download Selected Images
                         </MenuItem>
                         <MenuItem
-                          disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
+                          disabled={
+                            selectedImageEntries.length === 0 || bulkImageActionPending
+                          }
                           onClick={() => handleCreateCopiesForEntries(selectedImageEntries)}
                         >
                           Create Copy
                         </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "template"
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Standard Template
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "chatgpt",
-	                            "direct"
-	                          )
-	                        }
-	                      >
-	                        Edit ChatGPT: Direct
-	                      </MenuItem>
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit ChatGPT: Digideal Main
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    1
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    2
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "digideal_main",
-                                    3
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit ChatGPT: Product Scene
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 1 }
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 2 }
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "chatgpt",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 3 }
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "template"
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Standard Template
-	                      </MenuItem>
-	                      <MenuItem
-	                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-	                        onClick={() =>
-	                          startAiEditForEntries(
-	                            selectedImageEntries,
-	                            "gemini",
-	                            "direct"
-	                          )
-	                        }
-	                      >
-	                        Edit Gemini: Direct
-	                      </MenuItem>
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit Gemini: Digideal Main
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    1
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    2
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  startAiTemplatePresetForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "digideal_main",
-                                    3
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <MenuItem
-                              disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                            >
-                              Edit Gemini: Product Scene
-                            </MenuItem>
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList className={styles.compactMenuList}>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 1 }
-                                  )
-                                }
-                              >
-                                1 image
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 2 }
-                                  )
-                                }
-                              >
-                                2 images
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() =>
-                                  void runAiEditsForEntries(
-                                    selectedImageEntries,
-                                    "gemini",
-                                    "template",
-                                    "",
-                                    { templatePreset: "product_scene", outputCount: 3 }
-                                  )
-                                }
-                              >
-                                3 images
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(selectedImageEntries, "zimage", "direct")
-                        }
-                      >
-                        Edit Z-Image: Direct
-                      </MenuItem>
-                      <MenuItem
-                        disabled={selectedImageEntries.length === 0 || bulkImageActionPending}
-                        onClick={() =>
-                          startAiEditForEntries(
-                            selectedImageEntries,
-                            "zimage",
-                            "white_background"
-                          )
-                        }
-                      >
-                        Edit Z-Image: White BG
-                      </MenuItem>
-                      <MenuItem
-                        disabled={
-                          selectedImageEntries.length === 0 ||
-                          selectedImageUpscaleEligibleCount === 0 ||
-                          bulkImageActionPending
-                        }
-                        onClick={() =>
-                          startAiEditForEntries(selectedImageEntries, "zimage", "upscale")
-                        }
-                      >
-                        Edit Z-Image: Upscale
-                      </MenuItem>
-                    </MenuList>
-                  </MenuPopover>
+                        <MenuItem
+                          disabled={
+                            selectedImageEntries.length === 0 ||
+                            bulkImageActionPending ||
+                            addImagesSubmitting ||
+                            deleteProductPending
+                          }
+                          onClick={() =>
+                            void handleDeleteSelected(
+                              selectedImageEntries.map((entry) => entry.path)
+                            )
+                          }
+                        >
+                          Delete Selected Images
+                        </MenuItem>
+                      </MenuList>
+                    </MenuPopover>
                   </Menu>
                   <Button
                     appearance={tagImagesRunningInCurrentPath ? "primary" : "outline"}
@@ -12943,30 +16543,6 @@ export default function DraftExplorerPage() {
                     {entriesRefreshing ? <Spinner size="tiny" /> : null}
                     <Button
                       appearance="outline"
-                      onClick={handleExplorerRefresh}
-                      disabled={entriesLoading || entriesRefreshing || movingEntry}
-                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                      aria-label={t("bulkProcessing.explorer.refresh")}
-                      title={t("bulkProcessing.explorer.refresh")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={styles.iconSvg}
-                        aria-hidden="true"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                      </svg>
-                    </Button>
-                    <Button
-                      appearance="outline"
                       onClick={handleDownloadSelectedIndividually}
                       disabled={selectedFiles.size === 0}
                       className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
@@ -12988,33 +16564,6 @@ export default function DraftExplorerPage() {
                         <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
                         <path d="M7 11l5 5l5 -5" />
                         <path d="M12 4l0 12" />
-                      </svg>
-                    </Button>
-                    <Button
-                      appearance="outline"
-                      onClick={handleDeleteSelected}
-                      disabled={selectedFiles.size + selectedTreeFolders.size === 0}
-                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
-                      aria-label={t("bulkProcessing.explorer.deleteSelected")}
-                      title={t("bulkProcessing.explorer.deleteSelected")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={styles.iconSvg}
-                        aria-hidden="true"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M4 7l16 0" />
-                        <path d="M10 11l0 6" />
-                        <path d="M14 11l0 6" />
-                        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-                        <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
                       </svg>
                     </Button>
                   </div>
@@ -13160,6 +16709,10 @@ export default function DraftExplorerPage() {
                           Number.isFinite(pendingAi.pendingPixelQualityScore)
                             ? Math.round(pendingAi.pendingPixelQualityScore)
                             : null;
+                        const isPixelQualityPending =
+                          pendingImageScorePaths.has(entry.path) &&
+                          pendingPixelQualityScore === null &&
+                          originalPixelQualityScore === null;
                         const pixelQualityScore =
                           pendingPixelQualityScore ?? originalPixelQualityScore;
                         const pixelQualityDelta =
@@ -13477,7 +17030,17 @@ export default function DraftExplorerPage() {
                                     pixelQualityClass
                                   )}
                                 >
-                                  {pixelQualityLabel}
+                                  {isPixelQualityPending ? (
+                                    <span className={styles.mediaMetaQualityPendingInline}>
+                                      <span>Q</span>
+                                      <Spinner
+                                        size="tiny"
+                                        className={styles.mediaMetaQualityPendingSpinner}
+                                      />
+                                    </span>
+                                  ) : (
+                                    pixelQualityLabel
+                                  )}
                                 </span>
                                 {hasZimageUpscaled ? (
                                   <>
@@ -13532,229 +17095,157 @@ export default function DraftExplorerPage() {
                 ) : null}
               </div>
             </div>
-              <div className={styles.filesUploadRow}>
-                <div className={styles.filesSection}>
-                  <div className={styles.entriesContentArea} aria-busy={entriesLoading}>
-                  {nonImageFileEntries.length === 0 ? (
-                    <Text size={100}>No files in this folder.</Text>
-		                  ) : (
-		                    <Table size="small" className={styles.filesTable}>
-	                      <TableHeader>
-	                        <TableRow>
-	                          <TableHeaderCell className={styles.filesColSelect}>
-	                            <input
-	                              ref={nonImageFileSelectAllRef}
-	                              type="checkbox"
-	                              checked={nonImageFilesAllSelected}
-	                              onChange={handleToggleAllNonImageFiles}
-	                              aria-label="Select all files"
-	                            />
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColName}>
-	                            File Name
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColSize}>
-	                            File Size
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColDate}>
-	                            Date
-	                          </TableHeaderCell>
-	                          <TableHeaderCell className={styles.filesColAction}>
-	                            Actions
-	                          </TableHeaderCell>
-	                        </TableRow>
-	                      </TableHeader>
-	                      <TableBody>
-	                        {nonImageFileEntries.map((entry) => (
-                          <TableRow
-                            key={`file-${entry.path}`}
-                            draggable
-                            onDragStart={(event) => {
-                              const draggedPaths = buildDraggedPathsForEntry(entry);
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData(
-                                "text/plain",
-                                draggedPaths[0] ?? entry.path
-                              );
-                              event.dataTransfer.setData(
-                                "application/x-nordexo-paths",
-                                JSON.stringify(draggedPaths)
-                              );
-                              setDraggingEntryPaths(draggedPaths);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingEntryPaths([]);
-                              setFolderDropTargetPath(null);
-                            }}
-                            onContextMenu={(event) => {
-                              event.preventDefault();
-                              setContextMenuSubmenu(null);
-                              setContextMenu({
-                                entry,
-                                image: false,
-                                x: event.clientX,
-                                y: event.clientY,
-                              });
-	                            }}
-	                          >
-	                            <TableCell className={styles.filesColSelect}>
-	                              <input
-	                                type="checkbox"
-	                                checked={selectedFiles.has(entry.path)}
-	                                onChange={() => handleToggleFile(entry.path)}
-	                              />
-	                            </TableCell>
-	                            <TableCell className={styles.filesColName}>
-	                              {renamingPath === entry.path ? (
-	                                <Input
-	                                  size="small"
-	                                  value={renameValue}
-	                                  onChange={(_, data) => setRenameValue(data.value)}
-	                                  onBlur={() => commitRename(entry)}
-	                                  onKeyDown={(event) => {
-	                                    if (event.key === "Enter") {
-	                                      event.preventDefault();
-	                                      commitRename(entry);
-	                                    }
-	                                    if (event.key === "Escape") {
-	                                      event.preventDefault();
-	                                      cancelRename();
-	                                    }
-	                                  }}
-	                                  autoFocus
-	                                  className={styles.renameInput}
-	                                />
-	                              ) : (
-	                                <button
-	                                  type="button"
-	                                  className={styles.filesNameButton}
-	                                  onClick={() => startRename(entry)}
-	                                >
-	                                  {entry.name}
-	                                </button>
-	                              )}
-	                            </TableCell>
-	                            <TableCell className={styles.filesColSize}>
-	                              <Text size={100} className={styles.filesInfo}>
-	                                {formatFileSize(entry.size)}
-	                              </Text>
-	                            </TableCell>
-	                            <TableCell className={styles.filesColDate}>
-	                              <Text size={100} className={styles.filesInfo}>
-	                                {formatDateTime(entry.modifiedAt)}
-	                              </Text>
-	                            </TableCell>
-	                            <TableCell className={styles.filesColAction}>
-	                              <div className={styles.fileActions}>
-	                                <Button
-	                                  appearance="outline"
-	                                  size="small"
-	                                  onClick={() => downloadEntry(entry)}
-	                                  className={styles.fileActionButton}
-	                                >
-	                                  {t("bulkProcessing.explorer.download")}
-	                                </Button>
-	                                <Button
-	                                  appearance="outline"
-	                                  size="small"
-	                                  onClick={() => handleOpenFileViewer(entry)}
-	                                  disabled={!isTextFileEditable(entry)}
-	                                  className={mergeClasses(
-	                                    styles.fileActionButton,
-	                                    styles.fileActionButtonNarrow
-	                                  )}
-	                                >
-	                                  View
-	                                </Button>
-	                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                  {entriesLoading ? (
-                    <div className={styles.entriesContentOverlay}>
-                      <Spinner size="tiny" />
+              {!filesPaneHidden ? (
+                <div className={styles.filesUploadRow}>
+                  <div className={styles.filesSection}>
+                    <div className={styles.entriesContentArea} aria-busy={entriesLoading}>
+                      {nonImageFileEntries.length === 0 ? (
+                        <Text size={100}>No files in this folder.</Text>
+                      ) : (
+                        <Table size="small" className={styles.filesTable}>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHeaderCell className={styles.filesColSelect}>
+                                <input
+                                  ref={nonImageFileSelectAllRef}
+                                  type="checkbox"
+                                  checked={nonImageFilesAllSelected}
+                                  onChange={handleToggleAllNonImageFiles}
+                                  aria-label="Select all files"
+                                />
+                              </TableHeaderCell>
+                              <TableHeaderCell className={styles.filesColName}>
+                                File Name
+                              </TableHeaderCell>
+                              <TableHeaderCell className={styles.filesColSize}>
+                                File Size
+                              </TableHeaderCell>
+                              <TableHeaderCell className={styles.filesColDate}>
+                                Date
+                              </TableHeaderCell>
+                              <TableHeaderCell className={styles.filesColAction}>
+                                Actions
+                              </TableHeaderCell>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {nonImageFileEntries.map((entry) => (
+                              <TableRow
+                                key={`file-${entry.path}`}
+                                draggable
+                                onDragStart={(event) => {
+                                  const draggedPaths = buildDraggedPathsForEntry(entry);
+                                  event.dataTransfer.effectAllowed = "move";
+                                  event.dataTransfer.setData(
+                                    "text/plain",
+                                    draggedPaths[0] ?? entry.path
+                                  );
+                                  event.dataTransfer.setData(
+                                    "application/x-nordexo-paths",
+                                    JSON.stringify(draggedPaths)
+                                  );
+                                  setDraggingEntryPaths(draggedPaths);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingEntryPaths([]);
+                                  setFolderDropTargetPath(null);
+                                }}
+                                onContextMenu={(event) => {
+                                  event.preventDefault();
+                                  setContextMenuSubmenu(null);
+                                  setContextMenu({
+                                    entry,
+                                    image: false,
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                  });
+                                }}
+                              >
+                                <TableCell className={styles.filesColSelect}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedFiles.has(entry.path)}
+                                    onChange={() => handleToggleFile(entry.path)}
+                                  />
+                                </TableCell>
+                                <TableCell className={styles.filesColName}>
+                                  {renamingPath === entry.path ? (
+                                    <Input
+                                      size="small"
+                                      value={renameValue}
+                                      onChange={(_, data) => setRenameValue(data.value)}
+                                      onBlur={() => commitRename(entry)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                          event.preventDefault();
+                                          commitRename(entry);
+                                        }
+                                        if (event.key === "Escape") {
+                                          event.preventDefault();
+                                          cancelRename();
+                                        }
+                                      }}
+                                      autoFocus
+                                      className={styles.renameInput}
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={styles.filesNameButton}
+                                      onClick={() => startRename(entry)}
+                                    >
+                                      {entry.name}
+                                    </button>
+                                  )}
+                                </TableCell>
+                                <TableCell className={styles.filesColSize}>
+                                  <Text size={100} className={styles.filesInfo}>
+                                    {formatFileSize(entry.size)}
+                                  </Text>
+                                </TableCell>
+                                <TableCell className={styles.filesColDate}>
+                                  <Text size={100} className={styles.filesInfo}>
+                                    {formatDateTime(entry.modifiedAt)}
+                                  </Text>
+                                </TableCell>
+                                <TableCell className={styles.filesColAction}>
+                                  <div className={styles.fileActions}>
+                                    <Button
+                                      appearance="outline"
+                                      size="small"
+                                      onClick={() => downloadEntry(entry)}
+                                      className={styles.fileActionButton}
+                                    >
+                                      {t("bulkProcessing.explorer.download")}
+                                    </Button>
+                                    <Button
+                                      appearance="outline"
+                                      size="small"
+                                      onClick={() => handleOpenFileViewer(entry)}
+                                      disabled={!isTextFileEditable(entry)}
+                                      className={mergeClasses(
+                                        styles.fileActionButton,
+                                        styles.fileActionButtonNarrow
+                                      )}
+                                    >
+                                      View
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                      {entriesLoading ? (
+                        <div className={styles.entriesContentOverlay}>
+                          <Spinner size="tiny" />
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
                   </div>
                 </div>
-
-                <div className={styles.urlUploadPanel}>
-                  <Text size={100} weight="semibold">
-                    Image URL Input
-                  </Text>
-                  <Textarea
-                    rows={3}
-                    resize="vertical"
-                    value={imageUrlInput}
-                    onChange={(_, data) => setImageUrlInput(data.value)}
-                    placeholder="Paste image URLs separated by commas"
-                    className={styles.urlUploadInput}
-                  />
-                  <div className={styles.urlUploadActions}>
-                    <Button
-                      appearance="primary"
-                      size="small"
-                      onClick={handleAddImageUrls}
-                      disabled={!currentPath || addingImageUrls}
-                    >
-                      {addingImageUrls ? "Adding..." : "Add Images"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div
-                  className={mergeClasses(
-                    styles.dropZone,
-                    isDragging ? styles.dropZoneActive : undefined
-                  )}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDragging(false);
-                    const files = Array.from(event.dataTransfer.files ?? []);
-                    handleUploadFiles(files);
-                  }}
-                >
-                  <Text size={100} className={styles.uploadDropHint}>
-                    Drag and drop files, or choose from your computer.
-                  </Text>
-                  <div className={styles.uploadDropCenter}>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={styles.uploadDropIcon}
-                      aria-hidden="true"
-                    >
-                      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                      <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
-                      <path d="M12 11v6" />
-                      <path d="M9.5 13.5l2.5 -2.5l2.5 2.5" />
-                    </svg>
-                  </div>
-                  <div className={styles.uploadInputWrap}>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={(event) =>
-                        handleUploadFiles(Array.from(event.target.files ?? []))
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
+              ) : null}
             </div>
           </div>
         ) : explorerView === "list" ? (
@@ -14315,24 +17806,28 @@ export default function DraftExplorerPage() {
 	                      </button>
                         <div
                           className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
+                          onMouseEnter={() =>
+                            setContextMenuNestedSubmenu("chatgpt-digideal-single")
+                          }
                         >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-digideal")}
+                            onMouseEnter={() =>
+                              setContextMenuNestedSubmenu("chatgpt-digideal-single")
+                            }
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-digideal");
+                              setContextMenuNestedSubmenu("chatgpt-digideal-single");
                             }}
                           >
-                            <span>Digideal Main</span>
+                            <span>DigiDeal Main Single</span>
                             <span className={styles.contextMenuButtonCaret}>
                               {contextMenuSubmenuSide === "left" ? "‹" : "›"}
                             </span>
                           </button>
-                          {contextMenuNestedSubmenu === "chatgpt-digideal" ? (
+                          {contextMenuNestedSubmenu === "chatgpt-digideal-single" ? (
                             <div
                               className={mergeClasses(
                                 styles.contextMenuSubmenu,
@@ -14345,7 +17840,7 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:1")
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-single:1")
                                 }
                               >
                                 <span>1 image</span>
@@ -14354,7 +17849,7 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:2")
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-single:2")
                                 }
                               >
                                 <span>2 images</span>
@@ -14363,7 +17858,70 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-chatgpt-digideal-main:3")
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-single:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() =>
+                            setContextMenuNestedSubmenu("chatgpt-digideal-dual")
+                          }
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() =>
+                              setContextMenuNestedSubmenu("chatgpt-digideal-dual")
+                            }
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("chatgpt-digideal-dual");
+                            }}
+                          >
+                            <span>DigiDeal Main Dual</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "chatgpt-digideal-dual" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-dual:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-dual:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-chatgpt-digideal-main-dual:3")
                                 }
                               >
                                 <span>3 images</span>
@@ -14430,6 +17988,16 @@ export default function DraftExplorerPage() {
                             </div>
                           ) : null}
                         </div>
+                        <button
+                          type="button"
+                          className={styles.contextMenuButton}
+                          disabled={!contextMenuCollectionAllowed}
+                          onClick={() =>
+                            handleContextMenuAction("ai-chatgpt-product-collection")
+                          }
+                        >
+                          <span>Product Collection</span>
+                        </button>
 	                    </div>
 	                  ) : null}
 	                </div>
@@ -14479,24 +18047,28 @@ export default function DraftExplorerPage() {
 	                      </button>
                         <div
                           className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
+                          onMouseEnter={() =>
+                            setContextMenuNestedSubmenu("gemini-digideal-single")
+                          }
                         >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-digideal")}
+                            onMouseEnter={() =>
+                              setContextMenuNestedSubmenu("gemini-digideal-single")
+                            }
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-digideal");
+                              setContextMenuNestedSubmenu("gemini-digideal-single");
                             }}
                           >
-                            <span>Digideal Main</span>
+                            <span>DigiDeal Main Single</span>
                             <span className={styles.contextMenuButtonCaret}>
                               {contextMenuSubmenuSide === "left" ? "‹" : "›"}
                             </span>
                           </button>
-                          {contextMenuNestedSubmenu === "gemini-digideal" ? (
+                          {contextMenuNestedSubmenu === "gemini-digideal-single" ? (
                             <div
                               className={mergeClasses(
                                 styles.contextMenuSubmenu,
@@ -14509,7 +18081,7 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:1")
+                                  handleContextMenuAction("ai-gemini-digideal-main-single:1")
                                 }
                               >
                                 <span>1 image</span>
@@ -14518,7 +18090,7 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:2")
+                                  handleContextMenuAction("ai-gemini-digideal-main-single:2")
                                 }
                               >
                                 <span>2 images</span>
@@ -14527,7 +18099,70 @@ export default function DraftExplorerPage() {
                                 type="button"
                                 className={styles.contextMenuButton}
                                 onClick={() =>
-                                  handleContextMenuAction("ai-gemini-digideal-main:3")
+                                  handleContextMenuAction("ai-gemini-digideal-main-single:3")
+                                }
+                              >
+                                <span>3 images</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={styles.contextMenuSubmenuWrap}
+                          onMouseEnter={() =>
+                            setContextMenuNestedSubmenu("gemini-digideal-dual")
+                          }
+                        >
+                          <button
+                            type="button"
+                            className={styles.contextMenuButton}
+                            onMouseEnter={() =>
+                              setContextMenuNestedSubmenu("gemini-digideal-dual")
+                            }
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setContextMenuNestedSubmenu("gemini-digideal-dual");
+                            }}
+                          >
+                            <span>DigiDeal Main Dual</span>
+                            <span className={styles.contextMenuButtonCaret}>
+                              {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                            </span>
+                          </button>
+                          {contextMenuNestedSubmenu === "gemini-digideal-dual" ? (
+                            <div
+                              className={mergeClasses(
+                                styles.contextMenuSubmenu,
+                                contextMenuSubmenuSide === "left"
+                                  ? styles.contextMenuSubmenuLeft
+                                  : undefined
+                              )}
+                            >
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main-dual:1")
+                                }
+                              >
+                                <span>1 image</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main-dual:2")
+                                }
+                              >
+                                <span>2 images</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.contextMenuButton}
+                                onClick={() =>
+                                  handleContextMenuAction("ai-gemini-digideal-main-dual:3")
                                 }
                               >
                                 <span>3 images</span>
@@ -14594,6 +18229,16 @@ export default function DraftExplorerPage() {
                             </div>
                           ) : null}
                         </div>
+                        <button
+                          type="button"
+                          className={styles.contextMenuButton}
+                          disabled={!contextMenuCollectionAllowed}
+                          onClick={() =>
+                            handleContextMenuAction("ai-gemini-product-collection")
+                          }
+                        >
+                          <span>Product Collection</span>
+                        </button>
 	                    </div>
 	                  ) : null}
 	                </div>
@@ -14710,6 +18355,221 @@ export default function DraftExplorerPage() {
 	          </DialogSurface>
 	        </Dialog>
 
+        <Dialog
+          open={Boolean(aiDualDialog)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAiDualDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiDualSurface}>
+            <DialogBody className={styles.aiDualBody}>
+              <DialogTitle>
+                {`Generate Dual Image with ${aiDualProviderLabel}${
+                  aiDualDialog
+                    ? ` (${aiDualDialog.outputCount} output${
+                        aiDualDialog.outputCount === 1 ? "" : "s"
+                      })`
+                    : ""
+                }`}
+              </DialogTitle>
+              {aiDualError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiDualError}
+                </Text>
+              ) : null}
+              <div className={styles.aiDualSwapRow}>
+                <Text size={200} className={styles.aiDualCardHint}>
+                  Left side is the pure product image on white. Right side is scene guidance.
+                  Drag one card onto the other or use swap.
+                </Text>
+                <Button appearance="outline" onClick={swapAiDualRoles} disabled={aiDualSubmitting}>
+                  Swap Left/Right
+                </Button>
+              </div>
+              <div className={styles.aiDualGrid}>
+                <div
+                  className={mergeClasses(
+                    styles.aiDualCard,
+                    aiDualDragRole === "guidance" ? styles.aiDualCardDropTarget : undefined,
+                    aiDualDragRole === "product" ? styles.aiDualCardDragging : undefined
+                  )}
+                  draggable={!aiDualSubmitting}
+                  onDragStart={() => setAiDualDragRole("product")}
+                  onDragEnd={() => setAiDualDragRole(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    handleAiDualRoleDrop("product");
+                  }}
+                >
+                  <Text size={300} className={styles.aiDualCardTitle}>
+                    Left: Pure Product (White Background)
+                  </Text>
+                  <Text size={200} className={styles.aiDualCardHint}>
+                    {aiDualDialog?.productEntry.name || "-"}
+                  </Text>
+                  <div className={styles.aiDualPreviewFrame}>
+                    {aiDualDialog ? (
+                      <img
+                        src={aiDualProductPreviewUrl}
+                        alt={aiDualDialog.productEntry.name}
+                        className={styles.aiDualPreviewImage}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+                <div
+                  className={mergeClasses(
+                    styles.aiDualCard,
+                    aiDualDragRole === "product" ? styles.aiDualCardDropTarget : undefined,
+                    aiDualDragRole === "guidance" ? styles.aiDualCardDragging : undefined
+                  )}
+                  draggable={!aiDualSubmitting}
+                  onDragStart={() => setAiDualDragRole("guidance")}
+                  onDragEnd={() => setAiDualDragRole(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    handleAiDualRoleDrop("guidance");
+                  }}
+                >
+                  <Text size={300} className={styles.aiDualCardTitle}>
+                    Right: Scene / Environment Guidance
+                  </Text>
+                  <Text size={200} className={styles.aiDualCardHint}>
+                    {aiDualDialog?.guidanceEntry.name || "-"}
+                  </Text>
+                  <div className={styles.aiDualPreviewFrame}>
+                    {aiDualDialog ? (
+                      <img
+                        src={aiDualGuidancePreviewUrl}
+                        alt={aiDualDialog.guidanceEntry.name}
+                        className={styles.aiDualPreviewImage}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <Field label="Additional guidance (optional)">
+                <Textarea
+                  value={aiDualPrompt}
+                  onChange={(_, data) => setAiDualPrompt(data.value)}
+                  resize="vertical"
+                  rows={4}
+                  disabled={aiDualSubmitting}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      submitAiDualTemplatePreset();
+                    }
+                  }}
+                />
+              </Field>
+              <Text size={200} className={styles.aiDualCardHint}>
+                The two images are welded into one reference image with white separation before
+                being sent to the model.
+              </Text>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={closeAiDualDialog}
+                  disabled={aiDualSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={submitAiDualTemplatePreset}
+                  disabled={!aiDualDialog || aiDualSubmitting}
+                >
+                  {aiDualSubmitting ? "Running..." : "Generate Dual Image"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(aiCollectionDialog)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAiCollectionDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiCollectionSurface}>
+            <DialogBody className={styles.aiCollectionBody}>
+              <DialogTitle>
+                {`Product Collection with ${aiCollectionProviderLabel} (${
+                  aiCollectionDialog?.entries.length ?? 0
+                } images)`}
+              </DialogTitle>
+              {aiCollectionError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiCollectionError}
+                </Text>
+              ) : null}
+              <Text size={200} className={styles.aiCollectionHint}>
+                Selected images are welded into one contact-sheet input before running AI.
+              </Text>
+              <div className={styles.aiCollectionPreviewBox}>
+                <div className={styles.aiCollectionGrid}>
+                  {aiCollectionPreviewItems.map((item, index) => (
+                    <div className={styles.aiCollectionCard} key={item.key}>
+                      <Text size={200} className={styles.aiCollectionCardTitle}>
+                        {`Image ${index + 1}`}
+                      </Text>
+                      <Text size={100} className={styles.aiCollectionHint}>
+                        {item.name}
+                      </Text>
+                      <div className={styles.aiCollectionThumbFrame}>
+                        <img
+                          src={item.url}
+                          alt={item.name}
+                          className={styles.aiCollectionThumbImage}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Field label="Additional guidance (optional)">
+                <Textarea
+                  value={aiCollectionPrompt}
+                  onChange={(_, data) => setAiCollectionPrompt(data.value)}
+                  resize="vertical"
+                  rows={3}
+                  disabled={aiCollectionSubmitting}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      submitAiCollection();
+                    }
+                  }}
+                />
+              </Field>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={closeAiCollectionDialog}
+                  disabled={aiCollectionSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={submitAiCollection}
+                  disabled={!aiCollectionDialog || aiCollectionSubmitting}
+                >
+                  {aiCollectionSubmitting ? "Running..." : "Make AI Edit"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
 	        <Dialog
 	          open={aiEditTargets.length > 0}
 	          onOpenChange={(_, data) => {
@@ -14732,24 +18592,143 @@ export default function DraftExplorerPage() {
                   {aiEditError}
                 </Text>
               ) : null}
-              {aiEditTargets.length === 1 ? (
-                <div className={styles.aiPromptImageWrap}>
-                  <img
-                    src={buildDraftDownloadUrl(
-                      aiEditTargets[0].path,
-                      entryByPath.get(aiEditTargets[0].path)?.modifiedAt
-                    )}
-                    alt={aiEditTargets[0].name}
-                    className={styles.aiPromptImagePreview}
-                  />
-                </div>
+              {aiEditMode === "eraser" ? (
+                <Field label="Eraser Mode">
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <Button
+                      appearance={aiEraserRunMode === "prompt" ? "primary" : "outline"}
+                      onClick={() => setAiEraserRunMode("prompt")}
+                      disabled={aiEditSubmitting}
+                    >
+                      Prompt only
+                    </Button>
+                    <Button
+                      appearance={aiEraserRunMode === "mask" ? "primary" : "outline"}
+                      onClick={() => setAiEraserRunMode("mask")}
+                      disabled={aiEditTargets.length !== 1 || aiEditSubmitting}
+                    >
+                      Prompt + painted mask
+                    </Button>
+                  </div>
+                  {aiEditTargets.length !== 1 ? (
+                    <Text size={200} className={styles.aiMaskHint}>
+                      Mask mode is available only for one image at a time.
+                    </Text>
+                  ) : null}
+                </Field>
+              ) : null}
+              {aiEditSingleTarget ? (
+                aiEditShowMaskPainter ? (
+                  <div className={styles.aiMaskEditor}>
+                    <div className={styles.aiMaskStage}>
+                      <img
+                        ref={aiMaskImageRef}
+                        src={aiEditSingleTargetPreviewUrl}
+                        alt={aiEditSingleTarget.name}
+                        className={styles.aiMaskBaseImage}
+                        onLoad={() => {
+                          syncAiMaskCanvasToImage(true);
+                        }}
+                      />
+                      <div
+                        className={styles.aiMaskCursor}
+                        style={{
+                          left: `${aiMaskCursor.x}px`,
+                          top: `${aiMaskCursor.y}px`,
+                          width: `${aiMaskCursor.size}px`,
+                          height: `${aiMaskCursor.size}px`,
+                          display: aiMaskCursor.visible ? "block" : "none",
+                        }}
+                      />
+                      <canvas
+                        ref={aiMaskCanvasRef}
+                        className={styles.aiMaskCanvas}
+                        onPointerEnter={(event) => {
+                          setAiMaskCursorFromPointer(event, true);
+                        }}
+                        onPointerDown={handleAiMaskPointerDown}
+                        onPointerMove={handleAiMaskPointerMove}
+                        onPointerUp={(event) => stopAiMaskDrawing(event.pointerId)}
+                        onPointerCancel={(event) => {
+                          stopAiMaskDrawing(event.pointerId);
+                          setAiMaskCursor((prev) =>
+                            prev.visible ? { ...prev, visible: false } : prev
+                          );
+                        }}
+                        onPointerLeave={(event) => {
+                          if (
+                            aiMaskDrawingRef.current &&
+                            aiMaskPointerIdRef.current === event.pointerId
+                          ) {
+                            stopAiMaskDrawing(event.pointerId);
+                          }
+                          setAiMaskCursor((prev) =>
+                            prev.visible ? { ...prev, visible: false } : prev
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className={styles.aiMaskToolbar}>
+                      <Field label={`Brush size (${aiMaskBrushSize}px)`}>
+                        <input
+                          type="range"
+                          min={6}
+                          max={180}
+                          step={1}
+                          value={aiMaskBrushSize}
+                          onChange={(event) => {
+                            const nextValue = Number(event.currentTarget.value);
+                            setAiMaskBrushSize(
+                              Number.isFinite(nextValue)
+                                ? Math.max(6, Math.min(180, Math.round(nextValue)))
+                                : 36
+                            );
+                          }}
+                          className={styles.aiMaskBrushSlider}
+                        />
+                      </Field>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Button
+                          appearance="subtle"
+                          onClick={clearAiMaskCanvas}
+                          disabled={!aiMaskHasPaint || aiEditSubmitting}
+                        >
+                          Clear mask
+                        </Button>
+                      </div>
+                    </div>
+                    <Text size={200} className={styles.aiMaskHint}>
+                      {aiMaskHasPaint
+                        ? "Mask will be uploaded and aligned pixel-for-pixel to this image."
+                        : "No mask painted yet. Running now will use prompt-only auto edit."}
+                    </Text>
+                  </div>
+                ) : (
+                  <div className={styles.aiPromptImageWrap}>
+                    <img
+                      src={aiEditSingleTargetPreviewUrl}
+                      alt={aiEditSingleTarget.name}
+                      className={styles.aiPromptImagePreview}
+                    />
+                  </div>
+                )
+              ) : null}
+              {aiEditMode === "eraser" && aiEditTargets.length > 1 ? (
+                <Text size={200} className={styles.aiMaskHint}>
+                  Mask painter is available only for single-image eraser edits. Multi-image runs
+                  use prompt-only auto mode.
+                </Text>
               ) : null}
               {aiEditHasPromptInput ? (
 	                <Field
 	                  label={
 	                    aiEditMode === "template"
-	                      ? aiEditTemplatePreset === "digideal_main"
-                          ? "Micro prompt (optional, added to DigiDL Main template)"
+                      ? aiEditTemplatePreset === "digideal_main"
+                          ? "Micro prompt (optional, added to DigiDeal Main Single template)"
+                          : aiEditTemplatePreset === "digideal_main_dual"
+                            ? "Guidance prompt (optional, added to DigiDeal Main Dual template)"
+                          : aiEditTemplatePreset === "product_collection"
+                            ? "Guidance prompt (optional, added to Product Collection template)"
                           : "Prompt (inserted into standard template)"
 	                      : "Prompt (sent directly)"
 	                  }
@@ -14758,7 +18737,7 @@ export default function DraftExplorerPage() {
                     value={aiEditPrompt}
                     onChange={(_, data) => setAiEditPrompt(data.value)}
                     resize="vertical"
-                    rows={5}
+                    rows={3}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -14780,6 +18759,26 @@ export default function DraftExplorerPage() {
                 >
                   {t("common.close")}
                 </Button>
+                {aiEditShowPromptTemplates ? (
+                  <Menu positioning="above-end">
+                    <MenuTrigger disableButtonEnhancement>
+                      <Button appearance="outline" disabled={aiEditSubmitting}>
+                        Templates
+                      </Button>
+                    </MenuTrigger>
+                    <MenuPopover>
+                      <MenuList className={styles.compactMenuList}>
+                        <MenuItem
+                          onClick={() =>
+                            setAiEditPrompt("Translate this text to Swedish.")
+                          }
+                        >
+                          Translate text to Swedish
+                        </MenuItem>
+                      </MenuList>
+                    </MenuPopover>
+                  </Menu>
+                ) : null}
                 <Button
                   appearance="primary"
                   onClick={submitAiEdit}
@@ -14892,6 +18891,181 @@ export default function DraftExplorerPage() {
                   disabled={!aiReviewOriginalPath || aiReviewSubmitting}
                 >
                   {aiReviewSubmitting ? "Saving..." : "Replace with AI Image"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={addImagesDialogOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAddImagesDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.addImagesDialogSurface}>
+            <DialogBody className={styles.addImagesDialogBody}>
+              <DialogTitle>Add Images</DialogTitle>
+              <div className={styles.addImagesDialogSection}>
+                <Text size={100} weight="semibold">
+                  Image URL Input
+                </Text>
+                <Textarea
+                  rows={3}
+                  resize="vertical"
+                  value={imageUrlInput}
+                  onChange={(_, data) => setImageUrlInput(data.value)}
+                  placeholder="Paste image URLs separated by commas"
+                  className={styles.urlUploadInput}
+                  disabled={addImagesSubmitting}
+                />
+              </div>
+              <div
+                className={mergeClasses(
+                  styles.addImagesDialogDropZone,
+                  addImagesDialogDragActive ? styles.addImagesDialogDropZoneActive : undefined
+                )}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setAddImagesDialogDragActive(true);
+                }}
+                onDragLeave={() => setAddImagesDialogDragActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setAddImagesDialogDragActive(false);
+                  queueAddImagesDialogFiles(Array.from(event.dataTransfer.files ?? []));
+                }}
+              >
+                <Text size={100} className={styles.uploadDropHint}>
+                  Drag and drop images or ZIP files, or choose from your computer.
+                </Text>
+                <div className={styles.uploadDropCenter}>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={styles.uploadDropIcon}
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+                    <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" />
+                    <path d="M12 11v6" />
+                    <path d="M9.5 13.5l2.5 -2.5l2.5 2.5" />
+                  </svg>
+                </div>
+                <div className={styles.uploadInputWrap}>
+                  <input
+                    ref={addImagesFileInputRef}
+                    type="file"
+                    multiple
+                    disabled={addImagesSubmitting}
+                    onChange={(event) => {
+                      queueAddImagesDialogFiles(Array.from(event.target.files ?? []));
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </div>
+                {addImagesDialogFiles.length > 0 ? (
+                  <ul className={styles.addImagesDialogFileList}>
+                    {addImagesDialogFiles.slice(0, 10).map((file, index) => (
+                      <li
+                        key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+                        className={styles.addImagesDialogFileItem}
+                        title={file.name}
+                      >
+                        {file.name}
+                      </li>
+                    ))}
+                    {addImagesDialogFiles.length > 10 ? (
+                      <li className={styles.addImagesDialogFileItem}>
+                        +{addImagesDialogFiles.length - 10} more file(s)
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+              </div>
+              <DialogActions className={styles.addImagesDialogActions}>
+                <Button
+                  appearance="outline"
+                  onClick={closeAddImagesDialog}
+                  disabled={addImagesSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void handleSubmitAddImagesDialog()}
+                  disabled={!currentPath || addImagesSubmitting}
+                >
+                  {addImagesSubmitting ? "Uploading..." : "Upload"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={importEditsDialogOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeImportEditsDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.addImagesDialogSurface}>
+            <DialogBody className={styles.addImagesDialogBody}>
+              <DialogTitle>Import Edits</DialogTitle>
+              <div className={styles.addImagesDialogSection}>
+                <Field label="Upload Excel file">
+                  <input
+                    ref={importEditsExcelInputRef}
+                    type="file"
+                    accept=".xlsx"
+                    className={styles.fileInput}
+                    disabled={importEditsSubmitting}
+                    onChange={(event) => {
+                      setExcelFile(event.target.files?.[0] ?? null);
+                      setExcelStatus("idle");
+                    }}
+                  />
+                </Field>
+              </div>
+              <div className={styles.addImagesDialogSection}>
+                <Field label="Upload image ZIP file (optional)">
+                  <input
+                    ref={importEditsZipInputRef}
+                    type="file"
+                    accept=".zip"
+                    className={styles.fileInput}
+                    disabled={importEditsSubmitting}
+                    onChange={(event) => {
+                      setZipFile(event.target.files?.[0] ?? null);
+                      setZipStatus("idle");
+                    }}
+                  />
+                </Field>
+              </div>
+              <DialogActions className={styles.addImagesDialogActions}>
+                <Button
+                  appearance="outline"
+                  onClick={closeImportEditsDialog}
+                  disabled={importEditsSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void handleSubmitImportEditsDialog()}
+                  disabled={importEditsSubmitting || (!excelFile && !zipFile)}
+                >
+                  {importEditsSubmitting ? "Uploading..." : "Upload"}
                 </Button>
               </DialogActions>
             </DialogBody>
@@ -15143,59 +19317,84 @@ export default function DraftExplorerPage() {
             </DialogBody>
           </DialogSurface>
         </Dialog>
+
+        <Dialog
+          open={supplierEditorOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeSupplierEditor();
+            }
+          }}
+        >
+          <DialogSurface className={styles.supplierEditorSurface}>
+            <DialogBody className={styles.supplierEditorBody}>
+              <DialogTitle>
+                {`Change Supplier${supplierEditorSpu ? ` - ${supplierEditorSpu}` : ""}`}
+              </DialogTitle>
+              {supplierEditorError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {supplierEditorError}
+                </Text>
+              ) : null}
+              <Field label="Supplier URL">
+                <Input
+                  value={supplierEditorValue}
+                  onChange={(_, data) => setSupplierEditorValue(data.value)}
+                  placeholder="https://..."
+                />
+              </Field>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={closeSupplierEditor}
+                  disabled={supplierEditorSaving}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void handleSaveSupplierEditor()}
+                  disabled={supplierEditorSaving}
+                >
+                  {supplierEditorSaving ? "Saving..." : t("common.save")}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(spuJsonViewer)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              setSpuJsonViewer(null);
+            }
+          }}
+        >
+          <DialogSurface className={styles.jsonViewerSurface}>
+            <DialogBody className={styles.jsonViewerBody}>
+              <DialogTitle>
+                {spuJsonViewer?.spu
+                  ? `${spuJsonViewer.spu} - JSON File`
+                  : "JSON File"}
+              </DialogTitle>
+              <Textarea
+                value={spuJsonViewer?.content ?? ""}
+                readOnly
+                resize="vertical"
+                rows={24}
+                className={styles.jsonViewerArea}
+              />
+              <DialogActions className={styles.textViewerActions}>
+                <Button appearance="primary" onClick={() => setSpuJsonViewer(null)}>
+                  {t("common.close")}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
       </Card>
 
-      <Card className={styles.uploadCard}>
-        <div className={styles.header}>
-          <Text size={500} weight="semibold">
-            {t("bulkProcessing.import.title")}
-          </Text>
-        </div>
-        <div className={styles.uploadRow}>
-          <Field label={t("bulkProcessing.import.excel")}>
-            <input
-              type="file"
-              accept=".xlsx"
-              className={styles.fileInput}
-              onChange={(event) =>
-                setExcelFile(event.target.files?.[0] ?? null)
-              }
-            />
-          </Field>
-          <Button
-            appearance="outline"
-            onClick={() => handleImport("excel")}
-            disabled={!excelFile || excelStatus === "uploading"}
-          >
-            {excelStatus === "uploading"
-              ? t("bulkProcessing.import.uploading")
-              : t("bulkProcessing.import.upload")}
-          </Button>
-          <Field label={t("bulkProcessing.import.zip")}>
-            <input
-              type="file"
-              accept=".zip"
-              className={styles.fileInput}
-              onChange={(event) => setZipFile(event.target.files?.[0] ?? null)}
-            />
-          </Field>
-          <Button
-            appearance="outline"
-            onClick={() => handleImport("zip")}
-            disabled={!zipFile || zipStatus === "uploading"}
-          >
-            {zipStatus === "uploading"
-              ? t("bulkProcessing.import.uploading")
-              : t("bulkProcessing.import.upload")}
-          </Button>
-          {excelStatus === "done" ? (
-            <Text size={200}>{t("bulkProcessing.import.done")}</Text>
-          ) : null}
-          {zipStatus === "done" ? (
-            <Text size={200}>{t("bulkProcessing.import.done")}</Text>
-          ) : null}
-        </div>
-      </Card>
     </div>
   );
 }

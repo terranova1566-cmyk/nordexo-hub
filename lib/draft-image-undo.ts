@@ -4,6 +4,7 @@ import {
   restoreDraftImageUpscaleUndoMarker,
   saveDraftImageUpscaleUndoMarker,
 } from "@/lib/draft-image-upscale";
+import { archiveDraftImageVersion } from "@/lib/draft-image-versions";
 
 const UNDO_FILE_SUFFIX = ".undo-last";
 
@@ -45,6 +46,16 @@ const createTempPath = (imageAbsolutePath: string, label: string) => {
 export const saveDraftImageUndoBackup = (imageAbsolutePath: string) => {
   if (!fs.existsSync(imageAbsolutePath) || !fs.statSync(imageAbsolutePath).isFile()) {
     throw new Error("Source image not found.");
+  }
+
+  // Keep a long-lived copy in "old versions" in addition to one-step undo backup.
+  try {
+    archiveDraftImageVersion({
+      imageAbsolutePath,
+      reason: "before-replace",
+    });
+  } catch {
+    // Best effort only. Replace/undo flow should continue even if archive copy fails.
   }
 
   const undoAbsolutePath = buildUndoAbsolutePath(imageAbsolutePath);

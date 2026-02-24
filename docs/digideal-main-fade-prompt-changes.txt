@@ -1,0 +1,14 @@
+DigiDeal Main Fade/Seam Change Log
+
+Status as of 2026-02-23:
+- The temporary runtime seam-enforcement override was reverted.
+- Dual-input mapping behavior remains enabled.
+
+What was reverted in code:
+- Removed the extra runtime seam block that forced a specific center-fade style.
+- Removed the injected "ignore blurred transition" instruction.
+- Removed seam-style injection from `applyDigidealMainPackageToTemplate(...)`.
+
+Current behavior:
+- DigiDeal Main/Dual now uses the existing/base prompt transition wording again.
+- No extra runtime override is applied for seam/fade style.

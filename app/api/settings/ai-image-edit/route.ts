@@ -12,6 +12,8 @@ const DIGIDEAL_MAIN_PROMPT_PATH =
   "/srv/node-tools/product-processor/prompts/digideal-main-image-prompt.txt";
 const ENVIORMENT_SCENE_PROMPT_PATH =
   "/srv/node-tools/product-processor/prompts/enviorment-scene-image-prompt.txt";
+const PRODUCT_COLLECTION_PROMPT_PATH =
+  "/srv/node-tools/product-processor/prompts/product-collection-image-prompt.txt";
 
 const parseEnvFile = (content: string) => {
   const lines = content.split(/\r?\n/);
@@ -171,11 +173,16 @@ const buildResponse = (env: Record<string, string>) => {
     ? envMultilineToText(env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE)
     : extractTextTemplate(ENVIORMENT_SCENE_PROMPT_PATH);
 
+  const productCollectionPrompt = env.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE
+    ? envMultilineToText(env.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE)
+    : extractTextTemplate(PRODUCT_COLLECTION_PROMPT_PATH);
+
   return {
     chatgpt_prompt_template: chatgptPrompt,
     gemini_prompt_template: geminiPrompt,
     digideal_main_prompt_template: digidealMainPrompt,
     enviorment_scene_image_prompt_template: enviormentScenePrompt,
+    product_collection_image_prompt_template: productCollectionPrompt,
     meta: {
       chatgpt_prompt_template: {
         source: env.OPENAI_IMAGE_PROMPT_TEMPLATE ? "env" : "script",
@@ -200,6 +207,12 @@ const buildResponse = (env: Record<string, string>) => {
         updated_at: env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE
           ? envUpdatedAt
           : getFileMtimeIso(ENVIORMENT_SCENE_PROMPT_PATH),
+      },
+      product_collection_image_prompt_template: {
+        source: env.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE ? "env" : "file",
+        updated_at: env.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE
+          ? envUpdatedAt
+          : getFileMtimeIso(PRODUCT_COLLECTION_PROMPT_PATH),
       },
     },
   };
@@ -299,6 +312,16 @@ export async function POST(request: Request) {
     versions.push({
       prompt_id: "ENVSCNIM",
       template_text: payload.enviorment_scene_image_prompt_template,
+    });
+  }
+
+  if (typeof payload.product_collection_image_prompt_template === "string") {
+    updates.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE = textToEnvMultiline(
+      payload.product_collection_image_prompt_template
+    );
+    versions.push({
+      prompt_id: "PRDCOL01",
+      template_text: payload.product_collection_image_prompt_template,
     });
   }
 

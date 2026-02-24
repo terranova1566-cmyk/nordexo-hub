@@ -9,7 +9,26 @@ const stripImageTagSuffixes = (fileName: string) => {
   if (!raw) return raw;
   const ext = path.extname(raw);
   const base = ext ? raw.slice(0, -ext.length) : raw;
-  const cleanedBase = base.replace(/\s+\((?:MAIN|ENV|INF|VAR|DIGI)\)/gi, "").trim();
+  let cleanedBase = base.trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const noParen = cleanedBase
+      .replace(/\s*\((?:MAIN|ENV|INF|VAR|DIGI)\)\s*$/i, "")
+      .trim();
+    if (noParen !== cleanedBase) {
+      cleanedBase = noParen;
+      changed = true;
+      continue;
+    }
+    const noToken = cleanedBase
+      .replace(/(?:[-_ ]+)(?:MAIN|ENV|INF|VAR|DIGI)\s*$/i, "")
+      .trim();
+    if (noToken !== cleanedBase) {
+      cleanedBase = noToken;
+      changed = true;
+    }
+  }
   return `${cleanedBase || base}${ext.toLowerCase()}`;
 };
 

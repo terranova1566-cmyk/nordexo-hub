@@ -118,6 +118,7 @@ type AIImageEditSettings = {
   gemini_prompt_template: string;
   digideal_main_prompt_template: string;
   enviorment_scene_image_prompt_template: string;
+  product_collection_image_prompt_template: string;
 };
 
 type AIImageEditPromptMeta = {
@@ -131,6 +132,7 @@ type AIImageEditSettingsResponse = AIImageEditSettings & {
     gemini_prompt_template?: AIImageEditPromptMeta;
     digideal_main_prompt_template?: AIImageEditPromptMeta;
     enviorment_scene_image_prompt_template?: AIImageEditPromptMeta;
+    product_collection_image_prompt_template?: AIImageEditPromptMeta;
   };
 };
 
@@ -139,6 +141,7 @@ type AIImagePromptKey =
   | "gemini"
   | "digideal_main"
   | "enviorment_scene"
+  | "product_collection"
   | `custom:${string}`;
 
 type AIImageEditCustomPrompt = {
@@ -830,6 +833,8 @@ export default function SettingsPage() {
   const [aiImageGeminiPrompt, setAiImageGeminiPrompt] = useState("");
   const [aiImageDigiDealMainPrompt, setAiImageDigiDealMainPrompt] = useState("");
   const [aiImageEnviormentScenePrompt, setAiImageEnviormentScenePrompt] = useState("");
+  const [aiImageProductCollectionPrompt, setAiImageProductCollectionPrompt] =
+    useState("");
   const [aiImageSelectedPrompt, setAiImageSelectedPrompt] =
     useState<AIImagePromptKey>("chatgpt");
   const [aiImagePromptSearch, setAiImagePromptSearch] = useState("");
@@ -1034,11 +1039,16 @@ export default function SettingsPage() {
         digideal_main_prompt_template: payload.digideal_main_prompt_template ?? "",
         enviorment_scene_image_prompt_template:
           payload.enviorment_scene_image_prompt_template ?? "",
+        product_collection_image_prompt_template:
+          payload.product_collection_image_prompt_template ?? "",
       };
       setAiImageChatgptPrompt(normalized.chatgpt_prompt_template);
       setAiImageGeminiPrompt(normalized.gemini_prompt_template);
       setAiImageDigiDealMainPrompt(normalized.digideal_main_prompt_template);
       setAiImageEnviormentScenePrompt(normalized.enviorment_scene_image_prompt_template);
+      setAiImageProductCollectionPrompt(
+        normalized.product_collection_image_prompt_template
+      );
       setAiImageMeta(payload.meta ?? null);
       setAiImageOriginal(normalized);
 
@@ -1205,6 +1215,8 @@ export default function SettingsPage() {
             ? "DDMAINIM"
             : selectedKey === "enviorment_scene"
               ? "ENVSCNIM"
+              : selectedKey === "product_collection"
+                ? "PRDCOL01"
               : "OAIIMGED";
       if (selectedKey.startsWith("custom:")) {
         const promptId = selectedKey.slice("custom:".length);
@@ -1261,6 +1273,10 @@ export default function SettingsPage() {
           body.enviorment_scene_image_prompt_template = String(
             textOverride ?? aiImageEnviormentScenePrompt
           );
+        } else if (selectedKey === "product_collection") {
+          body.product_collection_image_prompt_template = String(
+            textOverride ?? aiImageProductCollectionPrompt
+          );
         }
 
         const response = await fetch("/api/settings/ai-image-edit", {
@@ -1279,6 +1295,8 @@ export default function SettingsPage() {
           digideal_main_prompt_template: payload.digideal_main_prompt_template ?? "",
           enviorment_scene_image_prompt_template:
             payload.enviorment_scene_image_prompt_template ?? "",
+          product_collection_image_prompt_template:
+            payload.product_collection_image_prompt_template ?? "",
         };
 
         // Keep unsaved edits for non-selected prompts intact.
@@ -1291,6 +1309,10 @@ export default function SettingsPage() {
         } else if (selectedKey === "enviorment_scene") {
           setAiImageEnviormentScenePrompt(
             normalized.enviorment_scene_image_prompt_template
+          );
+        } else if (selectedKey === "product_collection") {
+          setAiImageProductCollectionPrompt(
+            normalized.product_collection_image_prompt_template
           );
         }
 
@@ -1804,6 +1826,15 @@ export default function SettingsPage() {
         description: "Used when generating the environment scene prompt payload.",
         updatedAt: meta.enviorment_scene_image_prompt_template?.updated_at ?? null,
       },
+      {
+        key: "product_collection" as const,
+        promptId: "PRDCOL01",
+        title: "Product Collection Prompt",
+        usage: "Product collection image composition",
+        description:
+          "Used when combining 2-4 selected product images into one clean collection output.",
+        updatedAt: meta.product_collection_image_prompt_template?.updated_at ?? null,
+      },
     ];
 
     const custom = aiImageCustomPrompts
@@ -1836,6 +1867,7 @@ export default function SettingsPage() {
       if (key === "gemini") return aiImageGeminiPrompt;
       if (key === "digideal_main") return aiImageDigiDealMainPrompt;
       if (key === "enviorment_scene") return aiImageEnviormentScenePrompt;
+      if (key === "product_collection") return aiImageProductCollectionPrompt;
       return aiImageChatgptPrompt;
     };
 
@@ -1871,6 +1903,7 @@ export default function SettingsPage() {
     aiImageGeminiPrompt,
     aiImageDigiDealMainPrompt,
     aiImageEnviormentScenePrompt,
+    aiImageProductCollectionPrompt,
   ]);
 
   const selectedAiPrompt =
@@ -1941,6 +1974,8 @@ export default function SettingsPage() {
         return aiImageDigiDealMainPrompt;
       case "enviorment_scene":
         return aiImageEnviormentScenePrompt;
+      case "product_collection":
+        return aiImageProductCollectionPrompt;
       case "chatgpt":
       default:
         return aiImageChatgptPrompt;
@@ -1951,6 +1986,7 @@ export default function SettingsPage() {
     aiImageGeminiPrompt,
     aiImageDigiDealMainPrompt,
     aiImageEnviormentScenePrompt,
+    aiImageProductCollectionPrompt,
     aiImageCustomPrompts,
   ]);
 
@@ -1992,6 +2028,8 @@ export default function SettingsPage() {
         return aiImageOriginal.digideal_main_prompt_template ?? "";
       case "enviorment_scene":
         return aiImageOriginal.enviorment_scene_image_prompt_template ?? "";
+      case "product_collection":
+        return aiImageOriginal.product_collection_image_prompt_template ?? "";
       case "chatgpt":
       default:
         return aiImageOriginal.chatgpt_prompt_template ?? "";
@@ -2044,6 +2082,9 @@ export default function SettingsPage() {
       case "enviorment_scene":
         setAiImageEnviormentScenePrompt(nextValue);
         break;
+      case "product_collection":
+        setAiImageProductCollectionPrompt(nextValue);
+        break;
       case "chatgpt":
       default:
         setAiImageChatgptPrompt(nextValue);
@@ -2087,6 +2128,11 @@ export default function SettingsPage() {
       case "enviorment_scene":
         setAiImageEnviormentScenePrompt(
           aiImageOriginal.enviorment_scene_image_prompt_template ?? ""
+        );
+        break;
+      case "product_collection":
+        setAiImageProductCollectionPrompt(
+          aiImageOriginal.product_collection_image_prompt_template ?? ""
         );
         break;
       case "chatgpt":

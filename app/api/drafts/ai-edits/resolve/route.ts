@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       item: result.item,
       refreshedScores: result.refreshedScores,
       scoreRefreshErrors: result.scoreRefreshErrors,
+      discardedMoves: result.discardedMoves,
     });
   } catch (err) {
     return NextResponse.json(

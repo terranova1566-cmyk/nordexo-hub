@@ -82,9 +82,16 @@ export async function POST(request: Request) {
   }
 
   const relativePath = String(body.path || "").trim();
+  const guidanceRelativePath = String(body.secondaryPath || body.guidancePath || "").trim();
+  const collectionRelativePaths = Array.isArray(body.collectionPaths)
+    ? body.collectionPaths
+        .map((value) => String(value || "").trim())
+        .filter((value) => Boolean(value))
+    : [];
   const providerRaw = String(body.provider || "").trim().toLowerCase();
   const modeRaw = String(body.mode || "").trim().toLowerCase();
   const prompt = String(body.prompt || "");
+  const maskDataUrl = typeof body.maskDataUrl === "string" ? body.maskDataUrl.trim() : "";
   const templatePresetRaw =
     typeof body.templatePreset === "string" ? body.templatePreset.trim().toLowerCase() : "";
   const outputCountRaw = body.outputCount ?? body.outputs ?? body.count;
@@ -126,14 +133,30 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (maskDataUrl && modeRaw !== "eraser") {
+    return NextResponse.json(
+      { error: "Mask payload is only supported for eraser mode." },
+      { status: 400 }
+    );
+  }
 
   let templatePreset: AiTemplatePreset | undefined;
   if (templatePresetRaw) {
     if (templatePresetRaw === "standard") templatePreset = "standard";
     else if (templatePresetRaw === "digideal_main" || templatePresetRaw === "digideal-main") {
       templatePreset = "digideal_main";
+    } else if (
+      templatePresetRaw === "digideal_main_dual" ||
+      templatePresetRaw === "digideal-main-dual"
+    ) {
+      templatePreset = "digideal_main_dual";
     } else if (templatePresetRaw === "product_scene" || templatePresetRaw === "product-scene") {
       templatePreset = "product_scene";
+    } else if (
+      templatePresetRaw === "product_collection" ||
+      templatePresetRaw === "product-collection"
+    ) {
+      templatePreset = "product_collection";
     } else {
       return NextResponse.json({ error: "Invalid template preset." }, { status: 400 });
     }
@@ -156,14 +179,36 @@ export async function POST(request: Request) {
   }
 
   try {
-    // DigiDeal Main & Product Scene now auto-save outputs directly into the folder (no review/resolve flow).
+    // Template presets auto-save outputs directly into the folder (no review/resolve flow).
     if (
       (providerRaw === "chatgpt" || providerRaw === "gemini") &&
       modeRaw === "template" &&
-      (templatePreset === "digideal_main" || templatePreset === "product_scene")
+      (templatePreset === "digideal_main" ||
+        templatePreset === "digideal_main_dual" ||
+        templatePreset === "product_scene" ||
+        templatePreset === "product_collection")
     ) {
+      if (templatePreset === "digideal_main_dual" && !guidanceRelativePath) {
+        return NextResponse.json(
+          { error: "Dual preset requires a secondary guidance image path." },
+          { status: 400 }
+        );
+      }
+      if (
+        templatePreset === "product_collection" &&
+        (collectionRelativePaths.length < 2 || collectionRelativePaths.length > 4)
+      ) {
+        return NextResponse.json(
+          { error: "Product Collection requires selecting 2 to 4 images." },
+          { status: 400 }
+        );
+      }
       const createdPaths = await createTemplatePresetOutputs({
         relativePath,
+        guidanceRelativePath:
+          templatePreset === "digideal_main_dual" ? guidanceRelativePath : undefined,
+        collectionRelativePaths:
+          templatePreset === "product_collection" ? collectionRelativePaths : undefined,
         provider: providerRaw,
         templatePreset,
         count: outputCount,
@@ -178,6 +223,7 @@ export async function POST(request: Request) {
       provider: providerRaw,
       mode: modeRaw,
       prompt,
+      maskDataUrl,
       templatePreset,
       requestedBy: auth.userId,
     });
@@ -197,6 +243,7 @@ export async function POST(request: Request) {
         pixelQualityScore: refreshedOriginal?.pixelQualityScore ?? null,
         refreshedScores: resolved.refreshedScores,
         scoreRefreshErrors: resolved.scoreRefreshErrors,
+        discardedMoves: resolved.discardedMoves,
       });
     }
     return NextResponse.json({ ok: true, item: record });

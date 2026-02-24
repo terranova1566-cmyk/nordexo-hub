@@ -70,6 +70,9 @@ export async function GET(request: Request) {
   const query = searchParams.get("q")?.trim();
   const spu = searchParams.get("spu")?.trim();
   const run = searchParams.get("run")?.trim();
+  const countOnlyRaw = searchParams.get("countOnly")?.trim().toLowerCase();
+  const countOnly =
+    countOnlyRaw === "1" || countOnlyRaw === "true" || countOnlyRaw === "yes";
 
   if (run && (run.includes("/") || run.includes("\\") || run.includes(".."))) {
     return NextResponse.json({ error: "Invalid run." }, { status: 400 });
@@ -97,6 +100,31 @@ export async function GET(request: Request) {
 
   if (run && !spu) {
     const chunks = chunkArray(scopedSpus ?? [], 300);
+    if (countOnly) {
+      let total = 0;
+      for (const chunk of chunks) {
+        let countQuery = adminClient
+          .from("draft_variants")
+          .select("id", { count: "exact", head: true })
+          .eq("draft_status", "draft")
+          .in("draft_spu", chunk);
+
+        if (query) {
+          const like = `%${query}%`;
+          countQuery = countQuery.or(
+            `draft_sku.ilike.${like},draft_spu.ilike.${like},draft_option_combined_zh.ilike.${like}`
+          );
+        }
+
+        const { error, count } = await countQuery;
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        total += Number(count ?? 0);
+      }
+      return NextResponse.json({ count: total });
+    }
+
     const aggregated: Array<Record<string, unknown>> = [];
 
     for (const chunk of chunks) {
@@ -130,6 +158,30 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ items: sorted, count: sorted.length });
+  }
+
+  if (countOnly) {
+    let countQuery = adminClient
+      .from("draft_variants")
+      .select("id", { count: "exact", head: true })
+      .eq("draft_status", "draft");
+
+    if (spu) {
+      countQuery = countQuery.eq("draft_spu", spu);
+    }
+
+    if (query) {
+      const like = `%${query}%`;
+      countQuery = countQuery.or(
+        `draft_sku.ilike.${like},draft_spu.ilike.${like},draft_option_combined_zh.ilike.${like}`
+      );
+    }
+
+    const { error, count } = await countQuery;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ count: count ?? 0 });
   }
 
   let supabaseQuery = adminClient

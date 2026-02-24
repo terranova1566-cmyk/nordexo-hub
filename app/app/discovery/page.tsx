@@ -80,6 +80,12 @@ type DiscoveryItem = {
   liked: boolean;
   removed: boolean;
   in_production: boolean;
+  production_status: string | null;
+  production_status_updated_at: string | null;
+  production_status_spu_assigned_at: string | null;
+  production_status_started_at: string | null;
+  production_status_done_at: string | null;
+  production_assigned_spu: string | null;
   price: number | null;
   previous_price: number | null;
   reviews: number | null;
@@ -104,6 +110,16 @@ type CatalogProduct = {
   small_image_url: string | null;
 };
 
+type CatalogProductRow = {
+  id?: unknown;
+  spu?: unknown;
+  title?: unknown;
+  brand?: unknown;
+  vendor?: unknown;
+  thumbnail_url?: unknown;
+  small_image_url?: unknown;
+};
+
 type TrendingMetrics = {
   isTrending: boolean;
   score: number;
@@ -120,6 +136,24 @@ const DISCOVERY_TREND = {
   accelRatioVsPrev6Avg: 2.5,
   stagnantPrev6DailyMax: 1,
   stagnantSpikeSoldToday: 8,
+};
+
+const SIMILAR_PRIORITY_SPU_PREFIXES = ["GB", "ND", "LD", "SK"] as const;
+
+const getSimilarSpuPriority = (spu: string | null) => {
+  const normalized = String(spu ?? "").trim().toUpperCase();
+  if (!normalized) return 101;
+  for (let index = 0; index < SIMILAR_PRIORITY_SPU_PREFIXES.length; index += 1) {
+    const prefix = SIMILAR_PRIORITY_SPU_PREFIXES[index];
+    if (
+      normalized.startsWith(`${prefix}-`) ||
+      normalized.startsWith(`${prefix}_`) ||
+      normalized.startsWith(prefix)
+    ) {
+      return index;
+    }
+  }
+  return 100;
 };
 
 const computeTrendingMetrics = (item: DiscoveryItem): TrendingMetrics => {
@@ -189,6 +223,33 @@ const computeTrendingMetrics = (item: DiscoveryItem): TrendingMetrics => {
     ageDays,
     trendDaysEstimate,
   };
+};
+
+const getDiscoveryProductionVisualState = (item: DiscoveryItem) => {
+  const queueStatus =
+    typeof item.production_status === "string"
+      ? item.production_status.trim().toLowerCase()
+      : "";
+  const hasDoneStatus = Boolean(
+    (typeof item.production_status_done_at === "string" &&
+      item.production_status_done_at.trim()) ||
+      queueStatus === "production_done"
+  );
+  const hasLifecycleInProgress = Boolean(
+    (typeof item.production_status_spu_assigned_at === "string" &&
+      item.production_status_spu_assigned_at.trim()) ||
+      (typeof item.production_status_started_at === "string" &&
+        item.production_status_started_at.trim()) ||
+      queueStatus === "queued_for_production" ||
+      queueStatus === "queued" ||
+      queueStatus === "spu_assigned" ||
+      queueStatus === "production_started"
+  );
+  const hasLinkedSpu = Boolean(String(item.identical_spu ?? "").trim());
+  const isDone = hasDoneStatus && hasLinkedSpu;
+  const isPending = !isDone && (item.in_production || hasLifecycleInProgress || hasDoneStatus);
+
+  return { isDone, isPending };
 };
 
 const useStyles = makeStyles({
@@ -434,6 +495,9 @@ const useStyles = makeStyles({
   cardInProduction: {
     border: `3px dashed ${tokens.colorBrandForeground1}`,
   },
+  cardProductionDone: {
+    border: "3px dashed #009600",
+  },
   cardImageWrap: {
     width: "100%",
     aspectRatio: "1 / 1",
@@ -458,8 +522,8 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
-    pointerEvents: "none",
+    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.28)",
+    pointerEvents: "auto",
   },
   trendingIcon: {
     width: "16px",
@@ -686,6 +750,10 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     cursor: "pointer",
     transition: "background-color 0.15s ease, color 0.15s ease",
+    "&:disabled": {
+      cursor: "default",
+      opacity: 0.75,
+    },
   },
   actionIconLiked: {
     color: "#d9638e",
@@ -699,9 +767,34 @@ const useStyles = makeStyles({
     color: tokens.colorBrandForeground1,
     backgroundColor: tokens.colorBrandBackground2,
   },
+  actionIconProductionDone: {
+    color: "#009600",
+    backgroundColor: "rgba(0, 150, 0, 0.16)",
+  },
   actionIconSimilarLinked: {
-    color: tokens.colorPaletteGreenForeground2,
-    backgroundColor: tokens.colorPaletteLightGreenBackground1,
+    color: "#009600",
+    backgroundColor: "rgba(0, 150, 0, 0.16)",
+  },
+  imageSpuBadge: {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    zIndex: 2,
+    backgroundColor: "#009600",
+    color: "#ffffff",
+    borderRadius: "999px",
+    padding: "3px 8px",
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase100,
+    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.24)",
+    maxWidth: "calc(100% - 16px)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    textDecorationLine: "none",
+    display: "inline-flex",
+    alignItems: "center",
   },
   actionIcon: {
     width: "16px",
@@ -782,46 +875,60 @@ const useStyles = makeStyles({
     height: "14px",
   },
   similarDialogSurface: {
-    width: "min(1400px, 95vw)",
+    width: "min(960px, 92vw)",
+    maxWidth: "960px",
+    height: "min(1080px, 90vh)",
   },
   similarDialogBody: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    maxHeight: "min(78vh, 720px)",
+    gap: "14px",
+    height: "100%",
+    minHeight: 0,
+    overflow: "hidden",
   },
   similarHeader: {
     display: "grid",
-    gridTemplateColumns: "72px minmax(0, 1fr) auto",
+    gridTemplateColumns: "140px minmax(0, 1fr)",
     gap: "12px",
-    alignItems: "center",
+    alignItems: "start",
   },
   similarHeaderImage: {
-    width: "72px",
-    height: "72px",
+    width: "140px",
+    height: "140px",
     borderRadius: "12px",
     objectFit: "contain",
     backgroundColor: tokens.colorNeutralBackground2,
   },
+  similarHeaderContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minWidth: 0,
+  },
   similarHeaderTitle: {
-    fontSize: tokens.fontSizeBase300,
+    fontSize: tokens.fontSizeBase400,
     fontWeight: tokens.fontWeightSemibold,
-    lineHeight: tokens.lineHeightBase300,
+    lineHeight: tokens.lineHeightBase400,
     overflow: "hidden",
     textOverflow: "ellipsis",
     display: "-webkit-box",
-    WebkitLineClamp: 2,
+    WebkitLineClamp: 3,
     WebkitBoxOrient: "vertical",
   },
-  similarHeaderMeta: {
-    display: "grid",
-    gridTemplateColumns: "auto auto",
-    gap: "4px 12px",
-    justifyItems: "end",
+  similarSearchRow: {
+    display: "flex",
     alignItems: "center",
-    fontSize: tokens.fontSizeBase100,
-    color: tokens.colorNeutralForeground4,
-    whiteSpace: "nowrap",
+    gap: "8px",
+    width: "100%",
+  },
+  similarSearchInput: {
+    flex: "1 1 auto",
+  },
+  similarSearchButton: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
   },
   similarDivider: {
     height: "1px",
@@ -896,6 +1003,7 @@ const useStyles = makeStyles({
   similarResultsWrap: {
     flex: "1 1 auto",
     overflowY: "auto",
+    minHeight: 0,
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
@@ -903,8 +1011,8 @@ const useStyles = makeStyles({
   similarResultRow: {
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    padding: "10px 12px",
+    gap: "12px",
+    padding: "12px 14px",
     width: "100%",
     background: "transparent",
     border: "none",
@@ -923,8 +1031,8 @@ const useStyles = makeStyles({
     },
   },
   similarResultImage: {
-    width: "44px",
-    height: "44px",
+    width: "84px",
+    height: "84px",
     borderRadius: "10px",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground2,
@@ -933,33 +1041,48 @@ const useStyles = makeStyles({
   similarResultText: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "4px",
     minWidth: 0,
     flex: "1 1 auto",
   },
   similarResultPrimary: {
-    fontSize: tokens.fontSizeBase200,
+    fontSize: tokens.fontSizeBase300,
     fontWeight: tokens.fontWeightSemibold,
     color: tokens.colorNeutralForeground1,
-    lineHeight: tokens.lineHeightBase200,
+    lineHeight: tokens.lineHeightBase300,
     overflow: "hidden",
     textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  similarResultSecondary: {
-    fontSize: tokens.fontSizeBase100,
-    color: tokens.colorNeutralForeground4,
-    lineHeight: tokens.lineHeightBase100,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
   },
   similarResultSpu: {
-    fontSize: tokens.fontSizeBase100,
-    color: tokens.colorNeutralForeground4,
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
     fontWeight: tokens.fontWeightSemibold,
     flex: "0 0 auto",
     whiteSpace: "nowrap",
+    marginLeft: "8px",
+    textAlign: "right",
+  },
+  similarDialogActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    paddingTop: "10px",
+  },
+  similarActionButton: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  similarActionCloseButton: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+  },
+  similarActionSaveButton: {
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
   },
 });
 
@@ -1035,6 +1158,8 @@ function DiscoveryPageInner() {
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similarSaving, setSimilarSaving] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
+  const [similarQueryInput, setSimilarQueryInput] = useState("");
+  const similarSearchRequestRef = useRef(0);
 
   const debouncedSearch = useDebouncedValue(searchInput, 400);
   const sortOptions = useMemo(
@@ -1179,16 +1304,130 @@ function DiscoveryPageInner() {
     };
   }, []);
 
-  const openSimilarDialog = useCallback((item: DiscoveryItem) => {
-    setSimilarItem(item);
-    setSimilarDialogOpen(true);
-    setSimilarResults([]);
-    setSimilarSelectedId(null);
-    setSimilarLinkedProduct(null);
-    setSimilarError(null);
+  const getDefaultSimilarQuery = useCallback((item: DiscoveryItem | null) => {
+    if (!item) return "";
+    return String(item.title ?? item.product_id ?? "")
+      .trim()
+      .slice(0, 600);
   }, []);
 
+  const mapCatalogProducts = useCallback((payload: unknown): CatalogProduct[] => {
+    if (!payload || typeof payload !== "object") return [];
+    const items = (payload as { items?: unknown }).items;
+    if (!Array.isArray(items)) return [];
+    return items
+      .map((raw) => {
+        const row = (raw ?? {}) as CatalogProductRow;
+        const id = String(row.id ?? "").trim();
+        if (!id) return null;
+        return {
+          id,
+          spu: typeof row.spu === "string" ? row.spu : null,
+          title: typeof row.title === "string" ? row.title : null,
+          brand: typeof row.brand === "string" ? row.brand : null,
+          vendor: typeof row.vendor === "string" ? row.vendor : null,
+          thumbnail_url:
+            typeof row.thumbnail_url === "string" ? row.thumbnail_url : null,
+          small_image_url:
+            typeof row.small_image_url === "string" ? row.small_image_url : null,
+        } satisfies CatalogProduct;
+      })
+      .filter((row): row is CatalogProduct => Boolean(row));
+  }, []);
+
+  const runSimilarSearch = useCallback(
+    async (rawQuery: string, mode: "enhanced" | "manual") => {
+      const requestId = similarSearchRequestRef.current + 1;
+      similarSearchRequestRef.current = requestId;
+
+      const query = String(rawQuery ?? "").trim().slice(0, 600);
+      setSimilarLoading(true);
+      setSimilarError(null);
+      setSimilarResults([]);
+      setSimilarSelectedId(null);
+
+      if (!query) {
+        setSimilarLoading(false);
+        return;
+      }
+
+      try {
+        let searchQuery = query;
+        let coreTerms: string[] = [];
+
+        if (mode === "enhanced") {
+          const advancedResponse = await fetch("/api/products/advanced-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query }),
+          });
+          if (!advancedResponse.ok) {
+            const text = await advancedResponse.text();
+            throw new Error(text || "Advanced search failed.");
+          }
+          const advancedPayload = await advancedResponse.json();
+          searchQuery =
+            String(advancedPayload?.expanded_query ?? query).trim() || query;
+          coreTerms = Array.isArray(advancedPayload?.core_terms)
+            ? advancedPayload.core_terms
+                .map((term: unknown) => String(term ?? "").trim())
+                .filter(Boolean)
+            : [];
+        }
+
+        const params = new URLSearchParams();
+        params.set("q", searchQuery);
+        params.set("sort", "relevance");
+        params.set("pageSize", "50");
+        if (mode === "enhanced" && coreTerms.length > 0) {
+          params.set("coreTerms", coreTerms.join("|"));
+        }
+
+        const productsResponse = await fetch(`/api/products?${params.toString()}`);
+        if (!productsResponse.ok) {
+          const text = await productsResponse.text();
+          throw new Error(text || "Catalog search failed.");
+        }
+
+        const productsPayload = await productsResponse.json();
+        const mapped = mapCatalogProducts(productsPayload);
+        const prioritized = mapped
+          .map((row, index) => ({
+            row,
+            index,
+            priority: getSimilarSpuPriority(row.spu),
+          }))
+          .sort((a, b) => a.priority - b.priority || a.index - b.index)
+          .map((entry) => entry.row);
+        if (requestId !== similarSearchRequestRef.current) return;
+        setSimilarResults(prioritized);
+      } catch (err) {
+        if (requestId !== similarSearchRequestRef.current) return;
+        setSimilarError((err as Error).message);
+      } finally {
+        if (requestId === similarSearchRequestRef.current) {
+          setSimilarLoading(false);
+        }
+      }
+    },
+    [mapCatalogProducts]
+  );
+
+  const openSimilarDialog = useCallback(
+    (item: DiscoveryItem) => {
+      setSimilarItem(item);
+      setSimilarDialogOpen(true);
+      setSimilarResults([]);
+      setSimilarSelectedId(null);
+      setSimilarLinkedProduct(null);
+      setSimilarError(null);
+      setSimilarQueryInput(getDefaultSimilarQuery(item));
+    },
+    [getDefaultSimilarQuery]
+  );
+
   const closeSimilarDialog = useCallback(() => {
+    similarSearchRequestRef.current += 1;
     setSimilarDialogOpen(false);
     setSimilarItem(null);
     setSimilarResults([]);
@@ -1197,105 +1436,25 @@ function DiscoveryPageInner() {
     setSimilarError(null);
     setSimilarLoading(false);
     setSimilarSaving(false);
+    setSimilarQueryInput("");
   }, []);
 
   useEffect(() => {
     if (!similarDialogOpen || !similarItem) return;
+    const query = getDefaultSimilarQuery(similarItem);
+    setSimilarQueryInput(query);
+    void runSimilarSearch(query, "enhanced");
+  }, [
+    similarDialogOpen,
+    similarItem?.provider,
+    similarItem?.product_id,
+    getDefaultSimilarQuery,
+    runSimilarSearch,
+  ]);
 
-    const controller = new AbortController();
-    let isActive = true;
-
-    const loadMatches = async () => {
-      setSimilarLoading(true);
-      setSimilarError(null);
-      setSimilarResults([]);
-      setSimilarSelectedId(null);
-
-      const inputText = String(similarItem.title ?? similarItem.product_id ?? "")
-        .trim()
-        .slice(0, 600);
-      if (!inputText) {
-        setSimilarLoading(false);
-        return;
-      }
-
-      try {
-        const advancedResponse = await fetch("/api/products/advanced-search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: inputText }),
-          signal: controller.signal,
-        });
-        if (!advancedResponse.ok) {
-          const text = await advancedResponse.text();
-          throw new Error(text || "Advanced search failed.");
-        }
-
-        const advancedPayload = await advancedResponse.json();
-        const expandedQuery =
-          String(advancedPayload?.expanded_query ?? inputText).trim() || inputText;
-        const coreTerms = Array.isArray(advancedPayload?.core_terms)
-          ? advancedPayload.core_terms
-              .map((term: unknown) => String(term ?? "").trim())
-              .filter(Boolean)
-          : [];
-
-        const params = new URLSearchParams();
-        params.set("q", expandedQuery);
-        params.set("sort", "relevance");
-        params.set("pageSize", "50");
-        if (coreTerms.length > 0) {
-          params.set("coreTerms", coreTerms.join("|"));
-        }
-
-        const productsResponse = await fetch(`/api/products?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!productsResponse.ok) {
-          const text = await productsResponse.text();
-          throw new Error(text || "Catalog search failed.");
-        }
-
-        const productsPayload = await productsResponse.json();
-        const mapped: CatalogProduct[] = Array.isArray(productsPayload?.items)
-          ? productsPayload.items
-              .map((row: any) => {
-                const id = String(row?.id ?? "").trim();
-                if (!id) return null;
-                return {
-                  id,
-                  spu: row?.spu ?? null,
-                  title: row?.title ?? null,
-                  brand: row?.brand ?? null,
-                  vendor: row?.vendor ?? null,
-                  thumbnail_url: row?.thumbnail_url ?? null,
-                  small_image_url: row?.small_image_url ?? null,
-                } satisfies CatalogProduct;
-              })
-              .filter((row: CatalogProduct | null): row is CatalogProduct => Boolean(row))
-          : [];
-
-        if (isActive) {
-          setSimilarResults(mapped);
-        }
-      } catch (err) {
-        if ((err as Error).name !== "AbortError" && isActive) {
-          setSimilarError((err as Error).message);
-        }
-      } finally {
-        if (isActive) {
-          setSimilarLoading(false);
-        }
-      }
-    };
-
-    void loadMatches();
-
-    return () => {
-      isActive = false;
-      controller.abort();
-    };
-  }, [similarDialogOpen, similarItem?.provider, similarItem?.product_id]);
+  const handleSimilarManualSearch = useCallback(() => {
+    void runSimilarSearch(similarQueryInput, "manual");
+  }, [runSimilarSearch, similarQueryInput]);
 
   useEffect(() => {
     if (!similarDialogOpen) return;
@@ -2010,6 +2169,11 @@ function DiscoveryPageInner() {
   };
 
   const toggleProductionItem = async (item: DiscoveryItem) => {
+    const visual = getDiscoveryProductionVisualState(item);
+    if (visual.isDone) {
+      return;
+    }
+
     const nextValue = !item.in_production;
     setItems((prev) =>
       prev.map((entry) =>
@@ -2820,28 +2984,31 @@ function DiscoveryPageInner() {
                       <div className={styles.similarHeaderImage} />
                     );
                   })()}
-                  <div style={{ minWidth: 0 }}>
+                  <div className={styles.similarHeaderContent}>
                     <Text className={styles.similarHeaderTitle}>
                       {similarItem.title ?? similarItem.product_id}
                     </Text>
-                    <Text size={200} className={styles.cardMeta}>
-                      {similarItem.provider.toUpperCase()} · {similarItem.product_id}
-                    </Text>
-                  </div>
-                  <div className={styles.similarHeaderMeta}>
-                    <span>Price</span>
-                    <span>
-                      {formatCurrency(
-                        similarItem.price ?? similarItem.last_price,
-                        "SEK"
-                      )}
-                    </span>
-                    <span>1d</span>
-                    <span>{similarItem.sold_today ?? 0}</span>
-                    <span>7d</span>
-                    <span>{similarItem.sold_7d ?? 0}</span>
-                    <span>All</span>
-                    <span>{similarItem.sold_all_time ?? 0}</span>
+                    <div className={styles.similarSearchRow}>
+                      <Input
+                        value={similarQueryInput}
+                        onChange={(_, data) => setSimilarQueryInput(data.value)}
+                        className={styles.similarSearchInput}
+                        placeholder="Search by text or SPU"
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          handleSimilarManualSearch();
+                        }}
+                      />
+                      <Button
+                        appearance="secondary"
+                        className={styles.similarSearchButton}
+                        onClick={handleSimilarManualSearch}
+                        disabled={similarLoading}
+                      >
+                        {similarLoading ? "Searching..." : "Search"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -2902,21 +3069,9 @@ function DiscoveryPageInner() {
 
                 <div className={styles.similarDivider} />
 
-                <div className={styles.rowBetween}>
-                  <Text size={200} className={styles.cardMeta}>
-                    Catalog matches
-                  </Text>
-                  {isAdmin ? (
-                    <Button
-                      appearance="primary"
-                      size="small"
-                      onClick={handleSaveIdentical}
-                      disabled={!similarSelectedId || similarSaving}
-                    >
-                      {similarSaving ? "Saving..." : "Save as identical product"}
-                    </Button>
-                  ) : null}
-                </div>
+                <Text size={200} className={styles.cardMeta}>
+                  Catalog matches
+                </Text>
 
                 {similarError ? (
                   <MessageBar intent="error">{similarError}</MessageBar>
@@ -2933,9 +3088,7 @@ function DiscoveryPageInner() {
                     ) : (
                       similarResults.map((row) => {
                         const rowTitle = row.title ?? row.spu ?? row.id;
-                        const secondary = [row.brand, row.vendor]
-                          .filter(Boolean)
-                          .join(" · ");
+                        const rowSpu = String(row.spu ?? "").trim();
                         const imageSrc = row.small_image_url || row.thumbnail_url;
                         return (
                           <button
@@ -2962,12 +3115,9 @@ function DiscoveryPageInner() {
                               <span className={styles.similarResultPrimary}>
                                 {rowTitle}
                               </span>
-                              <span className={styles.similarResultSecondary}>
-                                {secondary || "\u00A0"}
-                              </span>
                             </div>
                             <span className={styles.similarResultSpu}>
-                              {row.spu ?? ""}
+                              {rowSpu || "\u2014"}
                             </span>
                           </button>
                         );
@@ -2977,10 +3127,30 @@ function DiscoveryPageInner() {
                 )}
               </>
             ) : null}
-            <DialogActions>
-              <Button appearance="subtle" onClick={closeSimilarDialog}>
+            <DialogActions className={styles.similarDialogActions}>
+              <Button
+                appearance="secondary"
+                className={mergeClasses(
+                  styles.similarActionButton,
+                  styles.similarActionCloseButton
+                )}
+                onClick={closeSimilarDialog}
+              >
                 Close
               </Button>
+              {isAdmin ? (
+                <Button
+                  appearance="primary"
+                  className={mergeClasses(
+                    styles.similarActionButton,
+                    styles.similarActionSaveButton
+                  )}
+                  onClick={handleSaveIdentical}
+                  disabled={!similarSelectedId || similarSaving}
+                >
+                  {similarSaving ? "Saving..." : "Save"}
+                </Button>
+              ) : null}
             </DialogActions>
           </DialogBody>
         </DialogSurface>
@@ -3021,7 +3191,16 @@ function DiscoveryPageInner() {
             const wishlistNames = item.wishlist_names ?? [];
             const isWishlisted = wishlistNames.length > 0;
             const heartActive = isWishlisted || item.liked;
-            const hasLinkedProduct = Boolean(String(item.identical_spu ?? "").trim());
+            const productionVisual = getDiscoveryProductionVisualState(item);
+            const linkedSpu = String(item.identical_spu ?? "").trim();
+            const producedSpu = String(item.production_assigned_spu ?? "").trim();
+            const badgeSpu = linkedSpu || (productionVisual.isDone ? producedSpu : "");
+            const similarStateDone = Boolean(linkedSpu || (productionVisual.isDone && producedSpu));
+            const showGreenCardBorder = similarStateDone || productionVisual.isDone;
+            const productionButtonActive = productionVisual.isDone || productionVisual.isPending;
+            const badgeHref = badgeSpu
+              ? `/app/products/spu/${encodeURIComponent(badgeSpu)}`
+              : null;
             const localImageUrl =
               item.image_local_url ||
               (item.image_local_path
@@ -3051,41 +3230,45 @@ function DiscoveryPageInner() {
                 key={itemKey}
                 className={mergeClasses(
                   styles.card,
-                  item.in_production ? styles.cardInProduction : undefined,
+                  showGreenCardBorder
+                    ? styles.cardProductionDone
+                    : productionVisual.isPending
+                      ? styles.cardInProduction
+                      : undefined,
                   isSelected ? styles.cardSelected : undefined
                 )}
                 onClick={() => toggleSelected(itemKey)}
               >
-                {isTrending ? (
-                  <Tooltip
-                    relationship="label"
-                    content={
-                      <div className={styles.trendingTooltip}>
-                        <span className={styles.trendingTooltipTitle}>
-                          Hot score: {trendingMeta.score}/100
-                        </span>
-                        <span className={styles.trendingTooltipMeta}>
-                          Trend days (est): {trendingMeta.trendDaysEstimate}
-                        </span>
-                        {trendRecentRank ? (
-                          <span className={styles.trendingTooltipMeta}>
-                            Last 30d rank (view): #{trendRecentRank}/
-                            {trendingRanksByItemKey.recentTotal}
+                <div className={styles.cardImageWrap}>
+                  {isTrending ? (
+                    <Tooltip
+                      relationship="label"
+                      content={
+                        <div className={styles.trendingTooltip}>
+                          <span className={styles.trendingTooltipTitle}>
+                            Hot score: {trendingMeta.score}/100
                           </span>
-                        ) : null}
-                        {trendAllRank ? (
                           <span className={styles.trendingTooltipMeta}>
-                            Trending rank (view): #{trendAllRank}/
-                            {trendingRanksByItemKey.allTotal}
+                            Trend days (est): {trendingMeta.trendDaysEstimate}
                           </span>
-                        ) : null}
-                        <span className={styles.trendingTooltipMeta}>
-                          {trendingMeta.reason}
-                        </span>
-                      </div>
-                    }
-                  >
-                    <div className={styles.cardImageWrap}>
+                          {trendRecentRank ? (
+                            <span className={styles.trendingTooltipMeta}>
+                              Last 30d rank (view): #{trendRecentRank}/
+                              {trendingRanksByItemKey.recentTotal}
+                            </span>
+                          ) : null}
+                          {trendAllRank ? (
+                            <span className={styles.trendingTooltipMeta}>
+                              Trending rank (view): #{trendAllRank}/
+                              {trendingRanksByItemKey.allTotal}
+                            </span>
+                          ) : null}
+                          <span className={styles.trendingTooltipMeta}>
+                            {trendingMeta.reason}
+                          </span>
+                        </div>
+                      }
+                    >
                       <span className={styles.trendingBadge} aria-label="Trending">
                         <svg
                           className={styles.trendingIcon}
@@ -3102,26 +3285,28 @@ function DiscoveryPageInner() {
                           <path d="M14 7l7 0l0 7" />
                         </svg>
                       </span>
-                      {imageSrc ? (
-                        <Image
-                          src={imageSrc}
-                          alt={title}
-                          className={styles.cardImage}
-                        />
-                      ) : null}
-                    </div>
-                  </Tooltip>
-                ) : (
-                  <div className={styles.cardImageWrap}>
-                    {imageSrc ? (
-                      <Image
-                        src={imageSrc}
-                        alt={title}
-                        className={styles.cardImage}
-                      />
-                    ) : null}
-                  </div>
-                )}
+                    </Tooltip>
+                  ) : null}
+                  {badgeHref ? (
+                    <a
+                      href={badgeHref}
+                      className={styles.imageSpuBadge}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      aria-label={`Open product ${badgeSpu}`}
+                    >
+                      {badgeSpu}
+                    </a>
+                  ) : null}
+                  {imageSrc ? (
+                    <Image
+                      src={imageSrc}
+                      alt={title}
+                      className={styles.cardImage}
+                    />
+                  ) : null}
+                </div>
                 <div className={styles.imageDivider} />
                 <div className={styles.rowBetween}>
                   <div className={styles.rowLeft}>
@@ -3370,9 +3555,9 @@ function DiscoveryPageInner() {
                         type="button"
                         className={mergeClasses(
                           styles.actionIconButton,
-                          item.in_production ? styles.actionIconProduction : undefined
+                          productionButtonActive ? styles.actionIconSimilarLinked : undefined
                         )}
-                        aria-pressed={item.in_production}
+                        aria-pressed={productionButtonActive}
                         aria-label={t("discovery.selection.produce")}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -3404,9 +3589,9 @@ function DiscoveryPageInner() {
                         type="button"
                         className={mergeClasses(
                           styles.actionIconButton,
-                          hasLinkedProduct ? styles.actionIconSimilarLinked : undefined
+                          similarStateDone ? styles.actionIconSimilarLinked : undefined
                         )}
-                        aria-pressed={hasLinkedProduct}
+                        aria-pressed={similarStateDone}
                         aria-label="Similar search"
                         onClick={(event) => {
                           event.stopPropagation();

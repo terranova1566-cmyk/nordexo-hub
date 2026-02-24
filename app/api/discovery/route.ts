@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -43,11 +44,47 @@ type DiscoveryItem = {
   liked: boolean;
   removed: boolean;
   in_production: boolean;
+  production_status: string | null;
+  production_status_updated_at: string | null;
+  production_status_spu_assigned_at: string | null;
+  production_status_started_at: string | null;
+  production_status_done_at: string | null;
+  production_assigned_spu: string | null;
   price: number | null;
   previous_price: number | null;
   reviews: number | null;
   delivery_time: string | null;
   wishlist_names: string[];
+};
+
+type ProductionStatusSnapshot = {
+  status: string | null;
+  updated_at: string | null;
+  spu_assigned_at: string | null;
+  production_started_at: string | null;
+  production_done_at: string | null;
+};
+
+const firstString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value : null;
+
+const keyOf = (provider: string, productId: string) => `${provider}:${productId}`;
+
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 };
 
 const escapeLikeToken = (value: string) =>
@@ -94,6 +131,14 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { data: userSettings } = await supabase
+    .from("partner_user_settings")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const isAdmin = Boolean(userSettings?.is_admin);
+  const adminClient = isAdmin ? getAdminClient() : null;
 
   const [hiddenCategoryResponse, hiddenKeywordResponse] = await Promise.all([
     supabase
@@ -573,6 +618,12 @@ export async function GET(request: NextRequest) {
         liked: false,
         removed: false,
         in_production: false,
+        production_status: null,
+        production_status_updated_at: null,
+        production_status_spu_assigned_at: null,
+        production_status_started_at: null,
+        production_status_done_at: null,
+        production_assigned_spu: null,
         wishlist_names: [],
         price: product.price ?? product.last_price ?? null,
         previous_price: product.previous_price ?? product.last_previous_price ?? null,
@@ -583,6 +634,14 @@ export async function GET(request: NextRequest) {
     const actionMap = new Map<string, { liked: boolean; removed: boolean }>();
     const wishlistMap = new Map<string, string[]>();
     const productionSet = new Set<string>();
+    const productionStatusMap = new Map<string, ProductionStatusSnapshot>();
+    const productionSpuMap = new Map<
+      string,
+      {
+        spu: string | null;
+        assigned_at: string | null;
+      }
+    >();
     if (merged.length > 0) {
       const byProvider = new Map<ProviderKey, string[]>();
       merged.forEach((item) => {
@@ -662,6 +721,92 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      if (isAdmin && adminClient) {
+        const providersForStatus = Array.from(byProvider.keys());
+        const productIds = Array.from(
+          new Set(merged.map((item) => String(item.product_id ?? "").trim()).filter(Boolean))
+        );
+
+        if (providersForStatus.length > 0 && productIds.length > 0) {
+          const [{ data: statusRows, error: statusError }, { data: spuRows, error: spuError }] =
+            await Promise.all([
+              adminClient
+                .from("discovery_production_status")
+                .select(
+                  "provider, product_id, status, updated_at, spu_assigned_at, production_started_at, production_done_at"
+                )
+                .in("provider", providersForStatus)
+                .in("product_id", productIds),
+              adminClient
+                .from("discovery_production_item_spus")
+                .select("provider, product_id, spu, assigned_at")
+                .in("provider", providersForStatus)
+                .in("product_id", productIds),
+            ]);
+
+          if (statusError) {
+            throw new Error(statusError.message);
+          }
+          if (spuError) {
+            throw new Error(spuError.message);
+          }
+
+          (
+            statusRows as
+              | Array<{
+                  provider: string;
+                  product_id: string;
+                  status?: string | null;
+                  updated_at?: string | null;
+                  spu_assigned_at?: string | null;
+                  production_started_at?: string | null;
+                  production_done_at?: string | null;
+                }>
+              | null
+          )?.forEach((row) => {
+            productionStatusMap.set(keyOf(row.provider, row.product_id), {
+              status: firstString(row.status) ?? null,
+              updated_at: firstString(row.updated_at) ?? null,
+              spu_assigned_at: firstString(row.spu_assigned_at) ?? null,
+              production_started_at: firstString(row.production_started_at) ?? null,
+              production_done_at: firstString(row.production_done_at) ?? null,
+            });
+          });
+
+          (
+            spuRows as
+              | Array<{
+                  provider: string;
+                  product_id: string;
+                  spu?: string | null;
+                  assigned_at?: string | null;
+                }>
+              | null
+          )?.forEach((row) => {
+            const key = keyOf(row.provider, row.product_id);
+            const nextSpu = firstString(row.spu);
+            if (!nextSpu) return;
+            const nextAssignedAt = firstString(row.assigned_at);
+            const existing = productionSpuMap.get(key);
+            if (!existing) {
+              productionSpuMap.set(key, {
+                spu: nextSpu,
+                assigned_at: nextAssignedAt ?? null,
+              });
+              return;
+            }
+            const existingTs = existing.assigned_at ? Date.parse(existing.assigned_at) : 0;
+            const nextTs = nextAssignedAt ? Date.parse(nextAssignedAt) : 0;
+            if (nextTs >= existingTs) {
+              productionSpuMap.set(key, {
+                spu: nextSpu,
+                assigned_at: nextAssignedAt ?? null,
+              });
+            }
+          });
+        }
+      }
+
       merged = merged.filter((item) => {
         const action = actionMap.get(`${item.provider}:${item.product_id}`);
         return !action?.removed;
@@ -678,6 +823,30 @@ export async function GET(request: NextRequest) {
           in_production: productionSet.has(
             `${item.provider}:${item.product_id}`
           ),
+          production_status:
+            productionStatusMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.status ?? null,
+          production_status_updated_at:
+            productionStatusMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.updated_at ?? null,
+          production_status_spu_assigned_at:
+            productionStatusMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.spu_assigned_at ?? null,
+          production_status_started_at:
+            productionStatusMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.production_started_at ?? null,
+          production_status_done_at:
+            productionStatusMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.production_done_at ?? null,
+          production_assigned_spu:
+            productionSpuMap.get(
+              `${item.provider}:${item.product_id}`
+            )?.spu ?? null,
         };
       });
     }

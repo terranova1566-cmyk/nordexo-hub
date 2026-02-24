@@ -23,7 +23,12 @@ export type AiPromptMode =
   | "eraser"
   | "upscale";
 
-export type AiTemplatePreset = "standard" | "digideal_main" | "product_scene";
+export type AiTemplatePreset =
+  | "standard"
+  | "digideal_main"
+  | "digideal_main_dual"
+  | "product_scene"
+  | "product_collection";
 
 export type PendingAiEditRecord = {
   id: string;
@@ -43,10 +48,16 @@ type RefreshedAiImageScore = {
   pixelQualityScore: number | null;
 };
 
+type DiscardedAiImageMove = {
+  sourcePath: string;
+  destinationPath: string;
+};
+
 export type ResolvePendingAiEditResult = {
   item: PendingAiEditRecord;
   refreshedScores: RefreshedAiImageScore[];
   scoreRefreshErrors: string[];
+  discardedMoves: DiscardedAiImageMove[];
 };
 
 type AiEditStateFile = {
@@ -69,6 +80,7 @@ type CreatePendingAiEditInput = {
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
+  maskDataUrl?: string;
   templatePreset?: AiTemplatePreset;
   requestedBy: string | null;
 };
@@ -78,6 +90,8 @@ type CreateTemplatePresetOutputsInput = {
   provider: Exclude<AiEditProvider, "zimage">;
   templatePreset: Exclude<AiTemplatePreset, "standard">;
   count: number;
+  guidanceRelativePath?: string;
+  collectionRelativePaths?: string[];
   prompt?: string;
   requestedBy: string | null;
 };
@@ -101,6 +115,11 @@ const ENVIORMENT_SCENE_PROMPT_PATH = path.join(
   PROCESSOR_ROOT,
   "prompts",
   "enviorment-scene-image-prompt.txt"
+);
+const PRODUCT_COLLECTION_PROMPT_PATH = path.join(
+  PROCESSOR_ROOT,
+  "prompts",
+  "product-collection-image-prompt.txt"
 );
 const ZIMAGE_ROOT = "/srv/node-tools/zimage-api";
 const ZIMAGE_ENV_PATH = path.join(ZIMAGE_ROOT, ".env");
@@ -305,10 +324,27 @@ const hydrateTemplateFromPromptManager = async (
     return;
   }
 
+  if (templatePreset === "digideal_main_dual") {
+    // Dual mode intentionally reuses DigiDeal Main as the base prompt.
+    const value = await loadPromptTemplateFromVersions("DDMAINIM");
+    if (value) {
+      env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE = value;
+    }
+    return;
+  }
+
   if (templatePreset === "product_scene") {
     const value = await loadPromptTemplateFromVersions("ENVSCNIM");
     if (value) {
       env.ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE = value;
+    }
+    return;
+  }
+
+  if (templatePreset === "product_collection") {
+    const value = await loadPromptTemplateFromVersions("PRDCOL01");
+    if (value) {
+      env.PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE = value;
     }
     return;
   }
@@ -559,6 +595,70 @@ const buildPendingImageName = (originalAbsPath: string, provider: AiEditProvider
   return `.${parsed.name}.ai-pending-${provider}-${ts}-${shortId}${parsed.ext.toLowerCase()}`;
 };
 
+const MAX_INLINE_MASK_BYTES = 20 * 1024 * 1024;
+
+const decodeInlineMaskDataUrl = (value: string) => {
+  const match = String(value || "")
+    .trim()
+    .match(/^data:(image\/(?:png|jpe?g|webp));base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) {
+    throw new Error("Mask payload must be a base64 image data URL (png/jpeg/webp).");
+  }
+  const mime = String(match[1]).toLowerCase();
+  const base64 = String(match[2] || "").replace(/\s+/g, "");
+  if (!base64) {
+    throw new Error("Mask payload is empty.");
+  }
+  const decoded = Buffer.from(base64, "base64");
+  if (!decoded.length) {
+    throw new Error("Mask payload could not be decoded.");
+  }
+  if (decoded.length > MAX_INLINE_MASK_BYTES) {
+    throw new Error("Mask payload is too large.");
+  }
+  const ext = mime === "image/png" ? ".png" : mime === "image/webp" ? ".webp" : ".jpg";
+  return { buffer: decoded, ext };
+};
+
+const writeInlineMaskTempFile = async (originalAbsPath: string, maskDataUrl: string) => {
+  const { buffer, ext } = decodeInlineMaskDataUrl(maskDataUrl);
+  const parsed = path.parse(originalAbsPath);
+  const tempMaskAbs = path.join(
+    parsed.dir,
+    `.${parsed.name}.ai-mask-${Date.now()}-${randomUUID().slice(0, 8)}${ext}`
+  );
+  fs.writeFileSync(tempMaskAbs, buffer);
+
+  try {
+    const [originalMeta, maskMeta] = await Promise.all([
+      sharp(originalAbsPath, { failOnError: false }).metadata(),
+      sharp(tempMaskAbs, { failOnError: false }).metadata(),
+    ]);
+    const originalWidth = Number(originalMeta.width || 0);
+    const originalHeight = Number(originalMeta.height || 0);
+    const maskWidth = Number(maskMeta.width || 0);
+    const maskHeight = Number(maskMeta.height || 0);
+    if (
+      originalWidth <= 0 ||
+      originalHeight <= 0 ||
+      maskWidth <= 0 ||
+      maskHeight <= 0
+    ) {
+      throw new Error("Could not read mask or original image dimensions.");
+    }
+    if (originalWidth !== maskWidth || originalHeight !== maskHeight) {
+      throw new Error(
+        `Mask dimensions ${maskWidth}x${maskHeight} must match original ${originalWidth}x${originalHeight}.`
+      );
+    }
+  } catch (error) {
+    removeFileQuietly(tempMaskAbs);
+    throw error;
+  }
+
+  return tempMaskAbs;
+};
+
 const findNewestOutputForBase = (baseName: string, sinceMs: number) => {
   if (!fs.existsSync(ZIMAGE_OUTPUT_DIR)) return null;
   const files = fs
@@ -655,6 +755,7 @@ const runZImageTool = async (input: {
   originalAbsPath: string;
   pendingAbsPath: string;
   prompt?: string;
+  maskAbsPath?: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
 }) => {
@@ -672,6 +773,9 @@ const runZImageTool = async (input: {
     const args = [input.scriptPath, "--image", tempInputPath];
     if (input.prompt) {
       args.push("--prompt", input.prompt);
+    }
+    if (input.maskAbsPath) {
+      args.push("--mask", input.maskAbsPath);
     }
     const zimageEnv: NodeJS.ProcessEnv = {
       ...input.env,
@@ -813,6 +917,93 @@ const removeFileQuietly = (absolutePath: string) => {
   } catch {}
 };
 
+const sanitizeFileNamePart = (value: string, fallback: string) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+};
+
+const ensureDeletedImagesFolder = (folderAbsPath: string) => {
+  const deletedAbsPath = path.join(folderAbsPath, "deleted images");
+  if (fs.existsSync(deletedAbsPath)) {
+    if (!fs.statSync(deletedAbsPath).isDirectory()) {
+      throw new Error('"deleted images" exists but is not a folder.');
+    }
+    return deletedAbsPath;
+  }
+  fs.mkdirSync(deletedAbsPath, { recursive: true });
+  return deletedAbsPath;
+};
+
+const archiveDiscardedPendingAiImage = (input: {
+  folderAbsPath: string;
+  originalAbsPath: string;
+  pendingAbsPath: string;
+  provider: AiEditProvider;
+  mode: AiPromptMode;
+}): DiscardedAiImageMove | null => {
+  if (!fs.existsSync(input.pendingAbsPath) || !fs.statSync(input.pendingAbsPath).isFile()) {
+    return null;
+  }
+  const deletedFolderAbsPath = ensureDeletedImagesFolder(input.folderAbsPath);
+  const originalParsed = path.parse(input.originalAbsPath);
+  const pendingExtRaw = path.extname(input.pendingAbsPath).toLowerCase();
+  const originalExtRaw = path.extname(input.originalAbsPath).toLowerCase();
+  const extCandidate = pendingExtRaw || originalExtRaw || ".jpg";
+  const ext = SUPPORTED_IMAGE_EXTENSIONS.has(extCandidate) ? extCandidate : ".jpg";
+  const providerPart = sanitizeFileNamePart(input.provider, "ai");
+  const modePart = sanitizeFileNamePart(input.mode, "edit");
+  const stamp = formatTimestampForFilename(new Date());
+  const baseName = `${sanitizeFileNamePart(
+    originalParsed.name,
+    "image"
+  )}-ai-discarded-${providerPart}-${modePart}-${stamp}`;
+  const destinationAbsPath = uniqueChildPath(deletedFolderAbsPath, baseName, ext);
+  fs.copyFileSync(input.pendingAbsPath, destinationAbsPath);
+  moveDraftImageUpscaleMarkers(input.pendingAbsPath, destinationAbsPath);
+  const restoreAbsPath = path.join(path.dirname(input.originalAbsPath), path.basename(destinationAbsPath));
+  return {
+    sourcePath: toRelativePath(restoreAbsPath),
+    destinationPath: toRelativePath(destinationAbsPath),
+  };
+};
+
+const refreshScoresInBackground = (
+  absolutePaths: string[],
+  context: { decision: ResolveDecision; originalPath: string; pendingPath: string }
+) => {
+  const targets = Array.from(
+    new Set(
+      absolutePaths
+        .map((value) => path.resolve(String(value || "")))
+        .filter((value) => Boolean(value) && isWithinDraftRoot(value))
+    )
+  );
+  if (targets.length === 0) return;
+
+  setTimeout(() => {
+    void (async () => {
+      for (const absolutePath of targets) {
+        try {
+          await refreshDraftImageScoreByAbsolutePath(absolutePath);
+        } catch (err) {
+          appendAiEditLog({
+            action: "resolve_score_refresh_failed",
+            decision: context.decision,
+            original_path: context.originalPath,
+            pending_path: context.pendingPath,
+            target_path: toRelativePath(absolutePath),
+            error: err instanceof Error ? err.message : "score refresh failed",
+          });
+        }
+      }
+    })();
+  }, 0);
+};
+
 const withEditQueue = <T>(task: () => Promise<T>): Promise<T> => {
   const run = editQueueTail.then(task, task);
   editQueueTail = run.then(
@@ -834,6 +1025,38 @@ const loadPromptTemplate = (
   } catch {
     return "";
   }
+};
+
+const DIGIDEAL_DUAL_INPUT_RULES_TAG = "DIGIDEAL_DUAL_INPUT_RULES_V1";
+const DIGIDEAL_DUAL_INPUT_RULES = [
+  `<${DIGIDEAL_DUAL_INPUT_RULES_TAG}>`,
+  "INPUT FORMAT OVERRIDE (CRITICAL):",
+  "You are NOT given one product image.",
+  "You are given ONE welded reference image containing TWO source images separated by a white vertical gap.",
+  "",
+  "Mapping rules:",
+  "- LEFT source side = pure product photo on white background (source of truth for product identity).",
+  "- RIGHT source side = guidance image for lifestyle/environment scene style and context.",
+  "",
+  "How to build the final output:",
+  "- Keep the original DigiDeal Main split-layout output behavior from this prompt.",
+  "- Final output must still be a two-sided hero composition: left white product side + right lifestyle side.",
+  "- The LEFT side of final output must be derived from the LEFT source side only.",
+  "- The RIGHT side of final output must be guided by the RIGHT source side only.",
+  "",
+  "Strict product integrity:",
+  "- Product identity must come from LEFT source side only.",
+  "- Do not redesign or replace the product based on the RIGHT source side.",
+  "",
+  "This override is mandatory and takes precedence for input interpretation while preserving all original DigiDeal Main output-quality and composition constraints below.",
+  `</${DIGIDEAL_DUAL_INPUT_RULES_TAG}>`,
+].join("\n");
+
+const applyDigidealDualInputRulesToTemplate = (template: string) => {
+  const raw = String(template || "").trim();
+  if (!raw) return "";
+  if (raw.includes(DIGIDEAL_DUAL_INPUT_RULES_TAG)) return raw;
+  return [DIGIDEAL_DUAL_INPUT_RULES, "", raw].join("\n");
 };
 
 const looksLikeSpu = (value: string) => /^[a-z0-9]{1,8}-\d{3,}$/i.test(value);
@@ -1185,199 +1408,506 @@ const uniqueChildPath = (folderAbsPath: string, baseName: string, ext: string) =
   return path.join(folderAbsPath, `${baseName}-${randomUUID()}${safeExt}`);
 };
 
+const DUAL_INPUT_MAX_HEIGHT = 1000;
+const DUAL_INPUT_MAX_WIDTH = 2000;
+const DUAL_INPUT_GAP_PX = 50;
+
+const readImageDimensions = async (absolutePath: string) => {
+  const metadata = await sharp(absolutePath, { failOnError: false }).rotate().metadata();
+  const width = Math.round(Number(metadata.width || 0));
+  const height = Math.round(Number(metadata.height || 0));
+  if (width <= 0 || height <= 0) {
+    throw new Error(`Unable to read image dimensions: ${path.basename(absolutePath)}.`);
+  }
+  return { width, height };
+};
+
+const weldDualInputImage = async (input: {
+  leftAbsPath: string;
+  rightAbsPath: string;
+  folderAbsPath: string;
+}) => {
+  const [leftMeta, rightMeta] = await Promise.all([
+    readImageDimensions(input.leftAbsPath),
+    readImageDimensions(input.rightAbsPath),
+  ]);
+
+  // Scale by source max height first, then downscale again if width would exceed 2000px.
+  let scale = Math.min(1, DUAL_INPUT_MAX_HEIGHT / Math.max(leftMeta.height, rightMeta.height));
+  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+
+  const buildScaledSize = () => ({
+    leftWidth: Math.max(1, Math.floor(leftMeta.width * scale)),
+    leftHeight: Math.max(1, Math.floor(leftMeta.height * scale)),
+    rightWidth: Math.max(1, Math.floor(rightMeta.width * scale)),
+    rightHeight: Math.max(1, Math.floor(rightMeta.height * scale)),
+  });
+
+  let scaled = buildScaledSize();
+  let combinedWidth = scaled.leftWidth + DUAL_INPUT_GAP_PX + scaled.rightWidth;
+  if (combinedWidth > DUAL_INPUT_MAX_WIDTH) {
+    const widthScale = DUAL_INPUT_MAX_WIDTH / combinedWidth;
+    scale *= widthScale;
+    scaled = buildScaledSize();
+    combinedWidth = scaled.leftWidth + DUAL_INPUT_GAP_PX + scaled.rightWidth;
+  }
+
+  const canvasWidth = Math.min(DUAL_INPUT_MAX_WIDTH, Math.max(1, combinedWidth));
+  const canvasHeight = Math.min(
+    DUAL_INPUT_MAX_HEIGHT,
+    Math.max(1, Math.max(scaled.leftHeight, scaled.rightHeight))
+  );
+
+  const [leftBuffer, rightBuffer] = await Promise.all([
+    sharp(input.leftAbsPath, { failOnError: false })
+      .rotate()
+      .resize({
+        width: scaled.leftWidth,
+        height: scaled.leftHeight,
+        fit: "fill",
+        withoutEnlargement: false,
+      })
+      .flatten({ background: "#ffffff" })
+      .png()
+      .toBuffer(),
+    sharp(input.rightAbsPath, { failOnError: false })
+      .rotate()
+      .resize({
+        width: scaled.rightWidth,
+        height: scaled.rightHeight,
+        fit: "fill",
+        withoutEnlargement: false,
+      })
+      .flatten({ background: "#ffffff" })
+      .png()
+      .toBuffer(),
+  ]);
+
+  const leftTop = Math.max(0, Math.floor((canvasHeight - scaled.leftHeight) / 2));
+  const rightTop = Math.max(0, Math.floor((canvasHeight - scaled.rightHeight) / 2));
+  const weldedAbsPath = uniqueChildPath(
+    input.folderAbsPath,
+    `.dual-ai-source-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    ".jpg"
+  );
+
+  await sharp({
+    create: {
+      width: canvasWidth,
+      height: canvasHeight,
+      channels: 3,
+      background: "#ffffff",
+    },
+  })
+    .composite([
+      { input: leftBuffer, top: leftTop, left: 0 },
+      { input: rightBuffer, top: rightTop, left: scaled.leftWidth + DUAL_INPUT_GAP_PX },
+    ])
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toFile(weldedAbsPath);
+
+  return weldedAbsPath;
+};
+
+const PRODUCT_COLLECTION_TILE_SIZE_PX = 750;
+const PRODUCT_COLLECTION_CANVAS_SIDE_PX = PRODUCT_COLLECTION_TILE_SIZE_PX * 2;
+
+const buildProductCollectionInputImage = async (input: {
+  sourceAbsPaths: string[];
+  folderAbsPath: string;
+}) => {
+  const uniqueSourceAbsPaths = Array.from(
+    new Set(
+      (Array.isArray(input.sourceAbsPaths) ? input.sourceAbsPaths : [])
+        .map((value) => path.resolve(String(value || "")))
+        .filter(Boolean)
+    )
+  );
+  if (uniqueSourceAbsPaths.length < 2 || uniqueSourceAbsPaths.length > 4) {
+    throw new Error("Product Collection requires 2 to 4 source images.");
+  }
+
+  const tileBuffers = await Promise.all(
+    uniqueSourceAbsPaths.map((absPath) =>
+      sharp(absPath, { failOnError: false })
+        .rotate()
+        .resize({
+          width: PRODUCT_COLLECTION_TILE_SIZE_PX,
+          height: PRODUCT_COLLECTION_TILE_SIZE_PX,
+          fit: "contain",
+          withoutEnlargement: false,
+          background: "#ffffff",
+        })
+        .flatten({ background: "#ffffff" })
+        .png()
+        .toBuffer()
+    )
+  );
+
+  const positions = (() => {
+    if (tileBuffers.length === 2) {
+      return [
+        { left: 0, top: 0 },
+        { left: PRODUCT_COLLECTION_TILE_SIZE_PX, top: 0 },
+      ] as const;
+    }
+    if (tileBuffers.length === 3) {
+      return [
+        { left: 0, top: 0 },
+        { left: PRODUCT_COLLECTION_TILE_SIZE_PX, top: 0 },
+        {
+          left: Math.floor(PRODUCT_COLLECTION_TILE_SIZE_PX / 2),
+          top: PRODUCT_COLLECTION_TILE_SIZE_PX,
+        },
+      ] as const;
+    }
+    return [
+      { left: 0, top: 0 },
+      { left: PRODUCT_COLLECTION_TILE_SIZE_PX, top: 0 },
+      { left: 0, top: PRODUCT_COLLECTION_TILE_SIZE_PX },
+      { left: PRODUCT_COLLECTION_TILE_SIZE_PX, top: PRODUCT_COLLECTION_TILE_SIZE_PX },
+    ] as const;
+  })();
+
+  const canvasWidth = PRODUCT_COLLECTION_CANVAS_SIDE_PX;
+  const canvasHeight = tileBuffers.length === 2
+    ? PRODUCT_COLLECTION_TILE_SIZE_PX
+    : PRODUCT_COLLECTION_CANVAS_SIDE_PX;
+  const weldedAbsPath = uniqueChildPath(
+    input.folderAbsPath,
+    `.collection-ai-source-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    ".jpg"
+  );
+
+  await sharp({
+    create: {
+      width: canvasWidth,
+      height: canvasHeight,
+      channels: 3,
+      background: "#ffffff",
+    },
+  })
+    .composite(
+      tileBuffers.map((buffer, index) => ({
+        input: buffer,
+        left: positions[index]?.left ?? 0,
+        top: positions[index]?.top ?? 0,
+      }))
+    )
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toFile(weldedAbsPath);
+
+  return weldedAbsPath;
+};
+
 export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsInput) =>
   withEditQueue(async () => {
     if (input.provider !== "chatgpt" && input.provider !== "gemini") {
       throw new Error("Template preset outputs only support ChatGPT or Gemini.");
     }
-    if (input.templatePreset !== "digideal_main" && input.templatePreset !== "product_scene") {
+    if (
+      input.templatePreset !== "digideal_main" &&
+      input.templatePreset !== "digideal_main_dual" &&
+      input.templatePreset !== "product_scene" &&
+      input.templatePreset !== "product_collection"
+    ) {
       throw new Error("Unsupported template preset.");
     }
-    const count = Math.max(1, Math.min(3, Math.floor(Number(input.count || 1))));
+    const count =
+      input.templatePreset === "product_collection"
+        ? 1
+        : Math.max(1, Math.min(3, Math.floor(Number(input.count || 1))));
 
     const { absolutePath: originalAbsPath, relativePath: originalPath } = resolveImagePath(
       input.relativePath
     );
     const folderAbsPath = path.dirname(originalAbsPath);
-
-    const now = new Date();
-    const stamp = formatTimestampForFilename(now);
-    const prefix = input.templatePreset === "digideal_main" ? "DD" : "SCENE";
-    const suffixTag = input.templatePreset === "product_scene" ? " (ENV) (DIGI)" : " (DIGI)";
-    const additionalPrompt = String(input.prompt || "").trim();
-
-    const providerEnv = loadProcessorEnv();
-    const mergedEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...providerEnv,
-    };
-    await hydrateTemplateFromPromptManager(
-      mergedEnv,
-      input.provider,
-      input.templatePreset,
-      false
-    );
-
-    const presetKey =
-      input.templatePreset === "digideal_main"
-        ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
-        : "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE";
-    const presetFallbackPath =
-      input.templatePreset === "digideal_main"
-        ? DIGIDEAL_MAIN_PROMPT_PATH
-        : ENVIORMENT_SCENE_PROMPT_PATH;
-    const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
-    if (!presetTemplate.trim()) {
-      throw new Error(`Prompt template "${input.templatePreset}" is missing or empty.`);
-    }
-
-    let digidealPkg:
-      | { product_description: string; usage_environments: string[]; target_user: string }
-      | null = null;
-    if (input.templatePreset === "digideal_main") {
-      const relative = toRelativePath(originalAbsPath);
-      const spu = extractSpuFromRelativePath(relative);
-      const context = spu ? await loadDraftProductContext(spu) : null;
-      const title = context?.title || spu || path.parse(originalAbsPath).name;
-      const description = context?.description || "";
-      digidealPkg = await generateDigidealMainPackage({
-        title,
-        description,
-        env: mergedEnv,
+    let guidancePath = "";
+    let collectionPaths: string[] = [];
+    let sourceImageAbsPath = originalAbsPath;
+    let weldedAbsPath: string | null = null;
+    if (input.templatePreset === "digideal_main_dual") {
+      const guidanceRelativePath = String(input.guidanceRelativePath || "").trim();
+      if (!guidanceRelativePath) {
+        throw new Error("Dual preset requires a guidance image path.");
+      }
+      const guidanceResolved = resolveImagePath(guidanceRelativePath);
+      if (guidanceResolved.absolutePath === originalAbsPath) {
+        throw new Error("Dual preset requires two different images.");
+      }
+      guidancePath = guidanceResolved.relativePath;
+      weldedAbsPath = await weldDualInputImage({
+        leftAbsPath: originalAbsPath,
+        rightAbsPath: guidanceResolved.absolutePath,
+        folderAbsPath,
       });
-    }
-
-    const clampUser = (value: string | null | undefined) => {
-      const raw = String(value || "").trim().toLowerCase();
-      if (raw === "male" || raw === "female" || raw === "child" || raw === "unisex") return raw;
-      return "unisex";
-    };
-
-    const oppositeUser = (value: "male" | "female" | "child" | "unisex") => {
-      if (value === "male") return "female";
-      if (value === "female") return "male";
-      return value;
-    };
-
-    const buildUserPlan = (base: "male" | "female" | "child" | "unisex", outputs: number) => {
-      if (outputs <= 1) return [base];
-      if (base === "child") return Array.from({ length: outputs }, () => "child" as const);
-      if (base === "unisex") {
-        if (outputs === 2) return ["female", "male"] as const;
-        return ["female", "male", "unisex"] as const;
+      sourceImageAbsPath = weldedAbsPath;
+    } else if (input.templatePreset === "product_collection") {
+      const collectionRelativePaths = Array.isArray(input.collectionRelativePaths)
+        ? input.collectionRelativePaths
+        : [];
+      const normalizedCollection = Array.from(
+        new Set(collectionRelativePaths.map((value) => normalizeRelativePath(String(value || ""))))
+      ).filter(Boolean);
+      if (normalizedCollection.length < 2 || normalizedCollection.length > 4) {
+        throw new Error("Product Collection requires selecting 2 to 4 images.");
       }
-      // If the model leans male/female, still include an opposite-sex variant at least once.
-      if (outputs === 2) return [base, oppositeUser(base)] as const;
-      return [base, oppositeUser(base), base] as const;
-    };
-
-    const baseUser =
-      input.templatePreset === "digideal_main" && digidealPkg
-        ? (clampUser(digidealPkg.target_user) as "male" | "female" | "child" | "unisex")
-        : "unisex";
-    const userPlan = buildUserPlan(baseUser, count);
-
-    const planned: { tmpAbs: string; finalAbs: string | null; idx: number }[] = [];
-    for (let i = 1; i <= count; i += 1) {
-      // Use .png as a safe temporary extension; we'll correct it after the tool returns.
-      const baseName = `${prefix}-${i}-${stamp}${suffixTag}`;
-      const tmpAbs = uniqueChildPath(folderAbsPath, baseName, ".png");
-      planned.push({ tmpAbs, finalAbs: null, idx: i });
-    }
-
-    planned.forEach((row) => removeFileQuietly(row.tmpAbs));
-
-    const tasks = planned.map(async (row) => {
-      let promptTemplateOverride = presetTemplate;
-      if (input.templatePreset === "digideal_main" && digidealPkg) {
-        const envCount = digidealPkg.usage_environments?.length || 0;
-        const preferredEnvironmentIndex =
-          envCount > 0 ? ((row.idx - 1) % envCount) + 1 : row.idx;
-        promptTemplateOverride = applyDigidealMainPackageToTemplate(presetTemplate, digidealPkg, {
-          targetUserOverride: userPlan[Math.min(userPlan.length - 1, row.idx - 1)],
-          preferredEnvironmentIndex,
-        });
-      } else if (input.templatePreset === "product_scene" && count > 1) {
-        promptTemplateOverride = [
-          presetTemplate,
-          "",
-          `Variation directive: Output ${row.idx}/${count}. Choose a distinct Swedish lifestyle environment and lighting/time-of-day compared to the other outputs.`,
-        ].join("\n");
+      const resolvedCollection = normalizedCollection.map((relative) =>
+        resolveImagePath(relative)
+      );
+      if (!resolvedCollection.some((row) => row.absolutePath === originalAbsPath)) {
+        throw new Error("Primary image path must be included in Product Collection selection.");
       }
-      if (input.templatePreset === "digideal_main" && additionalPrompt) {
-        promptTemplateOverride = applyAdditionalGuidanceToTemplate(
-          promptTemplateOverride,
-          additionalPrompt
-        );
-      }
-
-      const runtimeConfig = await runImageEditScript({
-        originalAbsPath,
-        pendingAbsPath: row.tmpAbs,
-        provider: input.provider,
-        mode: "template",
-        prompt: "",
-        templatePreset: "standard",
-        promptTemplateOverride,
-      });
-
-      if (!fs.existsSync(row.tmpAbs) || fs.statSync(row.tmpAbs).size <= 0) {
-        throw new Error("AI edit returned no image.");
-      }
-
-      const detectedExt = detectImageExtension(row.tmpAbs);
-      const parsed = path.parse(row.tmpAbs);
-      const desiredAbs = detectedExt === parsed.ext
-        ? row.tmpAbs
-        : uniqueChildPath(folderAbsPath, parsed.name, detectedExt);
-
-      if (desiredAbs !== row.tmpAbs) {
-        if (!moveFileWithFallback(row.tmpAbs, desiredAbs)) {
-          // Keep the temporary file rather than losing output.
-          row.finalAbs = row.tmpAbs;
-        } else {
-          row.finalAbs = desiredAbs;
+      for (const row of resolvedCollection) {
+        if (path.dirname(row.absolutePath) !== folderAbsPath) {
+          throw new Error("Product Collection images must be from the same folder.");
         }
-      } else {
-        row.finalAbs = row.tmpAbs;
       }
-
-      return { runtimeConfig };
-    });
-
-    // Run the requested outputs in parallel (max 3) within the global edit queue.
-    await Promise.all(tasks);
-
-    const createdPaths = planned
-      .map((row) => row.finalAbs)
-      .filter((abs): abs is string => Boolean(abs))
-      .map((abs) => toRelativePath(abs));
-    const scoreRefreshErrors: string[] = [];
-    for (const abs of planned
-      .map((row) => row.finalAbs)
-      .filter((value): value is string => Boolean(value))) {
-      try {
-        await refreshDraftImageScoreByAbsolutePath(abs);
-      } catch (err) {
-        scoreRefreshErrors.push(
-          `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
-        );
-      }
+      collectionPaths = resolvedCollection.map((row) => row.relativePath);
+      weldedAbsPath = await buildProductCollectionInputImage({
+        sourceAbsPaths: resolvedCollection.map((row) => row.absolutePath),
+        folderAbsPath,
+      });
+      sourceImageAbsPath = weldedAbsPath;
     }
 
-    appendAiEditLog({
-      action: "preset_outputs",
-      requested_by: input.requestedBy,
-      provider: input.provider,
-      template_preset: input.templatePreset,
-      guidance_length: additionalPrompt.length,
-      original_path: originalPath,
-      created_paths: createdPaths,
-      score_refresh_errors:
-        scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
-    });
+    try {
+      const now = new Date();
+      const stamp = formatTimestampForFilename(now);
+      const prefix =
+        input.templatePreset === "digideal_main"
+          ? "DD"
+          : input.templatePreset === "digideal_main_dual"
+            ? "DD2"
+            : input.templatePreset === "product_scene"
+              ? "SCENE"
+              : "COLL";
+      const suffixTag =
+        input.templatePreset === "product_scene"
+          ? " (ENV) (DIGI)"
+          : input.templatePreset === "product_collection"
+            ? " (COLL)"
+            : " (DIGI)";
+      const additionalPrompt = String(input.prompt || "").trim();
 
-    return createdPaths;
+      const providerEnv = loadProcessorEnv();
+      const mergedEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        ...providerEnv,
+      };
+      await hydrateTemplateFromPromptManager(
+        mergedEnv,
+        input.provider,
+        input.templatePreset,
+        false
+      );
+
+      const presetKey =
+        input.templatePreset === "digideal_main"
+          ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+          : input.templatePreset === "digideal_main_dual"
+            ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+            : input.templatePreset === "product_scene"
+              ? "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE"
+              : "PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE";
+      const presetFallbackPath =
+        input.templatePreset === "digideal_main"
+          ? DIGIDEAL_MAIN_PROMPT_PATH
+          : input.templatePreset === "digideal_main_dual"
+            ? DIGIDEAL_MAIN_PROMPT_PATH
+            : input.templatePreset === "product_scene"
+              ? ENVIORMENT_SCENE_PROMPT_PATH
+              : PRODUCT_COLLECTION_PROMPT_PATH;
+      const presetTemplateRaw = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
+      const presetTemplate =
+        input.templatePreset === "digideal_main_dual"
+          ? applyDigidealDualInputRulesToTemplate(presetTemplateRaw)
+          : presetTemplateRaw;
+      if (!presetTemplate.trim()) {
+        throw new Error(`Prompt template "${input.templatePreset}" is missing or empty.`);
+      }
+
+      let digidealPkg:
+        | { product_description: string; usage_environments: string[]; target_user: string }
+        | null = null;
+      if (
+        input.templatePreset === "digideal_main" ||
+        input.templatePreset === "digideal_main_dual"
+      ) {
+        const relative = toRelativePath(originalAbsPath);
+        const spu = extractSpuFromRelativePath(relative);
+        const context = spu ? await loadDraftProductContext(spu) : null;
+        const title = context?.title || spu || path.parse(originalAbsPath).name;
+        const description = context?.description || "";
+        digidealPkg = await generateDigidealMainPackage({
+          title,
+          description,
+          env: mergedEnv,
+        });
+      }
+
+      const clampUser = (value: string | null | undefined) => {
+        const raw = String(value || "").trim().toLowerCase();
+        if (
+          raw === "male" ||
+          raw === "female" ||
+          raw === "child" ||
+          raw === "unisex"
+        ) {
+          return raw;
+        }
+        return "unisex";
+      };
+
+      const oppositeUser = (value: "male" | "female" | "child" | "unisex") => {
+        if (value === "male") return "female";
+        if (value === "female") return "male";
+        return value;
+      };
+
+      const buildUserPlan = (base: "male" | "female" | "child" | "unisex", outputs: number) => {
+        if (outputs <= 1) return [base];
+        if (base === "child") return Array.from({ length: outputs }, () => "child" as const);
+        if (base === "unisex") {
+          if (outputs === 2) return ["female", "male"] as const;
+          return ["female", "male", "unisex"] as const;
+        }
+        // If the model leans male/female, still include an opposite-sex variant at least once.
+        if (outputs === 2) return [base, oppositeUser(base)] as const;
+        return [base, oppositeUser(base), base] as const;
+      };
+
+      const baseUser =
+        (input.templatePreset === "digideal_main" ||
+          input.templatePreset === "digideal_main_dual") &&
+        digidealPkg
+          ? (clampUser(digidealPkg.target_user) as "male" | "female" | "child" | "unisex")
+          : "unisex";
+      const userPlan = buildUserPlan(baseUser, count);
+
+      const planned: { tmpAbs: string; finalAbs: string | null; idx: number }[] = [];
+      for (let i = 1; i <= count; i += 1) {
+        // Use .png as a safe temporary extension; we'll correct it after the tool returns.
+        const baseName = `${prefix}-${i}-${stamp}${suffixTag}`;
+        const tmpAbs = uniqueChildPath(folderAbsPath, baseName, ".png");
+        planned.push({ tmpAbs, finalAbs: null, idx: i });
+      }
+
+      planned.forEach((row) => removeFileQuietly(row.tmpAbs));
+
+      const tasks = planned.map(async (row) => {
+        let promptTemplateOverride = presetTemplate;
+        if (
+          (input.templatePreset === "digideal_main" ||
+            input.templatePreset === "digideal_main_dual") &&
+          digidealPkg
+        ) {
+          const envCount = digidealPkg.usage_environments?.length || 0;
+          const preferredEnvironmentIndex =
+            envCount > 0 ? ((row.idx - 1) % envCount) + 1 : row.idx;
+          promptTemplateOverride = applyDigidealMainPackageToTemplate(
+            presetTemplate,
+            digidealPkg,
+            {
+              targetUserOverride: userPlan[Math.min(userPlan.length - 1, row.idx - 1)],
+              preferredEnvironmentIndex,
+            }
+          );
+        } else if (input.templatePreset === "product_scene" && count > 1) {
+          promptTemplateOverride = [
+            presetTemplate,
+            "",
+            `Variation directive: Output ${row.idx}/${count}. Choose a distinct Swedish lifestyle environment and lighting/time-of-day compared to the other outputs.`,
+          ].join("\n");
+        }
+        if (
+          (input.templatePreset === "digideal_main" ||
+            input.templatePreset === "digideal_main_dual" ||
+            input.templatePreset === "product_collection") &&
+          additionalPrompt
+        ) {
+          promptTemplateOverride = applyAdditionalGuidanceToTemplate(
+            promptTemplateOverride,
+            additionalPrompt
+          );
+        }
+
+        const runtimeConfig = await runImageEditScript({
+          originalAbsPath: sourceImageAbsPath,
+          pendingAbsPath: row.tmpAbs,
+          provider: input.provider,
+          mode: "template",
+          prompt: "",
+          templatePreset: "standard",
+          promptTemplateOverride,
+        });
+
+        if (!fs.existsSync(row.tmpAbs) || fs.statSync(row.tmpAbs).size <= 0) {
+          throw new Error("AI edit returned no image.");
+        }
+
+        const detectedExt = detectImageExtension(row.tmpAbs);
+        const parsed = path.parse(row.tmpAbs);
+        const desiredAbs =
+          detectedExt === parsed.ext
+            ? row.tmpAbs
+            : uniqueChildPath(folderAbsPath, parsed.name, detectedExt);
+
+        if (desiredAbs !== row.tmpAbs) {
+          if (!moveFileWithFallback(row.tmpAbs, desiredAbs)) {
+            // Keep the temporary file rather than losing output.
+            row.finalAbs = row.tmpAbs;
+          } else {
+            row.finalAbs = desiredAbs;
+          }
+        } else {
+          row.finalAbs = row.tmpAbs;
+        }
+
+        return { runtimeConfig };
+      });
+
+      // Run the requested outputs in parallel (max 3) within the global edit queue.
+      await Promise.all(tasks);
+
+      const createdPaths = planned
+        .map((row) => row.finalAbs)
+        .filter((abs): abs is string => Boolean(abs))
+        .map((abs) => toRelativePath(abs));
+      const scoreRefreshErrors: string[] = [];
+      for (const abs of planned
+        .map((row) => row.finalAbs)
+        .filter((value): value is string => Boolean(value))) {
+        try {
+          await refreshDraftImageScoreByAbsolutePath(abs);
+        } catch (err) {
+          scoreRefreshErrors.push(
+            `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
+          );
+        }
+      }
+
+      appendAiEditLog({
+        action: "preset_outputs",
+        requested_by: input.requestedBy,
+        provider: input.provider,
+        template_preset: input.templatePreset,
+        guidance_length: additionalPrompt.length,
+        original_path: originalPath,
+        dual_guidance_path: guidancePath || undefined,
+        collection_source_paths:
+          collectionPaths.length > 0 ? collectionPaths : undefined,
+        created_paths: createdPaths,
+        score_refresh_errors:
+          scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
+      });
+
+      return createdPaths;
+    } finally {
+      if (weldedAbsPath) {
+        removeFileQuietly(weldedAbsPath);
+      }
+    }
   });
 
 const runImageEditScript = async (input: {
@@ -1386,6 +1916,7 @@ const runImageEditScript = async (input: {
   provider: AiEditProvider;
   mode: AiPromptMode;
   prompt: string;
+  maskAbsPath?: string;
   templatePreset?: AiTemplatePreset;
   promptTemplateOverride?: string;
 }) => {
@@ -1449,18 +1980,30 @@ const runImageEditScript = async (input: {
     const presetKey =
       templatePreset === "digideal_main"
         ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
-        : "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE";
+      : templatePreset === "digideal_main_dual"
+          ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+          : templatePreset === "product_scene"
+            ? "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE"
+            : "PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE";
     const presetFallbackPath =
       templatePreset === "digideal_main"
         ? DIGIDEAL_MAIN_PROMPT_PATH
-        : ENVIORMENT_SCENE_PROMPT_PATH;
-    const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
+      : templatePreset === "digideal_main_dual"
+          ? DIGIDEAL_MAIN_PROMPT_PATH
+          : templatePreset === "product_scene"
+            ? ENVIORMENT_SCENE_PROMPT_PATH
+            : PRODUCT_COLLECTION_PROMPT_PATH;
+    const presetTemplateRaw = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
+    const presetTemplate =
+      templatePreset === "digideal_main_dual"
+        ? applyDigidealDualInputRulesToTemplate(presetTemplateRaw)
+        : presetTemplateRaw;
     if (!presetTemplate.trim()) {
       throw new Error(`Prompt template "${templatePreset}" is missing or empty.`);
     }
 
     let nextTemplate = presetTemplate;
-    if (templatePreset === "digideal_main") {
+    if (templatePreset === "digideal_main" || templatePreset === "digideal_main_dual") {
       const relative = toRelativePath(input.originalAbsPath);
       const spu = extractSpuFromRelativePath(relative);
       const context = spu ? await loadDraftProductContext(spu) : null;
@@ -1473,9 +2016,18 @@ const runImageEditScript = async (input: {
         env: mergedEnv,
       });
       nextTemplate = applyDigidealMainPackageToTemplate(nextTemplate, pkg);
-      if (String(input.prompt || "").trim()) {
-        nextTemplate = applyAdditionalGuidanceToTemplate(nextTemplate, input.prompt);
-      }
+    }
+    if (
+      (templatePreset === "digideal_main" || templatePreset === "digideal_main_dual") &&
+      String(input.prompt || "").trim()
+    ) {
+      nextTemplate = applyAdditionalGuidanceToTemplate(nextTemplate, input.prompt);
+    }
+    if (
+      templatePreset === "product_collection" &&
+      String(input.prompt || "").trim()
+    ) {
+      nextTemplate = applyAdditionalGuidanceToTemplate(nextTemplate, input.prompt);
     }
 
     if (input.provider === "chatgpt") {
@@ -1557,14 +2109,27 @@ const runImageEditScript = async (input: {
         }
         await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else if (input.mode === "eraser") {
-        await runZImageTool({
-          scriptPath: ZIMAGE_ERASER_SCRIPT_PATH,
-          originalAbsPath: input.originalAbsPath,
-          pendingAbsPath: input.pendingAbsPath,
-          prompt: input.prompt,
-          env: mergedEnv,
-          timeoutMs,
-        });
+        if (input.maskAbsPath) {
+          await runZImageTool({
+            scriptPath: ZIMAGE_ERASER_SCRIPT_PATH,
+            originalAbsPath: input.originalAbsPath,
+            pendingAbsPath: input.pendingAbsPath,
+            prompt: input.prompt,
+            maskAbsPath: input.maskAbsPath,
+            env: mergedEnv,
+            timeoutMs,
+          });
+        } else {
+          // Prompt-only eraser request: fall back to text-guided image-to-image.
+          await runZImageTool({
+            scriptPath: ZIMAGE_IMAGE_TO_IMAGE_SCRIPT_PATH,
+            originalAbsPath: input.originalAbsPath,
+            pendingAbsPath: input.pendingAbsPath,
+            prompt: input.prompt,
+            env: mergedEnv,
+            timeoutMs,
+          });
+        }
         await convertImageFileToJpegInPlace(input.pendingAbsPath);
       } else {
         await runZImageTool({
@@ -1627,6 +2192,8 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
           : "Prompt is required in direct mode."
       );
     }
+    const maskDataUrl =
+      input.mode === "eraser" ? String(input.maskDataUrl ?? "").trim() : "";
 
     const { absolutePath: originalAbsPath, relativePath: originalPath } = resolveImagePath(
       input.relativePath
@@ -1638,14 +2205,27 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
 
     removeFileQuietly(pendingAbsPath);
 
-    const runtimeConfig = await runImageEditScript({
-      originalAbsPath,
-      pendingAbsPath,
-      provider: input.provider,
-      mode: input.mode,
-      prompt,
-      templatePreset: input.templatePreset,
-    });
+    let tempMaskAbsPath: string | null = null;
+    const runtimeConfig = await (async () => {
+      try {
+        if (maskDataUrl) {
+          tempMaskAbsPath = await writeInlineMaskTempFile(originalAbsPath, maskDataUrl);
+        }
+        return await runImageEditScript({
+          originalAbsPath,
+          pendingAbsPath,
+          provider: input.provider,
+          mode: input.mode,
+          prompt,
+          maskAbsPath: tempMaskAbsPath || undefined,
+          templatePreset: input.templatePreset,
+        });
+      } finally {
+        if (tempMaskAbsPath) {
+          removeFileQuietly(tempMaskAbsPath);
+        }
+      }
+    })();
 
     if (!fs.existsSync(pendingAbsPath) || fs.statSync(pendingAbsPath).size <= 0) {
       throw new Error("AI edit returned no image.");
@@ -1696,6 +2276,8 @@ export const createPendingAiEdit = (input: CreatePendingAiEditInput) =>
       provider: input.provider,
       mode: input.mode,
       template_preset: input.mode === "template" ? input.templatePreset ?? "standard" : undefined,
+      eraser_mask_mode:
+        input.mode === "eraser" ? (maskDataUrl ? "manual_mask" : "prompt_only") : undefined,
       original_path: originalPath,
       pending_path: pendingPath,
       pending_pixel_quality_score: pendingPixelQualityScore,
@@ -1729,10 +2311,24 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
     const scorePathsToRefresh: string[] = [];
     const refreshedScores: RefreshedAiImageScore[] = [];
     const scoreRefreshErrors: string[] = [];
+    const discardedMoves: DiscardedAiImageMove[] = [];
+    const optimisticPendingScore = normalizePixelQualityScore(
+      record.pendingPixelQualityScore
+    );
 
     if (input.decision === "replace_with_ai") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
         throw new Error("Pending AI image was not found.");
+      }
+      const discardedMove = archiveDiscardedPendingAiImage({
+        folderAbsPath,
+        originalAbsPath,
+        pendingAbsPath,
+        provider: record.provider,
+        mode: record.mode,
+      });
+      if (discardedMove) {
+        discardedMoves.push(discardedMove);
       }
       saveDraftImageUndoBackup(originalAbsPath);
       fs.copyFileSync(pendingAbsPath, originalAbsPath);
@@ -1740,6 +2336,21 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
         markDraftImageUpscaled(originalAbsPath);
       }
       scorePathsToRefresh.push(originalAbsPath);
+      refreshedScores.push({
+        path: originalPath,
+        pixelQualityScore: optimisticPendingScore,
+      });
+    } else if (input.decision === "keep_original") {
+      const discardedMove = archiveDiscardedPendingAiImage({
+        folderAbsPath,
+        originalAbsPath,
+        pendingAbsPath,
+        provider: record.provider,
+        mode: record.mode,
+      });
+      if (discardedMove) {
+        discardedMoves.push(discardedMove);
+      }
     } else if (input.decision === "keep_both") {
       if (!fs.existsSync(pendingAbsPath) || !fs.statSync(pendingAbsPath).isFile()) {
         throw new Error("Pending AI image was not found.");
@@ -1765,26 +2376,30 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
         markDraftImageUpscaled(editedAbsPath);
       }
       scorePathsToRefresh.push(uneditedAbsPath, editedAbsPath);
+      refreshedScores.push({
+        path: toRelativePath(uneditedAbsPath),
+        pixelQualityScore: null,
+      });
+      refreshedScores.push({
+        path: toRelativePath(editedAbsPath),
+        pixelQualityScore: optimisticPendingScore,
+      });
     }
 
-    removeFileQuietly(pendingAbsPath);
+    if (input.decision !== "keep_both") {
+      removeFileQuietly(pendingAbsPath);
+    }
     const next = [...state.edits];
     next.splice(index, 1);
     writeFolderState(folderAbsPath, { version: 1, edits: next });
 
-    for (const abs of scorePathsToRefresh) {
-      try {
-        const refreshed = await refreshDraftImageScoreByAbsolutePath(abs);
-        refreshedScores.push({
-          path: toRelativePath(abs),
-          pixelQualityScore: refreshed.pixelQualityScore,
-        });
-      } catch (err) {
-        scoreRefreshErrors.push(
-          `${path.basename(abs)}: ${err instanceof Error ? err.message : "score refresh failed"}`
-        );
-      }
-    }
+    // Do score refresh asynchronously so AI review save/replace feels instant in the UI.
+    // The UI already has an optimistic pending score for the edited image.
+    refreshScoresInBackground(scorePathsToRefresh, {
+      decision: input.decision,
+      originalPath,
+      pendingPath: record.pendingPath,
+    });
 
     appendAiEditLog({
       action: "resolve",
@@ -1792,6 +2407,10 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       decision: input.decision,
       original_path: originalPath,
       pending_path: record.pendingPath,
+      optimistic_refreshed_scores: refreshedScores.map((row) => ({
+        path: row.path,
+        pixel_quality_score: row.pixelQualityScore,
+      })),
       score_refresh_errors:
         scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
     });
@@ -1800,6 +2419,7 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       item: record,
       refreshedScores,
       scoreRefreshErrors,
+      discardedMoves,
     };
   });
 

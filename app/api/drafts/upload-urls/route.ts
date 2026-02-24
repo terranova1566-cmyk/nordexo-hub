@@ -2,10 +2,19 @@ import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { resolveDraftPath } from "@/lib/drafts";
+import { resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { convertBufferToJpeg } from "@/lib/image-jpeg";
 
 export const runtime = "nodejs";
+
+type UploadedImageItem = {
+  name: string;
+  path: string;
+  size: number;
+  modifiedAt: string;
+  pixelQualityScore: number | null;
+  scorePending: boolean;
+};
 
 const toSafeBaseName = (value: string) =>
   String(value || "")
@@ -87,6 +96,7 @@ export async function POST(request: Request) {
   fs.mkdirSync(targetPath, { recursive: true });
 
   const errors: Array<{ url: string; error: string }> = [];
+  const items: UploadedImageItem[] = [];
   let uploaded = 0;
 
   for (let index = 0; index < urls.length; index += 1) {
@@ -117,7 +127,17 @@ export async function POST(request: Request) {
       // Always store downloaded images as JPEG.
       const fileName = ensureUniqueName(targetPath, baseName, "jpg");
       const jpeg = await convertBufferToJpeg(buffer);
-      fs.writeFileSync(path.join(targetPath, fileName), jpeg);
+      const outAbs = path.join(targetPath, fileName);
+      fs.writeFileSync(outAbs, jpeg);
+      const stat = fs.statSync(outAbs);
+      items.push({
+        name: fileName,
+        path: toRelativePath(outAbs),
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        pixelQualityScore: null,
+        scorePending: true,
+      });
       uploaded += 1;
     } catch (err) {
       errors.push({
@@ -143,5 +163,6 @@ export async function POST(request: Request) {
     uploaded,
     failed: errors.length,
     errors,
+    items,
   });
 }
