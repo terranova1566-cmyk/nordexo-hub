@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { ORDER_IMPORT_HEADERS } from "@/lib/orders/import-template";
+import { ORDER_IMPORT_PENDING_HEADERS } from "@/lib/orders/import-template";
 
 export const runtime = "nodejs";
 
@@ -40,11 +40,11 @@ export async function GET() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Orders");
 
-  sheet.addRow([...ORDER_IMPORT_HEADERS]);
+  sheet.addRow([...ORDER_IMPORT_PENDING_HEADERS]);
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   sheet.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: 1, column: ORDER_IMPORT_HEADERS.length },
+    to: { row: 1, column: ORDER_IMPORT_PENDING_HEADERS.length },
   };
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -57,4 +57,3 @@ export async function GET() {
     },
   });
 }
-

@@ -29,6 +29,7 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { type ClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { collectMacros } from "@/lib/email-templates";
 
 type EmailTemplate = {
@@ -505,6 +506,38 @@ const PREVIEW_DATASETS: PreviewDataset[] = [
     },
   },
   {
+    id: "orders_pending",
+    name: "Orders pending sample",
+    description: "Pending order payload for order + platform macros.",
+    variables: {
+      orders_id: "f9a96526-779a-4546-8eab-293bf4fdfd8b",
+      orders_number: "ND-550321",
+      orders_date: "2026-02-24",
+      orders_transaction_date: "2026-02-24",
+      orders_ship_date: "",
+      orders_date_shipped: "",
+      orders_customer_name: "Sofia Berg",
+      orders_customer_email: "sofia.berg@example.com",
+      orders_status: "pending",
+      order_content_list: "2 X Example Product A\n1 X Example Product B",
+      platform_id: "LETSDEAL_SE",
+      platform_name: "LetsDeal",
+
+      // Legacy aliases for older templates.
+      order_id: "f9a96526-779a-4546-8eab-293bf4fdfd8b",
+      order_number: "ND-550321",
+      transaction_date: "2026-02-24",
+      date_shipped: "",
+      ship_date: "",
+      customer_name: "Sofia Berg",
+      customer_email: "sofia.berg@example.com",
+      sales_channel_id: "LETSDEAL_SE",
+      sales_channel_name: "LetsDeal",
+      platform: "LetsDeal",
+      order_status: "pending",
+    },
+  },
+  {
     id: "missing_required",
     name: "Missing values test",
     description: "Sparse payload to verify required-macro guardrails.",
@@ -616,6 +649,9 @@ const buildLineDiff = (previousText: string, currentText: string): DiffLine[] =>
 
 export default function EmailTemplatesPage() {
   const styles = useStyles();
+  const router = useRouter();
+  const pathname = usePathname();
+  const isNewTemplateRoute = pathname?.endsWith("/email/templates/new") ?? false;
 
   const [activeTab, setActiveTab] = useState<"templates" | "macros" | "files">("templates");
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -638,6 +674,7 @@ export default function EmailTemplatesPage() {
   const [isLoadingMacros, setIsLoadingMacros] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [isCreatingNewTemplate, setIsCreatingNewTemplate] = useState(false);
 
   const [sourcePath, setSourcePath] = useState("");
   const [fileName, setFileName] = useState("");
@@ -760,6 +797,21 @@ export default function EmailTemplatesPage() {
     return merged.sort((a, b) => a.macro.localeCompare(b.macro));
   }, [macroDefinitions, templates]);
 
+  const initializeNewTemplateDraft = useCallback(() => {
+    setSelectedId("");
+    setDraft({
+      ...emptyTemplate,
+      tags: [],
+      macros: [],
+    });
+    setVersions([]);
+    setSelectedVersionId("");
+    setEditorMode("rich");
+    setPreviewResult(null);
+    setPreviewError("");
+    setMessage(null);
+  }, []);
+
   const loadTemplates = useCallback(async () => {
     setIsLoadingTemplates(true);
     try {
@@ -773,6 +825,7 @@ export default function EmailTemplatesPage() {
         : [];
       setTemplates(next);
       setSelectedId((prev) => {
+        if (isCreatingNewTemplate || isNewTemplateRoute) return "";
         if (prev && next.some((item) => item.template_id === prev)) return prev;
         return next[0]?.template_id || "";
       });
@@ -781,7 +834,7 @@ export default function EmailTemplatesPage() {
     } finally {
       setIsLoadingTemplates(false);
     }
-  }, []);
+  }, [isCreatingNewTemplate, isNewTemplateRoute]);
 
   const loadMacros = useCallback(async () => {
     setIsLoadingMacros(true);
@@ -862,6 +915,15 @@ export default function EmailTemplatesPage() {
   }, []);
 
   useEffect(() => {
+    if (isNewTemplateRoute) {
+      setIsCreatingNewTemplate(true);
+      initializeNewTemplateDraft();
+      return;
+    }
+    setIsCreatingNewTemplate(false);
+  }, [initializeNewTemplateDraft, isNewTemplateRoute]);
+
+  useEffect(() => {
     loadTemplates();
     loadMacros();
     loadFiles();
@@ -869,6 +931,7 @@ export default function EmailTemplatesPage() {
 
   useEffect(() => {
     if (!selectedTemplate) return;
+    setIsCreatingNewTemplate(false);
     setDraft(selectedTemplate);
     loadVersions(selectedTemplate.template_id);
   }, [loadVersions, selectedTemplate]);
@@ -1065,6 +1128,10 @@ export default function EmailTemplatesPage() {
       await loadTemplates();
       await loadMacros();
       setSelectedId(nextId);
+      setIsCreatingNewTemplate(false);
+      if (isNewTemplateRoute) {
+        router.replace("/app/email/templates");
+      }
       const warningText = Array.isArray(result?.warnings)
         ? result.warnings.filter(Boolean).join(" ")
         : "";
@@ -1104,22 +1171,11 @@ export default function EmailTemplatesPage() {
   };
 
   const createNewTemplateDraft = () => {
-    setSelectedId("");
-      setDraft({
-        ...emptyTemplate,
-        template_id: "new_products",
-        name: "New products",
-        category: "partner_update",
-        tags: ["weekly"],
-        owner_team: "Email",
-        owner_user_id: "",
-        subject_template: "New products for {{partner_name}} ({{date_range}})",
-        body_template:
-          "<p>Hey {{partner_name}},</p><p>Here are the latest products:</p><p><a href='{{products_csv_url}}'>Download product file</a></p>",
-        macros: [...DEFAULT_EMAIL_MACROS],
-      });
-      setVersions([]);
-      setSelectedVersionId("");
+    setIsCreatingNewTemplate(true);
+    initializeNewTemplateDraft();
+    if (!isNewTemplateRoute) {
+      router.push("/app/email/templates/new");
+    }
   };
 
   const publishFile = async () => {
@@ -1232,7 +1288,13 @@ export default function EmailTemplatesPage() {
                       styles.templateItem,
                       active ? styles.templateItemActive : undefined
                     )}
-                    onClick={() => setSelectedId(item.template_id)}
+                    onClick={() => {
+                      setIsCreatingNewTemplate(false);
+                      setSelectedId(item.template_id);
+                      if (isNewTemplateRoute) {
+                        router.replace("/app/email/templates");
+                      }
+                    }}
                   >
                     <div className={styles.templateItemTopRow}>
                       <Text weight="semibold">

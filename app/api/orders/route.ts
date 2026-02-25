@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { normalizeOrderPlatformName } from "@/lib/orders/platform";
+import {
+  DEFAULT_ORDER_DELAY_WARNING_DAYS,
+  inferOrderStatusWithoutStatusColumn,
+  normalizeOrderStatus,
+  ORDER_STATUS_VALUES,
+  resolveOrderDelayWarning,
+} from "@/lib/orders/status";
 
 function getAdminClient() {
   const supabaseUrl =
@@ -20,6 +28,136 @@ function getAdminClient() {
 }
 
 type AdminClient = NonNullable<ReturnType<typeof getAdminClient>>;
+
+async function hasOrdersStatusColumn(adminClient: AdminClient) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "status")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+function resolveDelayWarningDays() {
+  const raw = Number(process.env.ORDER_DELAY_WARNING_DAYS);
+  if (Number.isFinite(raw) && raw > 0) {
+    return Math.floor(raw);
+  }
+  return DEFAULT_ORDER_DELAY_WARNING_DAYS;
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function normalizeBigintId(value: unknown) {
+  const token = String(value ?? "").trim();
+  return /^\d+$/.test(token) ? token : null;
+}
+
+function sortOrderRows(rows: Array<Record<string, unknown>>) {
+  return [...rows].sort((left, right) => {
+    const leftDate = String(left.transaction_date ?? "");
+    const rightDate = String(right.transaction_date ?? "");
+    if (leftDate < rightDate) return 1;
+    if (leftDate > rightDate) return -1;
+
+    const leftOrderNumber = String(left.order_number ?? "");
+    const rightOrderNumber = String(right.order_number ?? "");
+    const byOrderNumber = leftOrderNumber.localeCompare(rightOrderNumber);
+    if (byOrderNumber !== 0) return byOrderNumber;
+
+    const leftId = String(left.id ?? "");
+    const rightId = String(right.id ?? "");
+    return leftId.localeCompare(rightId);
+  });
+}
+
+async function findOrderIdsBySkuOrSpu(adminClient: AdminClient, query: string) {
+  const like = `%${query}%`;
+  const orderIdSet = new Set<string>();
+
+  const { data: skuItemRows, error: skuItemError } = await adminClient
+    .from("order_items_global")
+    .select("order_id")
+    .ilike("sku", like)
+    .not("order_id", "is", null);
+
+  if (skuItemError) {
+    throw new Error(skuItemError.message || "Unable to search orders by SKU.");
+  }
+
+  (skuItemRows ?? []).forEach((row) => {
+    const orderId = normalizeBigintId((row as { order_id?: unknown }).order_id);
+    if (orderId) orderIdSet.add(orderId);
+  });
+
+  const { data: products, error: productsError } = await adminClient
+    .from("catalog_products")
+    .select("id")
+    .ilike("spu", like);
+
+  if (productsError) {
+    throw new Error(productsError.message || "Unable to search orders by SPU.");
+  }
+
+  const productIds = Array.from(
+    new Set(
+      (products ?? [])
+        .map((row) => String((row as { id?: unknown }).id ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (productIds.length > 0) {
+    const { data: variants, error: variantsError } = await adminClient
+      .from("catalog_variants")
+      .select("sku")
+      .in("product_id", productIds)
+      .not("sku", "is", null);
+
+    if (variantsError) {
+      throw new Error(variantsError.message || "Unable to search variants for SPU.");
+    }
+
+    const skus = Array.from(
+      new Set(
+        (variants ?? [])
+          .map((row) => String((row as { sku?: unknown }).sku ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    for (const skuChunk of chunkArray(skus, 500)) {
+      if (skuChunk.length === 0) continue;
+      const { data: spuItemRows, error: spuItemError } = await adminClient
+        .from("order_items_global")
+        .select("order_id")
+        .in("sku", skuChunk)
+        .not("order_id", "is", null);
+
+      if (spuItemError) {
+        throw new Error(spuItemError.message || "Unable to match orders for SPU.");
+      }
+
+      (spuItemRows ?? []).forEach((row) => {
+        const orderId = normalizeBigintId((row as { order_id?: unknown }).order_id);
+        if (orderId) orderIdSet.add(orderId);
+      });
+    }
+  }
+
+  return Array.from(orderIdSet);
+}
 
 const requireAdmin = async (): Promise<
   | { ok: false; status: number; error: string }
@@ -66,6 +204,8 @@ export async function GET(request: Request) {
   }
 
   const adminClient = adminCheck.adminClient as AdminClient;
+  const includeStatus = await hasOrdersStatusColumn(adminClient);
+  const delayWarningDays = resolveDelayWarningDays();
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
@@ -73,43 +213,155 @@ export async function GET(request: Request) {
   const transactionTo = searchParams.get("transaction_to")?.trim();
   const shippedFrom = searchParams.get("shipped_from")?.trim();
   const shippedTo = searchParams.get("shipped_to")?.trim();
-
-  let supabaseQuery = adminClient
-    .from("orders_global")
-    .select(
-      "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_city,customer_zip,transaction_date,date_shipped,created_at",
-      { count: "exact" }
-    )
-    .order("transaction_date", { ascending: false })
-    .order("order_number", { ascending: true });
-
+  const orderFieldSearch = query
+    ? `order_number.ilike.%${query}%,customer_name.ilike.%${query}%,customer_email.ilike.%${query}%,customer_address.ilike.%${query}%`
+    : null;
+  let itemMatchedOrderIds: string[] = [];
   if (query) {
-    const like = `%${query}%`;
-    supabaseQuery = supabaseQuery.or(
-      `sales_channel_id.ilike.${like},order_number.ilike.${like},sales_channel_name.ilike.${like},customer_name.ilike.${like},customer_email.ilike.${like}`
+    try {
+      itemMatchedOrderIds = await findOrderIdsBySkuOrSpu(adminClient, query);
+    } catch (searchError) {
+      return NextResponse.json(
+        {
+          error:
+            searchError instanceof Error
+              ? searchError.message
+              : "Unable to search orders by SKU/SPU.",
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  const applyFilters = <
+    T extends {
+      gte: (column: string, value: string) => T;
+      lte: (column: string, value: string) => T;
+    },
+  >(
+    queryBuilder: T
+  ) => {
+    let next = queryBuilder;
+    if (transactionFrom) {
+      next = next.gte("transaction_date", transactionFrom);
+    }
+    if (transactionTo) {
+      next = next.lte("transaction_date", transactionTo);
+    }
+    if (shippedFrom) {
+      next = next.gte("date_shipped", shippedFrom);
+    }
+    if (shippedTo) {
+      next = next.lte("date_shipped", shippedTo);
+    }
+    return next;
+  };
+
+  const selectColumns = includeStatus
+    ? "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_address,customer_city,customer_zip,transaction_date,date_shipped,status,created_at"
+    : "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_address,customer_city,customer_zip,transaction_date,date_shipped,raw_row,created_at";
+
+  let data: Array<Record<string, unknown>> = [];
+  let error: { message: string } | null = null;
+  let count: number | null = null;
+  if (query) {
+    const { data: directRows, error: directRowsError } = await applyFilters(
+      (orderFieldSearch
+        ? adminClient
+            .from("orders_global")
+            .select(selectColumns)
+            .or(orderFieldSearch)
+        : adminClient.from("orders_global").select(selectColumns)
+      )
+        .order("transaction_date", { ascending: false })
+        .order("order_number", { ascending: true })
     );
-  }
+    error = directRowsError;
+    if (!error) {
+      const merged = new Map<string, Record<string, unknown>>();
+      (directRows ?? []).forEach((row) => {
+        const id = String((row as { id?: unknown }).id ?? "").trim();
+        if (!id) return;
+        merged.set(id, row as Record<string, unknown>);
+      });
 
-  if (transactionFrom) {
-    supabaseQuery = supabaseQuery.gte("transaction_date", transactionFrom);
-  }
-  if (transactionTo) {
-    supabaseQuery = supabaseQuery.lte("transaction_date", transactionTo);
-  }
-  if (shippedFrom) {
-    supabaseQuery = supabaseQuery.gte("date_shipped", shippedFrom);
-  }
-  if (shippedTo) {
-    supabaseQuery = supabaseQuery.lte("date_shipped", shippedTo);
-  }
+      if (itemMatchedOrderIds.length > 0) {
+        for (const orderIdChunk of chunkArray(itemMatchedOrderIds, 500)) {
+          const { data: itemRows, error: itemRowsError } = await applyFilters(
+            adminClient
+              .from("orders_global")
+              .select(selectColumns)
+              .in("id", orderIdChunk)
+              .order("transaction_date", { ascending: false })
+              .order("order_number", { ascending: true })
+          );
+          if (itemRowsError) {
+            error = itemRowsError;
+            break;
+          }
+          (itemRows ?? []).forEach((row) => {
+            const id = String((row as { id?: unknown }).id ?? "").trim();
+            if (!id) return;
+            merged.set(id, row as Record<string, unknown>);
+          });
+        }
+      }
 
-  const { data, error, count } = await supabaseQuery;
+      if (!error) {
+        data = sortOrderRows(Array.from(merged.values()));
+        count = data.length;
+      }
+    }
+  } else {
+    const { data: rows, error: rowsError, count: rowsCount } = await applyFilters(
+      adminClient
+        .from("orders_global")
+        .select(selectColumns, { count: "exact" })
+        .order("transaction_date", { ascending: false })
+        .order("order_number", { ascending: true })
+    );
+    data = (rows ?? []) as Array<Record<string, unknown>>;
+    error = rowsError;
+    count = rowsCount;
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ items: data ?? [], count });
+  const items = (data ?? []).map((row) => {
+    const safeRow = row as Record<string, unknown> & {
+      transaction_date?: string | null;
+      status?: unknown;
+      date_shipped?: unknown;
+      raw_row?: unknown;
+      sales_channel_id?: unknown;
+      sales_channel_name?: unknown;
+    };
+    const status = includeStatus
+      ? normalizeOrderStatus(safeRow.status)
+      : inferOrderStatusWithoutStatusColumn(safeRow);
+    const warning = resolveOrderDelayWarning(
+      safeRow.transaction_date ?? null,
+      status,
+      delayWarningDays
+    );
+    const rest = { ...safeRow };
+    delete rest.raw_row;
+    const normalizedPlatformName = normalizeOrderPlatformName({
+      salesChannelName: safeRow.sales_channel_name,
+      salesChannelId: safeRow.sales_channel_id,
+    });
+    return {
+      ...rest,
+      sales_channel_name: normalizedPlatformName || (safeRow.sales_channel_name ?? null),
+      status,
+      is_delayed: warning.isDelayed,
+      delay_days: warning.delayDays,
+    };
+  });
+
+  return NextResponse.json({ items, count, delayWarningDays });
 }
 
 export async function DELETE(request: Request) {
@@ -169,4 +421,74 @@ export async function DELETE(request: Request) {
   }
 
   return NextResponse.json({ deleted: orderIds.length });
+}
+
+export async function PATCH(request: Request) {
+  const adminCheck = await requireAdmin();
+  if (!adminCheck.ok) {
+    return NextResponse.json(
+      { error: adminCheck.error },
+      { status: adminCheck.status }
+    );
+  }
+
+  const adminClient = adminCheck.adminClient as AdminClient;
+  const includeStatus = await hasOrdersStatusColumn(adminClient);
+  if (!includeStatus) {
+    return NextResponse.json(
+      {
+        error:
+          "Orders status column is missing. Run migration `0061_orders_global_status.sql` first.",
+      },
+      { status: 400 }
+    );
+  }
+
+  let payload: { ids?: string[]; status?: string } | null = null;
+  try {
+    payload = await request.json();
+  } catch {
+    payload = null;
+  }
+
+  const ids = Array.isArray(payload?.ids) ? payload.ids : [];
+  const orderIds = Array.from(
+    new Set(ids.map((id) => String(id).trim()).filter(Boolean))
+  );
+
+  const nextStatusRaw = String(payload?.status ?? "").trim();
+  const allowedStatuses = new Set<string>(ORDER_STATUS_VALUES);
+
+  if (orderIds.length === 0) {
+    return NextResponse.json(
+      { error: "Missing order ids." },
+      { status: 400 }
+    );
+  }
+
+  if (!nextStatusRaw || !allowedStatuses.has(nextStatusRaw)) {
+    return NextResponse.json(
+      {
+        error: `Invalid status. Allowed values: ${ORDER_STATUS_VALUES.join(", ")}.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  const nextStatus = normalizeOrderStatus(nextStatusRaw);
+  const { data, error } = await adminClient
+    .from("orders_global")
+    .update({ status: nextStatus })
+    .in("id", orderIds)
+    .select("id,status");
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    updated: data?.length ?? 0,
+    ids: (data ?? []).map((row) => String(row.id)),
+    status: nextStatus,
+  });
 }

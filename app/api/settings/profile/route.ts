@@ -50,7 +50,6 @@ export async function POST(request: Request) {
   let payload: {
     full_name?: unknown;
     company_name?: unknown;
-    job_title?: unknown;
     avatar_url?: unknown;
     preferred_locale?: unknown;
   };
@@ -69,9 +68,6 @@ export async function POST(request: Request) {
   }
   if (typeof payload.company_name === "string") {
     updates.company_name = payload.company_name.trim() || null;
-  }
-  if (typeof payload.job_title === "string") {
-    updates.job_title = payload.job_title.trim() || null;
   }
   if (typeof payload.avatar_url === "string" || payload.avatar_url === null) {
     updates.avatar_url =

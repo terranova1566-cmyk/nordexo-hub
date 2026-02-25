@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { loadImageUrls, resolveImageUrl } from "@/lib/server-images";
+import { normalizeOrderPlatformName } from "@/lib/orders/platform";
+import {
+  inferOrderStatusWithoutStatusColumn,
+  normalizeOrderStatus,
+} from "@/lib/orders/status";
 
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
+const IMAGE_EXTENSION_FALLBACKS = [".jpg", ".jpeg", ".png", ".webp"] as const;
 
 type DbError = {
   code?: string | null;
@@ -96,6 +103,21 @@ async function hasTrackingSentDateColumn(
   return (data?.length ?? 0) > 0;
 }
 
+async function hasOrdersStatusColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "status")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -112,6 +134,34 @@ function getAdminClient() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+const filenameStem = (filename: string | null | undefined) =>
+  String(filename ?? "")
+    .replace(/\.[^/.]+$/u, "")
+    .trim();
+
+const resolveImageWithFallbackExt = async (
+  imageFolder: string | null | undefined,
+  filename: string | null | undefined,
+  size: "thumb" | "original" = "thumb"
+) => {
+  if (!imageFolder || !filename) return null;
+
+  const exact = await resolveImageUrl(imageFolder, filename, { size });
+  if (exact) return exact;
+
+  const stem = filenameStem(filename);
+  if (!stem) return null;
+
+  for (const ext of IMAGE_EXTENSION_FALLBACKS) {
+    const candidate = `${stem}${ext}`;
+    if (candidate === filename) continue;
+    const resolved = await resolveImageUrl(imageFolder, candidate, { size });
+    if (resolved) return resolved;
+  }
+
+  return null;
+};
 
 const extractTextValue = (row: Record<string, unknown>) => {
   if (row.value_text) return String(row.value_text);
@@ -162,13 +212,30 @@ export async function GET(
     return NextResponse.json({ error: "Missing order id." }, { status: 400 });
   }
 
-  const { data: order, error: orderError } = await adminClient
-    .from("orders_global")
-    .select(
-      "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const includeOrderStatus = await hasOrdersStatusColumn(adminClient);
+  let order: Record<string, unknown> | null = null;
+  let orderError: DbError | null = null;
+  if (includeOrderStatus) {
+    const { data, error } = await adminClient
+      .from("orders_global")
+      .select(
+        "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,status"
+      )
+      .eq("id", id)
+      .maybeSingle();
+    order = (data ?? null) as Record<string, unknown> | null;
+    orderError = error;
+  } else {
+    const { data, error } = await adminClient
+      .from("orders_global")
+      .select(
+        "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,raw_row"
+      )
+      .eq("id", id)
+      .maybeSingle();
+    order = (data ?? null) as Record<string, unknown> | null;
+    orderError = error;
+  }
 
   if (orderError) {
     return NextResponse.json(
@@ -300,12 +367,15 @@ export async function GET(
     new Set((items ?? []).map((item) => item.sku).filter(Boolean))
   ) as string[];
 
-  const skuToProduct = new Map<string, { title: string | null; spu: string | null }>();
+  const skuToProduct = new Map<
+    string,
+    { title: string | null; spu: string | null; image_url: string | null }
+  >();
 
   if (skus.length > 0) {
     const { data: variants } = await adminClient
       .from("catalog_variants")
-      .select("sku, product_id")
+      .select("sku, product_id, variant_image_url")
       .in("sku", skus);
 
     const productIds = Array.from(
@@ -357,26 +427,62 @@ export async function GET(
 
       const { data: products } = await adminClient
         .from("catalog_products")
-        .select("id,title,spu")
+        .select("id,title,spu,image_folder")
         .in("id", productIds);
 
-      const productMap = new Map<string, { title: string | null; spu: string | null }>();
-      (products ?? []).forEach((product) => {
-        if (!product.id) return;
-        const shortTitle = shortTitleByProduct.get(String(product.id)) ?? null;
-        productMap.set(product.id, {
-          title: shortTitle || product.title || null,
-          spu: product.spu ?? null,
-        });
-      });
-
-      (variants ?? []).forEach((variant) => {
-        if (!variant.sku || !variant.product_id) return;
-        const product = productMap.get(variant.product_id);
-        if (product) {
-          skuToProduct.set(variant.sku, product);
+      const productMap = new Map<
+        string,
+        {
+          title: string | null;
+          spu: string | null;
+          image_folder: string | null;
+          fallback_image_url: string | null;
         }
-      });
+      >();
+
+      await Promise.all(
+        (products ?? []).map(async (product) => {
+          if (!product.id) return;
+          const productId = String(product.id);
+          const shortTitle = shortTitleByProduct.get(productId) ?? null;
+          const imageFolder =
+            typeof product.image_folder === "string" && product.image_folder.trim()
+              ? product.image_folder.trim()
+              : null;
+          let fallbackImageUrl: string | null = null;
+          if (imageFolder) {
+            const thumbs = await loadImageUrls(imageFolder, { size: "thumb" });
+            fallbackImageUrl = thumbs[0] ?? null;
+          }
+
+          productMap.set(productId, {
+            title: shortTitle || product.title || null,
+            spu: product.spu ?? null,
+            image_folder: imageFolder,
+            fallback_image_url: fallbackImageUrl,
+          });
+        })
+      );
+
+      await Promise.all(
+        (variants ?? []).map(async (variant) => {
+          if (!variant.sku || !variant.product_id) return;
+          const product = productMap.get(String(variant.product_id));
+          if (!product) return;
+
+          const variantImageUrl = await resolveImageWithFallbackExt(
+            product.image_folder,
+            String(variant.variant_image_url ?? "").trim() || null,
+            "thumb"
+          );
+
+          skuToProduct.set(variant.sku, {
+            title: product.title,
+            spu: product.spu,
+            image_url: variantImageUrl || product.fallback_image_url,
+          });
+        })
+      );
     }
   }
 
@@ -390,11 +496,36 @@ export async function GET(
       ...itemWithoutRawRow,
       product_title: product?.title ?? null,
       product_spu: product?.spu ?? null,
+      item_image_url: product?.image_url ?? null,
     };
   });
 
+  const normalizedOrder = order
+    ? (() => {
+        const base = order as Record<string, unknown> & {
+          status?: unknown;
+          date_shipped?: unknown;
+          raw_row?: unknown;
+        };
+        const resolvedStatus = includeOrderStatus
+          ? normalizeOrderStatus(base.status)
+          : inferOrderStatusWithoutStatusColumn(base);
+        const normalizedPlatformName = normalizeOrderPlatformName({
+          salesChannelName: base.sales_channel_name,
+          salesChannelId: base.sales_channel_id,
+        });
+        const rest = { ...base };
+        delete rest.raw_row;
+        return {
+          ...rest,
+          sales_channel_name: normalizedPlatformName || (base.sales_channel_name ?? null),
+          status: resolvedStatus,
+        };
+      })()
+    : null;
+
   return NextResponse.json({
-    order,
+    order: normalizedOrder,
     items: enrichedItems,
     tracking_numbers: trackingNumbers,
   });

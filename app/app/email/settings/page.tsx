@@ -161,6 +161,12 @@ export default function EmailConfigPage() {
     () => accounts.find((entry) => entry.id === form.id) ?? null,
     [accounts, form.id]
   );
+  const activeSmtpAccountsCount = useMemo(
+    () => accounts.filter((entry) => entry.isActive).length,
+    [accounts]
+  );
+  const smtpConfigured = activeSmtpAccountsCount > 0 || Boolean(envSender);
+  const smtpEditorDisabled = tableMissing || isLoading;
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -278,12 +284,25 @@ export default function EmailConfigPage() {
       <Text className={styles.helper}>
         Manage SMTP sender accounts and review authenticated SendPulse senders.
       </Text>
+      <div className={styles.actions}>
+        <Button
+          appearance="secondary"
+          onClick={() => {
+            void loadSettings();
+          }}
+          disabled={isLoading}
+        >
+          {isLoading ? "Refreshing..." : "Refresh"}
+        </Button>
+      </div>
 
       {message ? <MessageBar intent={message.type}>{message.text}</MessageBar> : null}
 
       {tableMissing ? (
         <MessageBar intent="warning">
-          SMTP settings table is missing. Run migration `0052_partner_email_smtp_accounts.sql` to enable account management.
+          SMTP account storage is missing in this environment. Apply{" "}
+          <code>0052_partner_email_smtp_accounts.sql</code> to manage MXRoute SMTP
+          accounts here. SendPulse sending is unaffected.
         </MessageBar>
       ) : null}
 
@@ -292,6 +311,7 @@ export default function EmailConfigPage() {
           <Text weight="semibold">SMTP accounts</Text>
           <Text className={styles.helper}>
             These accounts are used by Email send and can be reused in automations.
+            This SMTP channel is optional if you only use SendPulse.
           </Text>
 
           {isLoading ? <Spinner label="Loading settings" /> : null}
@@ -334,12 +354,18 @@ export default function EmailConfigPage() {
           </div>
 
           {envSender ? (
-            <MessageBar>
+            <MessageBar intent="success">
               Environment fallback sender active: {envSender.name} ({envSender.email})
             </MessageBar>
+          ) : smtpConfigured ? (
+            <MessageBar>
+              Environment fallback is not configured. Active SMTP accounts from the
+              database will be used.
+            </MessageBar>
           ) : (
-            <MessageBar intent="warning">
-              No SMTP fallback in environment variables.
+            <MessageBar intent={tableMissing ? "warning" : "info"}>
+              No SMTP sender is configured yet (no active SMTP account and no
+              environment fallback).
             </MessageBar>
           )}
         </Card>
@@ -347,94 +373,112 @@ export default function EmailConfigPage() {
         <Card className={styles.card}>
           <Text weight="semibold">{form.id ? "Edit SMTP account" : "New SMTP account"}</Text>
 
-          <div className={styles.row}>
-            <Field label="Account name">
-              <Input
-                value={form.name}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, name: data.value }))}
-                placeholder="Partner mailbox"
-              />
-            </Field>
-            <Field label="From email">
-              <Input
-                value={form.fromEmail}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, fromEmail: data.value }))}
-                placeholder="partner@nordexo.se"
-              />
-            </Field>
-          </div>
+          {tableMissing ? (
+            <MessageBar>
+              SMTP account editor is disabled until{" "}
+              <code>partner_email_smtp_accounts</code> is available.
+            </MessageBar>
+          ) : null}
 
-          <div className={styles.row}>
-            <Field label="From name">
-              <Input
-                value={form.fromName}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, fromName: data.value }))}
-                placeholder="Nordexo Partner"
-              />
-            </Field>
-            <Field label="SMTP host">
-              <Input
-                value={form.host}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, host: data.value }))}
-                placeholder="mail.yourhost.com"
-              />
-            </Field>
-          </div>
+          <fieldset
+            disabled={smtpEditorDisabled}
+            style={{ border: "none", margin: 0, padding: 0, minWidth: 0 }}
+          >
+            <div className={styles.row}>
+              <Field label="Account name">
+                <Input
+                  value={form.name}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, name: data.value }))}
+                  placeholder="Partner mailbox"
+                />
+              </Field>
+              <Field label="From email">
+                <Input
+                  value={form.fromEmail}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, fromEmail: data.value }))}
+                  placeholder="partner@nordexo.se"
+                />
+              </Field>
+            </div>
 
-          <div className={styles.row}>
-            <Field label="SMTP port">
-              <Input
-                value={form.port}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, port: data.value }))}
-                placeholder="587"
-              />
-            </Field>
-            <Field label="SMTP user">
-              <Input
-                value={form.user}
-                onChange={(_, data) => setForm((prev) => ({ ...prev, user: data.value }))}
-                placeholder="partner@nordexo.se"
-              />
-            </Field>
-          </div>
+            <div className={styles.row}>
+              <Field label="From name">
+                <Input
+                  value={form.fromName}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, fromName: data.value }))}
+                  placeholder="Nordexo Partner"
+                />
+              </Field>
+              <Field label="SMTP host">
+                <Input
+                  value={form.host}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, host: data.value }))}
+                  placeholder="mail.yourhost.com"
+                />
+              </Field>
+            </div>
 
-          <Field label={selectedAccount?.hasPassword ? "SMTP password (leave blank to keep current)" : "SMTP password"}>
-            <Input
-              type="password"
-              value={form.password}
-              onChange={(_, data) => setForm((prev) => ({ ...prev, password: data.value }))}
-              placeholder={selectedAccount?.hasPassword ? "••••••••" : "password"}
-            />
-          </Field>
+            <div className={styles.row}>
+              <Field label="SMTP port">
+                <Input
+                  value={form.port}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, port: data.value }))}
+                  placeholder="587"
+                />
+              </Field>
+              <Field label="SMTP user">
+                <Input
+                  value={form.user}
+                  onChange={(_, data) => setForm((prev) => ({ ...prev, user: data.value }))}
+                  placeholder="partner@nordexo.se"
+                />
+              </Field>
+            </div>
 
-          <div className={styles.actions}>
-            <Switch
-              checked={form.secure}
-              onChange={(_, data) => setForm((prev) => ({ ...prev, secure: data.checked }))}
-              label="Use SSL/TLS"
-            />
-            <Switch
-              checked={form.isActive}
-              onChange={(_, data) => setForm((prev) => ({ ...prev, isActive: data.checked }))}
-              label="Account active"
-            />
-          </div>
-
-          <div className={styles.actions}>
-            <Button appearance="primary" onClick={saveAccount} disabled={isSaving || tableMissing}>
-              {isSaving ? "Saving..." : form.id ? "Update" : "Create"}
-            </Button>
-            <Button appearance="secondary" onClick={resetForm}>
-              New
-            </Button>
-            <Button
-              appearance="secondary"
-              onClick={deleteAccount}
-              disabled={!form.id || isDeleting || tableMissing}
+            <Field
+              label={
+                selectedAccount?.hasPassword
+                  ? "SMTP password (leave blank to keep current)"
+                  : "SMTP password"
+              }
             >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </Button>
-          </div>
+              <Input
+                type="password"
+                value={form.password}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, password: data.value }))}
+                placeholder={selectedAccount?.hasPassword ? "••••••••" : "password"}
+              />
+            </Field>
+
+            <div className={styles.actions}>
+              <Switch
+                checked={form.secure}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, secure: data.checked }))}
+                label="Use SSL/TLS"
+              />
+              <Switch
+                checked={form.isActive}
+                onChange={(_, data) => setForm((prev) => ({ ...prev, isActive: data.checked }))}
+                label="Account active"
+              />
+            </div>
+
+            <div className={styles.actions}>
+              <Button appearance="primary" onClick={saveAccount} disabled={isSaving || tableMissing}>
+                {isSaving ? "Saving..." : form.id ? "Update" : "Create"}
+              </Button>
+              <Button appearance="secondary" onClick={resetForm}>
+                New
+              </Button>
+              <Button
+                appearance="secondary"
+                onClick={deleteAccount}
+                disabled={!form.id || isDeleting || tableMissing}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </fieldset>
 
           {selectedAccount ? (
             <Text className={styles.helper}>

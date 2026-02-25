@@ -10,6 +10,9 @@ type TokenCache = {
 
 let tokenCache: TokenCache | null = null;
 
+const toRecord = (value: unknown) =>
+  (value && typeof value === "object" ? (value as Record<string, unknown>) : {});
+
 type SendpulseTemplate = {
   id: string;
   name: string;
@@ -28,6 +31,16 @@ type SendEmailPayload = {
   recipients: { email: string; name?: string | null }[];
   templateId: string;
   variables: Record<string, string>;
+};
+
+type SendRenderedEmailPayload = {
+  subject: string;
+  senderEmail: string;
+  senderName?: string | null;
+  recipients: { email: string; name?: string | null }[];
+  html: string;
+  text?: string | null;
+  bcc?: { email: string; name?: string | null }[];
 };
 
 function getCredentials() {
@@ -100,14 +113,18 @@ export async function listTemplates(): Promise<SendpulseTemplate[]> {
   const data = await sendpulseRequest<unknown>("/templates");
   if (!Array.isArray(data)) return [];
   return data
-    .filter((item: any) => {
-      const owner = String(item?.owner ?? "").toLowerCase();
+    .filter((item) => {
+      const row = toRecord(item);
+      const owner = String(row.owner ?? "").toLowerCase();
       return owner === "you";
     })
-    .map((item: any) => ({
-      id: String(item?.id ?? ""),
-      name: String(item?.name ?? item?.subject ?? ""),
-    }))
+    .map((item) => {
+      const row = toRecord(item);
+      return {
+        id: String(row.id ?? ""),
+        name: String(row.name ?? row.subject ?? ""),
+      };
+    })
     .filter((item) => item.id && item.name);
 }
 
@@ -115,11 +132,14 @@ export async function listSenders(): Promise<SendpulseSender[]> {
   const data = await sendpulseRequest<unknown>("/senders");
   if (!Array.isArray(data)) return [];
   return data
-    .map((item: any) => ({
-      email: String(item?.email ?? ""),
-      name: item?.name ?? null,
-      status: item?.status ?? null,
-    }))
+    .map((item) => {
+      const row = toRecord(item);
+      return {
+        email: String(row.email ?? ""),
+        name: row.name ? String(row.name) : null,
+        status: row.status ? String(row.status) : null,
+      };
+    })
     .filter((item) => item.email);
 }
 
@@ -143,6 +163,41 @@ export async function sendTemplateEmail(payload: SendEmailPayload) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+export async function sendRenderedEmail(payload: SendRenderedEmailPayload) {
+  const emailPayload: Record<string, unknown> = {
+    subject: payload.subject,
+    from: {
+      name: payload.senderName || payload.senderEmail,
+      email: payload.senderEmail,
+    },
+    to: payload.recipients,
+    html: Buffer.from(String(payload.html ?? ""), "utf8").toString("base64"),
+  };
+
+  const plainText = String(payload.text ?? "").trim();
+  if (plainText) {
+    emailPayload.text = plainText;
+  }
+
+  const bcc = Array.isArray(payload.bcc)
+    ? payload.bcc
+        .map((entry) => ({
+          email: String(entry?.email ?? "").trim(),
+          name: entry?.name ? String(entry.name).trim() : undefined,
+        }))
+        .filter((entry) => entry.email)
+    : [];
+  if (bcc.length > 0) {
+    emailPayload.bcc = bcc;
+  }
+
+  return sendpulseRequest("/smtp/emails", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: JSON.stringify(emailPayload) }),
   });
 }
 

@@ -8,11 +8,14 @@ import {
   canonical1688OfferUrl,
   extractJsonFromText,
   hasCjk,
+  toOfferId,
 } from "../shared/1688/core.mjs";
 import { run1688ImageSearch } from "../shared/1688/image-search-runner.mjs";
 
 const TAXONOMY_WORKER_PATH =
   "/srv/nordexo-hub/scripts/product-suggestions-taxonomy-worker.mjs";
+const SUPPLIER_PAYLOAD_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/production-supplier-fetch-worker.mjs";
 const SUGGESTIONS_DIR =
   process.env.PARTNER_PRODUCT_SUGGESTIONS_DIR ||
   "/srv/node-files/partner-product-suggestions";
@@ -307,6 +310,55 @@ const isRetriableSearchError = (message) => {
   );
 };
 
+const translateSingleSubjectBestEffort = async (apiKey, modelCandidates, subject) => {
+  const source = asText(subject);
+  if (!source) return "";
+
+  const prompt = [
+    "Translate this Chinese supplier product title into concise, natural English.",
+    "Keep technical attributes, remove hype, max 120 characters.",
+    'Return JSON only with format: { "english_title": "..." }',
+    "",
+    `Title: ${source}`,
+  ].join("\n");
+
+  for (const model of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json().catch(() => null);
+      const parsed = extractJsonFromText(asText(result?.choices?.[0]?.message?.content));
+      const english = asText(
+        parsed?.english_title ||
+          parsed?.englishTitle ||
+          parsed?.title_en ||
+          parsed?.translation ||
+          parsed?.english
+      ).slice(0, 120);
+      if (english) return english;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return "";
+};
+
 const translateOffersBestEffort = async (offers) => {
   const apiKey = asText(process.env.OPENAI_API_KEY);
   if (!apiKey || !Array.isArray(offers) || offers.length === 0) return offers;
@@ -395,6 +447,18 @@ const translateOffersBestEffort = async (offers) => {
     if (!subject || !english) return;
     map.set(subject, english);
   });
+
+  const unresolved = limited.filter((subject) => !map.has(subject));
+  for (const subject of unresolved) {
+    const fallbackEnglish = await translateSingleSubjectBestEffort(
+      apiKey,
+      models,
+      subject
+    );
+    if (fallbackEnglish) {
+      map.set(subject, fallbackEnglish.slice(0, 120));
+    }
+  }
   if (map.size === 0) return offers;
 
   return offers.map((offer) => {
@@ -457,6 +521,138 @@ const upsertSupplierSearch = async (adminClient, provider, productId, payload) =
   return { offersCount: offers.length, fetchedAt, offers };
 };
 
+const withPayloadFetchingState = (offer, nowIso) => {
+  const base = offer && typeof offer === "object" ? offer : {};
+  return {
+    ...base,
+    _production_payload_status: "fetching",
+    _production_payload_source: "auto",
+    _production_payload_error: null,
+    _production_payload_file_name: null,
+    _production_payload_file_path: null,
+    _production_payload_updated_at: nowIso,
+    _production_payload_saved_at: null,
+  };
+};
+
+const hasSelectedSupplier = (selection) => {
+  if (!selection || typeof selection !== "object") return false;
+  const selectedOfferId = asText(selection.selected_offer_id);
+  const selectedDetailUrl = asText(selection.selected_detail_url);
+  if (selectedOfferId || selectedDetailUrl) return true;
+
+  const selectedOffer =
+    selection.selected_offer && typeof selection.selected_offer === "object"
+      ? selection.selected_offer
+      : null;
+  if (!selectedOffer) return false;
+  return Boolean(toOfferId(selectedOffer) || canonical1688OfferUrl(selectedOffer));
+};
+
+const pickTopOfferForAutoSelection = (offers) => {
+  if (!Array.isArray(offers) || offers.length === 0) return null;
+  for (const offer of offers) {
+    if (!offer || typeof offer !== "object") continue;
+    const offerId = toOfferId(offer);
+    const detailUrl = canonical1688OfferUrl(offer);
+    if (!offerId && !detailUrl) continue;
+    return detailUrl ? { ...offer, detailUrl } : { ...offer };
+  }
+  return null;
+};
+
+const loadSelection = async (adminClient, provider, productId) => {
+  const { data, error } = await adminClient
+    .from("discovery_production_supplier_selection")
+    .select("provider, product_id, selected_offer_id, selected_detail_url, selected_offer")
+    .eq("provider", provider)
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ?? null;
+};
+
+const spawnSupplierPayloadWorkerBestEffort = (provider, productId) => {
+  try {
+    const child = spawn(
+      process.execPath,
+      [
+        SUPPLIER_PAYLOAD_WORKER_PATH,
+        "--provider",
+        provider,
+        "--product-id",
+        productId,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env },
+      }
+    );
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const autoSelectTopOfferAndQueuePayloadBestEffort = async (
+  adminClient,
+  provider,
+  productId,
+  offers
+) => {
+  const existingSelection = await loadSelection(adminClient, provider, productId);
+  if (hasSelectedSupplier(existingSelection)) return;
+
+  const topOffer = pickTopOfferForAutoSelection(offers);
+  if (!topOffer) return;
+
+  const selectedOfferId = toOfferId(topOffer);
+  const selectedDetailUrl = canonical1688OfferUrl(topOffer);
+  const selectedAt = new Date().toISOString();
+  const selectedOffer = withPayloadFetchingState(topOffer, selectedAt);
+
+  const { error: upsertError } = await adminClient
+    .from("discovery_production_supplier_selection")
+    .upsert(
+      {
+        provider,
+        product_id: productId,
+        selected_offer_id: selectedOfferId,
+        selected_detail_url: selectedDetailUrl,
+        selected_offer: selectedOffer,
+        selected_at: selectedAt,
+        selected_by: null,
+        updated_at: selectedAt,
+      },
+      { onConflict: "provider,product_id" }
+    );
+
+  if (upsertError) {
+    throw new Error(upsertError.message);
+  }
+
+  const queued = spawnSupplierPayloadWorkerBestEffort(provider, productId);
+  if (!queued) {
+    const failedAt = new Date().toISOString();
+    const failedOffer = {
+      ...selectedOffer,
+      _production_payload_status: "failed",
+      _production_payload_error: "Unable to start background 1688 fetch job.",
+      _production_payload_updated_at: failedAt,
+    };
+    await adminClient
+      .from("discovery_production_supplier_selection")
+      .update({
+        selected_offer: failedOffer,
+        updated_at: failedAt,
+      })
+      .eq("provider", provider)
+      .eq("product_id", productId);
+  }
+};
+
 const processSuggestion = async (adminClient, provider, suggestionId) => {
   const now = new Date().toISOString();
   const originalRecord = await loadSuggestionRecord(suggestionId);
@@ -508,6 +704,12 @@ const processSuggestion = async (adminClient, provider, suggestionId) => {
     );
     record = await updateSuggestionTitleFromOffersBestEffort(
       record,
+      Array.isArray(upserted?.offers) ? upserted.offers : []
+    );
+    await autoSelectTopOfferAndQueuePayloadBestEffort(
+      adminClient,
+      provider,
+      suggestionId,
       Array.isArray(upserted?.offers) ? upserted.offers : []
     );
     record = await queueTaxonomyForRecordIfNeeded(record);

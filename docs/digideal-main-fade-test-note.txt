@@ -1,0 +1,18 @@
+DigiDeal Main Fade Test Note
+Date: 2026-02-24
+
+Backup saved:
+- /srv/node-tools/product-processor/prompts/digideal-main-image-prompt.backup-20260224-100957.txt
+
+Temporary test prompt now active:
+- /srv/node-tools/product-processor/prompts/digideal-main-image-prompt.txt
+
+Fade instructions now emphasize:
+- Smooth tonal fade to pure white
+- Center transition band approx 20% of total width
+- Fade only (not blur merge)
+- Not paint/brush texture
+- Keep both sides sharp outside transition
+
+Dual-input runtime override also updated:
+- /srv/nordexo-hub/lib/draft-ai-edits.ts (DIGIDEAL_SOFT_WHITE_FADE_RULES_V1)

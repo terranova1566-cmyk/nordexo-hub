@@ -585,6 +585,48 @@ type DescriptionForm = {
   specs: string;
 };
 
+const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
+
+const sanitizeSwedishVariantPart = (value: string | null) => {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(CJK_CHAR_PATTERN, "")
+    .replace(/[，。；：、]/g, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s*[/|]\s*$/g, "")
+    .replace(/^\s*[/|]\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || raw;
+};
+
+const buildSwedishVariantLabel = (variant: ProductResponse["variants"][number]) =>
+  [
+    variant.variation_color_se,
+    variant.variation_size_se,
+    variant.variation_other_se,
+    variant.variation_amount_se,
+  ]
+    .map(sanitizeSwedishVariantPart)
+    .filter(Boolean)
+    .join(" / ");
+
+const buildGoogleTaxonomyLabel = (product: ProductResponse["product"]) => {
+  const levels = [
+    product.google_taxonomy_l1,
+    product.google_taxonomy_l2,
+    product.google_taxonomy_l3,
+  ]
+    .map((entry) => entry?.trim())
+    .filter(Boolean) as string[];
+  if (levels.length) return levels.join(" / ");
+  const primaryPath = product.google_taxonomy_path?.trim();
+  if (primaryPath) return primaryPath;
+  const secondaryPath = product.google_taxonomy_path_secondary?.trim();
+  return secondaryPath || null;
+};
+
 const TrashIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -1445,20 +1487,25 @@ export default function ProductDetailPage() {
     [data]
   );
 
-  if (isLoading) {
+  if (isLoading || (!data && !error)) {
     return <Spinner label={t("productDetail.loading")} />;
   }
 
-  if (error || !data) {
+  if (error) {
     return (
       <MessageBar intent="error">
-        {error ?? t("productDetail.notFound")}
+        {error}
       </MessageBar>
     );
   }
 
+  if (!data) {
+    return <Spinner label={t("productDetail.loading")} />;
+  }
+
   const { product, variants, latest_exported_at: latestExport } = data;
   const title = product.title ?? product.spu;
+  const taxonomyCategory = buildGoogleTaxonomyLabel(product);
 
   return (
     <div className={styles.layout}>
@@ -1570,7 +1617,7 @@ export default function ProductDetailPage() {
             <div>
               <Text size={200} className={styles.metaLabel}>
                 {t("productDetail.meta.category", {
-                  value: product.shopify_category_name ?? t("common.notAvailable"),
+                  value: taxonomyCategory ?? t("common.notAvailable"),
                 })}
               </Text>
             </div>
@@ -1646,23 +1693,22 @@ export default function ProductDetailPage() {
               <Table size="small" className={styles.variantTable}>
                 <TableHeader>
                   <TableRow>
-                  {hasVariantImages ? (
-                    <TableHeaderCell
-                      aria-label={t("productDetail.table.image")}
-                      className={styles.variantImageHeader}
-                    />
-                  ) : null}
-                  <TableHeaderCell>{t("common.sku")}</TableHeaderCell>
-                  <TableHeaderCell>{t("common.variant")}</TableHeaderCell>
-                  {marketColumns.map((column) => (
-                    <TableHeaderCell key={column.key}>
-                      {column.label}
-                    </TableHeaderCell>
-                  ))}
-                  <TableHeaderCell>{t("productDetail.table.barcode")}</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+                    {hasVariantImages ? (
+                      <TableHeaderCell
+                        aria-label={t("productDetail.table.image")}
+                        className={styles.variantImageHeader}
+                      />
+                    ) : null}
+                    <TableHeaderCell>{t("common.sku")}</TableHeaderCell>
+                    <TableHeaderCell>{t("common.variant")}</TableHeaderCell>
+                    {marketColumns.map((column) => (
+                      <TableHeaderCell key={column.key}>
+                        {column.label}
+                      </TableHeaderCell>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {variants.map((variant) => (
                     <TableRow key={variant.id}>
                       {hasVariantImages ? (
@@ -1678,14 +1724,8 @@ export default function ProductDetailPage() {
                       ) : null}
                       <TableCell>{variant.sku}</TableCell>
                       <TableCell>
-                        {[
-                          variant.variation_color_se,
-                          variant.variation_size_se,
-                          variant.variation_other_se,
-                          variant.variation_amount_se,
-                        ]
-                          .filter(Boolean)
-                          .join(" / ") || t("productDetail.variant.default")}
+                        {buildSwedishVariantLabel(variant) ||
+                          t("productDetail.variant.default")}
                       </TableCell>
                       {marketColumns.map((column) => (
                         <TableCell key={`${variant.id}-${column.key}`}>
@@ -1695,7 +1735,6 @@ export default function ProductDetailPage() {
                           )}
                         </TableCell>
                       ))}
-                      <TableCell>{variant.barcode ?? t("common.notAvailable")}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

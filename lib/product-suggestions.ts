@@ -1689,6 +1689,20 @@ const loadCombosFromPayloadPath = async (payloadPath: string) => {
   }
 };
 
+const extractCachedCombosFromSelectedOffer = (selectedOffer: Record<string, unknown>) => {
+  const cacheRaw =
+    selectedOffer._production_variant_cache &&
+    typeof selectedOffer._production_variant_cache === "object"
+      ? (selectedOffer._production_variant_cache as Record<string, unknown>)
+      : null;
+  if (!cacheRaw) return [] as Record<string, unknown>[];
+  const combosRaw = Array.isArray(cacheRaw.combos) ? cacheRaw.combos : [];
+  return combosRaw.filter(
+    (entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === "object")
+  );
+};
+
 const resolveClassConfig = (
   classMap: Map<string, Map<string, ShippingClassConfig>>,
   market: string,
@@ -1808,10 +1822,12 @@ export const deriveVariantSelectionMetrics = async (
       : null;
   if (!selectionRaw) return null;
 
-  const payloadPath = safePayloadPath(selectedOffer._production_payload_file_path);
-  if (!payloadPath) return null;
-
-  const combos = await loadCombosFromPayloadPath(payloadPath);
+  let combos = extractCachedCombosFromSelectedOffer(selectedOffer);
+  if (combos.length === 0) {
+    const payloadPath = safePayloadPath(selectedOffer._production_payload_file_path);
+    if (!payloadPath) return null;
+    combos = await loadCombosFromPayloadPath(payloadPath);
+  }
   if (combos.length === 0) return null;
 
   const selectedIndexes = normalizeSelectionIndexes(

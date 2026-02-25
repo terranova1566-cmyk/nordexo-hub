@@ -40,7 +40,7 @@ export async function GET() {
   const variantPriceMap = new Map<string, { min: number; max: number }>();
   const variantPriceRows = new Map<
     string,
-    { hasRows: boolean; byMarket: Map<string, number | null> }
+    Map<string, Map<string, number | null>>
   >();
   const variantPreviewMap = new Map<
     string,
@@ -69,20 +69,17 @@ export async function GET() {
     if (variantIds.length > 0) {
       const { data: priceRows } = await supabase
         .from("catalog_variant_prices")
-        .select("catalog_variant_id, market, currency, price")
+        .select("catalog_variant_id, market, currency, price, price_type")
         .in("catalog_variant_id", variantIds)
-        .eq("price_type", "b2b_dropship")
+        .in("price_type", ["b2b_fixed", "b2b_calc", "b2b_dropship"])
         .is("deleted_at", null);
 
       priceRows?.forEach((row) => {
         const variantId = row.catalog_variant_id;
         if (!variantId) return;
-        const entry =
-          variantPriceRows.get(variantId) ?? {
-            hasRows: true,
-            byMarket: new Map<string, number | null>(),
-          };
-        entry.hasRows = true;
+        const type = String(row.price_type || "b2b_dropship");
+        const entry = variantPriceRows.get(variantId) ?? new Map();
+        const typeEntry = entry.get(type) ?? new Map<string, number | null>();
         const market = row.market?.toUpperCase();
         if (market) {
           let priceValue: number | null = null;
@@ -92,26 +89,28 @@ export async function GET() {
               priceValue = numeric;
             }
           }
-          entry.byMarket.set(market, priceValue);
+          typeEntry.set(market, priceValue);
         }
+        entry.set(type, typeEntry);
         variantPriceRows.set(variantId, entry);
       });
     }
 
     variants?.forEach((variant) => {
       const priceEntry = variantPriceRows.get(variant.id);
-      const useTablePrices = Boolean(priceEntry?.hasRows);
       const resolveMarketPrice = (
         market: "SE" | "NO" | "DK" | "FI",
         fallback: number | null | undefined
       ) => {
-        if (!useTablePrices) {
+        if (!priceEntry) {
           return fallback ?? null;
         }
-        if (!priceEntry) return null;
-        return priceEntry.byMarket.has(market)
-          ? priceEntry.byMarket.get(market) ?? null
-          : null;
+        const readPrice = (type: string) => priceEntry.get(type)?.get(market);
+        const fixed = readPrice("b2b_fixed") ?? readPrice("b2b_dropship");
+        if (fixed !== undefined && fixed !== null) return fixed;
+        const calc = readPrice("b2b_calc");
+        if (calc !== undefined && calc !== null) return calc;
+        return fallback ?? null;
       };
       const priceSe = resolveMarketPrice("SE", variant.b2b_dropship_price_se);
       const priceNo = resolveMarketPrice("NO", variant.b2b_dropship_price_no);

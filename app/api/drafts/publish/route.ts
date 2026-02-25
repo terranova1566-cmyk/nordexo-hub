@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "path";
+import { createHash } from "crypto";
 import { spawn } from "child_process";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
@@ -20,6 +21,8 @@ import {
   resolvePendingAiEdit,
 } from "@/lib/draft-ai-edits";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
+import { recalculateB2BPricesForSpus } from "@/lib/pricing/recalculate-b2b-spus";
+import { recalculateB2CPricesForSpus } from "@/lib/pricing/recalculate-b2c-spus";
 import {
   getProductionRefsBySpus,
   upsertProductionStatuses,
@@ -32,6 +35,8 @@ const NEW_CATALOG_ROOT =
   process.env.CATALOG_IMPORT_ROOT || "/srv/resources/media/images/new-nd-catalog";
 const CATALOG_ROOT =
   process.env.CATALOG_IMAGE_ROOT || "/srv/resources/media/images/catalog";
+const PUBLISH_ROLLBACK_LOG_ROOT =
+  process.env.PUBLISH_ROLLBACK_LOG_ROOT || "/srv/nordexo-hub/logs/publish-rollback";
 const MEDIA_LIBRARY_SCRIPT =
   process.env.MEDIA_LIBRARY_SCRIPT ||
   "/srv/shopify-sync/api/scripts/ingest-media-library.mjs";
@@ -39,7 +44,7 @@ const PUBLISH_IMAGE_MAX_DIMENSION_PX = 1000;
 const PUBLISH_IMAGE_QUALITY = 90;
 const DEFAULT_TAX_CODE = "HST20";
 const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
-const DIGI_TAG_IN_FILE_NAME = /(?:\(\s*DIGI\s*\)|(?:^|[-_ ])DIGI(?:[-_ .)]|$))/i;
+const DIGI_TAG_IN_FILE_NAME = /(?:\(\s*DIGI?\s*\)|(?:^|[-_ ])DIGI?(?:[-_ .)]|$))/i;
 const PRODUCT_CATEGORIZER_SCRIPT =
   process.env.PRODUCT_CATEGORIZER_SCRIPT ||
   "/srv/node-tools/product-categorizer/scripts/product_categorizer.mjs";
@@ -179,6 +184,36 @@ type DraftVariantRow = {
   draft_b2b_dropship_price_fi: string | number | null;
   draft_purchase_price_cny: string | number | null;
   draft_raw_row: Record<string, unknown> | null;
+};
+
+type PublishStgSpuRow = {
+  spu: string;
+  subtitle: string | null;
+  mf_product_short_title: string | null;
+  mf_product_long_title: string | null;
+  mf_product_subtitle: string | null;
+  mf_product_bullets_short: string | null;
+  mf_product_bullets: string | null;
+  mf_product_bullets_long: string | null;
+  mf_product_specs: string | null;
+  mf_product_description_short_html: string | null;
+  mf_product_description_extended_html: string | null;
+  [key: string]: unknown;
+};
+
+type PublishStgSkuRow = {
+  spu: string | null;
+  sku: string | null;
+  price: string | null;
+  compare_at_price: string | null;
+  cost: string | null;
+  weight: string | null;
+  variant_image_url: string | null;
+  variation_color_se: string | null;
+  variation_size_se: string | null;
+  variation_other_se: string | null;
+  variation_amount_se: string | null;
+  [key: string]: unknown;
 };
 
 const normalizeText = (value: unknown) => {
@@ -369,6 +404,227 @@ const isSrvPath = (value: string) => String(value || "").trim().startsWith("/srv
 const toImageFileName = (value: string) =>
   path.basename(String(value || "").replace(/\\/g, "/").trim());
 
+const normalizeVariantMatchToken = (value: unknown) => {
+  const normalized = String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .trim();
+  if (!normalized) return "";
+  return normalized
+    .replace(/\.[^.]+$/u, "")
+    .replace(/[\s\-_]+/g, "")
+    .replace(/[()[\]{}"'`~!@#$%^&*+=|\\:;,.<>/?]+/g, "");
+};
+
+const scoreVariantImageDirectory = (dirName: string) => {
+  const normalized = String(dirName || "")
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (!normalized.includes("variant")) return -1;
+  if (normalized.includes("reject") || normalized.includes("mismatch")) return -1;
+  if (normalized === "variantimages" || normalized === "variantimage") return 4;
+  if (normalized.includes("variant") && normalized.includes("image")) return 3;
+  return 1;
+};
+
+type VariantImageCandidate = {
+  absolutePath: string;
+  fileName: string;
+  normalizedMatchKey: string;
+};
+
+const listVariantImageCandidates = async (folderAbsPath: string) => {
+  const rootEntries = await fs.readdir(folderAbsPath, { withFileTypes: true });
+  const variantDirs = rootEntries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({ entry, score: scoreVariantImageDirectory(entry.name) }))
+    .filter((row) => row.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.entry.name.localeCompare(right.entry.name);
+    });
+  if (variantDirs.length === 0) {
+    return { variantDirName: null, files: [] as VariantImageCandidate[] };
+  }
+
+  const variantDirName = variantDirs[0].entry.name;
+  const variantDirAbsPath = path.join(folderAbsPath, variantDirName);
+  const variantEntries = await fs.readdir(variantDirAbsPath, { withFileTypes: true });
+  const files = variantEntries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        isPublishableImageName(entry.name) &&
+        !isExcludedPublishArtifactName(entry.name)
+    )
+    .map((entry) => ({
+      absolutePath: path.join(variantDirAbsPath, entry.name),
+      fileName: entry.name,
+      normalizedMatchKey: normalizeVariantMatchToken(entry.name),
+    }))
+    .filter((entry) => entry.normalizedMatchKey.length > 0);
+
+  return { variantDirName, files };
+};
+
+const sanitizeSkuForFileName = (value: string | null | undefined) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "variant";
+  return normalized.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-");
+};
+
+const ensureUniqueImageName = async (
+  folderAbsPath: string,
+  preferredName: string
+) => {
+  const ext = path.extname(preferredName) || ".jpg";
+  const stem = path.parse(preferredName).name || "image";
+  let candidate = `${stem}${ext}`;
+  let index = 2;
+  while (await pathExists(path.join(folderAbsPath, candidate))) {
+    candidate = `${stem}-${index}${ext}`;
+    index += 1;
+  }
+  return candidate;
+};
+
+type AutoVariantImageAssignment = {
+  variant_id: string;
+  sku: string | null;
+  assigned_file_name: string;
+  source_file_name: string;
+  source_folder: string;
+  match_mode: "sku" | "option1" | "combined";
+};
+
+const autoAttachVariantImagesForPublish = async (input: {
+  folderAbsPath: string;
+  spu: string;
+  variants: DraftVariantRow[];
+}) => {
+  const variantsMissingImage = input.variants.filter(
+    (row) => !normalizeText(row.draft_variant_image_url)
+  );
+  if (variantsMissingImage.length === 0) {
+    return {
+      variantDirName: null as string | null,
+      assignments: [] as AutoVariantImageAssignment[],
+    };
+  }
+
+  const variantDir = await listVariantImageCandidates(input.folderAbsPath);
+  if (!variantDir.variantDirName || variantDir.files.length === 0) {
+    return {
+      variantDirName: variantDir.variantDirName,
+      assignments: [] as AutoVariantImageAssignment[],
+    };
+  }
+
+  const variantKeys = variantsMissingImage.map((row) => {
+    const raw =
+      row.draft_raw_row && typeof row.draft_raw_row === "object"
+        ? (row.draft_raw_row as Record<string, unknown>)
+        : null;
+    const skuKey = normalizeVariantMatchToken(row.draft_sku);
+    const option1Key = normalizeVariantMatchToken(
+      row.draft_option1 || getRawTextAny(raw, ["1688_cn_type1", "option1"])
+    );
+    const combinedKey = normalizeVariantMatchToken(
+      row.draft_option_combined_zh || getRawTextAny(raw, ["1688 combined"])
+    );
+    return {
+      row,
+      skuKey: skuKey || null,
+      option1Key: option1Key || null,
+      combinedKey: combinedKey || null,
+    };
+  });
+
+  const bestFileByVariantId = new Map<
+    string,
+    {
+      file: VariantImageCandidate;
+      matchMode: "sku" | "option1" | "combined";
+      score: number;
+    }
+  >();
+
+  for (const file of variantDir.files) {
+    const matches: Array<{
+      variant: (typeof variantKeys)[number];
+      matchMode: "sku" | "option1" | "combined";
+      score: number;
+    }> = [];
+    for (const variant of variantKeys) {
+      if (variant.skuKey && file.normalizedMatchKey.includes(variant.skuKey)) {
+        matches.push({ variant, matchMode: "sku", score: 300 });
+        continue;
+      }
+      if (
+        variant.option1Key &&
+        variant.option1Key.length >= 2 &&
+        file.normalizedMatchKey.includes(variant.option1Key)
+      ) {
+        matches.push({ variant, matchMode: "option1", score: 200 });
+        continue;
+      }
+      if (
+        variant.combinedKey &&
+        variant.combinedKey.length >= 3 &&
+        file.normalizedMatchKey.includes(variant.combinedKey)
+      ) {
+        matches.push({ variant, matchMode: "combined", score: 120 });
+      }
+    }
+    if (matches.length !== 1) continue;
+    const match = matches[0];
+    const variantId = String(match.variant.row.id || "").trim();
+    if (!variantId) continue;
+    const existing = bestFileByVariantId.get(variantId);
+    if (!existing || match.score > existing.score) {
+      bestFileByVariantId.set(variantId, {
+        file,
+        matchMode: match.matchMode,
+        score: match.score,
+      });
+    }
+  }
+
+  const assignments: AutoVariantImageAssignment[] = [];
+  for (const variant of variantKeys) {
+    const variantId = String(variant.row.id || "").trim();
+    if (!variantId) continue;
+    const match = bestFileByVariantId.get(variantId);
+    if (!match) continue;
+
+    const sourceExt = path.extname(match.file.fileName) || ".jpg";
+    const preferredName = `${sanitizeSkuForFileName(variant.row.draft_sku)}-VAR${sourceExt}`;
+    const sourceAbsPath = path.resolve(match.file.absolutePath);
+    const directTopLevelTarget = path.join(input.folderAbsPath, preferredName);
+    let assignedFileName = preferredName;
+
+    if (sourceAbsPath !== path.resolve(directTopLevelTarget)) {
+      assignedFileName = await ensureUniqueImageName(input.folderAbsPath, preferredName);
+      await fs.copyFile(sourceAbsPath, path.join(input.folderAbsPath, assignedFileName));
+    }
+
+    variant.row.draft_variant_image_url = assignedFileName;
+    assignments.push({
+      variant_id: variantId,
+      sku: normalizeText(variant.row.draft_sku),
+      assigned_file_name: assignedFileName,
+      source_file_name: match.file.fileName,
+      source_folder: variantDir.variantDirName,
+      match_mode: match.matchMode,
+    });
+  }
+
+  return {
+    variantDirName: variantDir.variantDirName,
+    assignments,
+  };
+};
+
 const resolveVariantImageForPublish = (input: {
   spu: string | null;
   value: string | null;
@@ -499,15 +755,6 @@ const getRawTextAny = (
     if (value) return value;
   }
   return null;
-};
-
-const joinUrls = (value: unknown) => {
-  if (Array.isArray(value)) {
-    const items = value.map((entry) => String(entry || "").trim()).filter(Boolean);
-    return items.length ? items.join(";") : null;
-  }
-  const text = normalizeText(value);
-  return text || null;
 };
 
 const chunkRows = <T,>(rows: T[], size = 200) => {
@@ -769,6 +1016,127 @@ const archiveDraftRun = async (runFolder: string) => {
   return dest;
 };
 
+const getPublishImageSerial = (fileName: string) => {
+  const match = String(fileName || "").match(/^[^-]+-(\d+)(?:[-.]|$)/);
+  if (!match?.[1]) return Number.MAX_SAFE_INTEGER;
+  const numeric = Number(match[1]);
+  return Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
+};
+
+const hashFileSha256 = async (absolutePath: string) => {
+  const buffer = await fs.readFile(absolutePath);
+  return createHash("sha256").update(buffer).digest("hex");
+};
+
+const removeDuplicateTopLevelImagesByHash = async (folderAbsPath: string) => {
+  const entries = await fs.readdir(folderAbsPath, { withFileTypes: true });
+  const candidates = entries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        isPublishableImageName(entry.name) &&
+        isJpegFileName(entry.name)
+    )
+    .map((entry) => entry.name)
+    .sort((left, right) => {
+      const leftSerial = getPublishImageSerial(left);
+      const rightSerial = getPublishImageSerial(right);
+      if (leftSerial !== rightSerial) return leftSerial - rightSerial;
+      return left.localeCompare(right);
+    });
+
+  const seenHashes = new Set<string>();
+  const removedFileNames: string[] = [];
+  for (const fileName of candidates) {
+    const absolutePath = path.join(folderAbsPath, fileName);
+    const hash = await hashFileSha256(absolutePath);
+    if (!seenHashes.has(hash)) {
+      seenHashes.add(hash);
+      continue;
+    }
+    await fs.rm(absolutePath, { force: true });
+    removedFileNames.push(fileName);
+  }
+
+  return { removedFileNames };
+};
+
+type PublishRollbackSnapshotInput = {
+  now: string;
+  spus: string[];
+  products: DraftProductRow[];
+  variants: DraftVariantRow[];
+  stgSpuRows: Array<Record<string, unknown>>;
+  stgSkuRows: Array<Record<string, unknown>>;
+  runFolders: Map<string, string[]>;
+  archivedRuns: Map<string, string>;
+  archiveResults: Array<{
+    runFolder: string;
+    archived: boolean;
+    archivePath?: string;
+    error?: string;
+  }>;
+  finalTopLevelImageNamesBySpu: Map<string, string[]>;
+};
+
+const writePublishRollbackSnapshot = async (
+  input: PublishRollbackSnapshotInput
+) => {
+  try {
+    await fs.mkdir(PUBLISH_ROLLBACK_LOG_ROOT, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(
+      PUBLISH_ROLLBACK_LOG_ROOT,
+      `publish-snapshot-${stamp}.json`
+    );
+
+    const runFoldersBySpu: Record<
+      string,
+      { runFolder: string; archivePath: string | null; archiveSpuPath: string | null }
+    > = {};
+    for (const [runFolder, rawSpus] of input.runFolders.entries()) {
+      const archivePath = input.archivedRuns.get(runFolder) ?? null;
+      const uniqueSpus = Array.from(
+        new Set(rawSpus.map((value) => String(value || "").trim()).filter(Boolean))
+      );
+      for (const spu of uniqueSpus) {
+        runFoldersBySpu[spu] = {
+          runFolder,
+          archivePath,
+          archiveSpuPath: archivePath ? path.join(archivePath, spu) : null,
+        };
+      }
+    }
+
+    const finalImageNamesBySpu = Object.fromEntries(
+      Array.from(input.finalTopLevelImageNamesBySpu.entries()).map(([spu, names]) => [
+        spu,
+        [...names],
+      ])
+    );
+
+    const payload = {
+      captured_at: new Date().toISOString(),
+      publish_started_at: input.now,
+      spus: [...input.spus],
+      draft_products: input.products,
+      draft_variants: input.variants,
+      stg_import_spu_rows: input.stgSpuRows,
+      stg_import_sku_rows: input.stgSkuRows,
+      final_top_level_image_names_by_spu: finalImageNamesBySpu,
+      archive_runs: input.archiveResults,
+      archive_by_spu: runFoldersBySpu,
+    };
+    await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+    return { ok: true as const, filePath };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Unknown snapshot error",
+    };
+  }
+};
+
 const runMediaIngest = async (spus: string[]) => {
   if (spus.length === 0) return { ok: true, skipped: true };
   if (!existsSync(MEDIA_LIBRARY_SCRIPT)) {
@@ -815,6 +1183,685 @@ const runMediaIngest = async (spus: string[]) => {
       });
     }
   );
+};
+
+const normalizeSkuKey = (value: unknown) =>
+  String(value ?? "").trim().toUpperCase();
+
+const buildExpectedSkuSetBySpu = (
+  rows: Array<{ spu: string | null; sku: string | null }>
+) => {
+  const bySpu = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const spu = String(row.spu || "").trim();
+    const skuKey = normalizeSkuKey(row.sku);
+    if (!spu || !skuKey) continue;
+    const set = bySpu.get(spu) ?? new Set<string>();
+    set.add(skuKey);
+    bySpu.set(spu, set);
+  }
+  return bySpu;
+};
+
+const pruneCatalogVariantsToPublishedSet = async (
+  adminClient: SupabaseClient,
+  rows: Array<{ spu: string | null; sku: string | null }>
+) => {
+  const expectedSkuSetBySpu = buildExpectedSkuSetBySpu(rows);
+  if (expectedSkuSetBySpu.size === 0) {
+    return { products: 0, stale_variants_removed: 0 };
+  }
+
+  const spus = Array.from(expectedSkuSetBySpu.keys());
+  const { data: productRows, error: productError } = await adminClient
+    .from("catalog_products")
+    .select("id,spu")
+    .in("spu", spus);
+  if (productError) {
+    throw new Error(`Unable to load catalog products for variant pruning: ${productError.message}`);
+  }
+
+  const productIds: string[] = [];
+  const spuByProductId = new Map<string, string>();
+  for (const row of (productRows ?? []) as Array<{ id: string; spu: string | null }>) {
+    const productId = String(row.id || "").trim();
+    const spu = String(row.spu || "").trim();
+    if (!productId || !spu || !expectedSkuSetBySpu.has(spu)) continue;
+    productIds.push(productId);
+    spuByProductId.set(productId, spu);
+  }
+  if (productIds.length === 0) {
+    return { products: 0, stale_variants_removed: 0 };
+  }
+
+  const { data: variantRows, error: variantError } = await adminClient
+    .from("catalog_variants")
+    .select("id,product_id,sku")
+    .in("product_id", productIds);
+  if (variantError) {
+    throw new Error(`Unable to load catalog variants for pruning: ${variantError.message}`);
+  }
+
+  const staleVariantIds: string[] = [];
+  for (const row of (variantRows ?? []) as Array<{
+    id: string;
+    product_id: string | null;
+    sku: string | null;
+  }>) {
+    const variantId = String(row.id || "").trim();
+    const productId = String(row.product_id || "").trim();
+    if (!variantId || !productId) continue;
+    const spu = spuByProductId.get(productId);
+    if (!spu) continue;
+    const expectedSet = expectedSkuSetBySpu.get(spu);
+    if (!expectedSet || expectedSet.size === 0) continue;
+    const skuKey = normalizeSkuKey(row.sku);
+    if (!skuKey || !expectedSet.has(skuKey)) {
+      staleVariantIds.push(variantId);
+    }
+  }
+
+  if (staleVariantIds.length === 0) {
+    return { products: productIds.length, stale_variants_removed: 0 };
+  }
+
+  const chunkSize = 200;
+  let removed = 0;
+  for (let index = 0; index < staleVariantIds.length; index += chunkSize) {
+    const chunk = staleVariantIds.slice(index, index + chunkSize);
+    const { error: deleteVariantInShopError } = await adminClient
+      .from("variant_in_shop")
+      .delete()
+      .in("catalog_variant_id", chunk);
+    if (deleteVariantInShopError) {
+      throw new Error(
+        `Unable to prune stale variant_in_shop rows: ${deleteVariantInShopError.message}`
+      );
+    }
+
+    const { error: deletePriceError } = await adminClient
+      .from("catalog_variant_prices")
+      .delete()
+      .in("catalog_variant_id", chunk);
+    if (deletePriceError) {
+      throw new Error(
+        `Unable to prune stale catalog variant prices: ${deletePriceError.message}`
+      );
+    }
+
+    const { error: deleteMapError } = await adminClient
+      .from("catalog_variant_image_map")
+      .delete()
+      .in("variant_id", chunk);
+    if (deleteMapError) {
+      throw new Error(
+        `Unable to prune stale catalog variant image mappings: ${deleteMapError.message}`
+      );
+    }
+
+    const { error: deleteVariantError, count } = await adminClient
+      .from("catalog_variants")
+      .delete({ count: "exact" })
+      .in("id", chunk);
+    if (deleteVariantError) {
+      throw new Error(`Unable to prune stale catalog variants: ${deleteVariantError.message}`);
+    }
+    removed += count ?? 0;
+  }
+
+  return { products: productIds.length, stale_variants_removed: removed };
+};
+
+const resolvePreservableImageFileName = (value: string | null | undefined) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  if (isHttpUrl(normalized) || isSrvPath(normalized)) return null;
+  const fileName = toImageFileName(normalized);
+  if (!fileName) return null;
+  if (!isImageFileName(fileName)) return null;
+  return fileName;
+};
+
+const loadVariantImageNamesBySpu = async (
+  adminClient: SupabaseClient,
+  spus: string[]
+) => {
+  const normalizedSpus = Array.from(
+    new Set(spus.map((spu) => String(spu || "").trim()).filter(Boolean))
+  );
+  const bySpu = new Map<string, string[]>();
+  if (normalizedSpus.length === 0) {
+    return bySpu;
+  }
+
+  const { data: productRows, error: productError } = await adminClient
+    .from("catalog_products")
+    .select("id,spu")
+    .in("spu", normalizedSpus);
+  if (productError) {
+    throw new Error(
+      `Unable to load catalog products for variant image preservation: ${productError.message}`
+    );
+  }
+
+  const productIds: string[] = [];
+  const spuByProductId = new Map<string, string>();
+  for (const row of (productRows ?? []) as Array<{ id: string; spu: string | null }>) {
+    const productId = String(row.id || "").trim();
+    const spu = String(row.spu || "").trim();
+    if (!productId || !spu) continue;
+    productIds.push(productId);
+    spuByProductId.set(productId, spu);
+  }
+  if (productIds.length === 0) {
+    return bySpu;
+  }
+
+  const { data: variantRows, error: variantError } = await adminClient
+    .from("catalog_variants")
+    .select("product_id,variant_image_url")
+    .in("product_id", productIds);
+  if (variantError) {
+    throw new Error(
+      `Unable to load catalog variant image references for preservation: ${variantError.message}`
+    );
+  }
+
+  const setBySpu = new Map<string, Set<string>>();
+  for (const row of (variantRows ?? []) as Array<{
+    product_id: string | null;
+    variant_image_url: string | null;
+  }>) {
+    const productId = String(row.product_id || "").trim();
+    if (!productId) continue;
+    const spu = spuByProductId.get(productId);
+    if (!spu) continue;
+    const fileName = resolvePreservableImageFileName(row.variant_image_url);
+    if (!fileName) continue;
+    const set = setBySpu.get(spu) ?? new Set<string>();
+    set.add(fileName);
+    setBySpu.set(spu, set);
+  }
+
+  for (const [spu, set] of setBySpu.entries()) {
+    bySpu.set(spu, Array.from(set.values()));
+  }
+  return bySpu;
+};
+
+const loadTingeloShopId = async (adminClient: SupabaseClient) => {
+  const { data, error } = await adminClient
+    .from("shops")
+    .select("id")
+    .eq("name", "shopify_tingelo")
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Unable to load shopify_tingelo shop id: ${error.message}`);
+  }
+  return String(data?.id || "").trim() || null;
+};
+
+const applyExplicitSpuFieldClears = async (
+  adminClient: SupabaseClient,
+  stgSpuRows: PublishStgSpuRow[]
+) => {
+  const normalizedRows = stgSpuRows
+    .map((row) => ({
+      spu: normalizeText(row.spu),
+      subtitle: normalizeText(row.subtitle),
+      mf_product_short_title: normalizeText(row.mf_product_short_title),
+      mf_product_long_title: normalizeText(row.mf_product_long_title),
+      mf_product_subtitle: normalizeText(row.mf_product_subtitle),
+      mf_product_bullets_short: normalizeText(row.mf_product_bullets_short),
+      mf_product_bullets: normalizeText(row.mf_product_bullets),
+      mf_product_bullets_long: normalizeText(row.mf_product_bullets_long),
+      mf_product_specs: normalizeText(row.mf_product_specs),
+      mf_product_description_short_html: normalizeText(row.mf_product_description_short_html),
+      mf_product_description_extended_html: normalizeText(
+        row.mf_product_description_extended_html
+      ),
+    }))
+    .filter((row): row is NonNullable<typeof row> & { spu: string } => Boolean(row.spu));
+
+  if (normalizedRows.length === 0) {
+    return { products_with_clears: 0, metafields_removed: 0, product_subtitles_cleared: 0 };
+  }
+
+  const spuList = Array.from(new Set(normalizedRows.map((row) => row.spu)));
+  const { data: productRows, error: productError } = await adminClient
+    .from("catalog_products")
+    .select("id,spu")
+    .in("spu", spuList);
+  if (productError) {
+    throw new Error(`Unable to load catalog products for clear semantics: ${productError.message}`);
+  }
+  const productIdBySpu = new Map<string, string>();
+  for (const row of (productRows ?? []) as Array<{ id: string; spu: string | null }>) {
+    const spu = String(row.spu || "").trim();
+    const productId = String(row.id || "").trim();
+    if (!spu || !productId) continue;
+    productIdBySpu.set(spu, productId);
+  }
+
+  const metafieldKeyMap: Array<{
+    stgField: keyof Omit<(typeof normalizedRows)[number], "spu" | "subtitle">;
+    key: string;
+  }> = [
+    { stgField: "mf_product_short_title", key: "short_title" },
+    { stgField: "mf_product_long_title", key: "long_title" },
+    { stgField: "mf_product_subtitle", key: "subtitle" },
+    { stgField: "mf_product_bullets_short", key: "bullets_short" },
+    { stgField: "mf_product_bullets", key: "bullets" },
+    { stgField: "mf_product_bullets_long", key: "bullets_long" },
+    { stgField: "mf_product_specs", key: "specs" },
+    { stgField: "mf_product_description_short_html", key: "description_short" },
+    { stgField: "mf_product_description_extended_html", key: "description_extended" },
+  ];
+  const wantedMetaKeys = Array.from(new Set(metafieldKeyMap.map((entry) => entry.key)));
+  const { data: definitionRows, error: definitionError } = await adminClient
+    .from("metafield_definitions")
+    .select("id,key,namespace")
+    .eq("resource", "catalog_product")
+    .in("namespace", ["product_global", "product.global"])
+    .in("key", wantedMetaKeys);
+  if (definitionError) {
+    throw new Error(
+      `Unable to load catalog product metafield definitions for clear semantics: ${definitionError.message}`
+    );
+  }
+
+  const definitionIdsByKey = new Map<string, string[]>();
+  for (const row of (definitionRows ?? []) as Array<{
+    id: string | null;
+    key: string | null;
+    namespace: string | null;
+  }>) {
+    const key = String(row.key || "").trim();
+    const id = String(row.id || "").trim();
+    if (!key || !id) continue;
+    const list = definitionIdsByKey.get(key) ?? [];
+    list.push(id);
+    definitionIdsByKey.set(key, list);
+  }
+
+  let productSubtitleClears = 0;
+  let metafieldsRemoved = 0;
+  let productsWithClears = 0;
+
+  for (const row of normalizedRows) {
+    const productId = productIdBySpu.get(row.spu);
+    if (!productId) continue;
+
+    let touched = false;
+    if (!row.subtitle) {
+      const { error } = await adminClient
+        .from("catalog_products")
+        .update({ subtitle: null, updated_at: new Date().toISOString() })
+        .eq("id", productId);
+      if (error) {
+        throw new Error(`Unable to clear product subtitle for ${row.spu}: ${error.message}`);
+      }
+      productSubtitleClears += 1;
+      touched = true;
+    }
+
+    for (const mapEntry of metafieldKeyMap) {
+      if (row[mapEntry.stgField]) continue;
+      const definitionIds = definitionIdsByKey.get(mapEntry.key) ?? [];
+      if (definitionIds.length === 0) continue;
+      const { error, count } = await adminClient
+        .from("metafield_values")
+        .delete({ count: "exact" })
+        .eq("target_type", "product")
+        .eq("target_id", productId)
+        .in("definition_id", definitionIds);
+      if (error) {
+        throw new Error(
+          `Unable to clear metafield ${mapEntry.key} for ${row.spu}: ${error.message}`
+        );
+      }
+      metafieldsRemoved += count ?? 0;
+      touched = true;
+    }
+
+    if (touched) {
+      productsWithClears += 1;
+    }
+  }
+
+  return {
+    products_with_clears: productsWithClears,
+    metafields_removed: metafieldsRemoved,
+    product_subtitles_cleared: productSubtitleClears,
+  };
+};
+
+const applyExplicitSkuFieldClears = async (
+  adminClient: SupabaseClient,
+  stgSkuRows: PublishStgSkuRow[]
+) => {
+  const normalizedRows = stgSkuRows
+    .map((row) => ({
+      spu: normalizeText(row.spu),
+      sku: normalizeText(row.sku),
+      clear_weight: !normalizeText(row.weight),
+      clear_price: !normalizeText(row.price),
+      clear_compare_at_price: !normalizeText(row.compare_at_price),
+      clear_cost: !normalizeText(row.cost),
+      clear_variant_image_url: !normalizeText(row.variant_image_url),
+      clear_variation_color_se: !normalizeText(row.variation_color_se),
+      clear_variation_size_se: !normalizeText(row.variation_size_se),
+      clear_variation_other_se: !normalizeText(row.variation_other_se),
+      clear_variation_amount_se: !normalizeText(row.variation_amount_se),
+    }))
+    .filter(
+      (row): row is NonNullable<typeof row> & { spu: string; sku: string } =>
+        Boolean(row.spu && row.sku)
+    );
+  if (normalizedRows.length === 0) {
+    return {
+      variants_with_clears: 0,
+      catalog_variants_updated: 0,
+      variant_in_shop_updated: 0,
+      variant_price_rows_updated: 0,
+      variant_image_map_rows_removed: 0,
+    };
+  }
+
+  const intentBySpuSku = new Map<
+    string,
+    {
+      spu: string;
+      sku: string;
+      clear_weight: boolean;
+      clear_price: boolean;
+      clear_compare_at_price: boolean;
+      clear_cost: boolean;
+      clear_variant_image_url: boolean;
+      clear_variation_color_se: boolean;
+      clear_variation_size_se: boolean;
+      clear_variation_other_se: boolean;
+      clear_variation_amount_se: boolean;
+    }
+  >();
+  for (const row of normalizedRows) {
+    const key = `${row.spu}::${row.sku.toUpperCase()}`;
+    const existing = intentBySpuSku.get(key);
+    if (!existing) {
+      intentBySpuSku.set(key, row);
+      continue;
+    }
+    existing.clear_weight = existing.clear_weight || row.clear_weight;
+    existing.clear_price = existing.clear_price || row.clear_price;
+    existing.clear_compare_at_price =
+      existing.clear_compare_at_price || row.clear_compare_at_price;
+    existing.clear_cost = existing.clear_cost || row.clear_cost;
+    existing.clear_variant_image_url =
+      existing.clear_variant_image_url || row.clear_variant_image_url;
+    existing.clear_variation_color_se =
+      existing.clear_variation_color_se || row.clear_variation_color_se;
+    existing.clear_variation_size_se =
+      existing.clear_variation_size_se || row.clear_variation_size_se;
+    existing.clear_variation_other_se =
+      existing.clear_variation_other_se || row.clear_variation_other_se;
+    existing.clear_variation_amount_se =
+      existing.clear_variation_amount_se || row.clear_variation_amount_se;
+  }
+
+  const clearIntents = Array.from(intentBySpuSku.values()).filter(
+    (row) =>
+      row.clear_weight ||
+      row.clear_price ||
+      row.clear_compare_at_price ||
+      row.clear_cost ||
+      row.clear_variant_image_url ||
+      row.clear_variation_color_se ||
+      row.clear_variation_size_se ||
+      row.clear_variation_other_se ||
+      row.clear_variation_amount_se
+  );
+  if (clearIntents.length === 0) {
+    return {
+      variants_with_clears: 0,
+      catalog_variants_updated: 0,
+      variant_in_shop_updated: 0,
+      variant_price_rows_updated: 0,
+      variant_image_map_rows_removed: 0,
+    };
+  }
+
+  const spus = Array.from(new Set(clearIntents.map((row) => row.spu)));
+  const { data: productRows, error: productError } = await adminClient
+    .from("catalog_products")
+    .select("id,spu")
+    .in("spu", spus);
+  if (productError) {
+    throw new Error(
+      `Unable to load catalog products for SKU clear semantics: ${productError.message}`
+    );
+  }
+  const productIds: string[] = [];
+  const spuByProductId = new Map<string, string>();
+  for (const row of (productRows ?? []) as Array<{ id: string; spu: string | null }>) {
+    const productId = String(row.id || "").trim();
+    const spu = String(row.spu || "").trim();
+    if (!productId || !spu) continue;
+    productIds.push(productId);
+    spuByProductId.set(productId, spu);
+  }
+  if (productIds.length === 0) {
+    return {
+      variants_with_clears: 0,
+      catalog_variants_updated: 0,
+      variant_in_shop_updated: 0,
+      variant_price_rows_updated: 0,
+      variant_image_map_rows_removed: 0,
+    };
+  }
+
+  const { data: variantRows, error: variantError } = await adminClient
+    .from("catalog_variants")
+    .select("id,product_id,sku")
+    .in("product_id", productIds);
+  if (variantError) {
+    throw new Error(
+      `Unable to load catalog variants for SKU clear semantics: ${variantError.message}`
+    );
+  }
+  const variantIdBySpuSku = new Map<string, string>();
+  for (const row of (variantRows ?? []) as Array<{
+    id: string;
+    product_id: string | null;
+    sku: string | null;
+  }>) {
+    const variantId = String(row.id || "").trim();
+    const productId = String(row.product_id || "").trim();
+    const sku = String(row.sku || "").trim();
+    if (!variantId || !productId || !sku) continue;
+    const spu = spuByProductId.get(productId);
+    if (!spu) continue;
+    variantIdBySpuSku.set(`${spu}::${sku.toUpperCase()}`, variantId);
+  }
+
+  let catalogVariantsUpdated = 0;
+  let variantInShopUpdated = 0;
+  let variantPriceRowsUpdated = 0;
+  let variantImageMapRowsRemoved = 0;
+
+  const tingeloShopId = await loadTingeloShopId(adminClient);
+  for (const intent of clearIntents) {
+    const variantId = variantIdBySpuSku.get(`${intent.spu}::${intent.sku.toUpperCase()}`);
+    if (!variantId) continue;
+
+    const catalogPatch: Record<string, unknown> = {};
+    if (intent.clear_weight) catalogPatch.weight = null;
+    if (intent.clear_price) catalogPatch.price = null;
+    if (intent.clear_compare_at_price) catalogPatch.compare_at_price = null;
+    if (intent.clear_cost) catalogPatch.cost = null;
+    if (intent.clear_variant_image_url) catalogPatch.variant_image_url = null;
+    if (intent.clear_variation_color_se) catalogPatch.variation_color_se = null;
+    if (intent.clear_variation_size_se) catalogPatch.variation_size_se = null;
+    if (intent.clear_variation_other_se) catalogPatch.variation_other_se = null;
+    if (intent.clear_variation_amount_se) catalogPatch.variation_amount_se = null;
+    if (Object.keys(catalogPatch).length > 0) {
+      catalogPatch.updated_at = new Date().toISOString();
+      const { error } = await adminClient
+        .from("catalog_variants")
+        .update(catalogPatch)
+        .eq("id", variantId);
+      if (error) {
+        throw new Error(
+          `Unable to apply catalog variant field clears for ${intent.spu}/${intent.sku}: ${error.message}`
+        );
+      }
+      catalogVariantsUpdated += 1;
+    }
+
+    if (intent.clear_variant_image_url) {
+      const { error, count } = await adminClient
+        .from("catalog_variant_image_map")
+        .delete({ count: "exact" })
+        .eq("variant_id", variantId);
+      if (error) {
+        throw new Error(
+          `Unable to clear catalog_variant_image_map for ${intent.spu}/${intent.sku}: ${error.message}`
+        );
+      }
+      variantImageMapRowsRemoved += count ?? 0;
+    }
+
+    const hasCommercialClear =
+      intent.clear_price || intent.clear_compare_at_price || intent.clear_cost;
+    if (hasCommercialClear && tingeloShopId) {
+      const variantInShopPatch: Record<string, unknown> = {};
+      if (intent.clear_price) variantInShopPatch.price = null;
+      if (intent.clear_compare_at_price) variantInShopPatch.compare_at_price = null;
+      if (intent.clear_cost) variantInShopPatch.cost = null;
+      if (Object.keys(variantInShopPatch).length > 0) {
+        const { error, count } = await adminClient
+          .from("variant_in_shop")
+          .update(variantInShopPatch, { count: "exact" })
+          .eq("catalog_variant_id", variantId)
+          .eq("shop_id", tingeloShopId);
+        if (error) {
+          throw new Error(
+            `Unable to clear variant_in_shop prices for ${intent.spu}/${intent.sku}: ${error.message}`
+          );
+        }
+        variantInShopUpdated += count ?? 0;
+      }
+
+      const variantPricePatch: Record<string, unknown> = {};
+      if (intent.clear_price) variantPricePatch.price = null;
+      if (intent.clear_compare_at_price) variantPricePatch.compare_at_price = null;
+      if (intent.clear_cost) variantPricePatch.cost = null;
+      if (Object.keys(variantPricePatch).length > 0) {
+        const { error, count } = await adminClient
+          .from("catalog_variant_prices")
+          .update(variantPricePatch, { count: "exact" })
+          .eq("catalog_variant_id", variantId)
+          .eq("price_type", "shopify_tingelo")
+          .eq("shop_id", tingeloShopId)
+          .is("deleted_at", null);
+        if (error) {
+          throw new Error(
+            `Unable to clear shopify_tingelo variant prices for ${intent.spu}/${intent.sku}: ${error.message}`
+          );
+        }
+        variantPriceRowsUpdated += count ?? 0;
+      }
+    }
+  }
+
+  return {
+    variants_with_clears: clearIntents.length,
+    catalog_variants_updated: catalogVariantsUpdated,
+    variant_in_shop_updated: variantInShopUpdated,
+    variant_price_rows_updated: variantPriceRowsUpdated,
+    variant_image_map_rows_removed: variantImageMapRowsRemoved,
+  };
+};
+
+const pruneCatalogImagesToPublishedSet = async (
+  spu: string,
+  expectedImageNames: string[],
+  preservedImageNames: string[] = []
+) => {
+  const normalizedSpu = String(spu || "").trim();
+  if (!normalizedSpu || (expectedImageNames.length === 0 && preservedImageNames.length === 0)) {
+    return { removed_originals: 0, removed_derived: 0 };
+  }
+
+  const catalogSpuDir = path.join(CATALOG_ROOT, normalizedSpu);
+  if (!existsSync(catalogSpuDir)) {
+    return { removed_originals: 0, removed_derived: 0 };
+  }
+
+  const expectedImageSet = new Set(
+    [...expectedImageNames, ...preservedImageNames]
+      .map((name) => String(name || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const expectedBaseSet = new Set(
+    expectedImageNames
+      .map((name) => path.parse(String(name || "").trim()).name.toLowerCase())
+      .filter(Boolean)
+  );
+
+  let removedOriginals = 0;
+  let removedDerived = 0;
+
+  const originalDir = path.join(catalogSpuDir, "original");
+  if (existsSync(originalDir)) {
+    const originalEntries = await fs.readdir(originalDir, { withFileTypes: true });
+    for (const entry of originalEntries) {
+      if (!entry.isFile()) continue;
+      if (!isImageFileName(entry.name)) continue;
+      if (expectedImageSet.has(entry.name.toLowerCase())) continue;
+      await fs.rm(path.join(originalDir, entry.name), { force: true });
+      removedOriginals += 1;
+    }
+  }
+
+  for (const derivativeDirName of ["standard", "small", "thumb"]) {
+    const derivativeDir = path.join(catalogSpuDir, derivativeDirName);
+    if (!existsSync(derivativeDir)) continue;
+    const derivativeEntries = await fs.readdir(derivativeDir, { withFileTypes: true });
+    for (const entry of derivativeEntries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (ext !== ".webp") continue;
+      const base = path.parse(entry.name).name.toLowerCase();
+      if (expectedBaseSet.has(base)) continue;
+      await fs.rm(path.join(derivativeDir, entry.name), { force: true });
+      removedDerived += 1;
+    }
+  }
+
+  const manifestPath = path.join(catalogSpuDir, ".media-manifest.json");
+  if (existsSync(manifestPath)) {
+    try {
+      const raw = await fs.readFile(manifestPath, "utf8");
+      const parsed = JSON.parse(raw) as {
+        originals?: Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      if (parsed && parsed.originals && typeof parsed.originals === "object") {
+        const filteredOriginals: Record<string, unknown> = {};
+        for (const [name, value] of Object.entries(parsed.originals)) {
+          if (expectedImageSet.has(String(name || "").toLowerCase())) {
+            filteredOriginals[name] = value;
+          }
+        }
+        parsed.originals = filteredOriginals;
+        await fs.writeFile(manifestPath, JSON.stringify(parsed, null, 2), "utf8");
+      }
+    } catch {
+      // Manifest cleanup is best-effort.
+    }
+  }
+
+  return { removed_originals: removedOriginals, removed_derived: removedDerived };
 };
 
 export async function POST(request: Request) {
@@ -896,12 +1943,84 @@ export async function POST(request: Request) {
     }
   }
   const allVariants = variants.concat(fallbackVariants);
+  const missingSkuIssues: Array<{
+    spu: string;
+    variant_id: string | null;
+    option_combined_zh: string | null;
+  }> = [];
+  const duplicateSkuIssueMap = new Map<
+    string,
+    Array<{
+      variant_id: string | null;
+      sku: string;
+      option_combined_zh: string | null;
+    }>
+  >();
+  for (const variant of allVariants) {
+    const spu = normalizeText(variant.draft_spu);
+    if (!spu) continue;
+    const sku = normalizeText(variant.draft_sku);
+    const variantId = normalizeText(variant.id);
+    const optionCombined = normalizeText(variant.draft_option_combined_zh);
+    if (!sku) {
+      missingSkuIssues.push({
+        spu,
+        variant_id: variantId,
+        option_combined_zh: optionCombined,
+      });
+      continue;
+    }
+    const key = `${spu}::${sku.toUpperCase()}`;
+    const list = duplicateSkuIssueMap.get(key) ?? [];
+    list.push({
+      variant_id: variantId,
+      sku,
+      option_combined_zh: optionCombined,
+    });
+    duplicateSkuIssueMap.set(key, list);
+  }
+  const duplicateSkuIssues = Array.from(duplicateSkuIssueMap.entries())
+    .filter(([, rows]) => rows.length > 1)
+    .map(([key, rows]) => {
+      const [spu, sku] = key.split("::");
+      return {
+        spu,
+        sku,
+        rows,
+      };
+    });
+  if (missingSkuIssues.length > 0 || duplicateSkuIssues.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Publish blocked: SKU integrity check failed. Resolve blank or duplicate SKUs in draft variants before publishing.",
+        missing_skus: missingSkuIssues.slice(0, 200),
+        duplicate_skus: duplicateSkuIssues.slice(0, 200),
+      },
+      { status: 400 }
+    );
+  }
+  const allVariantsBySpu = new Map<string, DraftVariantRow[]>();
+  for (const variant of allVariants) {
+    const spu = String(variant.draft_spu || "").trim();
+    if (!spu) continue;
+    const list = allVariantsBySpu.get(spu) ?? [];
+    list.push(variant);
+    allVariantsBySpu.set(spu, list);
+  }
   const productBySpu = new Map(products.map((row) => [row.draft_spu, row]));
   const now = new Date().toISOString();
   const runFolders = new Map<string, string[]>();
   const archivedRuns = new Map<string, string>();
   const variantImageRenameMapBySpu = new Map<string, Map<string, string>>();
   const finalTopLevelImagesBySpu = new Map<string, Set<string>>();
+  const finalTopLevelImageNamesBySpu = new Map<string, string[]>();
+  const duplicateImageCleanupResults: Array<{ spu: string; removed: string[] }> = [];
+  const autoVariantImageResults: Array<{
+    spu: string;
+    variant_dir: string | null;
+    assignments: AutoVariantImageAssignment[];
+  }> = [];
   let autoPromotedAiEdits = 0;
   const imageIssues: Array<{
     spu: string;
@@ -911,6 +2030,17 @@ export async function POST(request: Request) {
     invalidPrefixes?: string[];
     nonJpgFiles?: string[];
     ignoredSubfolders?: string[];
+  }> = [];
+  const variantCoverageIssues: Array<{
+    spu: string;
+    variant_dir: string | null;
+    variant_count: number;
+    var_image_file_count: number;
+    missing_variant_images: Array<{
+      variant_id: string | null;
+      sku: string | null;
+      option_combined_zh: string | null;
+    }>;
   }> = [];
 
   for (const row of products) {
@@ -933,6 +2063,22 @@ export async function POST(request: Request) {
       continue;
     }
     try {
+      const autoAttachVariants = await autoAttachVariantImagesForPublish({
+        folderAbsPath: abs,
+        spu: row.draft_spu,
+        variants: allVariantsBySpu.get(row.draft_spu) ?? [],
+      });
+      if (
+        autoAttachVariants.variantDirName ||
+        autoAttachVariants.assignments.length > 0
+      ) {
+        autoVariantImageResults.push({
+          spu: row.draft_spu,
+          variant_dir: autoAttachVariants.variantDirName,
+          assignments: autoAttachVariants.assignments,
+        });
+      }
+
       const aiPromotion = await autoPromotePendingAiEdits(abs);
       autoPromotedAiEdits += aiPromotion.resolvedCount;
       if (aiPromotion.errors.length > 0) {
@@ -981,6 +2127,14 @@ export async function POST(request: Request) {
       }
       variantImageRenameMapBySpu.set(row.draft_spu, renameMap);
 
+      const dedupe = await removeDuplicateTopLevelImagesByHash(abs);
+      if (dedupe.removedFileNames.length > 0) {
+        duplicateImageCleanupResults.push({
+          spu: row.draft_spu,
+          removed: dedupe.removedFileNames,
+        });
+      }
+
       const postEntries = await fs.readdir(abs, { withFileTypes: true });
       const finalTopLevelImageNames = postEntries
         .filter(
@@ -990,10 +2144,38 @@ export async function POST(request: Request) {
             isJpegFileName(entry.name)
         )
         .map((entry) => entry.name);
+      finalTopLevelImageNamesBySpu.set(row.draft_spu, finalTopLevelImageNames);
       finalTopLevelImagesBySpu.set(
         row.draft_spu,
         new Set(finalTopLevelImageNames.map((name) => name.toLowerCase()))
       );
+      const variantsForSpu = allVariantsBySpu.get(row.draft_spu) ?? [];
+      const hasVariantTaggedImages = finalTopLevelImageNames.some((name) =>
+        /(?:^|[-_])VAR(?:[-_.]|$)/i.test(name)
+      );
+      const requiresVariantCoverage =
+        variantsForSpu.length > 1 &&
+        (Boolean(autoAttachVariants.variantDirName) || hasVariantTaggedImages);
+      if (requiresVariantCoverage) {
+        const missingVariantImages = variantsForSpu
+          .filter((variant) => !normalizeText(variant.draft_variant_image_url))
+          .map((variant) => ({
+            variant_id: normalizeText(variant.id),
+            sku: normalizeText(variant.draft_sku),
+            option_combined_zh: normalizeText(variant.draft_option_combined_zh),
+          }));
+        if (missingVariantImages.length > 0) {
+          variantCoverageIssues.push({
+            spu: row.draft_spu,
+            variant_dir: autoAttachVariants.variantDirName ?? null,
+            variant_count: variantsForSpu.length,
+            var_image_file_count: finalTopLevelImageNames.filter((name) =>
+              /(?:^|[-_])VAR(?:[-_.]|$)/i.test(name)
+            ).length,
+            missing_variant_images: missingVariantImages,
+          });
+        }
+      }
 
       const validation = await validateImageFolder(abs, row.draft_spu);
       if (validation.count > 0) {
@@ -1049,6 +2231,16 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (variantCoverageIssues.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Variant image coverage check failed. All variants must have a mapped variant image before publish.",
+        issues: variantCoverageIssues,
+      },
+      { status: 400 }
+    );
+  }
 
   const archiveResults: Array<{
     runFolder: string;
@@ -1087,7 +2279,21 @@ export async function POST(request: Request) {
     }
   }
 
-  const stgSpuRows = products.map((row) => ({
+  const archiveFailures = archiveResults.filter(
+    (entry) => !entry.archived || !entry.archivePath
+  );
+  if (archiveFailures.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Failed to archive draft run(s) before publish. Publish was aborted to protect rollback safety.",
+        archived: archiveResults,
+      },
+      { status: 500 }
+    );
+  }
+
+  const stgSpuRows: PublishStgSpuRow[] = products.map((row) => ({
     spu: row.draft_spu,
     sku: row.draft_spu,
     product_title: normalizeText(row.draft_title),
@@ -1124,8 +2330,10 @@ export async function POST(request: Request) {
     legacy_description_sv: normalizeText(row.draft_legacy_description_sv),
     legacy_bullets_sv: normalizeText(row.draft_legacy_bullets_sv),
     supplier_1688_url: normalizeText(row.draft_supplier_1688_url),
-    product_main_image_url: normalizeText(row.draft_main_image_url),
-    product_additional_image_urls: joinUrls(row.draft_image_urls),
+    // Do not feed legacy URL image side-effects during publish. Canonical image source
+    // is the curated top-level draft folder copied to catalog + media ingest pipeline.
+    product_main_image_url: null,
+    product_additional_image_urls: null,
     shopify_tingelo_category_keys: getRawTextAny(row.draft_raw_row, [
       "category_external_key_shopify_tingelo",
       "shopify_tingelo_category_keys",
@@ -1154,7 +2362,7 @@ export async function POST(request: Request) {
     issue: string;
   }> = [];
 
-  const stgSkuRows = allVariants.map((row) => {
+  const stgSkuRows: PublishStgSkuRow[] = allVariants.map((row) => {
     const parent = row.draft_spu ? productBySpu.get(row.draft_spu) : null;
     const rawRow =
       row.draft_raw_row && typeof row.draft_raw_row === "object"
@@ -1252,57 +2460,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: deleteSpuError } = await adminClient
-    .from("stg_import_spu")
-    .delete()
-    .in("spu", spuList);
-  if (deleteSpuError) {
-    return NextResponse.json({ error: deleteSpuError.message }, { status: 500 });
-  }
-
-  const { error: deleteSkuError } = await adminClient
-    .from("stg_import_sku")
-    .delete()
-    .in("spu", spuList);
-  if (deleteSkuError) {
-    return NextResponse.json({ error: deleteSkuError.message }, { status: 500 });
-  }
-
-  for (const chunk of chunkRows(stgSpuRows, 200)) {
-    const { error: insertError } = await adminClient
-      .from("stg_import_spu")
-      .insert(chunk);
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-  }
-
-  for (const chunk of chunkRows(stgSkuRows, 200)) {
-    const { error: insertError } = await adminClient
-      .from("stg_import_sku")
-      .insert(chunk);
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-  }
-
-  const { error: spuRpcError } = await adminClient.rpc("process_import_spu", {
-    p_spus: spuList,
+  const rollbackSnapshot = await writePublishRollbackSnapshot({
+    now,
+    spus: spuList,
+    products,
+    variants: allVariants,
+    stgSpuRows: stgSpuRows as Array<Record<string, unknown>>,
+    stgSkuRows: stgSkuRows as Array<Record<string, unknown>>,
+    runFolders,
+    archivedRuns,
+    archiveResults,
+    finalTopLevelImageNamesBySpu,
   });
-  if (spuRpcError) {
-    return NextResponse.json({ error: spuRpcError.message }, { status: 500 });
+  if (!rollbackSnapshot.ok) {
+    return NextResponse.json(
+      {
+        error: `Failed to write publish rollback snapshot. Publish was aborted: ${rollbackSnapshot.error}`,
+      },
+      { status: 500 }
+    );
   }
-
-  const { error: skuRpcError } = await adminClient.rpc("process_import_sku", {
-    p_spus: spuList,
-  });
-  if (skuRpcError) {
-    return NextResponse.json({ error: skuRpcError.message }, { status: 500 });
-  }
-
-  // Kick off Google taxonomy categorization for the newly created/updated SPUs.
-  // This is async to avoid blocking publish; the DB will be updated shortly after publish completes.
-  await spawnTaxonomyCategorizerForSpus(spuList);
 
   const moveResults: Array<{
     spu: string;
@@ -1351,9 +2528,157 @@ export async function POST(request: Request) {
         ? mediaResult.error
         : undefined;
     return NextResponse.json(
-      { error: mediaError || "Media ingest failed." },
+      { error: mediaError || "Media ingest failed before database import." },
       { status: 500 }
     );
+  }
+
+  const { error: deleteSpuError } = await adminClient
+    .from("stg_import_spu")
+    .delete()
+    .in("spu", spuList);
+  if (deleteSpuError) {
+    return NextResponse.json({ error: deleteSpuError.message }, { status: 500 });
+  }
+
+  const { error: deleteSkuError } = await adminClient
+    .from("stg_import_sku")
+    .delete()
+    .in("spu", spuList);
+  if (deleteSkuError) {
+    return NextResponse.json({ error: deleteSkuError.message }, { status: 500 });
+  }
+
+  for (const chunk of chunkRows(stgSpuRows, 200)) {
+    const { error: insertError } = await adminClient
+      .from("stg_import_spu")
+      .insert(chunk);
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+  }
+
+  for (const chunk of chunkRows(stgSkuRows, 200)) {
+    const { error: insertError } = await adminClient
+      .from("stg_import_sku")
+      .insert(chunk);
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+  }
+
+  const { error: spuRpcError } = await adminClient.rpc("process_import_spu", {
+    p_spus: spuList,
+  });
+  if (spuRpcError) {
+    return NextResponse.json({ error: spuRpcError.message }, { status: 500 });
+  }
+
+  const { error: skuRpcError } = await adminClient.rpc("process_import_sku", {
+    p_spus: spuList,
+  });
+  if (skuRpcError) {
+    return NextResponse.json({ error: skuRpcError.message }, { status: 500 });
+  }
+
+  let skuClearResult: {
+    variants_with_clears: number;
+    catalog_variants_updated: number;
+    variant_in_shop_updated: number;
+    variant_price_rows_updated: number;
+    variant_image_map_rows_removed: number;
+  } | null = null;
+  try {
+    skuClearResult = await applyExplicitSkuFieldClears(adminClient, stgSkuRows);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: `Failed applying explicit SKU field clears: ${(error as Error).message}`,
+      },
+      { status: 500 }
+    );
+  }
+
+  let spuClearResult: {
+    products_with_clears: number;
+    metafields_removed: number;
+    product_subtitles_cleared: number;
+  } | null = null;
+  try {
+    spuClearResult = await applyExplicitSpuFieldClears(adminClient, stgSpuRows);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: `Failed applying explicit SPU field clears: ${(error as Error).message}`,
+      },
+      { status: 500 }
+    );
+  }
+
+  const variantPruneResult = await pruneCatalogVariantsToPublishedSet(
+    adminClient,
+    stgSkuRows.map((row) => ({
+      spu: row.spu,
+      sku: row.sku,
+    }))
+  );
+
+  let b2bPricingResult: {
+    consideredVariants: number;
+    processedVariants: number;
+    skippedVariants: number;
+    updatedRows: number;
+  } | null = null;
+  try {
+    b2bPricingResult = await recalculateB2BPricesForSpus(adminClient, spuList);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: `B2B pricing generation failed: ${(error as Error).message}`,
+      },
+      { status: 500 }
+    );
+  }
+
+  let b2cPricingResult: {
+    consideredVariants: number;
+    processedVariants: number;
+    skippedVariants: number;
+    updatedRows: number;
+    updatedVariantPrices: number;
+  } | null = null;
+  try {
+    b2cPricingResult = await recalculateB2CPricesForSpus(adminClient, spuList);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: `B2C pricing generation failed: ${(error as Error).message}`,
+      },
+      { status: 500 }
+    );
+  }
+
+  // Kick off Google taxonomy categorization for the newly created/updated SPUs.
+  // This is async to avoid blocking publish; the DB will be updated shortly after publish completes.
+  await spawnTaxonomyCategorizerForSpus(spuList);
+
+  const variantImageNamesBySpu = await loadVariantImageNamesBySpu(adminClient, spuList);
+
+  const imagePruneResults: Array<{
+    spu: string;
+    removed_originals: number;
+    removed_derived: number;
+  }> = [];
+  for (const spu of spuList) {
+    const expected = finalTopLevelImageNamesBySpu.get(spu) ?? [];
+    const preserved = variantImageNamesBySpu.get(spu) ?? [];
+    if (expected.length === 0 && preserved.length === 0) continue;
+    const imagePrune = await pruneCatalogImagesToPublishedSet(spu, expected, preserved);
+    imagePruneResults.push({
+      spu,
+      removed_originals: imagePrune.removed_originals,
+      removed_derived: imagePrune.removed_derived,
+    });
   }
 
   const moveBySpu = new Map(
@@ -1422,7 +2747,16 @@ export async function POST(request: Request) {
     auto_promoted_ai_edits: autoPromotedAiEdits,
     staged: { spus: stgSpuRows.length, skus: stgSkuRows.length },
     moved: moveResults,
+    variant_prune: variantPruneResult,
+    b2b_pricing: b2bPricingResult,
+    b2c_pricing: b2cPricingResult,
+    duplicate_image_cleanup: duplicateImageCleanupResults,
+    auto_variant_images: autoVariantImageResults,
+    catalog_image_prune: imagePruneResults,
+    explicit_sku_clears: skuClearResult,
+    explicit_spu_clears: spuClearResult,
     archived: archiveResults,
+    rollback_snapshot: rollbackSnapshot.filePath,
     meili_index_ok: meiliIndex.ok,
     meili_index_error: meiliIndex.ok ? null : meiliIndex.error,
     discovery_identical_link_sync: discoveryLinkSyncResult,

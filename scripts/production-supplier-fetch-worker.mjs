@@ -233,6 +233,70 @@ const isBetterVariationQuality = (next, current) => {
   return false;
 };
 
+const isLikelyCaptchaReadableText = (value) => {
+  const text = asText(value).toLowerCase();
+  if (!text) return false;
+  return (
+    text.includes("请按住滑块") ||
+    text.includes("拖动到最右边") ||
+    text.includes("通过验证以确保正常访问") ||
+    text.includes("滑块完成验证") ||
+    text.includes("security check") ||
+    text.includes("drag the slider") ||
+    text.includes("complete verification")
+  );
+};
+
+const collectExtractorImageCandidates = (payload) => {
+  const extracted =
+    payload && typeof payload === "object" && payload.extracted && typeof payload.extracted === "object"
+      ? payload.extracted
+      : null;
+  const root = payload && typeof payload === "object" ? payload : null;
+  const candidates = [
+    extracted?.mainImageUrl,
+    root?.mainImageUrl,
+    ...(Array.isArray(extracted?.imageUrls) ? extracted.imageUrls : []),
+    ...(Array.isArray(root?.imageUrls) ? root.imageUrls : []),
+    ...(Array.isArray(extracted?.variantImages)
+      ? extracted.variantImages
+          .map((entry) => firstString(entry?.url_full, entry?.url))
+      : []),
+  ]
+    .map((entry) => asText(entry))
+    .filter(Boolean);
+  return uniqueUrls(candidates);
+};
+
+const summarizeExtractorPayload = (payload) => {
+  const extracted =
+    payload && typeof payload === "object" && payload.extracted && typeof payload.extracted === "object"
+      ? payload.extracted
+      : null;
+  const variations =
+    extracted?.variations && typeof extracted.variations === "object"
+      ? extracted.variations
+      : payload?.variations && typeof payload.variations === "object"
+        ? payload.variations
+        : null;
+  const comboCount = Array.isArray(variations?.combos) ? variations.combos.length : 0;
+  const imageCount = collectExtractorImageCandidates(payload).length;
+  const readable = firstString(
+    extracted?.readableText,
+    extracted?.text_1688?.readable_full,
+    extracted?.text_1688?.readable_compact,
+    payload?.readableText
+  );
+  const finalUrl = firstString(payload?.meta?.finalUrl, payload?.meta?.final_url);
+  const redirectedToLogin =
+    /login\.taobao\.com|login\.1688\.com\/member\/|marketSigninJump/i.test(finalUrl);
+  return {
+    comboCount,
+    imageCount,
+    captchaLike: redirectedToLogin || isLikelyCaptchaReadableText(readable),
+  };
+};
+
 const countWeightTokens = (value) => {
   const text = asText(value);
   if (!text) return 0;
@@ -556,41 +620,25 @@ const formatTimestamp = (date) => {
   )}${pad(d.getMinutes())}${pad(d.getSeconds())}${pad(d.getMilliseconds(), 3)}`;
 };
 
-const sanitizeReadable1688 = (value) => {
+const sanitizeReadable1688 = (value, options = {}) => {
+  const maxChars = Number.isFinite(Number(options.maxChars))
+    ? Math.max(2_000, Math.trunc(Number(options.maxChars)))
+    : 28_000;
   const raw = String(value || "")
     .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ")
     .trim();
   if (!raw) return "";
 
-  const cutoffPatterns = [
-    /内容声明：阿里巴巴中国站/i,
-    /【平台活动下价格】/i,
-    /店铺推荐/,
-    /相关推荐/,
-    /相关产品/,
-    /推荐商品/,
-    /商家推荐/,
-    /搭配组货/,
-    /已累计采购/,
-    /Code[:：]/i,
-    /Click to feedback/i,
-    /module\.exports/i,
-    /__esModule/i,
-    /webpack/i,
-  ];
-  let cutAt = raw.length;
-  for (const pattern of cutoffPatterns) {
-    const match = raw.match(pattern);
-    if (!match || typeof match.index !== "number") continue;
-    cutAt = Math.min(cutAt, match.index);
-  }
-
-  const cleaned = raw.slice(0, cutAt);
-  const badLine = (line) =>
-    /^(function\s*\(|var\s+[A-Za-z_$][\w$]*\s*=|return\s+[A-Za-z_$][\w$]*\(|\{.*\}|\[.*\])/.test(
-      line
-    ) ||
-    /Code[:：]|Click to feedback|module\.exports|__esModule|webpack/i.test(line);
+  const scriptLineRe =
+    /with\(document\)with\(body\)|createElement\(\"script\"\)|module\.exports|__esModule|webpack|tb-beacon-aplus|aplus_v2\.js|Code[:：]|Click to feedback|反馈码[:：]/i;
+  const footerLineRe =
+    /阿里巴巴集团|阿里巴巴国际站|全球速卖通|关于阿里巴巴|知识产权保护|法律声明|服务条款|隐私政策|增值电信业务经营许可证|浙公网安备|版权所有|互联网违法和不良信息举报中心|算法备案|广播电视节目制作经营许可证|信息网络传播视听许可证/i;
+  const activityLineRe =
+    /^【平台活动下价格】|^【非平台活动下价格】|^【发布价】|^【全网销量】|活动前价格|前述价格未计算|划线价格|未划线价格|同款：指商品名称|前述说明仅适用于价格比较|内容声明：阿里巴巴中国站/i;
+  const recommendationStartRe = /^(商家推荐|店铺推荐|相关推荐|相关产品|推荐商品|猜你喜欢)$/;
+  const recommendationStopRe =
+    /^(名称[:：]|产品名称[:：]|材质[:：]|产品净重[:：]|产品毛重[:：]|产品尺寸[:：]|包装尺寸[:：]|箱规[:：]|功能特点[:：]|使用步骤[:：]|规格[:：]|型号[:：]|货号[:：]|品牌[:：]|颜色(?:\s+|\t).*(?:重量|weight))/i;
 
   const navigationNoise = new Set([
     "综合服务",
@@ -636,26 +684,84 @@ const sanitizeReadable1688 = (value) => {
     "商品描述",
     "价格说明",
     "包装信息",
+    "首页",
+    "我的阿里",
+    "买家中心",
+    "收藏的商品",
+    "收藏的店铺",
+    "浏览足迹",
+    "下载插件",
+    "我的订单",
+    "采购车",
+    "消息",
+    "旺旺消息",
+    "系统消息",
+    "官方服务",
+    "卖家中心",
+    "帮助中心",
+    "简体中文",
+    "登录",
+    "立即登录",
+    "一键登录",
+    "登录之后可以",
+    "搜索推荐更精准",
+    "履约信息更及时",
+    "商品详情更清晰",
+    "保存",
+    "取消",
+    "切换",
+    "暂不切换",
   ]);
 
-  const lines = cleaned
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !badLine(line))
-    .filter((line) => !navigationNoise.has(line))
-    .filter((line) => !/^0:\d{2}$/.test(line))
-    .filter((line) => !/^\d+(?:\.\d+)?\+$/.test(line))
-    .filter((line) => !/^\|\s*\d+元$/.test(line))
-    .filter((line) => !/^收藏\(\d+\)$/.test(line));
+  const isBadLine = (line) => {
+    if (!line) return true;
+    if (scriptLineRe.test(line)) return true;
+    if (footerLineRe.test(line)) return true;
+    if (activityLineRe.test(line)) return true;
+    if (/^(function\s*\(|var\s+[A-Za-z_$][\w$]*\s*=|return\s+[A-Za-z_$][\w$]*\(|\{.*\}|\[.*\])/.test(line))
+      return true;
+    if (navigationNoise.has(line)) return true;
+    if (/^0:\d{2}$/.test(line)) return true;
+    if (/^\d+(?:\.\d+)?\+$/.test(line)) return true;
+    if (/^\|\s*\d+元$/.test(line)) return true;
+    if (/^收藏\(\d+\)$/.test(line)) return true;
+    if (/^登录查看更多福利~?$/.test(line)) return true;
+    if (/^请按照说明拖动滑块$/.test(line)) return true;
+    if (/^[¥￥]$/.test(line)) return true;
+    if (/^[\uE000-\uF8FF]+$/.test(line)) return true;
+    return false;
+  };
 
+  let inRecommendationBlock = false;
   const deduped = [];
-  for (const line of lines) {
-    if (deduped[deduped.length - 1] === line) continue;
+  const seen = new Set();
+  let totalChars = 0;
+
+  for (const rawLine of raw.split(/\n+/)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (!line) continue;
+
+    if (recommendationStartRe.test(line)) {
+      inRecommendationBlock = true;
+      continue;
+    }
+    if (inRecommendationBlock) {
+      if (recommendationStopRe.test(line)) {
+        inRecommendationBlock = false;
+      } else {
+        continue;
+      }
+    }
+
+    if (isBadLine(line)) continue;
+    if (seen.has(line)) continue;
+    seen.add(line);
     deduped.push(line);
+    totalChars += line.length + 1;
+    if (totalChars >= maxChars * 2) break;
   }
 
-  return deduped.join("\n").slice(0, 16_000);
+  return deduped.join("\n").slice(0, maxChars);
 };
 
 const parseMetaTag = (html, key, attr = "property") => {
@@ -970,6 +1076,16 @@ const run1688OfferDetail = async (detailUrl, offerId) => {
             ? parsed.error
             : "1688 extractor failed.";
       return { ok: false, error: message };
+    }
+
+    const summary = summarizeExtractorPayload(parsed);
+    if (summary.captchaLike && summary.comboCount === 0 && summary.imageCount <= 1) {
+      return {
+        ok: false,
+        error:
+          "1688 returned a verification page instead of supplier data. Please retry.",
+        mode,
+      };
     }
 
     if (result.code !== 0 && !parsed) {
@@ -1309,18 +1425,34 @@ const buildExtractorItem = ({
             ? extracted.variations.combos.length
             : 0,
         };
+  const text1688RawFull =
+    asText(extracted?.text_1688?.readable_full) || readable1688Full || readable1688;
+  const text1688ReadableCompact = sanitizeReadable1688(
+    asText(extracted?.text_1688?.readable_compact) || text1688RawFull,
+    { maxChars: 24_000 }
+  );
+  const text1688ReadableAiClean = sanitizeReadable1688(text1688RawFull, {
+    maxChars: 36_000,
+  });
+  const text1688WeightExcerpt = sanitizeReadable1688(
+    asText(extracted?.text_1688?.weight_focused_excerpt),
+    { maxChars: 7_000 }
+  );
   const text1688 =
     extracted?.text_1688 && typeof extracted.text_1688 === "object"
       ? {
           ...extracted.text_1688,
-          readable_full: asText(extracted?.text_1688?.readable_full) || readable1688Full || readable1688,
-          readable_compact:
-            asText(extracted?.text_1688?.readable_compact) ||
-            sanitizeReadable1688(readable1688Full || readable1688),
+          readable_full: text1688RawFull,
+          readable_compact: text1688ReadableCompact,
+          readable_ai_clean:
+            asText(extracted?.text_1688?.readable_ai_clean) || text1688ReadableAiClean,
+          weight_focused_excerpt:
+            text1688WeightExcerpt || asText(extracted?.text_1688?.weight_focused_excerpt),
         }
       : {
-          readable_full: readable1688Full || readable1688,
-          readable_compact: sanitizeReadable1688(readable1688Full || readable1688),
+          readable_full: text1688RawFull,
+          readable_compact: text1688ReadableCompact,
+          readable_ai_clean: text1688ReadableAiClean,
           weight_focused_excerpt: "",
           stats: {
             line_count: readable1688Full ? readable1688Full.split(/\n+/).filter(Boolean).length : 0,
@@ -1597,6 +1729,34 @@ const main = async () => {
     item?.weight_review_1688 && typeof item.weight_review_1688 === "object"
       ? item.weight_review_1688
       : weightReview;
+
+  const itemSummary = {
+    comboCount: Array.isArray(item?.variations?.combos) ? item.variations.combos.length : 0,
+    imageCount: uniqueUrls([
+      item?.main_image_1688,
+      ...(Array.isArray(item?.image_urls_1688) ? item.image_urls_1688 : []),
+      ...(Array.isArray(item?.variant_image_urls) ? item.variant_image_urls : []),
+    ]).length,
+    captchaLike: isLikelyCaptchaReadableText(
+      firstString(item?.readable_1688_full, item?.readable_1688, item?.text_1688?.readable_full)
+    ),
+  };
+  if (itemSummary.captchaLike && itemSummary.comboCount === 0 && itemSummary.imageCount <= 1) {
+    await failSelection(
+      admin,
+      selection,
+      "1688 verification blocked this supplier page. Retry later or select another supplier."
+    );
+    return;
+  }
+  if (itemSummary.comboCount === 0 && itemSummary.imageCount === 0) {
+    await failSelection(
+      admin,
+      selection,
+      "1688 payload was empty (no variants/images).\nPlease retry this supplier."
+    );
+    return;
+  }
 
   let saved;
   try {

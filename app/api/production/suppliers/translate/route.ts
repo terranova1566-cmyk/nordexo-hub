@@ -91,6 +91,59 @@ const extractJsonFromText = (text: string) => {
   }
 };
 
+const translateSingleSubjectBestEffort = async (
+  apiKey: string,
+  modelCandidates: string[],
+  subject: string
+) => {
+  const source = asText(subject);
+  if (!source) return "";
+
+  const prompt = [
+    "Translate this Chinese supplier product title into concise, natural English.",
+    "Keep technical attributes, remove hype, max 120 characters.",
+    "Return JSON only with format: { \"english_title\": \"...\" }",
+    "",
+    `Title: ${source}`,
+  ].join("\n");
+
+  for (const model of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json().catch(() => null);
+      const parsed = extractJsonFromText(String(result?.choices?.[0]?.message?.content || ""));
+      const translated = asText(
+        parsed?.english_title ||
+          parsed?.englishTitle ||
+          parsed?.title_en ||
+          parsed?.translation ||
+          parsed?.english
+      ).slice(0, 120);
+      if (translated) return translated;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return "";
+};
+
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
@@ -245,6 +298,27 @@ export async function POST(request: NextRequest) {
     if (offerId) mapByOfferId.set(offerId, english.slice(0, 120));
     if (subject) mapBySubject.set(subject, english.slice(0, 120));
   });
+
+  const unresolved = limitedOffers.filter((offer) => {
+    const subject = asText(offer.subject);
+    const offerId = asText(offer.offer_id);
+    if (!subject) return false;
+    if (offerId && mapByOfferId.has(offerId)) return false;
+    return !mapBySubject.has(subject);
+  });
+  for (const row of unresolved) {
+    const subject = asText(row.subject);
+    if (!subject) continue;
+    const fallbackTranslated = await translateSingleSubjectBestEffort(
+      apiKey,
+      modelCandidates,
+      subject
+    );
+    if (!fallbackTranslated) continue;
+    const offerId = asText(row.offer_id);
+    if (offerId) mapByOfferId.set(offerId, fallbackTranslated.slice(0, 120));
+    mapBySubject.set(subject, fallbackTranslated.slice(0, 120));
+  }
 
   if (mapByOfferId.size === 0 && mapBySubject.size === 0) {
     return NextResponse.json({ offers });

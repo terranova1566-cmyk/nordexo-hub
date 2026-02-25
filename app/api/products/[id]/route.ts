@@ -12,6 +12,9 @@ import {
 } from "@/lib/legacy-product-image-data";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const PRODUCT_META_KEYS = [
   "description_short",
   "description_extended",
@@ -145,6 +148,47 @@ const normalizeList = (value: unknown) => {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return parts.length ? parts : null;
+};
+
+const IMAGE_EXTENSION_FALLBACKS = [".jpg", ".jpeg", ".png", ".webp"] as const;
+
+const urlFilename = (value: string) => {
+  const lastSlash = value.lastIndexOf("/");
+  if (lastSlash < 0 || lastSlash >= value.length - 1) return null;
+  const maybeWithQuery = value.slice(lastSlash + 1);
+  const queryIndex = maybeWithQuery.indexOf("?");
+  const filename =
+    queryIndex >= 0 ? maybeWithQuery.slice(0, queryIndex) : maybeWithQuery;
+  const trimmed = filename.trim();
+  return trimmed || null;
+};
+
+const filenameStem = (filename: string | null | undefined) =>
+  String(filename ?? "")
+    .replace(/\.[^/.]+$/u, "")
+    .trim();
+
+const resolveImageWithFallbackExt = async (
+  imageFolder: string | null,
+  filename: string | null | undefined,
+  size: "thumb" | "original"
+) => {
+  if (!filename) return null;
+
+  const exact = await resolveImageUrl(imageFolder, filename, { size });
+  if (exact) return exact;
+
+  const stem = filenameStem(filename);
+  if (!stem) return null;
+
+  for (const ext of IMAGE_EXTENSION_FALLBACKS) {
+    const candidate = `${stem}${ext}`;
+    if (candidate === filename) continue;
+    const resolved = await resolveImageUrl(imageFolder, candidate, { size });
+    if (resolved) return resolved;
+  }
+
+  return null;
 };
 
 export async function GET(
@@ -341,11 +385,11 @@ export async function GET(
           "FI",
           variant.b2b_dropship_price_fi
         ),
-        variant_image_url: await resolveImageUrl(
+        variant_image_url: await resolveImageWithFallbackExt(
           product.image_folder,
           variant.variant_image_url ||
             (variant.sku ? legacyVariantLocks.get(variant.sku) ?? null : null),
-          { size: "thumb" }
+          "thumb"
         ),
       };
     })
@@ -473,18 +517,36 @@ export async function GET(
       return a.key.localeCompare(b.key);
     });
 
-  const [rawImageUrls, rawThumbnailUrls, rawOriginalUrls] = await Promise.all([
-    loadImageUrls(product.image_folder, { size: "standard" }),
-    loadImageUrls(product.image_folder, { size: "thumb" }),
-    loadImageUrls(product.image_folder, { size: "original" }),
-  ]);
-
+  const rawImageUrls = await loadImageUrls(product.image_folder, {
+    size: "standard",
+  });
   const imageUrls = preferImageUrlFilenameFirst(rawImageUrls, preferredMain);
-  const thumbnailUrls = preferImageUrlFilenameFirst(
-    rawThumbnailUrls,
-    preferredMain
+
+  // Keep gallery, thumbnails, and originals index-aligned by resolving
+  // thumbnail/original from each visible gallery filename.
+  const resolvedByImage = await Promise.all(
+    imageUrls.map(async (url) => {
+      const filename = urlFilename(url);
+      if (!filename) {
+        return {
+          thumbnail: null as string | null,
+          original: null as string | null,
+        };
+      }
+      const [thumbnail, original] = await Promise.all([
+        resolveImageWithFallbackExt(product.image_folder, filename, "thumb"),
+        resolveImageWithFallbackExt(product.image_folder, filename, "original"),
+      ]);
+      return { thumbnail, original };
+    })
   );
-  const originalUrls = preferImageUrlFilenameFirst(rawOriginalUrls, preferredMain);
+
+  const thumbnailUrls = resolvedByImage
+    .map((row) => row.thumbnail)
+    .filter((value): value is string => Boolean(value));
+  const originalUrls = resolvedByImage
+    .map((row) => row.original)
+    .filter((value): value is string => Boolean(value));
 
   return NextResponse.json({
     product: resolvedProduct,

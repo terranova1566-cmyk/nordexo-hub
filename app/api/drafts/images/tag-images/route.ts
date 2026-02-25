@@ -102,6 +102,12 @@ const normalizeMainSubtype = (value: unknown) => {
 const isDigiTaggedFileName = (fileName: string) =>
   DIGI_TAG_PATTERN.test(String(fileName || ""));
 
+const EXPLICIT_TAG_PATTERN =
+  /(?:\(\s*(MAIN|ENV|INF|VAR|DIGI)\s*\)|(?:^|[-_ ])(MAIN|ENV|INF|VAR|DIGI)(?=$|[-_ .)]))/i;
+
+const hasExplicitTagInFileName = (fileName: string) =>
+  EXPLICIT_TAG_PATTERN.test(String(fileName || ""));
+
 const pickFilesRoot = (productAbsolute: string, productRelative: string) => {
   const candidates = ["Files (F)", "files"];
   for (const name of candidates) {
@@ -160,6 +166,10 @@ const isDdPrefixFileName = (fileName: string) =>
 const resolveAutoDigiReason = async (absolutePath: string, fileName: string) => {
   if (isDdPrefixFileName(fileName)) {
     return 'Auto-tagged DIGI: filename starts with "DD".';
+  }
+  // Respect explicit filename tags (e.g. SCENE outputs saved as "(ENV)").
+  if (hasExplicitTagInFileName(fileName)) {
+    return null;
   }
   try {
     const metadata = await sharp(absolutePath).metadata();

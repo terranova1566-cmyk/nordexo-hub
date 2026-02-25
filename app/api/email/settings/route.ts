@@ -11,6 +11,27 @@ export const runtime = "nodejs";
 
 const SMTP_ACCOUNTS_TABLE = "partner_email_smtp_accounts";
 
+type SmtpAccountResponse = {
+  id: string;
+  name: string;
+  fromEmail: string;
+  fromName: string | null;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  hasPassword: boolean;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+type SendpulseSenderResponse = {
+  email: string;
+  name: string | null;
+  status: string | null;
+};
+
 type CreateOrUpdatePayload = {
   id?: string;
   name?: string;
@@ -39,11 +60,20 @@ const toPort = (value: unknown) => {
   return rounded;
 };
 
+const normalizeSendpulseError = (error: unknown) => {
+  const message = String((error as Error)?.message ?? "").trim();
+  const lowered = message.toLowerCase();
+  if (lowered.includes("missing sendpulse client credentials")) {
+    return "SendPulse credentials are missing on the server.";
+  }
+  return message || "Unable to load SendPulse senders.";
+};
+
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
-  let smtpAccounts: any[] = [];
+  let smtpAccounts: SmtpAccountResponse[] = [];
   let smtpSettingsTableMissing = false;
   try {
     const result = await listEmailSmtpAccounts(auth.supabase, {
@@ -83,7 +113,7 @@ export async function GET() {
       }
     : null;
 
-  let sendpulseSenders: any[] = [];
+  let sendpulseSenders: SendpulseSenderResponse[] = [];
   let sendpulseError: string | null = null;
   try {
     const list = await listSendpulseSenders();
@@ -93,15 +123,26 @@ export async function GET() {
       status: sender.status ?? null,
     }));
   } catch (error) {
-    sendpulseError = (error as Error).message || "Unable to load SendPulse senders.";
+    sendpulseError = normalizeSendpulseError(error);
   }
+
+  const smtpActiveCount = smtpAccounts.filter((account) => account.isActive).length;
+  const smtpConfigured = smtpActiveCount > 0 || Boolean(envSender);
+  const sendpulseConfigured =
+    !sendpulseError &&
+    sendpulseSenders.some(
+      (sender) => String(sender.status ?? "").trim().toLowerCase() !== "inactive"
+    );
 
   return NextResponse.json({
     smtpAccounts,
     smtpSettingsTableMissing,
+    smtpActiveCount,
+    smtpConfigured,
     envSender,
     sendpulseSenders,
     sendpulseError,
+    sendpulseConfigured,
   });
 }
 

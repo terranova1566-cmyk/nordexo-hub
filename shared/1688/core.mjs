@@ -165,12 +165,17 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
         if (started) break;
         continue;
       }
-      if (
-        !hasTabs &&
-        !/^-?\d+(?:[.,]\d+)?(?:\s*(?:kg|g|公斤|千克|克))?$/i.test(line)
-      ) {
-        if (started) break;
-        continue;
+      if (!hasTabs) {
+        const probeParts = line.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+        if (probeParts.length <= weightIdx) {
+          if (started) break;
+          continue;
+        }
+        const probeWeight = toGramsFromHeaderUnit(probeParts[weightIdx], unit);
+        if (!probeWeight) {
+          if (started) break;
+          continue;
+        }
       }
 
       const parts = hasTabs
@@ -183,7 +188,7 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
 
       started = true;
       out.weights.push(grams);
-      const name = hasTabs ? asText(parts[0]) : "";
+      const name = asText(parts[0]);
       const strictName = normalizeNameStrict(name);
       const looseName = normalizeNameLoose(name);
       if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);

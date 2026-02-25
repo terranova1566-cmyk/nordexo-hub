@@ -5,6 +5,8 @@ import { loadJsonFile, safeExtractorJsonPath } from "@/lib/production-queue-stat
 import { isAllowedQueueImageHost } from "@/lib/queue-image-cache";
 import {
   PARTNER_SUGGESTION_PROVIDER,
+  mapMarketConfigRows,
+  mapShippingClassRows,
   loadSuggestionRecord,
   saveSuggestionRecord,
 } from "@/lib/product-suggestions";
@@ -79,6 +81,23 @@ type VariantCachePayload = {
   weight_review?: WeightReviewPayload | null;
 };
 
+type SekPricingContext = {
+  market: string;
+  currency: "SEK";
+  shipping_class: string;
+  fx_rate_cny: number;
+  weight_threshold_g: number;
+  packing_fee: number;
+  markup_percent: number;
+  markup_fixed: number;
+  rate_low: number;
+  rate_high: number;
+  base_low: number;
+  base_high: number;
+  mult_low: number;
+  mult_high: number;
+};
+
 const variantTranslationCache = new Map<string, string>();
 
 const asText = (value: unknown) =>
@@ -142,6 +161,13 @@ const normalizeVariantTextKey = (value: unknown) =>
     .replace(/[（]/g, "(")
     .replace(/[）]/g, ")")
     .toLowerCase();
+
+const normalizeShippingClass = (value: unknown) => {
+  const code = asText(value).toUpperCase();
+  if (!code) return "NOR";
+  if (["NOR", "BAT", "LIQ", "PBA"].includes(code)) return code;
+  return "NOR";
+};
 
 type VariantImageTarget = {
   thumbUrl: string;
@@ -338,6 +364,180 @@ const pickText = (...values: unknown[]) => {
   return "";
 };
 
+const isLikelyNumericTableCell = (value: unknown) => {
+  const text = asText(value);
+  if (!text) return false;
+  return (
+    /^-?\d+(?:[.,]\d+)?(?:\s*(?:cm|mm|m|kg|g|cm³|m³|ml|l))?$/i.test(text) ||
+    /^\d+(?:[.*xX×]\d+){1,5}(?:\s*(?:cm|mm|m))?$/i.test(text)
+  );
+};
+
+const buildStructuredWeightKey = (parts: unknown[]) => {
+  const tokens = parts
+    .map((entry) => normalizeVariantTextKey(entry))
+    .filter(Boolean);
+  return tokens.join("|");
+};
+
+const resolveStructuredRowWeightGrams = (
+  rowRec: Record<string, unknown>,
+  weightCellCandidate: unknown
+) => {
+  const candidates = [
+    rowRec.weight_grams,
+    rowRec.weightGrams,
+    rowRec.weight_raw,
+    rowRec.weightRaw,
+    rowRec.weight,
+    weightCellCandidate,
+  ];
+  for (const candidate of candidates) {
+    const grams = asWeightGrams(candidate, { allowUnitless: true });
+    if (typeof grams === "number" && Number.isFinite(grams) && grams > 0) {
+      return Math.round(grams);
+    }
+  }
+  return null;
+};
+
+const buildStructuredVariantWeightLookup = (item: Record<string, unknown>) => {
+  const table =
+    item.variant_table_1688 && typeof item.variant_table_1688 === "object"
+      ? (item.variant_table_1688 as Record<string, unknown>)
+      : null;
+  const rows = Array.isArray(table?.rows) ? (table!.rows as unknown[]) : [];
+  const headers = Array.isArray(table?.headers)
+    ? (table!.headers as unknown[]).map((entry) => asText(entry))
+    : [];
+  const weightIdx = Math.max(
+    0,
+    headers.findIndex((entry) => /(重量|weight)/i.test(entry))
+  );
+  const keyToWeights = new Map<string, Set<number>>();
+  const collectedWeights: number[] = [];
+
+  const add = (key: string, grams: number) => {
+    if (!key) return;
+    const bucket = keyToWeights.get(key) || new Set<number>();
+    bucket.add(grams);
+    keyToWeights.set(key, bucket);
+  };
+
+  rows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const rowRec = row as Record<string, unknown>;
+    const rowCells = Array.isArray(rowRec.cells)
+      ? (rowRec.cells as unknown[]).map((entry) => asText(entry))
+      : [];
+    const weightCellCandidate =
+      rowCells.length > 0
+        ? rowCells[Math.min(weightIdx, rowCells.length - 1)]
+        : null;
+    const grams = resolveStructuredRowWeightGrams(rowRec, weightCellCandidate);
+    if (!grams) return;
+    collectedWeights.push(grams);
+
+    const rowName = asText(rowRec.name);
+    const primaryCell = asText(rowCells[0]) || rowName;
+    const secondaryCell =
+      rowCells.length > 1
+        ? asText(rowCells[1])
+        : rowCells.length === 1
+          ? ""
+          : "";
+    const textCells = rowCells.filter(
+      (cell, index) => index !== weightIdx && cell && !isLikelyNumericTableCell(cell)
+    );
+
+    [
+      buildStructuredWeightKey([primaryCell, secondaryCell]),
+      buildStructuredWeightKey([textCells[0], textCells[1]]),
+      buildStructuredWeightKey([primaryCell, textCells[1]]),
+      buildStructuredWeightKey([rowName, secondaryCell]),
+      buildStructuredWeightKey([rowName, primaryCell]),
+      buildStructuredWeightKey([primaryCell]),
+      buildStructuredWeightKey([rowName]),
+      buildStructuredWeightKey(textCells.slice(0, 3)),
+      buildStructuredWeightKey(textCells.slice(0, 2)),
+    ]
+      .filter(Boolean)
+      .forEach((key) => add(key, grams));
+  });
+
+  const byKey = new Map<string, number>();
+  keyToWeights.forEach((weights, key) => {
+    const values = Array.from(weights);
+    if (values.length !== 1) return;
+    byKey.set(key, values[0]);
+  });
+
+  return { byKey, weights: collectedWeights };
+};
+
+const applyStructuredVariantTableWeights = (
+  variations: unknown,
+  lookupByKey: Map<string, number>
+) => {
+  if (!variations || typeof variations !== "object") return variations;
+  if (lookupByKey.size === 0) return variations;
+  const variationRec = variations as Record<string, unknown>;
+  const combos = Array.isArray(variationRec.combos)
+    ? (variationRec.combos as unknown[])
+    : [];
+  if (combos.length === 0) return variations;
+
+  const nextCombos = combos.map((combo) => {
+    if (!combo || typeof combo !== "object") return combo;
+    const row = { ...(combo as Record<string, unknown>) };
+    const existingWeight = asWeightGrams(
+      pickText(
+        row.weight_grams,
+        row.weightGrams,
+        row.weight_raw,
+        row.weightRaw,
+        row.weight,
+        (row.details as Record<string, unknown> | null)?.weight,
+        (row.details as Record<string, unknown> | null)?.["重量"]
+      ),
+      { allowUnitless: true }
+    );
+    if (typeof existingWeight === "number" && Number.isFinite(existingWeight) && existingWeight > 0) {
+      row.weight_grams = Math.round(existingWeight);
+      if (!asText(row.weight_raw)) row.weight_raw = `${Math.round(existingWeight)}g`;
+      if (!asText(row.weightRaw)) row.weightRaw = `${Math.round(existingWeight)}g`;
+      return row;
+    }
+
+    const t1 = pickText(row.t1_zh, row.t1, row.t1_en);
+    const t2 = pickText(row.t2_zh, row.t2, row.t2_en);
+    const t3 = pickText(row.t3_zh, row.t3, row.t3_en);
+    const candidateKeys = [
+      buildStructuredWeightKey([t1, t2, t3]),
+      buildStructuredWeightKey([t1, t2]),
+      buildStructuredWeightKey([t1]),
+      buildStructuredWeightKey([t2]),
+      buildStructuredWeightKey([t1, row.t2]),
+      buildStructuredWeightKey([row.t1, t2]),
+    ];
+    const matched = candidateKeys
+      .map((key) => lookupByKey.get(key))
+      .find((entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0);
+    if (typeof matched !== "number") return row;
+
+    const grams = Math.round(matched);
+    row.weight_grams = grams;
+    if (!asText(row.weight_raw)) row.weight_raw = `${grams}g`;
+    if (!asText(row.weightRaw)) row.weightRaw = `${grams}g`;
+    return row;
+  });
+
+  return {
+    ...variationRec,
+    combos: nextCombos,
+  };
+};
+
 const buildLangPair = (combo: Record<string, unknown>, rawKey: string, zhKeys: string[], enKeys: string[]) => {
   const raw = pickText(combo[rawKey]);
   let zh = pickText(...zhKeys.map((key) => combo[key]));
@@ -367,6 +567,74 @@ const getAdminClient = () => {
   return createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+};
+
+const loadSekPricingContext = async (
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>,
+  selectedOfferRaw: unknown
+): Promise<SekPricingContext | null> => {
+  const selectedOffer =
+    selectedOfferRaw && typeof selectedOfferRaw === "object"
+      ? (selectedOfferRaw as Record<string, unknown>)
+      : null;
+  const shippingClass = normalizeShippingClass(
+    selectedOffer?._digideal_shipping_class ||
+      selectedOffer?._production_shipping_class ||
+      selectedOffer?.shipping_class ||
+      selectedOffer?.product_shiptype
+  );
+
+  const { data: marketRows, error: marketError } = await adminClient
+    .from("b2b_pricing_markets")
+    .select(
+      "market, currency, fx_rate_cny, weight_threshold_g, packing_fee, markup_percent, markup_fixed"
+    );
+  if (marketError) throw new Error(marketError.message);
+
+  const markets = mapMarketConfigRows(marketRows ?? []);
+  const market =
+    markets.find((entry) => asText(entry.currency).toUpperCase() === "SEK") ||
+    markets.find((entry) => asText(entry.market).toUpperCase() === "SEK") ||
+    null;
+  if (!market) return null;
+
+  const { data: classRows, error: classError } = await adminClient
+    .from("b2b_pricing_shipping_classes")
+    .select("market, shipping_class, rate_low, rate_high, base_low, base_high, mult_low, mult_high")
+    .eq("market", market.market);
+  if (classError) throw new Error(classError.message);
+
+  const shippingClasses = mapShippingClassRows(classRows ?? []);
+  const shippingClassRow =
+    shippingClasses.find(
+      (entry) =>
+        asText(entry.market).toUpperCase() === asText(market.market).toUpperCase() &&
+        asText(entry.shipping_class).toUpperCase() === shippingClass
+    ) ||
+    shippingClasses.find(
+      (entry) =>
+        asText(entry.market).toUpperCase() === asText(market.market).toUpperCase() &&
+        asText(entry.shipping_class).toUpperCase() === "NOR"
+    ) ||
+    null;
+  if (!shippingClassRow) return null;
+
+  return {
+    market: asText(market.market).toUpperCase(),
+    currency: "SEK",
+    shipping_class: asText(shippingClassRow.shipping_class).toUpperCase() || "NOR",
+    fx_rate_cny: Number(market.fx_rate_cny),
+    weight_threshold_g: Number(market.weight_threshold_g),
+    packing_fee: Number(market.packing_fee),
+    markup_percent: Number(market.markup_percent),
+    markup_fixed: Number(market.markup_fixed),
+    rate_low: Number(shippingClassRow.rate_low),
+    rate_high: Number(shippingClassRow.rate_high),
+    base_low: Number(shippingClassRow.base_low),
+    base_high: Number(shippingClassRow.base_high),
+    mult_low: Number(shippingClassRow.mult_low),
+    mult_high: Number(shippingClassRow.mult_high),
+  };
 };
 
 async function requireAdmin() {
@@ -684,15 +952,26 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
       : payload && typeof payload === "object" && Array.isArray((payload as any).items)
         ? (payload as any).items[0]
         : payload;
-  const variations = item && typeof item === "object" ? (item as any).variations : null;
+  const itemRecord =
+    item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+  const structuredTableWeightLookup = buildStructuredVariantWeightLookup(itemRecord);
+  const baseVariations =
+    item && typeof item === "object" ? (item as any).variations : null;
+  const variations = applyStructuredVariantTableWeights(
+    baseVariations,
+    structuredTableWeightLookup.byKey
+  );
   const readableSource =
     asText((item as any)?.readable_1688_full) || asText((item as any)?.readable_1688);
   const { weightByName: tableWeightByName, weights: tableWeights } =
     parseVariantWeightTableFromReadableText(readableSource);
   const fallbackWeightGrams = (() => {
-    const tableDerived = pickFallbackWeightGrams(tableWeights, {
-      allowUnitless: true,
-    });
+    const tableDerived = pickFallbackWeightGrams(
+      [...tableWeights, ...structuredTableWeightLookup.weights],
+      {
+        allowUnitless: true,
+      }
+    );
     if (typeof tableDerived === "number" && Number.isFinite(tableDerived) && tableDerived > 0) {
       return tableDerived;
     }
@@ -828,6 +1107,15 @@ const hasSuspiciousCachedWeights = (combos: VariantCombo[]) => {
   return false;
 };
 
+const hasMissingCachedWeights = (combos: VariantCombo[]) => {
+  if (!Array.isArray(combos) || combos.length === 0) return false;
+  const weightedCount = combos.filter((combo) => {
+    const grams = Number(combo.weight_grams);
+    return Number.isFinite(grams) && grams > 0;
+  }).length;
+  return weightedCount === 0;
+};
+
 const loadVariantCacheFromSelectedOffer = (
   selectedOfferRaw: unknown
 ): VariantCachePayload | null => {
@@ -844,7 +1132,6 @@ const loadVariantCacheFromSelectedOffer = (
   if (!cacheRaw) return null;
   const combosRaw = Array.isArray(cacheRaw.combos) ? cacheRaw.combos : [];
   const combos = combosRaw.map((entry, idx) => normalizeCachedVariantCombo(entry, idx));
-  if (combos.length === 0) return null;
   const galleryRaw = Array.isArray(cacheRaw.gallery_images)
     ? cacheRaw.gallery_images
     : [];
@@ -865,6 +1152,7 @@ const loadVariantCacheFromSelectedOffer = (
       if (!exists) gallery_images.push(derived);
     });
   }
+  if (combos.length === 0 && gallery_images.length === 0) return null;
   return {
     cached_at: asText(cacheRaw.cached_at) || new Date().toISOString(),
     payload_file_path: asText(cacheRaw.payload_file_path) || null,
@@ -1096,10 +1384,12 @@ export async function GET(request: NextRequest) {
     );
     const cached = loadVariantCacheFromSelectedOffer(selectedOffer);
     const cachedWeightsSuspicious = hasSuspiciousCachedWeights(cached?.combos || []);
+    const cachedWeightsMissing = hasMissingCachedWeights(cached?.combos || []);
     const cacheMatchesPayload =
       Boolean(cached) &&
       asText(cached?.payload_file_path || "") === asText(payloadFilePath || "") &&
-      !cachedWeightsSuspicious;
+      !cachedWeightsSuspicious &&
+      !cachedWeightsMissing;
 
     const payloadLoaded = cacheMatchesPayload
       ? null
@@ -1139,8 +1429,12 @@ export async function GET(request: NextRequest) {
     const cachedGalleryCount = Array.isArray(cached?.gallery_images)
       ? cached.gallery_images.length
       : 0;
+    const hasCacheablePayload =
+      translatedCombos.length > 0 ||
+      galleryImages.length > 0 ||
+      Boolean(weightReview);
     const shouldPersistCache =
-      translatedCombos.length > 0 &&
+      hasCacheablePayload &&
       (!cacheMatchesPayload ||
         translatedCombos !== sourceCombos ||
         cachedGalleryCount !== galleryImages.length ||
@@ -1185,6 +1479,7 @@ export async function GET(request: NextRequest) {
     const packsText =
       savedPacksText ||
       asText((selectedOffer as any)?._production_variant_packs_text);
+    const sekPricingContext = await loadSekPricingContext(adminClient, selectedOffer);
 
     return NextResponse.json({
       provider,
@@ -1198,6 +1493,7 @@ export async function GET(request: NextRequest) {
       packs_text: packsText,
       gallery_images: galleryImages,
       weight_review: weightReview,
+      sek_pricing_context: sekPricingContext,
     });
   } catch (error) {
     return NextResponse.json(
@@ -1245,10 +1541,12 @@ export async function POST(request: NextRequest) {
     );
     const cached = loadVariantCacheFromSelectedOffer(selectedOffer);
     const cachedWeightsSuspicious = hasSuspiciousCachedWeights(cached?.combos || []);
+    const cachedWeightsMissing = hasMissingCachedWeights(cached?.combos || []);
     const cacheMatchesPayload =
       Boolean(cached) &&
       asText(cached?.payload_file_path || "") === asText(payloadFilePath || "") &&
-      !cachedWeightsSuspicious;
+      !cachedWeightsSuspicious &&
+      !cachedWeightsMissing;
     const payloadLoaded = cacheMatchesPayload
       ? null
       : await loadPayloadCombos({ selected_offer: selectedOffer as Record<string, unknown> });

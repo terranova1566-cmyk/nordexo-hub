@@ -344,6 +344,18 @@ const useStyles = makeStyles({
       paddingBottom: "8px",
     },
   },
+  tableStatusCell: {
+    textAlign: "center",
+    paddingTop: "24px",
+    paddingBottom: "24px",
+  },
+  tableStatusContent: {
+    display: "inline-flex",
+    width: "100%",
+    minHeight: "56px",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   imageCol: {
     width: "83px",
     paddingLeft: "8px",
@@ -676,10 +688,13 @@ type Wishlist = {
   item_count?: number;
 };
 
+type ProductVariantPreview = NonNullable<ProductListItem["variant_preview"]>[number];
+
 const pageSizeOptions = [25, 50, 100, 200];
 const priceFormatter = new Intl.NumberFormat("sv-SE", {
   maximumFractionDigits: 0,
 });
+const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
 
 const formatPriceValue = (value: number) => priceFormatter.format(value);
 
@@ -727,6 +742,31 @@ const formatRangeSummary = (
   }
   return `→ ${formatShortDate(to)}`;
 };
+
+const sanitizeSwedishVariantPart = (value: string | null) => {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(CJK_CHAR_PATTERN, "")
+    .replace(/[，。；：、]/g, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s*[/|]\s*$/g, "")
+    .replace(/^\s*[/|]\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || raw;
+};
+
+const buildSwedishVariantLabel = (variant: ProductVariantPreview) =>
+  [
+    variant.variation_color_se,
+    variant.variation_size_se,
+    variant.variation_other_se,
+    variant.variation_amount_se,
+  ]
+    .map(sanitizeSwedishVariantPart)
+    .filter(Boolean)
+    .join(" / ");
 
 const TrashIcon = () => (
   <svg
@@ -1334,33 +1374,29 @@ function ProductsPageInner() {
           key: "SE",
           label: "SE",
           currency: "SEK",
-          getValue: (
-            variant: NonNullable<ProductListItem["variant_preview"]>[number]
-          ) => variant.b2b_dropship_price_se,
+          getValue: (variant: ProductVariantPreview) =>
+            variant.b2b_dropship_price_se,
         },
         {
           key: "NO",
           label: "NO",
           currency: "NOK",
-          getValue: (
-            variant: NonNullable<ProductListItem["variant_preview"]>[number]
-          ) => variant.b2b_dropship_price_no,
+          getValue: (variant: ProductVariantPreview) =>
+            variant.b2b_dropship_price_no,
         },
         {
           key: "DK",
           label: "DK",
           currency: "DKK",
-          getValue: (
-            variant: NonNullable<ProductListItem["variant_preview"]>[number]
-          ) => variant.b2b_dropship_price_dk,
+          getValue: (variant: ProductVariantPreview) =>
+            variant.b2b_dropship_price_dk,
         },
         {
           key: "FI",
           label: "FI",
           currency: "EUR",
-          getValue: (
-            variant: NonNullable<ProductListItem["variant_preview"]>[number]
-          ) => variant.b2b_dropship_price_fi,
+          getValue: (variant: ProductVariantPreview) =>
+            variant.b2b_dropship_price_fi,
         },
       ].filter((column) => normalizedMarkets.includes(column.key)),
     [normalizedMarkets]
@@ -1654,14 +1690,7 @@ function ProductsPageInner() {
                         </TableHeader>
                         <TableBody>
                           {previewVariants.map((variant, index) => {
-                            const variantName = [
-                              variant.variation_color_se,
-                              variant.variation_size_se,
-                              variant.variation_other_se,
-                              variant.variation_amount_se,
-                            ]
-                              .filter(Boolean)
-                              .join(", ");
+                            const variantName = buildSwedishVariantLabel(variant);
                             return (
                               <TableRow key={`${variant.sku ?? "sku"}-${index}`}>
                                 <TableCell>{variant.sku ?? t("common.notAvailable")}</TableCell>
@@ -2338,47 +2367,62 @@ function ProductsPageInner() {
           <MessageBar intent="warning">{advancedError}</MessageBar>
         ) : null}
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
-        {isLoading ? (
-          <Spinner label={t("products.loading")} />
-        ) : products.length === 0 ? (
-          <Text>{t("products.empty")}</Text>
-        ) : (
-          <Table className={styles.table} size="small">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell
-                  className={styles.imageCol}
-                  aria-label={t("products.table.image")}
+        <Table className={styles.table} size="small">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell
+                className={styles.imageCol}
+                aria-label={t("products.table.image")}
+              />
+              <TableHeaderCell className={styles.productCol}>
+                {t("products.table.product")}
+              </TableHeaderCell>
+              <TableHeaderCell>{t("products.table.spu")}</TableHeaderCell>
+              <TableHeaderCell>
+                {t("products.table.createdUpdated")}
+              </TableHeaderCell>
+              <TableHeaderCell>{t("products.table.variants")}</TableHeaderCell>
+              <TableHeaderCell>{t("products.table.save")}</TableHeaderCell>
+              <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
+              <TableHeaderCell className={styles.selectCol}>
+                <Checkbox
+                  label={t("common.selectAll")}
+                  checked={isLoading ? false : selectAllState}
+                  disabled={isLoading || products.length === 0}
+                  className={styles.selectCheckbox}
+                  onChange={(_, data) => {
+                    if (data.checked === true) {
+                      setSelectedRows(new Set(products.map((product) => product.id)));
+                    } else {
+                      setSelectedRows(new Set());
+                    }
+                  }}
                 />
-                <TableHeaderCell className={styles.productCol}>
-                  {t("products.table.product")}
-                </TableHeaderCell>
-                <TableHeaderCell>{t("products.table.spu")}</TableHeaderCell>
-                <TableHeaderCell>
-                  {t("products.table.createdUpdated")}
-                </TableHeaderCell>
-                <TableHeaderCell>{t("products.table.variants")}</TableHeaderCell>
-                <TableHeaderCell>{t("products.table.save")}</TableHeaderCell>
-                <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
-                <TableHeaderCell className={styles.selectCol}>
-                  <Checkbox
-                    label={t("common.selectAll")}
-                    checked={selectAllState}
-                    className={styles.selectCheckbox}
-                    onChange={(_, data) => {
-                      if (data.checked === true) {
-                        setSelectedRows(new Set(products.map((product) => product.id)));
-                      } else {
-                        setSelectedRows(new Set());
-                      }
-                    }}
-                  />
-                </TableHeaderCell>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={8} className={styles.tableStatusCell}>
+                  <div className={styles.tableStatusContent}>
+                    <Spinner appearance="primary" />
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>{rows}</TableBody>
-          </Table>
-        )}
+            ) : products.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className={styles.tableStatusCell}>
+                  <div className={styles.tableStatusContent}>
+                    <Text>{t("products.empty")}</Text>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows
+            )}
+          </TableBody>
+        </Table>
 
         <div className={styles.pagination}>
           <Text size={200} className={styles.metaText}>

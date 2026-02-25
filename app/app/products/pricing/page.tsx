@@ -622,10 +622,11 @@ export default function PricingPage() {
       });
       if (!response.ok) throw new Error(await response.text());
       const payload = await response.json();
+      const b2bRows = Number(payload?.b2b?.updatedRows ?? payload.updatedRows ?? 0);
+      const b2cRows = Number(payload?.b2c?.updatedRows ?? 0);
+      const b2cVariants = Number(payload?.updatedVariantPrices ?? 0);
       setSummary(
-        `${t("pricing.recalcSummary")} ${payload.processedVariants ?? 0} / ${
-          payload.updatedRows ?? 0
-        }`
+        `${t("pricing.recalcSummary")} B2B=${b2bRows}, B2C=${b2cRows}, B2C variants=${b2cVariants}`
       );
     } catch (error) {
       setMessage((error as Error).message || "Recalculate failed.");

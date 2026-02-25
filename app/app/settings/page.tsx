@@ -162,6 +162,46 @@ type AIImageEditPromptVersion = {
   created_at: string;
 };
 
+type UserRoleKey = "admin" | "external_partner" | "employee";
+type UserRoleLabel = "Admin" | "External Partner" | "Employee";
+
+type ManagedUser = {
+  user_id: string;
+  email: string | null;
+  full_name: string;
+  company_name: string;
+  preferred_locale: "en" | "sv" | "zh-Hans" | null;
+  role_key: UserRoleKey;
+  role_label: UserRoleLabel;
+  has_admin_access: boolean;
+  created_at: string | null;
+  last_sign_in_at: string | null;
+};
+
+const USER_ROLE_OPTIONS: Array<{ key: UserRoleKey; label: UserRoleLabel }> = [
+  { key: "admin", label: "Admin" },
+  { key: "external_partner", label: "External Partner" },
+  { key: "employee", label: "Employee" },
+];
+
+const normalizeRoleLabel = (
+  value: unknown,
+  isAdmin: boolean | null | undefined
+): UserRoleLabel => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  if (normalized === "admin") return "Admin";
+  if (normalized === "employee") return "Employee";
+  if (normalized === "external_partner" || normalized === "external") {
+    return "External Partner";
+  }
+
+  return isAdmin ? "Admin" : "External Partner";
+};
+
 const createImage = (url: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -755,6 +795,7 @@ const splitForHighlight = (text: string, query: string) => {
 const SETTINGS_TAB_VALUES = [
   "discovery",
   "user",
+  "users",
   "production",
   "zimage",
   "ai-image-edit",
@@ -792,14 +833,28 @@ export default function SettingsPage() {
   const [profileEmail, setProfileEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
+  const [jobTitle, setJobTitle] = useState<UserRoleLabel>("External Partner");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [preferredLocale, setPreferredLocale] = useState(locale);
+  const [currentUserIsAdmin, setCurrentUserIsAdmin] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [managedUsersError, setManagedUsersError] = useState<string | null>(null);
+  const [managedUsersSuccess, setManagedUsersSuccess] = useState<string | null>(null);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserCompany, setNewUserCompany] = useState("");
+  const [newUserLocale, setNewUserLocale] = useState<"en" | "sv" | "zh-Hans">(
+    locale
+  );
+  const [newUserRole, setNewUserRole] = useState<UserRoleKey>("external_partner");
+  const [newUserSaving, setNewUserSaving] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const [cropImage, setCropImage] = useState<string | null>(null);
@@ -1498,12 +1553,20 @@ export default function SettingsPage() {
         }
         const payload = await response.json();
         if (!isActive) return;
+        const nextPreferredLocale =
+          payload.preferred_locale === "en" ||
+          payload.preferred_locale === "sv" ||
+          payload.preferred_locale === "zh-Hans"
+            ? payload.preferred_locale
+            : locale;
         setProfileEmail(payload.email ?? "");
         setFullName(payload.full_name ?? "");
         setCompanyName(payload.company_name ?? "");
-        setJobTitle(payload.job_title ?? "");
+        setJobTitle(normalizeRoleLabel(payload.job_title, payload.is_admin));
         setAvatarUrl(payload.avatar_url ?? "");
-        setPreferredLocale(payload.preferred_locale ?? locale);
+        setPreferredLocale(nextPreferredLocale);
+        setCurrentUserIsAdmin(Boolean(payload.is_admin));
+        setNewUserLocale(nextPreferredLocale);
       } catch (err) {
         if (!isActive) return;
         setProfileError((err as Error).message);
@@ -1759,7 +1822,6 @@ export default function SettingsPage() {
         body: JSON.stringify({
           full_name: fullName,
           company_name: companyName,
-          job_title: jobTitle,
           avatar_url: avatarUrl || null,
           preferred_locale: preferredLocale,
         }),
@@ -1779,6 +1841,70 @@ export default function SettingsPage() {
       setProfileSaveError((err as Error).message);
     } finally {
       setIsProfileSaving(false);
+    }
+  };
+
+  const loadManagedUsers = useCallback(async () => {
+    if (!currentUserIsAdmin) return;
+    setManagedUsersLoading(true);
+    setManagedUsersError(null);
+    try {
+      const response = await fetch("/api/settings/users", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as
+        | { users?: ManagedUser[]; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load users.");
+      }
+      setManagedUsers(Array.isArray(payload?.users) ? payload.users : []);
+    } catch (err) {
+      setManagedUsersError((err as Error).message);
+    } finally {
+      setManagedUsersLoading(false);
+    }
+  }, [currentUserIsAdmin]);
+
+  useEffect(() => {
+    if (activeTab !== "users" || !currentUserIsAdmin) return;
+    loadManagedUsers();
+  }, [activeTab, currentUserIsAdmin, loadManagedUsers]);
+
+  const handleCreateManagedUser = async () => {
+    setManagedUsersError(null);
+    setManagedUsersSuccess(null);
+    setNewUserSaving(true);
+    try {
+      const response = await fetch("/api/settings/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: newUserEmail,
+          password: newUserPassword,
+          full_name: newUserName,
+          company_name: newUserCompany,
+          preferred_locale: newUserLocale,
+          role_key: newUserRole,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { user?: ManagedUser; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to create user.");
+      }
+      setManagedUsersSuccess("User created.");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserName("");
+      setNewUserCompany("");
+      setNewUserRole("external_partner");
+      setNewUserLocale(preferredLocale);
+      await loadManagedUsers();
+      setTimeout(() => setManagedUsersSuccess(null), 2500);
+    } catch (err) {
+      setManagedUsersError((err as Error).message);
+    } finally {
+      setNewUserSaving(false);
     }
   };
 
@@ -2198,6 +2324,7 @@ export default function SettingsPage() {
         >
           <Tab value="discovery">{t("settings.discovery.tab")}</Tab>
           <Tab value="user">{t("settings.user.tab")}</Tab>
+          {currentUserIsAdmin ? <Tab value="users">Users</Tab> : null}
           <Tab value="production">{t("settings.production.tab")}</Tab>
           <Tab value="zimage">{t("settings.zimage.tab")}</Tab>
           <Tab value="ai-image-edit">{t("settings.aiImage.tab")}</Tab>
@@ -2577,11 +2704,16 @@ export default function SettingsPage() {
                 />
               </Field>
               <Field label={t("settings.user.basic.role")}>
-                <Input
-                  value={jobTitle}
-                  onChange={(_, data) => setJobTitle(data.value)}
+                <Dropdown
+                  selectedOptions={[jobTitle]}
                   disabled={profileLoading}
-                />
+                >
+                  {USER_ROLE_OPTIONS.map((option) => (
+                    <Option key={option.key} value={option.label}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Dropdown>
               </Field>
               <Field label={t("settings.user.basic.email")}>
                 <Input value={profileEmail} disabled />
@@ -2738,6 +2870,160 @@ export default function SettingsPage() {
               {isProfileSaving ? t("settings.user.saving") : t("common.save")}
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {activeTab === "users" ? (
+        <div className={styles.sectionGrid}>
+          {currentUserIsAdmin ? (
+            <>
+              <Card className={styles.card}>
+                <Text weight="semibold">Add user</Text>
+                <Text size={200} className={styles.helperText}>
+                  Create a new user with email, password, role, and preferred language.
+                </Text>
+                <div className={styles.infoGrid}>
+                  <Field label="Email">
+                    <Input
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(_, data) => setNewUserEmail(data.value)}
+                      disabled={newUserSaving}
+                    />
+                  </Field>
+                  <Field label="Password">
+                    <Input
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(_, data) => setNewUserPassword(data.value)}
+                      disabled={newUserSaving}
+                    />
+                  </Field>
+                  <Field label="Name">
+                    <Input
+                      value={newUserName}
+                      onChange={(_, data) => setNewUserName(data.value)}
+                      disabled={newUserSaving}
+                    />
+                  </Field>
+                  <Field label="Company">
+                    <Input
+                      value={newUserCompany}
+                      onChange={(_, data) => setNewUserCompany(data.value)}
+                      disabled={newUserSaving}
+                    />
+                  </Field>
+                  <Field label="Role">
+                    <Dropdown
+                      selectedOptions={[newUserRole]}
+                      onOptionSelect={(_, data) =>
+                        setNewUserRole(
+                          String(data.optionValue ?? "external_partner") as UserRoleKey
+                        )
+                      }
+                      disabled={newUserSaving}
+                    >
+                      {USER_ROLE_OPTIONS.map((option) => (
+                        <Option key={option.key} value={option.key}>
+                          {option.label}
+                        </Option>
+                      ))}
+                    </Dropdown>
+                  </Field>
+                  <Field label={t("settings.user.preferences.language")}>
+                    <Dropdown
+                      selectedOptions={[newUserLocale]}
+                      onOptionSelect={(_, data) =>
+                        setNewUserLocale(
+                          String(data.optionValue ?? "en") as "en" | "sv" | "zh-Hans"
+                        )
+                      }
+                      disabled={newUserSaving}
+                    >
+                      <Option value="en">{t("language.english")}</Option>
+                      <Option value="sv">{t("language.swedish")}</Option>
+                      <Option value="zh-Hans">中文</Option>
+                    </Dropdown>
+                  </Field>
+                </div>
+                <div className={styles.saveRow}>
+                  <Button
+                    appearance="primary"
+                    onClick={handleCreateManagedUser}
+                    disabled={
+                      newUserSaving ||
+                      !newUserEmail.trim() ||
+                      newUserPassword.length < 8
+                    }
+                  >
+                    {newUserSaving ? t("common.loading") : "Create user"}
+                  </Button>
+                </div>
+              </Card>
+
+              {managedUsersError ? <MessageBar>{managedUsersError}</MessageBar> : null}
+              {managedUsersSuccess ? (
+                <MessageBar intent="success">{managedUsersSuccess}</MessageBar>
+              ) : null}
+
+              <Card className={styles.card}>
+                <div className={styles.systemHeader}>
+                  <Text weight="semibold">Users</Text>
+                  <Button
+                    appearance="subtle"
+                    onClick={loadManagedUsers}
+                    disabled={managedUsersLoading}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+                {managedUsersLoading ? (
+                  <Spinner label="Loading users" />
+                ) : (
+                  <Table size="small" className={styles.metricsTable}>
+                    <TableHeader>
+                      <TableRow className={styles.metricsHeader}>
+                        <TableHeaderCell>Name</TableHeaderCell>
+                        <TableHeaderCell>Email</TableHeaderCell>
+                        <TableHeaderCell>Company</TableHeaderCell>
+                        <TableHeaderCell>Role</TableHeaderCell>
+                        <TableHeaderCell>Language</TableHeaderCell>
+                        <TableHeaderCell>Access</TableHeaderCell>
+                        <TableHeaderCell>Created</TableHeaderCell>
+                        <TableHeaderCell>Last sign-in</TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {managedUsers.length > 0 ? (
+                        managedUsers.map((user) => (
+                          <TableRow key={user.user_id}>
+                            <TableCell>{user.full_name || "-"}</TableCell>
+                            <TableCell>{user.email || "-"}</TableCell>
+                            <TableCell>{user.company_name || "-"}</TableCell>
+                            <TableCell>{user.role_label}</TableCell>
+                            <TableCell>{user.preferred_locale || "-"}</TableCell>
+                            <TableCell>
+                              {user.has_admin_access ? "Admin" : "Partner"}
+                            </TableCell>
+                            <TableCell>{formatDateTime(user.created_at)}</TableCell>
+                            <TableCell>{formatDateTime(user.last_sign_in_at)}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8}>No users found.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </Card>
+            </>
+          ) : (
+            <Card className={styles.card}>
+              <MessageBar>You do not have permission to manage users.</MessageBar>
+            </Card>
+          )}
         </div>
       ) : null}
 

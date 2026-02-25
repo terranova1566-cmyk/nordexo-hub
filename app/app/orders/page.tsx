@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -12,6 +13,13 @@ import {
   DialogTitle,
   Field,
   Input,
+  Dropdown,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+  Option,
   Textarea,
   Spinner,
   Table,
@@ -26,8 +34,13 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useI18n } from "@/components/i18n-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { collectMacros } from "@/lib/email-templates";
+import { formatOrderContentList } from "@/lib/orders/content-list";
+import { buildOrderEmailMacroVariables } from "@/lib/orders/email-macros";
+import { normalizeOrderPlatformName } from "@/lib/orders/platform";
 
 type OrderRow = {
   id: string;
@@ -40,10 +53,16 @@ type OrderRow = {
   customer_zip: string | null;
   transaction_date: string | null;
   date_shipped: string | null;
+  status: string | null;
+  is_delayed: boolean;
+  delay_days: number | null;
+  latest_notification_name?: string | null;
+  latest_notification_sent_at?: string | null;
 };
 
 type OrderItem = {
   id: string;
+  item_image_url?: string | null;
   sku: string | null;
   quantity: number | null;
   sales_value_eur: number | null;
@@ -71,6 +90,7 @@ type OrderDetails = {
     customer_email: string | null;
     transaction_date: string | null;
     date_shipped: string | null;
+    status: string | null;
   } | null;
   items: OrderItem[];
   tracking_numbers: TrackingNumberEntry[];
@@ -103,11 +123,37 @@ type ResendDraft = {
   items: ResendItemDraft[];
 };
 
+type EmailTemplateOption = {
+  template_id: string;
+  name: string;
+  subject_template: string;
+  body_template: string;
+  macros?: string[];
+};
+
+type EmailSenderOption = {
+  email: string;
+  name?: string | null;
+  status?: string | null;
+};
+
+type EmailTemplatePreview = {
+  rendered_subject: string;
+  rendered_body: string;
+  macro_resolution?: {
+    unknownMacros?: string[];
+    deprecatedMacros?: string[];
+    missingRequiredMacros?: string[];
+  };
+};
+
 const useStyles = makeStyles({
   page: {
     display: "flex",
     flexDirection: "column",
     gap: "20px",
+    flex: 1,
+    minHeight: 0,
   },
   header: {
     display: "flex",
@@ -127,6 +173,15 @@ const useStyles = makeStyles({
     gap: "12px",
     alignItems: "flex-end",
   },
+  filterLabel: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground4,
+    fontWeight: tokens.fontWeightRegular,
+    lineHeight: tokens.lineHeightBase100,
+  },
+  filterField: {
+    minWidth: "190px",
+  },
   searchInput: {
     width: "420px",
     maxWidth: "100%",
@@ -134,9 +189,14 @@ const useStyles = makeStyles({
   tableCard: {
     padding: "16px",
     borderRadius: "16px",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
   },
   tableWrapper: {
-    maxHeight: "520px",
+    flex: 1,
+    minHeight: 0,
     overflow: "auto",
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -160,6 +220,16 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
     gap: "10px",
     alignItems: "center",
+  },
+  actionMenuButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  actionButtonArrow: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: 1,
   },
   clickableRow: {
     cursor: "pointer",
@@ -212,11 +282,9 @@ const useStyles = makeStyles({
     },
   },
   detailsInfoGrid: {
-    display: "grid",
-    gridTemplateColumns: "70px 1fr",
-    columnGap: "12px",
-    rowGap: "6px",
-    alignItems: "baseline",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
   },
   detailsColumn: {
     display: "flex",
@@ -225,8 +293,12 @@ const useStyles = makeStyles({
   },
   detailsRow: {
     display: "flex",
-    alignItems: "baseline",
+    alignItems: "flex-start",
     gap: "6px",
+  },
+  detailsInfoKey: {
+    width: "72px",
+    flexShrink: 0,
   },
   detailLabel: {
     color: tokens.colorNeutralForeground3,
@@ -271,6 +343,9 @@ const useStyles = makeStyles({
   detailsColSelect: {
     width: "6%",
   },
+  detailsColImage: {
+    width: "72px",
+  },
   detailsColSku: {
     width: "200px",
   },
@@ -296,6 +371,140 @@ const useStyles = makeStyles({
     WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
+  },
+  itemImageWrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "45px",
+    height: "45px",
+    marginTop: "2px",
+    marginBottom: "2px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "visible",
+    cursor: "zoom-in",
+    ":hover .order-item-thumb-zoom": {
+      opacity: 1,
+      transform: "translateY(-50%) scale(1)",
+      pointerEvents: "auto",
+    },
+  },
+  itemImageThumb: {
+    width: "45px",
+    height: "45px",
+    borderRadius: "7px",
+    objectFit: "cover",
+    display: "block",
+  },
+  itemImageZoom: {
+    position: "absolute",
+    left: "calc(100% + 10px)",
+    top: "50%",
+    width: "90px",
+    height: "90px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: "0 10px 20px rgba(0,0,0,0.18)",
+    padding: "3px",
+    opacity: 0,
+    transform: "translateY(-50%) scale(0.96)",
+    transitionProperty: "opacity, transform",
+    transitionDuration: "120ms",
+    transitionTimingFunction: "ease",
+    pointerEvents: "none",
+    zIndex: 5,
+  },
+  itemImageZoomImg: {
+    width: "100%",
+    height: "100%",
+    borderRadius: "7px",
+    objectFit: "cover",
+    display: "block",
+  },
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 10px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "nowrap",
+  },
+  statusPending: {
+    color: tokens.colorStatusWarningForeground1,
+    backgroundColor: tokens.colorStatusWarningBackground1,
+    border: `1px solid ${tokens.colorStatusWarningBorder1}`,
+  },
+  statusPurchased: {
+    color: tokens.colorNeutralForeground1,
+    backgroundColor: tokens.colorNeutralBackground2,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  statusPacking: {
+    color: tokens.colorBrandForeground1,
+    backgroundColor: tokens.colorBrandBackground2,
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+  },
+  statusShipped: {
+    color: tokens.colorStatusSuccessForeground1,
+    backgroundColor: tokens.colorStatusSuccessBackground1,
+    border: `1px solid ${tokens.colorStatusSuccessBorder1}`,
+  },
+  warningPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 10px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorStatusDangerBorder1}`,
+    color: tokens.colorStatusDangerForeground1,
+    backgroundColor: tokens.colorStatusDangerBackground1,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "nowrap",
+  },
+  countryCell: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    whiteSpace: "nowrap",
+  },
+  countryFlag: {
+    width: "24px",
+    height: "24px",
+    display: "block",
+    marginTop: "2px",
+    marginBottom: "2px",
+    flexShrink: 0,
+  },
+  notificationField: {
+    display: "inline-flex",
+    alignItems: "center",
+    maxWidth: "220px",
+    minHeight: "24px",
+    padding: "2px 10px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  statusDialog: {
+    width: "420px",
+    maxWidth: "95vw",
+  },
+  statusDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
   },
   errorText: {
     color: tokens.colorStatusDangerForeground1,
@@ -370,6 +579,65 @@ const useStyles = makeStyles({
     gap: "8px",
     alignItems: "center",
   },
+  emailDialog: {
+    width: "980px",
+    maxWidth: "96vw",
+  },
+  emailDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+  },
+  emailSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  emailTemplateEditor: {
+    minHeight: "220px",
+  },
+  emailSelectionMeta: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+  },
+  emailPreviewCard: {
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  emailPreviewHeader: {
+    padding: "10px 12px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  emailPreviewBody: {
+    padding: "12px",
+    maxHeight: "300px",
+    overflowY: "auto",
+  },
+  emailMacroBadges: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "6px",
+  },
+  emailInfoText: {
+    color: tokens.colorStatusSuccessForeground1,
+  },
+  emailDialogActions: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  emailActionGroup: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
+  },
 });
 
 const TrashIcon = () => (
@@ -429,6 +697,48 @@ const normalizeTrackingEntries = (value: unknown): TrackingNumberEntry[] => {
   return entries;
 };
 
+type DisplayOrderStatus =
+  | "pending"
+  | "purchased"
+  | "being_packed_and_shipped"
+  | "shipped";
+
+type CountryCode = "NO" | "SE" | "FI";
+
+const flagByCountryCode: Record<CountryCode, string> = {
+  NO: "/icons/flags/no.svg",
+  SE: "/icons/flags/se.svg",
+  FI: "/icons/flags/fi.svg",
+};
+
+const normalizeDisplayStatus = (status: unknown): DisplayOrderStatus => {
+  const token = String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z]/g, "");
+  if (token === "pending") return "pending";
+  if (token === "purchased") return "purchased";
+  if (token === "beingpackedandshipped" || token === "packingandshipping") {
+    return "being_packed_and_shipped";
+  }
+  return "shipped";
+};
+
+const getCountryCodeFromSalesChannelId = (salesChannelId: unknown): CountryCode | null => {
+  const value = String(salesChannelId ?? "").trim().toUpperCase();
+  const suffix = value.slice(-2);
+  if (suffix === "NO" || suffix === "SE" || suffix === "FI") {
+    return suffix;
+  }
+  return null;
+};
+
+const ORDER_EMAIL_BCC_OPTIONS = [
+  "support@letsdeal.se",
+  "support@letsdeal.no",
+] as const;
+
 export default function OrdersPage() {
   const styles = useStyles();
   const { t } = useI18n();
@@ -441,6 +751,10 @@ export default function OrdersPage() {
   const [transactionTo, setTransactionTo] = useState("");
   const [shippedFrom, setShippedFrom] = useState("");
   const [shippedTo, setShippedTo] = useState("");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+  const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [warningFilter, setWarningFilter] = useState<string>("all");
   const [isExporting, setIsExporting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isAddingResend, setIsAddingResend] = useState(false);
@@ -450,6 +764,11 @@ export default function OrdersPage() {
   const [resendDialogLoading, setResendDialogLoading] = useState(false);
   const [resendDialogError, setResendDialogError] = useState<string | null>(null);
   const [resendDraft, setResendDraft] = useState<ResendDraft | null>(null);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusDialogValue, setStatusDialogValue] =
+    useState<DisplayOrderStatus>("pending");
+  const [statusDialogSaving, setStatusDialogSaving] = useState(false);
+  const [statusDialogError, setStatusDialogError] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
     new Set()
   );
@@ -457,6 +776,20 @@ export default function OrdersPage() {
   const [detailsById, setDetailsById] = useState<Record<string, OrderDetails>>(
     {}
   );
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateOption[]>([]);
+  const [emailSenders, setEmailSenders] = useState<EmailSenderOption[]>([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState("");
+  const [selectedEmailSenderEmail, setSelectedEmailSenderEmail] = useState("");
+  const [selectedEmailBcc, setSelectedEmailBcc] = useState<string[]>([]);
+  const [emailSubjectTemplateDraft, setEmailSubjectTemplateDraft] = useState("");
+  const [emailBodyTemplateDraft, setEmailBodyTemplateDraft] = useState("");
+  const [emailDialogLoading, setEmailDialogLoading] = useState(false);
+  const [emailDialogError, setEmailDialogError] = useState<string | null>(null);
+  const [emailDialogInfo, setEmailDialogInfo] = useState<string | null>(null);
+  const [emailPreview, setEmailPreview] = useState<EmailTemplatePreview | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
 
   useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
@@ -474,12 +807,458 @@ export default function OrdersPage() {
     return query ? `/api/orders?${query}` : "/api/orders";
   }, [searchQuery, transactionFrom, transactionTo, shippedFrom, shippedTo]);
 
+  const getNormalizedSalesChannelName = (row: {
+    sales_channel_name: string | null;
+    sales_channel_id: string | null;
+  }) =>
+    normalizeOrderPlatformName({
+      salesChannelName: row.sales_channel_name,
+      salesChannelId: row.sales_channel_id,
+    }).trim();
+
+  const salesChannelOptions = useMemo(() => {
+    const unique = new Set<string>();
+    rows.forEach((row) => {
+      const name = getNormalizedSalesChannelName(row);
+      if (name) unique.add(name);
+    });
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const next = rows.filter((row) => {
+      const normalizedCountry = getCountryCodeFromSalesChannelId(row.sales_channel_id);
+      if (countryFilter !== "all" && normalizedCountry !== countryFilter) {
+        return false;
+      }
+      if (
+        salesChannelFilter !== "all" &&
+        getNormalizedSalesChannelName(row) !== salesChannelFilter
+      ) {
+        return false;
+      }
+      const normalizedStatus = normalizeDisplayStatus(row.status);
+      if (statusFilter !== "all" && normalizedStatus !== statusFilter) {
+        return false;
+      }
+      if (warningFilter === "delayed" && !row.is_delayed) {
+        return false;
+      }
+      if (warningFilter === "on_time" && row.is_delayed) {
+        return false;
+      }
+      return true;
+    });
+    next.sort((a, b) => {
+      const aTime = Date.parse(a.transaction_date ?? "");
+      const bTime = Date.parse(b.transaction_date ?? "");
+      const normalizedATime = Number.isFinite(aTime) ? aTime : Number.POSITIVE_INFINITY;
+      const normalizedBTime = Number.isFinite(bTime) ? bTime : Number.POSITIVE_INFINITY;
+      if (normalizedATime !== normalizedBTime) {
+        return normalizedATime - normalizedBTime;
+      }
+      return (a.order_number ?? "").localeCompare(b.order_number ?? "");
+    });
+    return next;
+  }, [countryFilter, rows, salesChannelFilter, statusFilter, warningFilter]);
+
+  useEffect(() => {
+    if (salesChannelFilter === "all") return;
+    if (salesChannelOptions.includes(salesChannelFilter)) return;
+    setSalesChannelFilter("all");
+  }, [salesChannelFilter, salesChannelOptions]);
+
   const allSelected =
-    rows.length > 0 && rows.every((row) => selectedOrderIds.has(row.id));
-  const someSelected = rows.some((row) => selectedOrderIds.has(row.id));
+    filteredRows.length > 0 &&
+    filteredRows.every((row) => selectedOrderIds.has(row.id));
+  const someSelected = filteredRows.some((row) => selectedOrderIds.has(row.id));
   const selectAllState = allSelected ? true : someSelected ? "mixed" : false;
   const hasSelection = selectedOrderIds.size > 0;
   const hasResendSelection = resendItemIds.size > 0;
+  const selectedRows = useMemo(
+    () => filteredRows.filter((row) => selectedOrderIds.has(row.id)),
+    [filteredRows, selectedOrderIds]
+  );
+  const previewOrderRow = selectedRows[0] ?? null;
+  const selectedEmailTemplate = useMemo(
+    () =>
+      emailTemplates.find((template) => template.template_id === selectedEmailTemplateId) ??
+      null,
+    [emailTemplates, selectedEmailTemplateId]
+  );
+  const selectedEmailSender = useMemo(
+    () =>
+      emailSenders.find((sender) => sender.email === selectedEmailSenderEmail) ?? null,
+    [emailSenders, selectedEmailSenderEmail]
+  );
+  const selectedEmailMacroKeys = useMemo(() => {
+    if (!selectedEmailTemplate) return [];
+    return Array.from(
+      new Set([
+        ...(Array.isArray(selectedEmailTemplate.macros)
+          ? selectedEmailTemplate.macros
+          : []),
+        ...collectMacros(
+          `${emailSubjectTemplateDraft ?? ""}\n${emailBodyTemplateDraft ?? ""}`
+        ),
+      ])
+    ).sort((a, b) => a.localeCompare(b));
+  }, [emailBodyTemplateDraft, emailSubjectTemplateDraft, selectedEmailTemplate]);
+  const getStatusText = (status: unknown) => {
+    switch (normalizeDisplayStatus(status)) {
+      case "pending":
+        return t("orders.status.pending");
+      case "purchased":
+        return t("orders.status.purchased");
+      case "being_packed_and_shipped":
+        return t("orders.status.beingPackedAndShipped");
+      default:
+        return t("orders.status.shipped");
+    }
+  };
+  const getStatusClassName = (status: unknown) => {
+    switch (normalizeDisplayStatus(status)) {
+      case "pending":
+        return styles.statusPending;
+      case "purchased":
+        return styles.statusPurchased;
+      case "being_packed_and_shipped":
+        return styles.statusPacking;
+      default:
+        return styles.statusShipped;
+    }
+  };
+  const getDelayWarningText = (row: OrderRow) => {
+    if (!row.is_delayed) return "-";
+    const days =
+      typeof row.delay_days === "number" && Number.isFinite(row.delay_days)
+        ? row.delay_days
+        : 0;
+    return t("orders.flags.delayedDays", { days });
+  };
+  const getCountryName = (code: CountryCode | null) => {
+    switch (code) {
+      case "NO":
+        return t("orders.country.no");
+      case "SE":
+        return t("orders.country.se");
+      case "FI":
+        return t("orders.country.fi");
+      default:
+        return t("orders.country.unknown");
+    }
+  };
+  const getLatestNotificationText = (row: OrderRow) => {
+    const name = String(row.latest_notification_name ?? "").trim();
+    const sentAt = String(row.latest_notification_sent_at ?? "").trim();
+    if (name && sentAt) {
+      return `${name} (${formatDate(sentAt)})`;
+    }
+    if (name) return name;
+    if (sentAt) return formatDate(sentAt);
+    return t("orders.notifications.none");
+  };
+  const openEmailDialog = async () => {
+    if (selectedRows.length === 0) return;
+    setEmailDialogOpen(true);
+    setEmailDialogLoading(true);
+    setEmailDialogError(null);
+    setEmailDialogInfo(null);
+    try {
+      const [templatesResponse, sendersResponse] = await Promise.all([
+        fetch("/api/email/templates"),
+        fetch("/api/sendpulse/senders"),
+      ]);
+      const templatesPayload = await templatesResponse.json();
+      if (!templatesResponse.ok) {
+        throw new Error(templatesPayload?.error || "Unable to load email templates.");
+      }
+      const sendersPayload = await sendersResponse.json();
+      if (!sendersResponse.ok) {
+        throw new Error(sendersPayload?.error || "Unable to load SendPulse senders.");
+      }
+
+      const loadedTemplates = Array.isArray(templatesPayload.templates)
+        ? (templatesPayload.templates as EmailTemplateOption[])
+        : [];
+      const loadedSenders = Array.isArray(sendersPayload.senders)
+        ? (sendersPayload.senders as EmailSenderOption[])
+        : [];
+
+      setEmailTemplates(loadedTemplates);
+      setEmailSenders(loadedSenders);
+      setSelectedEmailTemplateId((prev) => {
+        if (prev && loadedTemplates.some((template) => template.template_id === prev)) {
+          return prev;
+        }
+        return loadedTemplates[0]?.template_id || "";
+      });
+      setSelectedEmailSenderEmail((prev) => {
+        if (prev && loadedSenders.some((sender) => sender.email === prev)) {
+          return prev;
+        }
+        return loadedSenders[0]?.email || "";
+      });
+    } catch (err) {
+      setEmailDialogError((err as Error).message);
+    } finally {
+      setEmailDialogLoading(false);
+    }
+  };
+  const closeEmailDialog = () => {
+    setEmailDialogOpen(false);
+    setEmailDialogLoading(false);
+    setEmailPreviewLoading(false);
+    setEmailDialogError(null);
+    setEmailDialogInfo(null);
+    setEmailPreview(null);
+    setEmailSubjectTemplateDraft("");
+    setEmailBodyTemplateDraft("");
+  };
+  const openStatusDialog = () => {
+    if (!hasSelection) return;
+    const firstSelected =
+      rows.find((row) => selectedOrderIds.has(row.id)) ?? selectedRows[0] ?? null;
+    setStatusDialogValue(normalizeDisplayStatus(firstSelected?.status));
+    setStatusDialogError(null);
+    setStatusDialogOpen(true);
+  };
+  const closeStatusDialog = () => {
+    setStatusDialogOpen(false);
+    setStatusDialogSaving(false);
+    setStatusDialogError(null);
+  };
+  const saveSelectedOrdersStatus = async () => {
+    const ids = Array.from(selectedOrderIds);
+    if (ids.length === 0) return;
+    setStatusDialogSaving(true);
+    setStatusDialogError(null);
+    try {
+      const response = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids,
+          status: statusDialogValue,
+        }),
+      });
+      let payload: { ids?: string[]; status?: string; error?: string } | null =
+        null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (!response.ok) {
+        throw new Error(payload?.error || t("orders.statusDialog.error.update"));
+      }
+      const updatedIds = new Set(
+        Array.isArray(payload?.ids) && payload.ids.length > 0
+          ? payload.ids.map((id) => String(id))
+          : ids
+      );
+      const nextStatus = normalizeDisplayStatus(payload?.status ?? statusDialogValue);
+
+      setRows((prev) =>
+        prev.map((row) => {
+          if (!updatedIds.has(row.id)) return row;
+          if (nextStatus === "shipped") {
+            return {
+              ...row,
+              status: nextStatus,
+              is_delayed: false,
+              delay_days: null,
+            };
+          }
+          return { ...row, status: nextStatus };
+        })
+      );
+
+      setDetailsById((prev) => {
+        const next = { ...prev };
+        updatedIds.forEach((id) => {
+          const details = next[id];
+          if (!details?.order) return;
+          next[id] = {
+            ...details,
+            order: {
+              ...details.order,
+              status: nextStatus,
+            },
+          };
+        });
+        return next;
+      });
+
+      setStatusDialogOpen(false);
+    } catch (err) {
+      setStatusDialogError((err as Error).message);
+    } finally {
+      setStatusDialogSaving(false);
+    }
+  };
+  const handleSendEmails = async () => {
+    if (!selectedEmailTemplate || !selectedEmailSender || selectedRows.length === 0) return;
+    setIsSendingEmails(true);
+    setEmailDialogError(null);
+    setEmailDialogInfo(null);
+    try {
+      const response = await fetch("/api/orders/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: selectedRows.map((row) => row.id),
+          templateId: selectedEmailTemplate.template_id,
+          subjectTemplate: emailSubjectTemplateDraft,
+          bodyTemplate: emailBodyTemplateDraft,
+          macros: selectedEmailMacroKeys,
+          senderEmail: selectedEmailSender.email,
+          senderName: selectedEmailSender.name ?? undefined,
+          bccEmails: selectedEmailBcc,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to send emails.");
+      }
+      const sentCount = Number(payload?.sent_count ?? 0);
+      const failedCount = Number(payload?.failed_count ?? 0);
+      setEmailDialogInfo(
+        failedCount > 0
+          ? t("orders.email.send.partial", {
+              sent: sentCount,
+              failed: failedCount,
+            })
+          : t("orders.email.send.success", { sent: sentCount })
+      );
+      if (failedCount > 0 && Array.isArray(payload?.results)) {
+        const firstError = payload.results.find(
+          (entry: { status?: string; error?: string }) =>
+            entry?.status === "failed" && String(entry?.error ?? "").trim()
+        );
+        if (firstError?.error) {
+          setEmailDialogError(String(firstError.error));
+        }
+      }
+    } catch (err) {
+      setEmailDialogError((err as Error).message);
+    } finally {
+      setIsSendingEmails(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!emailDialogOpen || !selectedEmailTemplate || !previewOrderRow) {
+      setEmailPreview(null);
+      setEmailPreviewLoading(false);
+      return;
+    }
+    let active = true;
+    const runPreview = async () => {
+      setEmailPreviewLoading(true);
+      try {
+        let orderItemsForPreview: OrderItem[] = [];
+        const cachedDetails = detailsById[previewOrderRow.id];
+        if (cachedDetails?.items?.length) {
+          orderItemsForPreview = cachedDetails.items;
+        } else {
+          const detailsResponse = await fetch(`/api/orders/${previewOrderRow.id}`);
+          if (detailsResponse.ok) {
+            const detailsPayload = await detailsResponse.json();
+            const loadedItems = Array.isArray(detailsPayload?.items)
+              ? (detailsPayload.items as OrderItem[])
+              : [];
+            orderItemsForPreview = loadedItems;
+            setDetailsById((prev) => {
+              if (prev[previewOrderRow.id]) return prev;
+              return {
+                ...prev,
+                [previewOrderRow.id]: {
+                  order:
+                    detailsPayload?.order && typeof detailsPayload.order === "object"
+                      ? (detailsPayload.order as OrderDetails["order"])
+                      : null,
+                  items: loadedItems,
+                  tracking_numbers: normalizeTrackingEntries(
+                    detailsPayload?.tracking_numbers
+                  ),
+                  loading: false,
+                  error: undefined,
+                },
+              };
+            });
+          }
+        }
+        const orderContentList = formatOrderContentList(
+          orderItemsForPreview.map((item) => ({
+            quantity: item.quantity,
+            product_title: item.product_title,
+            sku: item.sku,
+          }))
+        );
+        const orderVariables = buildOrderEmailMacroVariables({
+          id: previewOrderRow.id,
+          order_number: previewOrderRow.order_number,
+          transaction_date: previewOrderRow.transaction_date,
+          date_shipped: previewOrderRow.date_shipped,
+          customer_name: previewOrderRow.customer_name,
+          customer_email: previewOrderRow.customer_email,
+          sales_channel_id: previewOrderRow.sales_channel_id,
+          sales_channel_name: previewOrderRow.sales_channel_name,
+          status: previewOrderRow.status,
+          order_content_list: orderContentList,
+        });
+        const response = await fetch("/api/email/templates/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subject_template: emailSubjectTemplateDraft,
+            body_template: emailBodyTemplateDraft,
+            macros: selectedEmailMacroKeys,
+            variables: orderVariables,
+            context: { order: orderVariables },
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to preview template.");
+        }
+        if (!active) return;
+        setEmailPreview(payload as EmailTemplatePreview);
+      } catch (err) {
+        if (!active) return;
+        setEmailPreview(null);
+        setEmailDialogError((err as Error).message);
+      } finally {
+        if (active) {
+          setEmailPreviewLoading(false);
+        }
+      }
+    };
+    void runPreview();
+    return () => {
+      active = false;
+    };
+  }, [
+    detailsById,
+    emailBodyTemplateDraft,
+    emailDialogOpen,
+    emailSubjectTemplateDraft,
+    previewOrderRow,
+    selectedEmailMacroKeys,
+    selectedEmailTemplate,
+  ]);
+
+  useEffect(() => {
+    if (!emailDialogOpen) return;
+    if (!selectedEmailTemplate) {
+      setEmailSubjectTemplateDraft("");
+      setEmailBodyTemplateDraft("");
+      return;
+    }
+    setEmailSubjectTemplateDraft(selectedEmailTemplate.subject_template ?? "");
+    setEmailBodyTemplateDraft(selectedEmailTemplate.body_template ?? "");
+  }, [emailDialogOpen, emailTemplates, selectedEmailTemplate, selectedEmailTemplateId]);
 
   useEffect(() => {
     const load = async () => {
@@ -506,20 +1285,20 @@ export default function OrdersPage() {
   useEffect(() => {
     setSelectedOrderIds((prev) => {
       if (prev.size === 0) return prev;
-      const validIds = new Set(rows.map((row) => row.id));
+      const validIds = new Set(filteredRows.map((row) => row.id));
       const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [rows]);
+  }, [filteredRows]);
 
   useEffect(() => {
     if (!resendOrderId) return;
-    const stillVisible = rows.some((row) => row.id === resendOrderId);
+    const stillVisible = filteredRows.some((row) => row.id === resendOrderId);
     if (!stillVisible) {
       setResendOrderId(null);
       setResendItemIds(new Set());
     }
-  }, [rows, resendOrderId]);
+  }, [filteredRows, resendOrderId]);
 
   const loadDetails = async (orderId: string) => {
     setDetailsById((prev) => ({
@@ -667,7 +1446,10 @@ export default function OrdersPage() {
         orderId: resendOrderId,
         salesChannelId: details.order.sales_channel_id ?? "",
         orderNumber,
-        salesChannel: details.order.sales_channel_name ?? "",
+        salesChannel: normalizeOrderPlatformName({
+          salesChannelName: details.order.sales_channel_name,
+          salesChannelId: details.order.sales_channel_id,
+        }),
         customerName: details.order.customer_name ?? "",
         customerAddress: details.order.customer_address ?? "",
         customerZip: details.order.customer_zip ?? "",
@@ -922,6 +1704,106 @@ export default function OrdersPage() {
               onChange={(_, data) => setShippedTo(data.value)}
             />
           </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>{t("orders.filters.country")}</span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[countryFilter]}
+              value={
+                countryFilter === "all"
+                  ? t("orders.filters.countryAll")
+                  : getCountryName(countryFilter as CountryCode)
+              }
+              onOptionSelect={(_, data) => {
+                setCountryFilter(String(data.optionValue ?? "all"));
+              }}
+            >
+              <Option value="all">{t("orders.filters.countryAll")}</Option>
+              <Option value="NO">{t("orders.country.no")}</Option>
+              <Option value="SE">{t("orders.country.se")}</Option>
+              <Option value="FI">{t("orders.country.fi")}</Option>
+            </Dropdown>
+          </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>
+                {t("orders.filters.salesChannel")}
+              </span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[salesChannelFilter]}
+              value={
+                salesChannelFilter === "all"
+                  ? t("orders.filters.salesChannelAll")
+                  : salesChannelFilter
+              }
+              onOptionSelect={(_, data) => {
+                setSalesChannelFilter(String(data.optionValue ?? "all"));
+              }}
+            >
+              <Option value="all">{t("orders.filters.salesChannelAll")}</Option>
+              {salesChannelOptions.map((name) => (
+                <Option key={name} value={name} text={name}>
+                  {name}
+                </Option>
+              ))}
+            </Dropdown>
+          </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>{t("orders.filters.status")}</span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[statusFilter]}
+              value={
+                statusFilter === "all"
+                  ? t("orders.filters.statusAll")
+                  : getStatusText(statusFilter)
+              }
+              onOptionSelect={(_, data) => {
+                setStatusFilter(String(data.optionValue ?? "all"));
+              }}
+            >
+              <Option value="all">{t("orders.filters.statusAll")}</Option>
+              <Option value="pending">{t("orders.status.pending")}</Option>
+              <Option value="purchased">{t("orders.status.purchased")}</Option>
+              <Option value="being_packed_and_shipped">
+                {t("orders.status.beingPackedAndShipped")}
+              </Option>
+              <Option value="shipped">{t("orders.status.shipped")}</Option>
+            </Dropdown>
+          </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>{t("orders.filters.warnings")}</span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[warningFilter]}
+              value={
+                warningFilter === "delayed"
+                  ? t("orders.filters.warningsDelayed")
+                  : warningFilter === "on_time"
+                    ? t("orders.filters.warningsOnTime")
+                    : t("orders.filters.warningsAll")
+              }
+              onOptionSelect={(_, data) => {
+                setWarningFilter(String(data.optionValue ?? "all"));
+              }}
+            >
+              <Option value="all">{t("orders.filters.warningsAll")}</Option>
+              <Option value="delayed">{t("orders.filters.warningsDelayed")}</Option>
+              <Option value="on_time">{t("orders.filters.warningsOnTime")}</Option>
+            </Dropdown>
+          </Field>
           <div className={styles.actionRow}>
             <Button
               appearance="primary"
@@ -932,6 +1814,37 @@ export default function OrdersPage() {
             >
               {t("orders.resend.button")}
             </Button>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance="secondary"
+                  disabled={!hasSelection}
+                  className={styles.actionMenuButton}
+                >
+                  {t("orders.actions.button")}
+                  <span className={styles.actionButtonArrow} aria-hidden="true">
+                    ▾
+                  </span>
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuItem disabled={!hasSelection} onClick={openStatusDialog}>
+                    {t("orders.actions.changeStatus")}
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+            {hasSelection ? (
+              <Button
+                appearance="primary"
+                onClick={() => {
+                  void openEmailDialog();
+                }}
+              >
+                {t("orders.email.button")}
+              </Button>
+            ) : null}
             <Button
               appearance="primary"
               disabled={!hasSelection || isExporting}
@@ -1051,7 +1964,7 @@ export default function OrdersPage() {
                       onChange={(_, data) => {
                         setSelectedOrderIds(() => {
                           if (data.checked === true) {
-                            return new Set(rows.map((row) => row.id));
+                            return new Set(filteredRows.map((row) => row.id));
                           }
                           return new Set();
                         });
@@ -1063,9 +1976,11 @@ export default function OrdersPage() {
                     t("orders.columns.orderNumber"),
                     t("orders.columns.salesChannel"),
                     t("orders.columns.customer"),
-                    t("orders.columns.email"),
-                    t("orders.columns.city"),
+                    t("orders.columns.country"),
                     t("orders.columns.transactionDate"),
+                    t("orders.columns.status"),
+                    t("orders.columns.warnings"),
+                    t("orders.columns.notifications"),
                     t("orders.columns.dateShipped"),
                   ].map((label) => (
                     <TableHeaderCell key={label} className={styles.stickyHeader}>
@@ -1075,12 +1990,12 @@ export default function OrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.length === 0 ? (
+                {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9}>{t("orders.empty")}</TableCell>
+                    <TableCell colSpan={11}>{t("orders.empty")}</TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((row, index) => {
+                  filteredRows.map((row, index) => {
                     const isExpanded = expandedOrders.has(row.id);
                     const details = detailsById[row.id];
                     const isResendOrder = resendOrderId === row.id;
@@ -1101,6 +2016,12 @@ export default function OrdersPage() {
                         : false;
                     const rowClass =
                       index % 2 === 1 ? styles.tableRowAlt : styles.tableRow;
+                    const countryCode = getCountryCodeFromSalesChannelId(
+                      row.sales_channel_id
+                    );
+                    const countryName = getCountryName(countryCode);
+                    const platformDisplayName = getNormalizedSalesChannelName(row);
+                    const latestNotificationText = getLatestNotificationText(row);
                     return (
                       <Fragment key={row.id}>
                         <TableRow
@@ -1134,18 +2055,57 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell>{row.sales_channel_id ?? ""}</TableCell>
                           <TableCell>{row.order_number ?? ""}</TableCell>
-                          <TableCell>{row.sales_channel_name ?? ""}</TableCell>
+                          <TableCell>{platformDisplayName}</TableCell>
                           <TableCell>{row.customer_name ?? ""}</TableCell>
-                          <TableCell>{row.customer_email ?? ""}</TableCell>
-                          <TableCell>{row.customer_city ?? ""}</TableCell>
+                          <TableCell>
+                            <span className={styles.countryCell}>
+                              {countryCode ? (
+                                <Image
+                                  src={flagByCountryCode[countryCode]}
+                                  alt={countryName}
+                                  width={24}
+                                  height={24}
+                                  className={styles.countryFlag}
+                                />
+                              ) : null}
+                              <span>{countryName}</span>
+                            </span>
+                          </TableCell>
                           <TableCell>
                             {formatDate(row.transaction_date)}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={mergeClasses(
+                                styles.statusPill,
+                                getStatusClassName(row.status)
+                              )}
+                            >
+                              {getStatusText(row.status)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {row.is_delayed ? (
+                              <span className={styles.warningPill}>
+                                {getDelayWarningText(row)}
+                              </span>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={styles.notificationField}
+                              title={latestNotificationText}
+                            >
+                              {latestNotificationText}
+                            </span>
                           </TableCell>
                           <TableCell>{formatDate(row.date_shipped)}</TableCell>
                         </TableRow>
                         {isExpanded ? (
                           <TableRow>
-                            <TableCell colSpan={9} className={styles.detailsCell}>
+                            <TableCell colSpan={11} className={styles.detailsCell}>
                               <div className={styles.detailsCard}>
                                 {details?.loading ? (
                                   <Text>{t("orders.details.loading")}</Text>
@@ -1182,6 +2142,14 @@ export default function OrdersPage() {
                                                       );
                                                     }}
                                                   />
+                                                </TableHeaderCell>
+                                                <TableHeaderCell
+                                                  className={mergeClasses(
+                                                    styles.detailsTableHeader,
+                                                    styles.detailsColImage
+                                                  )}
+                                                >
+                                                  {t("orders.details.columns.image")}
                                                 </TableHeaderCell>
                                                 <TableHeaderCell
                                                   className={mergeClasses(
@@ -1260,6 +2228,38 @@ export default function OrdersPage() {
                                                         }}
                                                       />
                                                     </TableCell>
+                                                    <TableCell className={styles.detailsColImage}>
+                                                      {item.item_image_url ? (
+                                                        <span className={styles.itemImageWrap}>
+                                                          <img
+                                                            src={item.item_image_url}
+                                                            alt={
+                                                              item.product_title ||
+                                                              item.sku ||
+                                                              "Product image"
+                                                            }
+                                                            className={styles.itemImageThumb}
+                                                            loading="lazy"
+                                                          />
+                                                          <span
+                                                            className={mergeClasses(
+                                                              styles.itemImageZoom,
+                                                              "order-item-thumb-zoom"
+                                                            )}
+                                                          >
+                                                            <img
+                                                              src={item.item_image_url}
+                                                              alt=""
+                                                              aria-hidden="true"
+                                                              className={styles.itemImageZoomImg}
+                                                              loading="lazy"
+                                                            />
+                                                          </span>
+                                                        </span>
+                                                      ) : (
+                                                        <Text className={styles.detailLabel}>-</Text>
+                                                      )}
+                                                    </TableCell>
                                                     <TableCell className={styles.detailsColSku}>
                                                       {item.sku ?? ""}
                                                     </TableCell>
@@ -1288,7 +2288,7 @@ export default function OrdersPage() {
                                                 ))
                                               ) : (
                                                 <TableRow>
-                                                  <TableCell colSpan={7}>
+                                                  <TableCell colSpan={8}>
                                                     {t("orders.details.none")}
                                                   </TableCell>
                                                 </TableRow>
@@ -1301,48 +2301,92 @@ export default function OrdersPage() {
                                         <Text weight="semibold">
                                           {t("orders.details.customerTitle")}
                                         </Text>
-                                        <div className={styles.detailsPanel}>
+                                          <div className={styles.detailsPanel}>
                                           <div className={styles.detailsPanelGrid}>
                                             <div className={styles.detailsInfoGrid}>
-                                              <Text className={styles.detailLabel}>
-                                                {t("orders.details.customerName")}
-                                              </Text>
-                                              <Text className={styles.detailValue}>
-                                                {details?.order?.customer_name ?? "-"}
-                                              </Text>
-                                              <Text className={styles.detailLabel}>
-                                                {t("orders.details.customerAddress")}
-                                              </Text>
-                                              <Text className={styles.detailValue}>
-                                                {[
-                                                  details?.order?.customer_address ?? "",
-                                                  details?.order?.customer_zip ?? "",
-                                                  details?.order?.customer_city ?? "",
-                                                ]
-                                                  .map((value) => value.trim())
-                                                  .filter(Boolean)
-                                                  .join(", ")}
-                                              </Text>
-                                              <Text className={styles.detailLabel}>
-                                                {t("orders.details.customerEmail")}
-                                              </Text>
-                                              <Text className={styles.detailValue}>
-                                                {(() => {
-                                                  const email =
-                                                    details?.order?.customer_email ?? "";
-                                                  return email && isValidEmail(email)
-                                                    ? email
-                                                    : "-";
-                                                })()}
-                                              </Text>
-                                              <Text className={styles.detailLabel}>
-                                                {t("orders.details.customerPhone")}
-                                              </Text>
-                                              <Text className={styles.detailValue}>
-                                                {details?.order?.customer_phone ?? "-"}
-                                              </Text>
+                                              <div className={styles.detailsRow}>
+                                                <Text
+                                                  className={mergeClasses(
+                                                    styles.detailLabel,
+                                                    styles.detailsInfoKey
+                                                  )}
+                                                >
+                                                  {t("orders.details.customerName")}
+                                                </Text>
+                                                <Text className={styles.detailValue}>
+                                                  {details?.order?.customer_name ?? "-"}
+                                                </Text>
+                                              </div>
+                                              <div className={styles.detailsRow}>
+                                                <Text
+                                                  className={mergeClasses(
+                                                    styles.detailLabel,
+                                                    styles.detailsInfoKey
+                                                  )}
+                                                >
+                                                  {t("orders.details.customerAddress")}
+                                                </Text>
+                                                <Text className={styles.detailValue}>
+                                                  {[
+                                                    details?.order?.customer_address ?? "",
+                                                    details?.order?.customer_zip ?? "",
+                                                    details?.order?.customer_city ?? "",
+                                                  ]
+                                                    .map((value) => value.trim())
+                                                    .filter(Boolean)
+                                                    .join(", ")}
+                                                </Text>
+                                              </div>
+                                              <div className={styles.detailsRow}>
+                                                <Text
+                                                  className={mergeClasses(
+                                                    styles.detailLabel,
+                                                    styles.detailsInfoKey
+                                                  )}
+                                                >
+                                                  {t("orders.details.customerEmail")}
+                                                </Text>
+                                                <Text className={styles.detailValue}>
+                                                  {(() => {
+                                                    const email =
+                                                      details?.order?.customer_email ?? "";
+                                                    return email && isValidEmail(email)
+                                                      ? email
+                                                      : "-";
+                                                  })()}
+                                                </Text>
+                                              </div>
+                                              <div className={styles.detailsRow}>
+                                                <Text
+                                                  className={mergeClasses(
+                                                    styles.detailLabel,
+                                                    styles.detailsInfoKey
+                                                  )}
+                                                >
+                                                  {t("orders.details.customerPhone")}
+                                                </Text>
+                                                <Text className={styles.detailValue}>
+                                                  {details?.order?.customer_phone ?? "-"}
+                                                </Text>
+                                              </div>
                                             </div>
                                             <div className={styles.detailsColumn}>
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.status")}
+                                              </Text>
+                                              <span
+                                                className={mergeClasses(
+                                                  styles.statusPill,
+                                                  getStatusClassName(details?.order?.status)
+                                                )}
+                                              >
+                                                {getStatusText(details?.order?.status)}
+                                              </span>
+                                              {row.is_delayed ? (
+                                                <span className={styles.warningPill}>
+                                                  {getDelayWarningText(row)}
+                                                </span>
+                                              ) : null}
                                               <Text className={styles.detailLabel}>
                                                 {t("orders.details.tracking")}
                                               </Text>
@@ -1395,6 +2439,300 @@ export default function OrdersPage() {
           )}
         </div>
       </Card>
+      <Dialog
+        open={statusDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeStatusDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.statusDialog}>
+          <DialogBody>
+            <DialogTitle>{t("orders.statusDialog.title")}</DialogTitle>
+            <DialogContent className={styles.statusDialogBody}>
+              <Text className={styles.emailSelectionMeta}>
+                {t("orders.statusDialog.selectionCount", {
+                  count: selectedRows.length,
+                })}
+              </Text>
+              <Field label={t("orders.statusDialog.statusLabel")}>
+                <Dropdown
+                  selectedOptions={[statusDialogValue]}
+                  value={getStatusText(statusDialogValue)}
+                  onOptionSelect={(_, data) => {
+                    setStatusDialogValue(
+                      normalizeDisplayStatus(data.optionValue ?? "pending")
+                    );
+                    setStatusDialogError(null);
+                  }}
+                >
+                  <Option value="pending">{t("orders.status.pending")}</Option>
+                  <Option value="purchased">{t("orders.status.purchased")}</Option>
+                  <Option value="being_packed_and_shipped">
+                    {t("orders.status.beingPackedAndShipped")}
+                  </Option>
+                  <Option value="shipped">{t("orders.status.shipped")}</Option>
+                </Dropdown>
+              </Field>
+              {statusDialogError ? (
+                <Text className={styles.errorText}>{statusDialogError}</Text>
+              ) : null}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={closeStatusDialog}>
+                {t("orders.statusDialog.actions.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => {
+                  void saveSelectedOrdersStatus();
+                }}
+                disabled={statusDialogSaving || !hasSelection}
+              >
+                {statusDialogSaving ? (
+                  <Spinner size="tiny" />
+                ) : (
+                  t("orders.statusDialog.actions.save")
+                )}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog
+        open={emailDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeEmailDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.emailDialog}>
+          <DialogBody>
+            <DialogTitle>{t("orders.email.dialogTitle")}</DialogTitle>
+            <DialogContent className={styles.emailDialogBody}>
+              {emailDialogLoading ? (
+                <Spinner size="tiny" />
+              ) : (
+                <>
+                  <div className={styles.emailSection}>
+                    <Text className={styles.emailSelectionMeta}>
+                      {t("orders.email.selectionCount", { count: selectedRows.length })}
+                    </Text>
+                    {previewOrderRow ? (
+                      <Text className={styles.emailSelectionMeta}>
+                        {t("orders.email.previewCustomer", {
+                          order: previewOrderRow.order_number ?? previewOrderRow.id,
+                          customer: previewOrderRow.customer_name ?? "-",
+                        })}
+                      </Text>
+                    ) : null}
+                  </div>
+                  <div className={styles.resendMetaRow}>
+                    <Field label={t("orders.email.templateLabel")}>
+                      <Dropdown
+                        value={selectedEmailTemplate?.name ?? ""}
+                        selectedOptions={
+                          selectedEmailTemplateId ? [selectedEmailTemplateId] : []
+                        }
+                        placeholder={t("orders.email.templatePlaceholder")}
+                        onOptionSelect={(_, data) => {
+                          setSelectedEmailTemplateId(String(data.optionValue ?? ""));
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                      >
+                        {emailTemplates.map((template) => (
+                          <Option
+                            key={template.template_id}
+                            value={template.template_id}
+                            text={template.name}
+                          >
+                            {template.name}
+                          </Option>
+                        ))}
+                      </Dropdown>
+                    </Field>
+                    <Field label={t("orders.email.senderLabel")}>
+                      <Dropdown
+                        value={
+                          selectedEmailSender
+                            ? selectedEmailSender.name
+                              ? `${selectedEmailSender.name} (${selectedEmailSender.email})`
+                              : selectedEmailSender.email
+                            : ""
+                        }
+                        selectedOptions={
+                          selectedEmailSenderEmail ? [selectedEmailSenderEmail] : []
+                        }
+                        placeholder={t("orders.email.senderPlaceholder")}
+                        onOptionSelect={(_, data) => {
+                          setSelectedEmailSenderEmail(String(data.optionValue ?? ""));
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                      >
+                        {emailSenders.map((sender) => (
+                          <Option key={sender.email} value={sender.email} text={sender.email}>
+                            {sender.name
+                              ? `${sender.name} (${sender.email})`
+                              : sender.email}
+                          </Option>
+                        ))}
+                      </Dropdown>
+                    </Field>
+                    <Field label={t("orders.email.bccLabel")}>
+                      <Dropdown
+                        multiselect
+                        value={
+                          selectedEmailBcc.length > 0
+                            ? selectedEmailBcc.join(", ")
+                            : t("orders.email.bccPlaceholder")
+                        }
+                        selectedOptions={selectedEmailBcc}
+                        placeholder={t("orders.email.bccPlaceholder")}
+                        onOptionSelect={(_, data) => {
+                          setSelectedEmailBcc(data.selectedOptions.map((item) => String(item)));
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                      >
+                        {ORDER_EMAIL_BCC_OPTIONS.map((bccEmail) => (
+                          <Option key={bccEmail} value={bccEmail} text={bccEmail}>
+                            {bccEmail}
+                          </Option>
+                        ))}
+                      </Dropdown>
+                    </Field>
+                  </div>
+
+                  <Text className={styles.emailSelectionMeta}>
+                    {t("orders.email.sendpulseNote")}
+                  </Text>
+
+                  {emailDialogError ? (
+                    <Text className={styles.errorText}>{emailDialogError}</Text>
+                  ) : null}
+                  {emailDialogInfo ? (
+                    <Text className={styles.emailInfoText}>{emailDialogInfo}</Text>
+                  ) : null}
+
+                  <div className={styles.emailSection}>
+                    <Text weight="semibold">{t("orders.email.editorTitle")}</Text>
+                    <Text className={styles.emailSelectionMeta}>
+                      {t("orders.email.editorHint")}
+                    </Text>
+                    <Field label={t("orders.email.editorSubjectLabel")}>
+                      <Input
+                        value={emailSubjectTemplateDraft}
+                        onChange={(_, data) => {
+                          setEmailSubjectTemplateDraft(data.value);
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                      />
+                    </Field>
+                    <Field label={t("orders.email.editorBodyLabel")}>
+                      <Textarea
+                        value={emailBodyTemplateDraft}
+                        onChange={(_, data) => {
+                          setEmailBodyTemplateDraft(data.value);
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                        className={styles.emailTemplateEditor}
+                        resize="vertical"
+                      />
+                    </Field>
+                  </div>
+
+                  <div className={styles.emailSection}>
+                    <Text weight="semibold">{t("orders.email.previewTitle")}</Text>
+                    <div className={styles.emailPreviewCard}>
+                      <div className={styles.emailPreviewHeader}>
+                        <Text className={styles.emailSelectionMeta}>
+                          {t("orders.email.previewSubjectLabel")}
+                        </Text>
+                        <Text weight="semibold">
+                          {emailPreview?.rendered_subject ||
+                            t("orders.email.previewSubjectEmpty")}
+                        </Text>
+                        {emailPreview?.macro_resolution?.missingRequiredMacros?.length ? (
+                          <Text className={styles.errorText}>
+                            {t("orders.email.previewMissingMacros", {
+                              macros: emailPreview.macro_resolution.missingRequiredMacros
+                                .map((macro) => `{{${macro}}}`)
+                                .join(", "),
+                            })}
+                          </Text>
+                        ) : null}
+                      </div>
+                      <div className={styles.emailPreviewBody}>
+                        {emailPreviewLoading ? (
+                          <Spinner size="tiny" />
+                        ) : (
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: emailPreview?.rendered_body || "",
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.emailSection}>
+                    <Text className={styles.emailSelectionMeta}>
+                      {t("orders.email.macrosUsed")}
+                    </Text>
+                    <div className={styles.emailMacroBadges}>
+                      {selectedEmailMacroKeys.length > 0 ? (
+                        selectedEmailMacroKeys.map((macro) => (
+                          <Badge key={macro} appearance="tint" shape="rounded">
+                            {`{{${macro}}}`}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Text className={styles.emailSelectionMeta}>
+                          {t("orders.email.noMacros")}
+                        </Text>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </DialogContent>
+            <DialogActions className={styles.emailDialogActions}>
+              <Text className={styles.emailSelectionMeta}>
+                {t("orders.email.sendSummary", { count: selectedRows.length })}
+              </Text>
+              <div className={styles.emailActionGroup}>
+                <Button appearance="secondary" onClick={closeEmailDialog}>
+                  {t("orders.email.actions.cancel")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={handleSendEmails}
+                  disabled={
+                    isSendingEmails ||
+                    emailDialogLoading ||
+                    !selectedEmailTemplate ||
+                    !selectedEmailSender ||
+                    selectedRows.length === 0
+                  }
+                >
+                  {isSendingEmails ? (
+                    <Spinner size="tiny" />
+                  ) : (
+                    t("orders.email.actions.send")
+                  )}
+                </Button>
+              </div>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
       <Dialog
         open={resendDialogOpen}
         onOpenChange={(_, data) => {

@@ -41,7 +41,7 @@ const useStyles = makeStyles({
   mainImage: {
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit: "contain",
   },
   thumbRow: {
     display: "grid",
@@ -63,7 +63,7 @@ const useStyles = makeStyles({
   thumbImage: {
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit: "contain",
   },
   placeholder: {
     width: "100%",
@@ -92,20 +92,23 @@ export default function ProductGallery({
   const styles = useStyles();
   const [selected, setSelected] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const selectedIndex = selected >= 0 && selected < images.length ? selected : 0;
 
-  const activeImage = useMemo(() => images[selected], [images, selected]);
+  const activeImage = useMemo(
+    () => images[selectedIndex] ?? images[0],
+    [images, selectedIndex]
+  );
   const fullImage = useMemo(
-    () => originals?.[selected] ?? activeImage,
-    [activeImage, originals, selected]
+    () => originals?.[selectedIndex] ?? activeImage,
+    [activeImage, originals, selectedIndex]
   );
   const thumbItems = useMemo(() => {
-    if (thumbnails && thumbnails.length) return thumbnails;
+    if (thumbnails && thumbnails.length) {
+      return images.map((image, index) => thumbnails[index] ?? image);
+    }
     return images;
   }, [images, thumbnails]);
-  const visibleThumbs = useMemo(() => {
-    const count = Math.min(images.length, thumbItems.length);
-    return thumbItems.slice(0, count);
-  }, [images.length, thumbItems]);
+  const visibleThumbs = useMemo(() => thumbItems, [thumbItems]);
 
   if (!images.length) {
     return (
@@ -135,7 +138,7 @@ export default function ProductGallery({
         {visibleThumbs.map((image, index) => (
           <Button
             key={`${image.src}-${index}`}
-            appearance={index === selected ? "primary" : "subtle"}
+            appearance={index === selectedIndex ? "primary" : "subtle"}
             className={styles.thumbButton}
             onClick={() => setSelected(index)}
           >

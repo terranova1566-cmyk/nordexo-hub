@@ -274,8 +274,46 @@ type DraftVariantEditorEditableField =
 
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
-type ImageFolderTabValue = "main" | "variants" | "ocr" | "others";
+type ImageFolderTabValue = "main" | "variants" | "ocr" | "others" | "downloaded";
 type MainImageViewFilter = "all" | "var_only";
+type ReverseSearchLocale = "sweden" | "us_global";
+
+type ReverseSearchResultItem = {
+  rank: number;
+  source: string | null;
+  websiteName: string | null;
+  title: string | null;
+  link: string | null;
+  thumbnail: string | null;
+  image: string | null;
+  sourceIcon: string | null;
+  sourceDomain: string | null;
+  exactMatches: unknown[] | null;
+  serpapiExactMatchesLink: string | null;
+  metadata: Record<string, unknown> | null;
+  originalImage: string | null;
+  originalWidth: number | null;
+  originalHeight: number | null;
+  domain: string | null;
+  isAmazon: boolean;
+  bucket: "visualMatches" | "imageResults" | "inlineImages";
+};
+
+type ReverseSearchJobState = {
+  targetImagePath: string;
+  targetImageName: string;
+  searchImagePath: string;
+  searchImageName: string;
+  status: "running" | "ready" | "error";
+  startedAt: string;
+  finishedAt: string | null;
+  searchId: string | null;
+  items: ReverseSearchResultItem[];
+  amazonLinks: string[];
+  inputPayload: Record<string, unknown> | null;
+  debugPayload: Record<string, unknown> | null;
+  error: string | null;
+};
 
 const useStyles = makeStyles({
   page: {
@@ -380,7 +418,7 @@ const useStyles = makeStyles({
     },
   },
   draftToolbarActionButtonActive: {
-    borderColor: tokens.colorBrandStroke1,
+    border: `1px solid ${tokens.colorBrandStroke1}`,
     color: tokens.colorBrandForeground1,
     backgroundColor: "#ffffff",
     ":hover": {
@@ -721,7 +759,7 @@ const useStyles = makeStyles({
     color: "#dc6d78",
   },
   spuPickerRowTagIconPresent: {
-    color: "#107c10",
+    color: "#6610F2",
   },
   spuPickerRowTagIconMissing: {
     color: "#dc6d78",
@@ -1119,23 +1157,78 @@ const useStyles = makeStyles({
     textTransform: "uppercase",
   },
   mediaTagMain: {
-    backgroundColor: "#0f6cbd",
+    backgroundColor: "#007BFF",
   },
   mediaTagEnv: {
-    backgroundColor: "#0f7b0f",
+    backgroundColor: "#6F42C1",
   },
   mediaTagVar: {
-    backgroundColor: "#006c6f",
+    backgroundColor: "#20C997",
   },
   mediaTagInf: {
-    backgroundColor: "#b65a00",
+    backgroundColor: "#FD7E14",
   },
   mediaTagDigi: {
-    backgroundColor: "#6f42ff",
+    backgroundColor: "#E83E8C",
   },
   mediaImageBusy: {
     filter: "blur(2.4px)",
     transform: "scale(1.015)",
+  },
+  mediaImageReverseSearchRunning: {
+    filter: "blur(2px)",
+    transform: "scale(1.01)",
+    opacity: 0.78,
+  },
+  reverseSearchRunningOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  reverseSearchRunningContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    textShadow: "0 1px 2px rgba(255,255,255,0.35)",
+  },
+  googleSearchReadyBadge: {
+    position: "absolute",
+    right: "8px",
+    bottom: "8px",
+    zIndex: 4,
+    width: "28px",
+    height: "28px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.16)",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: "transform 120ms ease, box-shadow 120ms ease",
+    ":hover": {
+      transform: "translateY(-1px)",
+      boxShadow: "0 3px 8px rgba(0, 0, 0, 0.22)",
+    },
+    ":focus-visible": {
+      outline: `2px solid ${tokens.colorStrokeFocus2}`,
+      outlineOffset: "1px",
+    },
+  },
+  googleSearchBadgeImage: {
+    width: "14px",
+    height: "14px",
+    display: "block",
   },
   mediaBusyOverlay: {
     position: "absolute",
@@ -1467,6 +1560,238 @@ const useStyles = makeStyles({
       height: "92px",
     },
   },
+  reverseSearchSurface: {
+    width: "min(990px, 92vw)",
+    maxWidth: "92vw",
+    padding: "14px",
+  },
+  reverseSearchBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minHeight: "420px",
+    maxHeight: "82vh",
+    overflow: "hidden",
+  },
+  reverseSearchHeaderRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  reverseSearchSourceBlock: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+    flex: "1 1 360px",
+  },
+  reverseSearchSourceFrame: {
+    width: "250px",
+    height: "250px",
+    borderRadius: "8px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  reverseSearchSourceImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  reverseSearchSourceMeta: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  reverseSearchSourceTitle: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase400,
+    lineHeight: tokens.lineHeightBase400,
+  },
+  reverseSearchContent: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flex: "1 1 auto",
+    minHeight: "280px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+  },
+  reverseSearchDebugBlock: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+    "@media (max-width: 900px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  reverseSearchDebugCard: {
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "6px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    minHeight: "84px",
+  },
+  reverseSearchDebugText: {
+    margin: 0,
+    fontFamily:
+      '"Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace',
+    fontSize: "11px",
+    lineHeight: 1.35,
+    color: tokens.colorNeutralForeground3,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    maxHeight: "128px",
+    overflow: "auto",
+  },
+  reverseSearchTableWrap: {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflow: "auto",
+    maxHeight: "100%",
+    paddingBottom: "6px",
+  },
+  reverseSearchTable: {
+    width: "100%",
+    tableLayout: "fixed",
+  },
+  reverseSearchImageColumn: {
+    width: "106px",
+  },
+  reverseSearchImageCell: {
+    verticalAlign: "top",
+    paddingTop: "4px",
+    paddingBottom: "4px",
+    paddingLeft: "6px",
+    paddingRight: "6px",
+  },
+  reverseSearchImageCellContent: {
+    width: "100%",
+    minHeight: "78px",
+    paddingTop: "2px",
+    paddingBottom: "2px",
+    paddingLeft: "4px",
+    paddingRight: "4px",
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  reverseSearchTitleColumn: {
+    width: "50%",
+  },
+  reverseSearchLinkColumn: {
+    width: "24%",
+  },
+  reverseSearchRowCellMiddle: {
+    verticalAlign: "middle",
+  },
+  reverseSearchActionColumn: {
+    width: "132px",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+  },
+  reverseSearchLoadingOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 3,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.6)",
+    backdropFilter: "blur(2px)",
+  },
+  reverseSearchBusyContent: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "6px",
+    color: tokens.colorBrandForeground1,
+  },
+  reverseSearchBlurred: {
+    filter: "blur(2.2px)",
+    pointerEvents: "none",
+    userSelect: "none",
+  },
+  reverseSearchThumbWrap: {
+    width: "78px",
+    height: "78px",
+    borderRadius: "8px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  reverseSearchThumb: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  reverseSearchTitleClamp: {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    wordBreak: "break-word",
+    lineHeight: "20px",
+    maxHeight: "40px",
+  },
+  reverseSearchRowActionButton: {
+    minWidth: "118px",
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
+  reverseSearchLink: {
+    color: tokens.colorBrandForegroundLink,
+    textDecorationLine: "none",
+    ":hover": {
+      textDecorationLine: "underline",
+    },
+  },
+  reverseSearchOpenLinkButton: {
+    minWidth: "92px",
+    backgroundColor: "#ffffff",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
+  reverseSearchLinkMeta: {
+    marginTop: "4px",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  reverseSearchSmallText: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+  },
+  reverseSearchActions: {
+    justifyContent: "space-between",
+  },
   photopeaSurface: {
     width: "min(1500px, 94vw)",
     height: "92vh",
@@ -1496,6 +1821,119 @@ const useStyles = makeStyles({
     height: "100%",
     border: "none",
     display: "block",
+  },
+  autoLevelsSurface: {
+    width: "min(980px, 92vw)",
+    maxWidth: "92vw",
+    maxHeight: "88vh",
+    padding: "12px",
+    overflow: "hidden",
+  },
+  autoLevelsBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minHeight: "460px",
+    maxHeight: "84vh",
+    overflow: "hidden",
+  },
+  autoLevelsControls: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "10px",
+    alignItems: "start",
+    "@media (max-width: 880px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  autoLevelsControlCard: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    backgroundColor: "#ffffff",
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  autoLevelsSlider: {
+    width: "100%",
+  },
+  autoLevelsInlineRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  autoLevelsNumberInput: {
+    width: "110px",
+  },
+  autoLevelsThumbWrap: {
+    position: "relative",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+    minHeight: 0,
+    flex: "1 1 auto",
+    display: "flex",
+    flexDirection: "column",
+  },
+  autoLevelsThumbGrid: {
+    position: "relative",
+    flex: "1 1 auto",
+    minHeight: "220px",
+    overflow: "auto",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+    gap: "8px",
+    padding: "10px",
+    alignContent: "start",
+  },
+  autoLevelsThumbGridBusy: {
+    filter: "blur(2.2px)",
+    opacity: 0.72,
+    pointerEvents: "none",
+    userSelect: "none",
+  },
+  autoLevelsThumbCard: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "8px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    padding: "6px",
+  },
+  autoLevelsThumbImageFrame: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    borderRadius: "6px",
+    overflow: "hidden",
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  autoLevelsThumbImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  autoLevelsThumbName: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  autoLevelsBusyOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 2,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.34)",
+    pointerEvents: "none",
   },
   filesSection: {
     borderRadius: "12px",
@@ -1606,7 +2044,7 @@ const useStyles = makeStyles({
   },
   contextMenuSubmenu: {
     position: "absolute",
-    left: "calc(100% + 4px)",
+    left: "100%",
     top: 0,
     zIndex: 2000001,
     borderRadius: "10px",
@@ -1619,9 +2057,14 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "1px",
   },
+  contextMenuSubmenuScrollable: {
+    maxHeight: "320px",
+    overflowY: "auto",
+    minWidth: "280px",
+  },
   contextMenuSubmenuLeft: {
     left: "auto",
-    right: "calc(100% + 4px)",
+    right: "100%",
   },
   contextMenuIcon: {
     width: "16px",
@@ -1666,6 +2109,36 @@ const useStyles = makeStyles({
   contextMenuTagLabel: {
     flex: 1,
     lineHeight: 1,
+  },
+  contextMenuVariantLabelWrap: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "1px",
+    minWidth: 0,
+    flex: "1 1 auto",
+  },
+  contextMenuVariantPrimaryLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "220px",
+  },
+  contextMenuVariantSecondaryLabel: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: 1.2,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "220px",
+  },
+  contextMenuVariantSelectionWrap: {
+    marginLeft: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    flexShrink: 0,
   },
   compactMenuList: {
     paddingTop: "2px",
@@ -2432,6 +2905,43 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground3,
     },
   },
+  variantEditButton: {
+    width: "auto",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
+  variantEditButtonCritical: {
+    backgroundColor: "#fde9e9",
+    ":hover": {
+      backgroundColor: "#f9dbdb",
+    },
+    ":active": {
+      backgroundColor: "#f4cece",
+    },
+    ":disabled": {
+      backgroundColor: "#f4dede",
+    },
+  },
+  variantEditButtonContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: "8px",
+    minWidth: 0,
+  },
+  variantEditIssueIcons: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    color: "#c65a5a",
+    flexShrink: 0,
+  },
+  variantEditIssueIcon: {
+    width: "12px",
+    height: "12px",
+    display: "inline-block",
+    flexShrink: 0,
+  },
   supplierSplitGroup: {
     display: "inline-flex",
     alignItems: "stretch",
@@ -2803,12 +3313,20 @@ const useStyles = makeStyles({
   variantsEditorInputWrap: {
     position: "relative",
     width: "100%",
-    overflow: "visible",
+    overflow: "hidden",
     minHeight: "28px",
   },
   variantsEditorInput: {
-    minWidth: "100%",
-    maxWidth: "none",
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    "& input": {
+      minWidth: 0,
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
+    },
   },
   variantsEditorCheckCol: {
     width: "44px",
@@ -3034,6 +3552,11 @@ const parseDraftRawRow = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
+const toObjectRecordOrNull = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+};
+
 const toText = (value: unknown) => (value == null ? "" : String(value));
 
 const sanitizeFileNameSegment = (value: string) =>
@@ -3097,6 +3620,7 @@ const splitFileNameAndExtension = (fileName: string) => {
 
 const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
 type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
+const GOOGLE_SEARCH_BADGE_ICON_SRC = "/icons/google-logo.png";
 const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "ENF", "TAG IMAGE"] as const;
 const IMAGE_TAG_MATCH_REGEX =
   /(?:\(\s*(MAIN|ENV|VAR|INF|ENF|DIGI)\s*\)|(?:^|[-_ ])(MAIN|ENV|VAR|INF|ENF|DIGI)(?=$|[-_ .)]))/gi;
@@ -3207,8 +3731,11 @@ const getTagGroupSortRank = (tags: ImageTagOption[]) => {
   return 0;
 };
 
-const getImagePrimarySortRank = (entry: DraftEntry) => {
-  const tags = extractImageTagsFromFileName(entry.name);
+const getImagePrimarySortRank = (
+  entry: DraftEntry,
+  resolveTags: (entry: DraftEntry) => ImageTagOption[]
+) => {
+  const tags = resolveTags(entry);
   if (tags.includes("MAIN")) return 0;
   // White-priority is only for untagged images after MAIN.
   if (tags.length === 0) {
@@ -3220,7 +3747,11 @@ const getImagePrimarySortRank = (entry: DraftEntry) => {
   return 4;
 };
 
-const buildTaggedImageOrderPaths = (imageEntries: DraftEntry[]) => {
+const buildTaggedImageOrderPaths = (
+  imageEntries: DraftEntry[],
+  options?: { resolveTags?: (entry: DraftEntry) => ImageTagOption[] }
+) => {
+  const resolveTags = options?.resolveTags ?? ((entry: DraftEntry) => extractImageTagsFromFileName(entry.name));
   const originalOrder = new Map<string, number>();
   imageEntries.forEach((entry, index) => {
     originalOrder.set(entry.path, index);
@@ -3228,14 +3759,14 @@ const buildTaggedImageOrderPaths = (imageEntries: DraftEntry[]) => {
 
   return [...imageEntries]
     .sort((left, right) => {
-      const leftPrimaryRank = getImagePrimarySortRank(left);
-      const rightPrimaryRank = getImagePrimarySortRank(right);
+      const leftPrimaryRank = getImagePrimarySortRank(left, resolveTags);
+      const rightPrimaryRank = getImagePrimarySortRank(right, resolveTags);
       const rankDiff = leftPrimaryRank - rightPrimaryRank;
       if (rankDiff !== 0) return rankDiff;
 
       if (leftPrimaryRank === 4 && rightPrimaryRank === 4) {
-        const leftTagRank = getTagGroupSortRank(extractImageTagsFromFileName(left.name));
-        const rightTagRank = getTagGroupSortRank(extractImageTagsFromFileName(right.name));
+        const leftTagRank = getTagGroupSortRank(resolveTags(left));
+        const rightTagRank = getTagGroupSortRank(resolveTags(right));
         if (leftTagRank !== rightTagRank) {
           return leftTagRank - rightTagRank;
         }
@@ -3300,6 +3831,50 @@ const extractFileNameFromPath = (pathValue: string) => {
   }
 };
 
+const AMAZON_ASIN_PATTERN_LIST = [
+  /\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i,
+  /\/gp\/product\/([A-Z0-9]{10})(?:[/?#]|$)/i,
+  /\/product\/([A-Z0-9]{10})(?:[/?#]|$)/i,
+  /[?&]asin=([A-Z0-9]{10})(?:[&#]|$)/i,
+];
+
+const normalizeAsinValue = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+  return /^[A-Z0-9]{10}$/.test(normalized) ? normalized : "";
+};
+
+const extractAmazonAsinFromUrl = (value: string | null | undefined) => {
+  const link = String(value || "").trim();
+  if (!link) return "";
+  for (const pattern of AMAZON_ASIN_PATTERN_LIST) {
+    const match = link.match(pattern);
+    const asin = normalizeAsinValue(match?.[1] || "");
+    if (asin) return asin;
+  }
+  return "";
+};
+
+const extractAmazonAsin = (item: ReverseSearchResultItem) => {
+  const metadata = item.metadata || null;
+  if (metadata) {
+    const metadataAsinKeys = [
+      "asin",
+      "ASIN",
+      "parent_asin",
+      "parentAsin",
+      "sourceAsin",
+      "productAsin",
+    ];
+    for (const key of metadataAsinKeys) {
+      const asin = normalizeAsinValue(metadata[key]);
+      if (asin) return asin;
+    }
+  }
+  return extractAmazonAsinFromUrl(item.link);
+};
+
 const getParentFolderPathFromEntryPath = (pathValue: string) => {
   const parts = String(pathValue || "").split("/").filter(Boolean);
   if (parts.length <= 1) return "";
@@ -3341,11 +3916,56 @@ const buildVariantCombinedZhValue = (row: {
   return combined || String(row.fallback || "").trim();
 };
 
+const extractVariantImageFileName = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      const pathQuery = parsed.searchParams.get("path");
+      if (pathQuery) {
+        return extractFileNameFromPath(pathQuery);
+      }
+      return extractFileNameFromPath(parsed.pathname);
+    } catch {
+      // Fall back to generic parsing below.
+    }
+  }
+  return extractFileNameFromPath(raw);
+};
+
+const normalizeVariantImageFileNameKey = (value: string | null | undefined) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const buildVariantSwedishReadableLabel = (row: DraftSkuRow) => {
+  const raw = parseDraftRawRow(row.draft_raw_row);
+  const swedishParts = [
+    toText(raw.variation_color_se).trim(),
+    toText(raw.variation_size_se).trim(),
+    toText(raw.variation_other_se).trim(),
+    toText(raw.variation_amount_se).trim(),
+  ].filter(Boolean);
+  if (swedishParts.length > 0) {
+    return swedishParts.join(" / ");
+  }
+  const zhCombined = buildVariantCombinedZhValue({
+    draft_option1: String(row.draft_option1 || "").trim(),
+    draft_option2: String(row.draft_option2 || "").trim(),
+    draft_option3: String(row.draft_option3 || "").trim(),
+    draft_option4: String(row.draft_option4 || "").trim(),
+    fallback: String(row.draft_option_combined_zh || "").trim(),
+  });
+  return zhCombined || String(row.draft_sku || "").trim() || String(row.id || "").trim();
+};
+
 const createVariantEditorKey = () =>
   `variant-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const extractVariantLabelFromFilename = (fileName: string, spu: string) => {
-  const base = String(fileName || "").replace(/\.[^.]+$/, "");
+  const rawBase = String(fileName || "").replace(/\.[^.]+$/, "");
+  const base = stripTrailingImageTagSuffixes(rawBase);
   if (!base) return "";
   let next = base;
   const normalizedSpu = String(spu || "").trim();
@@ -3358,6 +3978,49 @@ const extractVariantLabelFromFilename = (fileName: string, spu: string) => {
   next = next.replace(/^-+/, "").replace(/-+$/, "");
   if (!next) return base;
   return next.replace(/[_-]+/g, " ").trim();
+};
+
+const normalizeVariantComparableValue = (value: string) =>
+  String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^0-9a-z\u00c0-\u024f\u0400-\u04ff\u4e00-\u9fff]+/g, "");
+
+const doesVariantRowLikelyMatchImageFileName = (
+  row: DraftSkuRow,
+  imageFileName: string,
+  spu: string
+) => {
+  const fileLabel = extractVariantLabelFromFilename(imageFileName, spu);
+  const fileKey = normalizeVariantComparableValue(fileLabel);
+  if (!fileKey) return false;
+  const rawRow = parseDraftRawRow(row.draft_raw_row);
+  const zhCombined = buildVariantCombinedZhValue({
+    draft_option1: String(row.draft_option1 || "").trim(),
+    draft_option2: String(row.draft_option2 || "").trim(),
+    draft_option3: String(row.draft_option3 || "").trim(),
+    draft_option4: String(row.draft_option4 || "").trim(),
+    fallback: String(row.draft_option_combined_zh || "").trim(),
+  });
+  const candidates = [
+    zhCombined,
+    String(row.draft_option_combined_zh || "").trim(),
+    String(row.draft_option1 || "").trim(),
+    String(row.draft_option2 || "").trim(),
+    String(row.draft_option3 || "").trim(),
+    String(row.draft_option4 || "").trim(),
+    String(rawRow.variation_color_zh || "").trim(),
+    String(rawRow.variation_size_zh || "").trim(),
+    String(rawRow.variation_other_zh || "").trim(),
+    String(rawRow.variation_amount_zh || "").trim(),
+  ]
+    .map((value) => normalizeVariantComparableValue(value))
+    .filter((value) => value.length >= 2);
+  if (candidates.length === 0) return false;
+  return candidates.some((candidate) => {
+    if (candidate.length < 2) return false;
+    return fileKey.includes(candidate) || candidate.includes(fileKey);
+  });
 };
 
 const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
@@ -3377,6 +4040,8 @@ const RAW_ROW_FIELD_MAP: Record<string, string[]> = {
 const USE_NEW_FILE_EXPLORER = true;
 const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
 const UNSEEN_AI_UPDATES_STORAGE_KEY = "draftExplorer.unseenAiUpdatesBySpu.v1";
+const CONTEXT_MENU_STICKY_CLOSE_MS = 520;
+const AUTO_LEVELS_MAX_IMAGES = 8;
 
 const getSpuRootFromDraftPath = (pathValue: string) => {
   const normalized = String(pathValue || "").trim().replace(/^\/+|\/+$/g, "");
@@ -3450,6 +4115,37 @@ const computeAdaptiveColumnWidthPx = (
   return Math.round(clampNumber(target, options.minPx, options.maxPx));
 };
 
+const parseNumericFieldValue = (value: number | string | null | undefined): number | null => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const normalized = text
+    .replace(",", ".")
+    .replace(/[^0-9.+-]/g, "")
+    .trim();
+  if (!normalized || normalized === "." || normalized === "+" || normalized === "-") {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const clampAutoLevelsPercent = (value: number) =>
+  Math.min(100, Math.max(0, Number.isFinite(value) ? value : 50));
+
+const clampAutoLevelsQuality = (value: number) =>
+  Math.min(100, Math.max(1, Math.round(Number.isFinite(value) ? value : 92)));
+
+const mapAutoLevelsBounds = (levelPercent: number) => {
+  const t = clampAutoLevelsPercent(levelPercent) / 100;
+  return {
+    lower: Number((0.4 + 1.2 * t).toFixed(3)),
+    upper: Number((99.6 - 1.2 * t).toFixed(3)),
+  };
+};
+
 export default function DraftExplorerPage() {
   const styles = useStyles();
   const { t } = useI18n();
@@ -3496,6 +4192,7 @@ export default function DraftExplorerPage() {
     variants: 0,
     ocr: 0,
     others: 0,
+    downloaded: 0,
   });
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
@@ -3538,7 +4235,13 @@ export default function DraftExplorerPage() {
     null
   );
   const [contextMenuSubmenu, setContextMenuSubmenu] = useState<
-    "tag-image" | "edit-chatgpt" | "edit-gemini" | null
+    | "tag-image"
+    | "assign-variant"
+    | "edit-image"
+    | "google-lens-search"
+    | "edit-chatgpt"
+    | "edit-gemini"
+    | null
   >(null);
   const [contextMenuNestedSubmenu, setContextMenuNestedSubmenu] = useState<
     | "chatgpt-digideal-single"
@@ -3550,9 +4253,24 @@ export default function DraftExplorerPage() {
     | null
   >(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const contextMenuCloseTimerRef = useRef<number | null>(null);
+  const contextMenuSubmenuCloseTimerRef = useRef<number | null>(null);
+  const contextMenuNestedCloseTimerRef = useRef<number | null>(null);
   const [contextMenuSubmenuSide, setContextMenuSubmenuSide] = useState<
     "right" | "left"
   >("right");
+  const [variantPickerRowsBySpu, setVariantPickerRowsBySpu] = useState<
+    Record<string, DraftSkuRow[]>
+  >({});
+  const [contextMenuVariantRowsLoading, setContextMenuVariantRowsLoading] = useState(false);
+  const [contextMenuVariantRowsError, setContextMenuVariantRowsError] = useState<string | null>(
+    null
+  );
+  const [contextMenuVariantSavingIds, setContextMenuVariantSavingIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [contextMenuVariantRowsRefreshing, setContextMenuVariantRowsRefreshing] =
+    useState(false);
   const nonImageFileSelectAllRef = useRef<HTMLInputElement | null>(null);
   const [pendingAiEditsByOriginal, setPendingAiEditsByOriginal] = useState<
     Record<string, PendingAiEditRecord>
@@ -3643,6 +4361,29 @@ export default function DraftExplorerPage() {
   const [importEditsSubmitting, setImportEditsSubmitting] = useState(false);
   const importEditsExcelInputRef = useRef<HTMLInputElement | null>(null);
   const importEditsZipInputRef = useRef<HTMLInputElement | null>(null);
+  const [reverseSearchOpen, setReverseSearchOpen] = useState(false);
+  const [reverseSearchLoading, setReverseSearchLoading] = useState(false);
+  const [reverseSearchError, setReverseSearchError] = useState<string | null>(null);
+  const [reverseSearchItems, setReverseSearchItems] = useState<ReverseSearchResultItem[]>([]);
+  const [reverseSearchAmazonLinks, setReverseSearchAmazonLinks] = useState<string[]>([]);
+  const [reverseSearchImagePath, setReverseSearchImagePath] = useState("");
+  const [reverseSearchImageName, setReverseSearchImageName] = useState("");
+  const [reverseSearchSearchId, setReverseSearchSearchId] = useState<string | null>(null);
+  const [reverseSearchFetchingAmazon, setReverseSearchFetchingAmazon] = useState(false);
+  const [reverseSearchAddingDownloaded, setReverseSearchAddingDownloaded] = useState(false);
+  const [reverseSearchDownloadedCount, setReverseSearchDownloadedCount] = useState(0);
+  const [reverseSearchJobsByPath, setReverseSearchJobsByPath] = useState<
+    Record<string, ReverseSearchJobState>
+  >({});
+  const [reverseSearchInputPayload, setReverseSearchInputPayload] = useState<
+    Record<string, unknown> | null
+  >(null);
+  const [reverseSearchDebugPayload, setReverseSearchDebugPayload] = useState<
+    Record<string, unknown> | null
+  >(null);
+  const [reverseSearchBrokenPreviewUrls, setReverseSearchBrokenPreviewUrls] = useState<
+    Record<string, true>
+  >({});
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [explorerView, setExplorerView] = useState<"list" | "grid">("list");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -3750,12 +4491,19 @@ export default function DraftExplorerPage() {
     key: null,
     direction: "asc",
   });
+  const [autoLevelsOpen, setAutoLevelsOpen] = useState(false);
+  const [autoLevelsTargets, setAutoLevelsTargets] = useState<DraftEntry[]>([]);
+  const [autoLevelsLevelPercent, setAutoLevelsLevelPercent] = useState(50);
+  const [autoLevelsQuality, setAutoLevelsQuality] = useState(92);
+  const [autoLevelsSubmitting, setAutoLevelsSubmitting] = useState(false);
+  const [autoLevelsError, setAutoLevelsError] = useState<string | null>(null);
   const [initialOpenSpu, setInitialOpenSpu] = useState("");
   const pendingFolderOpenPathRef = useRef<string | null>(null);
   const initialUrlStateRef = useRef<DraftExplorerUrlState | null>(null);
   const initialUrlStateParsedRef = useRef(false);
   const initialUrlShowAllPendingRef = useRef(false);
   const initialOpenSpuHandledRef = useRef(false);
+  const folderSelectRequestSeqRef = useRef(0);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
   const currentPathRef = useRef("");
   const currentMainPathRef = useRef("");
@@ -3927,6 +4675,90 @@ export default function DraftExplorerPage() {
     []
   );
 
+  const reverseSearchDisplayImagePath = useMemo(() => {
+    const selectedPath = String(reverseSearchImagePath || "").trim();
+    if (!selectedPath) return "";
+    const parentPath = selectedPath.includes("/")
+      ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
+      : "";
+    if (!parentPath) return selectedPath;
+    const mainEntry = entries.find(
+      (entry) =>
+        entry.type === "file" &&
+        isImage(entry.name) &&
+        entry.path.startsWith(`${parentPath}/`) &&
+        extractImageTagsFromFileName(entry.name).includes("MAIN")
+    );
+    return mainEntry?.path || selectedPath;
+  }, [entries, isImage, reverseSearchImagePath]);
+
+  const reverseSearchDisplayImageModifiedAt =
+    entryByPath.get(reverseSearchDisplayImagePath)?.modifiedAt ?? null;
+  const reverseSearchDisplayImageUrl = reverseSearchDisplayImagePath
+    ? buildDraftDownloadUrl(
+        reverseSearchDisplayImagePath,
+        reverseSearchDisplayImageModifiedAt
+      )
+    : "";
+  const reverseSearchDisplayProductTitle = useMemo(() => {
+    const targetPath = String(
+      reverseSearchDisplayImagePath || reverseSearchImagePath || ""
+    ).trim();
+    if (!targetPath) return "";
+    const parts = targetPath.split("/").filter(Boolean);
+    const spuCode = normalizeDraftSpuCode(parts[1] || "");
+    if (!spuCode) return "";
+    const row = spuRows.find(
+      (candidate) =>
+        normalizeDraftSpuCode(candidate.draft_spu || "") === spuCode
+    );
+    if (!row) return "";
+    return (
+      getShortTitleLabel(
+        row.draft_mf_product_short_title ||
+          row.draft_title ||
+          row.draft_mf_product_long_title
+      ) || ""
+    );
+  }, [reverseSearchDisplayImagePath, reverseSearchImagePath, spuRows]);
+
+  const handleDownloadReverseSearchJson = useCallback(() => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      request: reverseSearchInputPayload,
+      response: {
+        searchId: reverseSearchSearchId,
+        imagePath: reverseSearchImagePath || null,
+        imageName: reverseSearchImageName || null,
+        total: reverseSearchItems.length,
+        amazonCount: reverseSearchAmazonLinks.length,
+        items: reverseSearchItems,
+        amazonLinks: reverseSearchAmazonLinks,
+      },
+      debug: reverseSearchDebugPayload,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `google-lens-search-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, [
+    reverseSearchAmazonLinks,
+    reverseSearchDebugPayload,
+    reverseSearchImageName,
+    reverseSearchImagePath,
+    reverseSearchInputPayload,
+    reverseSearchItems,
+    reverseSearchSearchId,
+  ]);
+
   const buildPhotopeaUrl = useCallback(() => {
     const config = {
       environment: {
@@ -4027,14 +4859,17 @@ export default function DraftExplorerPage() {
     }
   }, [searchQuery, selectedFolder]);
 
-  const fetchSkuRows = useCallback(async () => {
+  const fetchSkuRows = useCallback(async (options?: { silent?: boolean }) => {
     const runFilter = String(selectedFolder || "").trim();
+    const silent = Boolean(options?.silent);
     if (!runFilter) {
       setSkuRows([]);
       return;
     }
-    setDraftLoading(true);
-    setDraftError(null);
+    if (!silent) {
+      setDraftLoading(true);
+      setDraftError(null);
+    }
     try {
       const url = new URL("/api/drafts/variants", window.location.origin);
       url.searchParams.set("run", runFilter);
@@ -4059,10 +4894,14 @@ export default function DraftExplorerPage() {
       const payload = await response.json();
       setSkuRows(payload.items ?? []);
     } catch (err) {
-      setDraftError((err as Error).message);
+      if (!silent) {
+        setDraftError((err as Error).message);
+      }
       // Keep existing rows on error so we don't look like we deleted data.
     } finally {
-      setDraftLoading(false);
+      if (!silent) {
+        setDraftLoading(false);
+      }
     }
   }, [searchQuery, selectedFolder]);
 
@@ -4182,9 +5021,11 @@ export default function DraftExplorerPage() {
 
   useEffect(() => {
     if (draftTab === "spu") {
-      fetchSpuRows();
+      void fetchSpuRows();
+      // Keep SKU rows hydrated while on SPU tab so variant issue flags stay accurate.
+      void fetchSkuRows({ silent: true });
     } else {
-      fetchSkuRows();
+      void fetchSkuRows();
     }
   }, [draftTab, fetchSpuRows, fetchSkuRows]);
 
@@ -4221,9 +5062,10 @@ export default function DraftExplorerPage() {
   useEffect(() => {
     if (skuStatus === "done") {
       if (draftTab === "sku") {
-        fetchSkuRows();
+        void fetchSkuRows();
       } else {
-        fetchSpuRows();
+        void fetchSpuRows();
+        void fetchSkuRows({ silent: true });
       }
     }
   }, [skuStatus, draftTab, fetchSkuRows, fetchSpuRows]);
@@ -4399,6 +5241,28 @@ export default function DraftExplorerPage() {
       (row) => String(row.draft_spu || "").trim().toUpperCase() === filterSpu
     );
   }, [currentImageSpuForDraftFilter, draftTableSpuFilterActive, skuRows]);
+
+  const variantCriticalIssuesBySpu = useMemo(() => {
+    const bySpu = new Map<string, { missingPrice: boolean; missingWeight: boolean }>();
+    for (const row of skuRows) {
+      const spuKey = String(row.draft_spu || "").trim().toUpperCase();
+      if (!spuKey) continue;
+      const current = bySpu.get(spuKey) ?? {
+        missingPrice: false,
+        missingWeight: false,
+      };
+      const priceValue = parseNumericFieldValue(row.draft_price);
+      if (priceValue === null || priceValue <= 0) {
+        current.missingPrice = true;
+      }
+      const weightValue = parseNumericFieldValue(row.draft_weight);
+      if (weightValue === null || weightValue <= 0) {
+        current.missingWeight = true;
+      }
+      bySpu.set(spuKey, current);
+    }
+    return bySpu;
+  }, [skuRows]);
 
   useEffect(() => {
     if (draftTab === "sku") {
@@ -4595,7 +5459,7 @@ export default function DraftExplorerPage() {
       variants: makeStyle(
         t("draftExplorer.columns.variants"),
         sample.map((row) => `Edit (${row.variant_count ?? 0})`),
-        { minPx: 116, maxPx: 180 }
+        { minPx: 132, maxPx: 220 }
       ),
       updated: makeStyle(
         t("draftExplorer.columns.updated"),
@@ -5018,6 +5882,67 @@ export default function DraftExplorerPage() {
     skuMissingCount === 0 &&
     (skuTotalCount ?? 0) > 0;
 
+  const validateSkuReadinessForSpus = useCallback(
+    async (spus: string[]) => {
+      const targetSpus = Array.from(
+        new Set(spus.map((value) => String(value || "").trim()).filter(Boolean))
+      );
+      if (targetSpus.length === 0) {
+        return { ready: true, missingSkuRows: 0, inspectedRows: 0 };
+      }
+
+      const rowsBySpu = new Map<string, DraftSkuRow[]>();
+      const collectRows = (rows: DraftSkuRow[]) => {
+        for (const row of rows) {
+          const spu = String(row?.draft_spu || "").trim();
+          if (!spu || !targetSpus.includes(spu)) continue;
+          const list = rowsBySpu.get(spu) ?? [];
+          list.push(row);
+          rowsBySpu.set(spu, list);
+        }
+      };
+
+      const runFilter = String(selectedFolder || "").trim();
+      if (runFilter) {
+        const url = new URL("/api/drafts/variants", window.location.origin);
+        url.searchParams.set("run", runFilter);
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Unable to verify SKU readiness.");
+        }
+        const payload = await response.json().catch(() => ({}));
+        const items = Array.isArray(payload?.items)
+          ? (payload.items as DraftSkuRow[])
+          : [];
+        collectRows(items);
+      } else {
+        collectRows(skuRows);
+      }
+
+      let missingSkuRows = 0;
+      let inspectedRows = 0;
+      for (const spu of targetSpus) {
+        const rows = rowsBySpu.get(spu) ?? [];
+        // No variant rows is allowed: publish route will build fallback variant from SPU.
+        if (rows.length === 0) continue;
+        for (const row of rows) {
+          inspectedRows += 1;
+          if (!String(row?.draft_sku || "").trim()) {
+            missingSkuRows += 1;
+          }
+        }
+      }
+
+      return {
+        ready: missingSkuRows === 0,
+        missingSkuRows,
+        inspectedRows,
+      };
+    },
+    [selectedFolder, skuRows]
+  );
+
   const handlePublishDrafts = async () => {
     if (draftTab !== "spu") return;
     setPublishMessage(null);
@@ -5033,12 +5958,6 @@ export default function DraftExplorerPage() {
       setPublishMessage(t("draftExplorer.publishBlockedSkuRunning"));
       return;
     }
-    if (!skuReady) {
-      setPublishStatus("error");
-      setPublishMessage(t("draftExplorer.publishBlockedSkusMissing"));
-      return;
-    }
-    setPublishStatus("running");
     const runAtStart = String(selectedFolder || "").trim();
     const currentPathAtStart = String(currentPath || "").trim();
     const foldersAtStart = [...folders];
@@ -5061,6 +5980,25 @@ export default function DraftExplorerPage() {
       );
       return;
     }
+
+    try {
+      const readiness = await validateSkuReadinessForSpus(targetSpuValues);
+      if (!readiness.ready) {
+        setPublishStatus("error");
+        setPublishMessage(
+          `Selected SPUs still have missing SKU values (${readiness.missingSkuRows} row${
+            readiness.missingSkuRows === 1 ? "" : "s"
+          }). Generate SKUs for those products and retry.`
+        );
+        return;
+      }
+    } catch (err) {
+      setPublishStatus("error");
+      setPublishMessage((err as Error).message);
+      return;
+    }
+
+    setPublishStatus("running");
 
     const confirmSelected = window.confirm(
       t("draftExplorer.publishConfirmSelected", {
@@ -5275,6 +6213,9 @@ export default function DraftExplorerPage() {
         setSelectedSpus(new Set());
       } else {
         const selectedSkuIds = selectedRows.map((row) => row.id);
+        const selectedSkuIdSet = new Set(
+          selectedSkuIds.map((id) => String(id || "").trim()).filter(Boolean)
+        );
         const response = await fetch("/api/drafts/variants/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5285,6 +6226,25 @@ export default function DraftExplorerPage() {
           throw new Error(
             payload?.error || t("draftExplorer.deleteRowsError")
           );
+        }
+        if (selectedSkuIdSet.size > 0) {
+          setSkuRows((prev) =>
+            prev.filter((row) => !selectedSkuIdSet.has(String(row.id || "").trim()))
+          );
+          setVariantPickerRowsBySpu((prev) => {
+            let changed = false;
+            const nextEntries = Object.entries(prev).map(([spu, rows]) => {
+              const filtered = rows.filter(
+                (row) => !selectedSkuIdSet.has(String(row.id || "").trim())
+              );
+              if (filtered.length !== rows.length) {
+                changed = true;
+              }
+              return [spu, filtered] as const;
+            });
+            if (!changed) return prev;
+            return Object.fromEntries(nextEntries);
+          });
         }
         setSelectedSkus(new Set());
       }
@@ -6298,17 +7258,21 @@ export default function DraftExplorerPage() {
   const handleSelectFolder = useCallback(
     async (nextFolderValue: string) => {
       const nextFolder = String(nextFolderValue || "");
+      const requestSeq = folderSelectRequestSeqRef.current + 1;
+      folderSelectRequestSeqRef.current = requestSeq;
       if (!nextFolder) {
+        if (requestSeq !== folderSelectRequestSeqRef.current) return;
         setSelectedFolder("");
         setCurrentPath("");
         setEntries([]);
         setFolderTree(null);
         return;
       }
-      const nextPath = await resolveInitialExplorerPath(nextFolder);
-      pendingFolderOpenPathRef.current = nextPath;
       setSelectedFolder(nextFolder);
       setSpuPickerOpen(false);
+      const nextPath = await resolveInitialExplorerPath(nextFolder);
+      if (requestSeq !== folderSelectRequestSeqRef.current) return;
+      pendingFolderOpenPathRef.current = nextPath;
       setCurrentPath(nextPath);
     },
     [resolveInitialExplorerPath]
@@ -6640,16 +7604,28 @@ export default function DraftExplorerPage() {
       setPublishMessage(t("draftExplorer.publishBlockedSkuRunning"));
       return;
     }
-    if (!skuReady) {
-      setPublishStatus("error");
-      setPublishMessage(t("draftExplorer.publishBlockedSkusMissing"));
-      return;
-    }
 
     const spus = [...currentBatchSpuValues];
     if (spus.length === 0) {
       setPublishStatus("error");
       setPublishMessage("No SPUs found in the selected draft folder.");
+      return;
+    }
+
+    try {
+      const readiness = await validateSkuReadinessForSpus(spus);
+      if (!readiness.ready) {
+        setPublishStatus("error");
+        setPublishMessage(
+          `Draft folder still has missing SKU values (${readiness.missingSkuRows} row${
+            readiness.missingSkuRows === 1 ? "" : "s"
+          }). Generate SKUs and retry.`
+        );
+        return;
+      }
+    } catch (err) {
+      setPublishStatus("error");
+      setPublishMessage((err as Error).message);
       return;
     }
 
@@ -6706,8 +7682,8 @@ export default function DraftExplorerPage() {
     hasPendingDetailAiRewrite,
     refreshEntries,
     selectedFolder,
-    skuReady,
     skuStatus,
+    validateSkuReadinessForSpus,
     t,
   ]);
 
@@ -6831,15 +7807,20 @@ export default function DraftExplorerPage() {
     });
   }, [isArchiveFolder, folders]);
 
-  const toggleRunForMerge = useCallback((run: string) => {
-    if (isArchiveFolder(run)) return;
-    setSelectedRunsForMerge((prev) => {
-      const next = new Set(prev);
-      if (next.has(run)) next.delete(run);
-      else next.add(run);
-      return next;
-    });
-  }, [isArchiveFolder]);
+  const setRunMergeSelection = useCallback(
+    (run: string, checked: boolean) => {
+      if (isArchiveFolder(run)) return;
+      setSelectedRunsForMerge((prev) => {
+        const hasRun = prev.has(run);
+        if (checked === hasRun) return prev;
+        const next = new Set(prev);
+        if (checked) next.add(run);
+        else next.delete(run);
+        return next;
+      });
+    },
+    [isArchiveFolder]
+  );
 
   const handleDeleteRuns = useCallback(async () => {
     const runs = Array.from(selectedRunsForMerge).filter(
@@ -7186,6 +8167,126 @@ export default function DraftExplorerPage() {
     });
   }, [currentPath]);
 
+  const clearContextMenuCloseTimer = useCallback(() => {
+    if (contextMenuCloseTimerRef.current == null) return;
+    window.clearTimeout(contextMenuCloseTimerRef.current);
+    contextMenuCloseTimerRef.current = null;
+  }, []);
+
+  const clearContextMenuSubmenuCloseTimer = useCallback(() => {
+    if (contextMenuSubmenuCloseTimerRef.current == null) return;
+    window.clearTimeout(contextMenuSubmenuCloseTimerRef.current);
+    contextMenuSubmenuCloseTimerRef.current = null;
+  }, []);
+
+  const clearContextMenuNestedCloseTimer = useCallback(() => {
+    if (contextMenuNestedCloseTimerRef.current == null) return;
+    window.clearTimeout(contextMenuNestedCloseTimerRef.current);
+    contextMenuNestedCloseTimerRef.current = null;
+  }, []);
+
+  const clearAllContextMenuCloseTimers = useCallback(() => {
+    clearContextMenuCloseTimer();
+    clearContextMenuSubmenuCloseTimer();
+    clearContextMenuNestedCloseTimer();
+  }, [
+    clearContextMenuCloseTimer,
+    clearContextMenuNestedCloseTimer,
+    clearContextMenuSubmenuCloseTimer,
+  ]);
+
+  const closeContextMenuImmediately = useCallback(() => {
+    clearAllContextMenuCloseTimers();
+    setContextMenu(null);
+    setContextMenuSubmenu(null);
+    setContextMenuNestedSubmenu(null);
+  }, [clearAllContextMenuCloseTimers]);
+
+  const keepContextMenuOpen = useCallback(() => {
+    clearAllContextMenuCloseTimers();
+  }, [clearAllContextMenuCloseTimers]);
+
+  const scheduleContextMenuClose = useCallback(
+    (delayMs = CONTEXT_MENU_STICKY_CLOSE_MS) => {
+      clearContextMenuCloseTimer();
+      contextMenuCloseTimerRef.current = window.setTimeout(() => {
+        contextMenuCloseTimerRef.current = null;
+        setContextMenu(null);
+        setContextMenuSubmenu(null);
+        setContextMenuNestedSubmenu(null);
+      }, delayMs);
+    },
+    [clearContextMenuCloseTimer]
+  );
+
+  const scheduleContextMenuSubmenuClose = useCallback(
+    (submenu: NonNullable<typeof contextMenuSubmenu>, delayMs = CONTEXT_MENU_STICKY_CLOSE_MS) => {
+      clearContextMenuSubmenuCloseTimer();
+      contextMenuSubmenuCloseTimerRef.current = window.setTimeout(() => {
+        contextMenuSubmenuCloseTimerRef.current = null;
+        setContextMenuSubmenu((prev) => (prev === submenu ? null : prev));
+        setContextMenuNestedSubmenu(null);
+      }, delayMs);
+    },
+    [clearContextMenuSubmenuCloseTimer]
+  );
+
+  const scheduleContextMenuNestedClose = useCallback(
+    (
+      nested: NonNullable<typeof contextMenuNestedSubmenu>,
+      delayMs = CONTEXT_MENU_STICKY_CLOSE_MS
+    ) => {
+      clearContextMenuNestedCloseTimer();
+      contextMenuNestedCloseTimerRef.current = window.setTimeout(() => {
+        contextMenuNestedCloseTimerRef.current = null;
+        setContextMenuNestedSubmenu((prev) => (prev === nested ? null : prev));
+      }, delayMs);
+    },
+    [clearContextMenuNestedCloseTimer]
+  );
+
+  const openContextMenuSubmenu = useCallback(
+    (submenu: NonNullable<typeof contextMenuSubmenu>, options?: { resetNested?: boolean }) => {
+      keepContextMenuOpen();
+      setContextMenuSubmenu(submenu);
+      if (options?.resetNested) {
+        setContextMenuNestedSubmenu(null);
+      }
+    },
+    [keepContextMenuOpen]
+  );
+
+  const openContextMenuNestedSubmenu = useCallback(
+    (submenu: NonNullable<typeof contextMenuNestedSubmenu>) => {
+      keepContextMenuOpen();
+      setContextMenuNestedSubmenu(submenu);
+    },
+    [keepContextMenuOpen]
+  );
+
+  const closeAnyOpenContextMenuSubmenuWithDelay = useCallback(() => {
+    keepContextMenuOpen();
+    if (contextMenuSubmenu) {
+      scheduleContextMenuSubmenuClose(contextMenuSubmenu);
+    }
+    if (contextMenuNestedSubmenu) {
+      scheduleContextMenuNestedClose(contextMenuNestedSubmenu);
+    }
+  }, [
+    contextMenuNestedSubmenu,
+    contextMenuSubmenu,
+    keepContextMenuOpen,
+    scheduleContextMenuNestedClose,
+    scheduleContextMenuSubmenuClose,
+  ]);
+
+  const closeAnyOpenContextMenuNestedSubmenuWithDelay = useCallback(() => {
+    keepContextMenuOpen();
+    if (contextMenuNestedSubmenu) {
+      scheduleContextMenuNestedClose(contextMenuNestedSubmenu);
+    }
+  }, [contextMenuNestedSubmenu, keepContextMenuOpen, scheduleContextMenuNestedClose]);
+
   useLayoutEffect(() => {
     if (!contextMenu) return;
     const menu = contextMenuRef.current;
@@ -7204,7 +8305,7 @@ export default function DraftExplorerPage() {
         return;
       }
 
-      const submenuWidthEstimate = 180;
+      const submenuWidthEstimate = 320;
       const gap = 8;
       const finalRect = menu.getBoundingClientRect();
       const needed = submenuWidthEstimate + gap;
@@ -7234,15 +8335,11 @@ export default function DraftExplorerPage() {
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => {
-      setContextMenu(null);
-      setContextMenuSubmenu(null);
-      setContextMenuNestedSubmenu(null);
+      closeContextMenuImmediately();
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setContextMenu(null);
-        setContextMenuSubmenu(null);
-        setContextMenuNestedSubmenu(null);
+        closeContextMenuImmediately();
       }
     };
     window.addEventListener("click", close);
@@ -7253,7 +8350,12 @@ export default function DraftExplorerPage() {
       window.removeEventListener("scroll", close);
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [contextMenu]);
+  }, [closeContextMenuImmediately, contextMenu]);
+
+  useEffect(() => {
+    if (contextMenu) return;
+    clearAllContextMenuCloseTimers();
+  }, [clearAllContextMenuCloseTimers, contextMenu]);
 
   useEffect(() => {
     setContextMenuNestedSubmenu(null);
@@ -7751,7 +8853,13 @@ export default function DraftExplorerPage() {
     const makeStyle = (
       headerText: string,
       values: unknown[],
-      options: { minPx: number; maxPx: number; headerAsMax?: boolean }
+      options: {
+        minPx: number;
+        maxPx: number;
+        headerAsMax?: boolean;
+        headerPaddingPx?: number;
+        contentPaddingPx?: number;
+      }
     ) => {
       const width = computeAdaptiveColumnWidthPx(headerText, values, options);
       return {
@@ -7770,62 +8878,62 @@ export default function DraftExplorerPage() {
       sku: makeStyle(
         "SKU",
         sample.map((row) => row.draft_sku),
-        { minPx: 170, maxPx: 360 }
+        { minPx: 70, maxPx: 300, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       colorSe: makeStyle(
         "Color (SE)",
         sample.map((row) => row.variation_color_se || row.draft_option1),
-        { minPx: 110, maxPx: 260 }
+        { minPx: 70, maxPx: 250, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       sizeSe: makeStyle(
         "Size (SE)",
         sample.map((row) => row.variation_size_se || row.draft_option2),
-        { minPx: 96, maxPx: 210 }
+        { minPx: 64, maxPx: 190, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       otherSe: makeStyle(
         "Other (SE)",
         sample.map((row) => row.variation_other_se || row.draft_option3),
-        { minPx: 126, maxPx: 340 }
+        { minPx: 72, maxPx: 320, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       amountSe: makeStyle(
         "Amount (SE)",
         sample.map((row) => row.variation_amount_se || row.draft_option4),
-        { minPx: 112, maxPx: 260 }
+        { minPx: 70, maxPx: 220, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       optionCombinedZh: makeStyle(
         "Option Combined (ZH)",
         sample.map((row) => row.draft_option_combined_zh),
-        { minPx: 210, maxPx: 540 }
+        { minPx: 90, maxPx: 500, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       colorZh: makeStyle(
         "Color (ZH)",
         sample.map((row) => row.draft_option1),
-        { minPx: 110, maxPx: 260 }
+        { minPx: 70, maxPx: 250, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       sizeZh: makeStyle(
         "Size (ZH)",
         sample.map((row) => row.draft_option2),
-        { minPx: 96, maxPx: 210 }
+        { minPx: 64, maxPx: 190, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       otherZh: makeStyle(
         "Other (ZH)",
         sample.map((row) => row.draft_option3),
-        { minPx: 126, maxPx: 340 }
+        { minPx: 72, maxPx: 320, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       amountZh: makeStyle(
         "Amount (ZH)",
         sample.map((row) => row.draft_option4),
-        { minPx: 112, maxPx: 260 }
+        { minPx: 70, maxPx: 220, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       price: makeStyle(
         "Price",
-        sample.map((row) => row.draft_price),
-        { minPx: 90, maxPx: 150, headerAsMax: true }
+        sample.map((row) => row.draft_price).concat("99999"),
+        { minPx: 60, maxPx: 96, headerPaddingPx: 14, contentPaddingPx: 14 }
       ),
       weight: makeStyle(
         "Weight",
-        sample.map((row) => row.draft_weight),
-        { minPx: 100, maxPx: 170, headerAsMax: true }
+        sample.map((row) => row.draft_weight).concat("99999"),
+        { minPx: 64, maxPx: 100, headerPaddingPx: 14, contentPaddingPx: 14 }
       ),
     };
   }, [variantsEditorRows]);
@@ -8196,6 +9304,174 @@ export default function DraftExplorerPage() {
     },
     [buildDraftDownloadUrl, isImage, trySendPhotopeaFile]
   );
+
+  const closeAutoLevelsDialog = useCallback(
+    (force = false) => {
+      if (!force && autoLevelsSubmitting) return;
+      setAutoLevelsOpen(false);
+      setAutoLevelsTargets([]);
+      setAutoLevelsLevelPercent(50);
+      setAutoLevelsQuality(92);
+      setAutoLevelsError(null);
+    },
+    [autoLevelsSubmitting]
+  );
+
+  const openAutoLevelsForEntries = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      const targets = sourceEntries.filter(
+        (item) => item.type === "file" && isImage(item.name)
+      );
+      if (targets.length === 0) {
+        setError("Select at least one image.");
+        return;
+      }
+      const limitedTargets = targets.slice(0, AUTO_LEVELS_MAX_IMAGES);
+      setAutoLevelsTargets(limitedTargets);
+      setAutoLevelsLevelPercent(50);
+      setAutoLevelsQuality(92);
+      setAutoLevelsError(
+        targets.length > AUTO_LEVELS_MAX_IMAGES
+          ? `Only the first ${AUTO_LEVELS_MAX_IMAGES} selected images are included.`
+          : null
+      );
+      setAutoLevelsOpen(true);
+    },
+    [isImage]
+  );
+
+  const applyAutoLevelsForDialogTargets = useCallback(async () => {
+    const targets = autoLevelsTargets.filter(
+      (item) => item.type === "file" && isImage(item.name)
+    );
+    if (targets.length === 0 || autoLevelsSubmitting) return;
+
+    const targetPaths = targets.map((item) => item.path);
+    const levelPercent = clampAutoLevelsPercent(autoLevelsLevelPercent);
+    const quality = clampAutoLevelsQuality(autoLevelsQuality);
+
+    setAutoLevelsSubmitting(true);
+    setError(null);
+    setAutoLevelsError(null);
+    setReloadingImagePaths((prev) => {
+      const next = new Set(prev);
+      targetPaths.forEach((pathValue) => next.add(pathValue));
+      return next;
+    });
+
+    try {
+      const response = await fetch("/api/drafts/images/auto-levels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paths: targetPaths,
+          levelPercent,
+          quality,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Auto levels failed.");
+      }
+
+      const updatedRows = Array.isArray(payload?.updated)
+        ? (payload.updated as Array<Record<string, unknown>>)
+        : [];
+      const errors = Array.isArray(payload?.errors)
+        ? (payload.errors as Array<Record<string, unknown>>)
+        : [];
+
+      const updatedMap = new Map<
+        string,
+        {
+          modifiedAt: string;
+          size: number;
+          pixelQualityScore: number | null;
+        }
+      >();
+      updatedRows.forEach((row) => {
+        const rowPath = String(row.path || "").trim();
+        if (!rowPath) return;
+        const modifiedAt =
+          String(row.modifiedAt || "").trim() || new Date().toISOString();
+        const size =
+          typeof row.size === "number" && Number.isFinite(row.size) ? row.size : 0;
+        const pixelQualityScore =
+          typeof row.pixelQualityScore === "number" &&
+          Number.isFinite(row.pixelQualityScore)
+            ? Math.round(row.pixelQualityScore)
+            : null;
+        updatedMap.set(rowPath, {
+          modifiedAt,
+          size,
+          pixelQualityScore,
+        });
+      });
+
+      if (updatedMap.size > 0) {
+        setEntries((prev) =>
+          prev.map((item) => {
+            const update = updatedMap.get(item.path);
+            if (!update) return item;
+            return {
+              ...item,
+              modifiedAt: update.modifiedAt,
+              size: update.size || item.size,
+              pixelQualityScore:
+                update.pixelQualityScore !== null
+                  ? update.pixelQualityScore
+                  : item.pixelQualityScore ?? null,
+            };
+          })
+        );
+        setImageDimensions((prev) => {
+          const next: Record<string, { width: number; height: number }> = {
+            ...prev,
+          };
+          targetPaths.forEach((pathValue) => {
+            delete next[pathValue];
+          });
+          return next;
+        });
+      }
+
+      if (selectedFolder) {
+        await fetchFolderTree(selectedFolder);
+      }
+
+      if (errors.length > 0) {
+        const preview = errors
+          .slice(0, 2)
+          .map((row) => String(row.error || "Unknown error"))
+          .join("; ");
+        setAutoLevelsError(
+          `Failed to process ${errors.length} image(s). ${preview}${
+            errors.length > 2 ? "..." : ""
+          }`
+        );
+      } else {
+        closeAutoLevelsDialog(true);
+      }
+    } catch (err) {
+      setAutoLevelsError((err as Error).message);
+    } finally {
+      setAutoLevelsSubmitting(false);
+      setReloadingImagePaths((prev) => {
+        const next = new Set(prev);
+        targetPaths.forEach((pathValue) => next.delete(pathValue));
+        return next;
+      });
+    }
+  }, [
+    autoLevelsLevelPercent,
+    autoLevelsQuality,
+    autoLevelsSubmitting,
+    autoLevelsTargets,
+    closeAutoLevelsDialog,
+    fetchFolderTree,
+    isImage,
+    selectedFolder,
+  ]);
 
   const requestPhotopeaExport = useCallback(() => {
     const win = photopeaIframeRef.current?.contentWindow;
@@ -10603,18 +11879,32 @@ export default function DraftExplorerPage() {
     ]
   );
 
-  const uploadImageUrlsToCurrentPath = useCallback(
-    async (urls: string[]) => {
-      if (!currentPath || urls.length === 0) {
-        return { uploaded: 0, failed: 0 } as Record<string, unknown>;
+  const uploadImageUrlsToPath = useCallback(
+    async (
+      targetPath: string,
+      urls: string[],
+      options?: { minWidth?: number; minHeight?: number }
+    ) => {
+      const normalizedTargetPath = String(targetPath || "").trim();
+      if (!normalizedTargetPath || urls.length === 0) {
+        return { uploaded: 0, failed: 0, items: [] } as Record<string, unknown>;
+      }
+      const minWidth = Number(options?.minWidth);
+      const minHeight = Number(options?.minHeight);
+      const requestBody: Record<string, unknown> = {
+        targetPath: normalizedTargetPath,
+        urls,
+      };
+      if (Number.isFinite(minWidth) && minWidth > 0) {
+        requestBody.minWidth = Math.round(minWidth);
+      }
+      if (Number.isFinite(minHeight) && minHeight > 0) {
+        requestBody.minHeight = Math.round(minHeight);
       }
       const response = await fetch("/api/drafts/upload-urls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetPath: currentPath,
-          urls,
-        }),
+        body: JSON.stringify(requestBody),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -10634,8 +11924,10 @@ export default function DraftExplorerPage() {
           return next;
         });
       }
-      await refreshEntries(currentPath);
-      void fetchPendingAiEdits(currentPath);
+      if (currentPath && currentPath === normalizedTargetPath) {
+        await refreshEntries(normalizedTargetPath);
+        void fetchPendingAiEdits(normalizedTargetPath);
+      }
       if (uploadedPaths.length > 0) {
         void refreshImageScoresForPaths(uploadedPaths);
       }
@@ -10652,6 +11944,16 @@ export default function DraftExplorerPage() {
       refreshEntries,
       selectedFolder,
     ]
+  );
+
+  const uploadImageUrlsToCurrentPath = useCallback(
+    async (urls: string[]) => {
+      if (!currentPath) {
+        return { uploaded: 0, failed: 0, items: [] } as Record<string, unknown>;
+      }
+      return uploadImageUrlsToPath(currentPath, urls);
+    },
+    [currentPath, uploadImageUrlsToPath]
   );
 
   const queueAddImagesDialogFiles = useCallback((files: File[]) => {
@@ -10685,6 +11987,25 @@ export default function DraftExplorerPage() {
       importEditsZipInputRef.current.value = "";
     }
   }, [importEditsSubmitting]);
+
+  const resolveDownloadedFolderPath = useCallback(() => {
+    const parts = String(currentPath || "").split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    return `${parts[0]}/${parts[1]}/Downloaded Images (D)`;
+  }, [currentPath]);
+
+  const normalizeExternalImageUrl = useCallback((value: unknown) => {
+    if (typeof value !== "string") return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    try {
+      const parsed = new URL(trimmed);
+      if (!["http:", "https:"].includes(parsed.protocol)) return "";
+      return parsed.toString();
+    } catch {
+      return "";
+    }
+  }, []);
 
   const handleSubmitAddImagesDialog = useCallback(async () => {
     if (!currentPath || addImagesSubmitting) return;
@@ -10728,6 +12049,418 @@ export default function DraftExplorerPage() {
     uploadFilesToCurrentPath,
     uploadImageUrlsToCurrentPath,
   ]);
+
+  const closeReverseSearchDialog = useCallback(() => {
+    if (reverseSearchLoading || reverseSearchFetchingAmazon || reverseSearchAddingDownloaded) {
+      return;
+    }
+    setReverseSearchOpen(false);
+    setReverseSearchError(null);
+    setReverseSearchItems([]);
+    setReverseSearchAmazonLinks([]);
+    setReverseSearchImagePath("");
+    setReverseSearchImageName("");
+    setReverseSearchSearchId(null);
+    setReverseSearchDownloadedCount(0);
+    setReverseSearchInputPayload(null);
+    setReverseSearchDebugPayload(null);
+    setReverseSearchBrokenPreviewUrls({});
+  }, [reverseSearchAddingDownloaded, reverseSearchFetchingAmazon, reverseSearchLoading]);
+
+  const parseReverseSearchJobFromStoredRow = useCallback((value: unknown) => {
+    if (!value || typeof value !== "object") return null;
+    const row = value as Record<string, unknown>;
+    if (!row.hasRecord) return null;
+    const targetImagePath = String(row.targetImagePath || "").trim();
+    if (!targetImagePath) return null;
+    const targetImageName =
+      String(row.targetImageName || "").trim() || extractFileNameFromPath(targetImagePath);
+    const searchImagePath =
+      String(row.searchImagePath || "").trim() || targetImagePath;
+    const searchImageName =
+      String(row.searchImageName || "").trim() || extractFileNameFromPath(searchImagePath);
+    const statusRaw = String(row.status || "").trim().toLowerCase();
+    const status: ReverseSearchJobState["status"] =
+      statusRaw === "error"
+        ? "error"
+        : statusRaw === "running"
+          ? "running"
+          : "ready";
+    const items = Array.isArray(row.items)
+      ? (row.items as ReverseSearchResultItem[])
+      : [];
+    const amazonLinks = Array.isArray(row.amazonLinks)
+      ? (row.amazonLinks as unknown[])
+          .map((entry) => String(entry || "").trim())
+          .filter(Boolean)
+      : [];
+    return {
+      targetImagePath,
+      targetImageName,
+      searchImagePath,
+      searchImageName,
+      status,
+      startedAt: String(row.startedAt || "").trim() || new Date(0).toISOString(),
+      finishedAt: String(row.finishedAt || "").trim() || null,
+      searchId:
+        typeof row.searchId === "string" && row.searchId.trim()
+          ? row.searchId.trim()
+          : null,
+      items,
+      amazonLinks,
+      inputPayload: toObjectRecordOrNull(row.inputPayload),
+      debugPayload: toObjectRecordOrNull(row.debugPayload),
+      error:
+        typeof row.error === "string" && row.error.trim() ? row.error.trim() : null,
+    } satisfies ReverseSearchJobState;
+  }, []);
+
+  const fetchStoredReverseSearchJobs = useCallback(
+    async (imagePaths: string[], includeItems: boolean) => {
+      const targets = Array.from(
+        new Set(
+          imagePaths
+            .map((entry) => String(entry || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (targets.length === 0) return {} as Record<string, ReverseSearchJobState>;
+      const response = await fetch("/api/drafts/google-lens/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imagePaths: targets,
+          includeItems,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load saved Google Lens search.");
+      }
+      const rows = Array.isArray(payload?.records) ? payload.records : [];
+      const jobs: Record<string, ReverseSearchJobState> = {};
+      rows.forEach((row: unknown) => {
+        const parsed = parseReverseSearchJobFromStoredRow(row);
+        if (!parsed) return;
+        jobs[parsed.targetImagePath] = parsed;
+      });
+      return jobs;
+    },
+    [parseReverseSearchJobFromStoredRow]
+  );
+
+  const openReverseSearchDialogFromJob = useCallback((job: ReverseSearchJobState) => {
+    setReverseSearchOpen(true);
+    setReverseSearchLoading(false);
+    setReverseSearchFetchingAmazon(false);
+    setReverseSearchAddingDownloaded(false);
+    setReverseSearchError(job.error || null);
+    setReverseSearchItems(job.items || []);
+    setReverseSearchAmazonLinks(job.amazonLinks || []);
+    setReverseSearchImagePath(job.searchImagePath || job.targetImagePath);
+    setReverseSearchImageName(job.searchImageName || job.targetImageName || "");
+    setReverseSearchSearchId(job.searchId || null);
+    setReverseSearchDownloadedCount(0);
+    setReverseSearchInputPayload(job.inputPayload || null);
+    setReverseSearchDebugPayload(job.debugPayload || null);
+    setReverseSearchBrokenPreviewUrls({});
+  }, []);
+
+  const openReverseSearchDialogForImage = useCallback(
+    async (targetImagePath: string) => {
+      const normalizedTargetPath = String(targetImagePath || "").trim();
+      if (!normalizedTargetPath) return;
+      const inMemoryJob = reverseSearchJobsByPath[normalizedTargetPath];
+      if (inMemoryJob?.status === "running") return;
+      const hasLoadedPayload = Boolean(
+        inMemoryJob &&
+          (inMemoryJob.items.length > 0 ||
+            inMemoryJob.amazonLinks.length > 0 ||
+            inMemoryJob.inputPayload ||
+            inMemoryJob.debugPayload ||
+            inMemoryJob.error)
+      );
+      if (inMemoryJob && hasLoadedPayload) {
+        openReverseSearchDialogFromJob(inMemoryJob);
+        return;
+      }
+
+      setReverseSearchOpen(true);
+      setReverseSearchLoading(true);
+      setReverseSearchFetchingAmazon(false);
+      setReverseSearchAddingDownloaded(false);
+      setReverseSearchError(null);
+      setReverseSearchItems([]);
+      setReverseSearchAmazonLinks([]);
+      setReverseSearchImagePath(normalizedTargetPath);
+      setReverseSearchImageName(extractFileNameFromPath(normalizedTargetPath));
+      setReverseSearchSearchId(null);
+      setReverseSearchDownloadedCount(0);
+      setReverseSearchInputPayload(null);
+      setReverseSearchDebugPayload(null);
+      setReverseSearchBrokenPreviewUrls({});
+      try {
+        const jobs = await fetchStoredReverseSearchJobs([normalizedTargetPath], true);
+        const storedJob = jobs[normalizedTargetPath] ?? null;
+        if (!storedJob) {
+          setReverseSearchLoading(false);
+          setReverseSearchError("No saved Google Lens search found for this image.");
+          return;
+        }
+        setReverseSearchJobsByPath((prev) => ({
+          ...prev,
+          [normalizedTargetPath]: storedJob,
+        }));
+        openReverseSearchDialogFromJob(storedJob);
+      } catch (err) {
+        setReverseSearchLoading(false);
+        setReverseSearchError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load saved Google Lens search."
+        );
+      }
+    },
+    [fetchStoredReverseSearchJobs, openReverseSearchDialogFromJob, reverseSearchJobsByPath]
+  );
+
+  const handleRunGoogleReverseSearch = useCallback(
+    async (entry: DraftEntry, locale: ReverseSearchLocale = "sweden") => {
+      if (entry.type !== "file" || !isImage(entry.name)) return;
+      const clickedPath = String(entry.path || "").trim();
+      if (!clickedPath) return;
+      // Always search the exact image that was clicked to keep badge/result mapping
+      // deterministic per image path.
+      const searchEntry = entry;
+      const searchImagePath = String(searchEntry.path || "").trim();
+      if (!searchImagePath) return;
+      const requestPayload: Record<string, unknown> = {
+        imagePath: searchImagePath,
+        targetImagePath: clickedPath,
+        locale,
+        limit: 120,
+      };
+      const startedAt = new Date().toISOString();
+      setReverseSearchJobsByPath((prev) => ({
+        ...prev,
+        [clickedPath]: {
+          targetImagePath: clickedPath,
+          targetImageName: entry.name,
+          searchImagePath,
+          searchImageName: searchEntry.name || entry.name,
+          status: "running",
+          startedAt,
+          finishedAt: null,
+          searchId: null,
+          items: [],
+          amazonLinks: [],
+          inputPayload: requestPayload,
+          debugPayload: null,
+          error: null,
+        },
+      }));
+
+      try {
+        const response = await fetch("/api/drafts/google-lens/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestPayload),
+        });
+        const payload = await response.json().catch(() => ({}));
+        const debugPayload = toObjectRecordOrNull(payload?.debug);
+        if (!response.ok) {
+          const errorMessage = payload?.error || "Google Lens search failed.";
+          throw new Error(String(errorMessage));
+        }
+
+        const items = Array.isArray(payload?.items)
+          ? (payload.items as ReverseSearchResultItem[])
+          : [];
+        const amazonLinks = Array.isArray(payload?.amazonLinks)
+          ? (payload.amazonLinks as unknown[])
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+          : [];
+        const searchId =
+          typeof payload?.id === "string" && payload.id.trim()
+            ? payload.id.trim()
+            : null;
+        const finishedAt = new Date().toISOString();
+        setReverseSearchJobsByPath((prev) => ({
+          ...prev,
+          [clickedPath]: {
+            targetImagePath: clickedPath,
+            targetImageName: entry.name,
+            searchImagePath,
+            searchImageName: searchEntry.name || entry.name,
+            status: "ready",
+            startedAt,
+            finishedAt,
+            searchId,
+            items,
+            amazonLinks: Array.from(new Set(amazonLinks)),
+            inputPayload: requestPayload,
+            debugPayload,
+            error: null,
+          },
+        }));
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Google Lens search failed.";
+        const finishedAt = new Date().toISOString();
+        setReverseSearchJobsByPath((prev) => ({
+          ...prev,
+          [clickedPath]: {
+            targetImagePath: clickedPath,
+            targetImageName: entry.name,
+            searchImagePath,
+            searchImageName: searchEntry.name || entry.name,
+            status: "error",
+            startedAt,
+            finishedAt,
+            searchId: null,
+            items: [],
+            amazonLinks: [],
+            inputPayload: requestPayload,
+            debugPayload: null,
+            error: message,
+          },
+        }));
+      }
+    },
+    [entries, isImage]
+  );
+
+  const handleFetchAmazonDataFromReverseSearch = useCallback(
+    async (overrideLinks?: string[]) => {
+      if (reverseSearchFetchingAmazon || reverseSearchAddingDownloaded) return;
+      const sourceLinks =
+        Array.isArray(overrideLinks) && overrideLinks.length > 0
+          ? overrideLinks
+          : reverseSearchAmazonLinks;
+      const amazonUrls = Array.from(
+        new Set(
+          sourceLinks
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (amazonUrls.length === 0) {
+        setReverseSearchError("No Amazon links found in the current search results.");
+        return;
+      }
+
+      setReverseSearchFetchingAmazon(true);
+      setReverseSearchError(null);
+      try {
+        const response = await fetch("/api/amazon/scrape-product", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            urls: amazonUrls.slice(0, 8),
+            provider: "direct",
+            include_variant_images: true,
+            include_related_products: false,
+            download_images: false,
+            persist_to_db: false,
+            return_scraped: true,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to fetch Amazon data.");
+        }
+
+        const imageUrls = new Set<string>();
+        const results = Array.isArray(payload?.results)
+          ? (payload.results as unknown[])
+          : [];
+        results.forEach((row: unknown) => {
+          const scraped =
+            row && typeof row === "object"
+              ? (row as { scraped?: unknown }).scraped
+              : null;
+          if (!scraped || typeof scraped !== "object") return;
+          const scrapedRow = scraped as Record<string, unknown>;
+          const mainImages = Array.isArray(scrapedRow.images) ? scrapedRow.images : [];
+          mainImages.forEach((value) => {
+            const normalized = normalizeExternalImageUrl(value);
+            if (normalized) imageUrls.add(normalized);
+          });
+          const variants = Array.isArray(scrapedRow.variants) ? scrapedRow.variants : [];
+          variants.forEach((variant) => {
+            const variantImages =
+              variant && typeof variant === "object"
+                ? (variant as { images?: unknown }).images
+                : null;
+            if (!Array.isArray(variantImages)) return;
+            variantImages.forEach((value) => {
+              const normalized = normalizeExternalImageUrl(value);
+              if (normalized) imageUrls.add(normalized);
+            });
+          });
+        });
+
+        const urls = Array.from(imageUrls).slice(0, 120);
+        if (urls.length === 0) {
+          throw new Error("Amazon scrape returned no image URLs to import.");
+        }
+
+        const downloadedPath = resolveDownloadedFolderPath();
+        if (!downloadedPath) {
+          throw new Error("Unable to resolve Downloaded folder path for this product.");
+        }
+
+        setReverseSearchAddingDownloaded(true);
+        try {
+          const uploadPayload = await uploadImageUrlsToPath(downloadedPath, urls, {
+            minWidth: 800,
+            minHeight: 800,
+          });
+          const uploaded = Number(uploadPayload?.uploaded || 0);
+          const skippedLowRes = Number(uploadPayload?.skippedLowResCount || 0);
+          if (uploaded > 0) {
+            setReverseSearchDownloadedCount((prev) => prev + uploaded);
+          }
+          if (skippedLowRes > 0) {
+            setReverseSearchError(
+              `Imported ${uploaded} image(s). Skipped ${skippedLowRes} image(s) below 800x800.`
+            );
+          }
+        } finally {
+          setReverseSearchAddingDownloaded(false);
+        }
+
+        const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+        if (errors.length > 0) {
+          setReverseSearchError(
+            `Amazon data fetched with ${errors.length} issue(s). Imported available images to Downloaded.`
+          );
+        }
+      } catch (err) {
+        setReverseSearchError(
+          err instanceof Error ? err.message : "Unable to fetch Amazon data."
+        );
+      } finally {
+        setReverseSearchFetchingAmazon(false);
+      }
+    },
+    [
+      normalizeExternalImageUrl,
+      resolveDownloadedFolderPath,
+      reverseSearchAddingDownloaded,
+      reverseSearchAmazonLinks,
+      reverseSearchFetchingAmazon,
+      uploadImageUrlsToPath,
+    ]
+  );
+
+  const handleOpenDownloadedFolderFromReverseSearch = useCallback(() => {
+    const downloadedPath = resolveDownloadedFolderPath();
+    if (!downloadedPath) return;
+    setMainImageViewFilter("all");
+    setCurrentPath(downloadedPath);
+  }, [resolveDownloadedFolderPath]);
 
   useEffect(() => {
     if (!currentPath) return;
@@ -10797,7 +12530,8 @@ export default function DraftExplorerPage() {
             size="small"
             className={styles.variantsEditorInput}
             value={value}
-            type={options?.numeric ? "number" : "text"}
+            type="text"
+            inputMode={options?.numeric ? "decimal" : undefined}
             onChange={(_, data) =>
               handleVariantEditorCellChange(row.key, field, data.value)
             }
@@ -10845,6 +12579,11 @@ export default function DraftExplorerPage() {
     const field = editingCell.field;
     const rawValue = editingValue.trim();
     const payloadValue = rawValue === "" ? null : rawValue;
+    const isNumericSkuField =
+      editingCell.table === "sku" && (field === "draft_price" || field === "draft_weight");
+    const numericPayloadValue = isNumericSkuField
+      ? parseNumericFieldValue(payloadValue)
+      : null;
     const isRawField = field.startsWith("raw_");
     try {
       const response = await fetch(endpoint, {
@@ -10853,13 +12592,7 @@ export default function DraftExplorerPage() {
         body: JSON.stringify({
           id: editingCell.id,
           field,
-          value:
-            editingCell.table === "sku" &&
-            (field === "draft_price" || field === "draft_weight")
-              ? payloadValue === null
-                ? null
-                : Number(payloadValue)
-              : payloadValue,
+          value: isNumericSkuField ? numericPayloadValue : payloadValue,
         }),
       });
       if (!response.ok) {
@@ -10929,7 +12662,8 @@ export default function DraftExplorerPage() {
                 cancelEdit();
               }
             }}
-            type={options?.numeric ? "number" : "text"}
+            type="text"
+            inputMode={options?.numeric ? "decimal" : undefined}
             size="small"
             className={mergeClasses(styles.tableEditInput, styles.expandedInlineInput)}
             style={editStyle}
@@ -11806,6 +13540,296 @@ export default function DraftExplorerPage() {
   );
   const contextMenuCollectionAllowed =
     contextMenuImageTargets.length >= 2 && contextMenuImageTargets.length <= 4;
+  const contextMenuVariantSpu = useMemo(() => {
+    if (!contextMenu?.image) return "";
+    const anchorPath = String(contextMenu.entry.path || "").trim();
+    const parts = anchorPath.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    return String(parts[1] || "").trim().toUpperCase();
+  }, [contextMenu]);
+  const contextMenuVariantImageFileName = useMemo(() => {
+    if (!contextMenuLiveEntry || contextMenuLiveEntry.type !== "file") return "";
+    return extractFileNameFromPath(contextMenuLiveEntry.path || contextMenuLiveEntry.name);
+  }, [contextMenuLiveEntry]);
+  const contextMenuVariantImageFileNameKey = normalizeVariantImageFileNameKey(
+    contextMenuVariantImageFileName
+  );
+  const contextMenuVariantImageIsTaggedVar = useMemo(() => {
+    if (!contextMenuLiveEntry || contextMenuLiveEntry.type !== "file") return false;
+    return extractImageTagsFromFileName(contextMenuLiveEntry.name).includes("VAR");
+  }, [contextMenuLiveEntry]);
+  const contextMenuVariantRows = useMemo(() => {
+    if (!contextMenuVariantSpu) return [] as DraftSkuRow[];
+    const mergedById = new Map<string, DraftSkuRow>();
+    const skuRowsForSpu = skuRows.filter(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === contextMenuVariantSpu
+    );
+    const skuIdsForSpu = new Set(
+      skuRowsForSpu
+        .map((row) => String(row.id || "").trim())
+        .filter((rowId) => Boolean(rowId))
+    );
+    const shouldPruneCachedRows = !String(searchQuery || "").trim() && skuIdsForSpu.size > 0;
+    const cached = variantPickerRowsBySpu[contextMenuVariantSpu] ?? [];
+    cached.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      if (shouldPruneCachedRows && !skuIdsForSpu.has(rowId)) return;
+      mergedById.set(rowId, row);
+    });
+    skuRowsForSpu.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      mergedById.set(rowId, row);
+    });
+    return Array.from(mergedById.values()).sort((left, right) => {
+      const leftSku = String(left.draft_sku || "").trim();
+      const rightSku = String(right.draft_sku || "").trim();
+      return leftSku.localeCompare(rightSku);
+    });
+  }, [contextMenuVariantSpu, searchQuery, skuRows, variantPickerRowsBySpu]);
+  const contextMenuVariantRowsById = useMemo(() => {
+    const next = new Map<string, DraftSkuRow>();
+    contextMenuVariantRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      next.set(rowId, row);
+    });
+    return next;
+  }, [contextMenuVariantRows]);
+  const contextMenuVariantInferredRowIds = useMemo(() => {
+    if (!contextMenuVariantImageIsTaggedVar) return new Set<string>();
+    if (!contextMenuVariantImageFileName) return new Set<string>();
+    if (!contextMenuVariantSpu) return new Set<string>();
+    const inferred = new Set<string>();
+    contextMenuVariantRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      const explicitFileName = extractVariantImageFileName(row.draft_variant_image_url);
+      if (normalizeVariantImageFileNameKey(explicitFileName)) return;
+      if (
+        doesVariantRowLikelyMatchImageFileName(
+          row,
+          contextMenuVariantImageFileName,
+          contextMenuVariantSpu
+        )
+      ) {
+        inferred.add(rowId);
+      }
+    });
+    return inferred;
+  }, [
+    contextMenuVariantImageFileName,
+    contextMenuVariantImageIsTaggedVar,
+    contextMenuVariantRows,
+    contextMenuVariantSpu,
+  ]);
+  const fetchVariantPickerRowsForSpu = useCallback(
+    async (spuRaw: string) => {
+      const spu = String(spuRaw || "").trim().toUpperCase();
+      if (!spu) return [] as DraftSkuRow[];
+      const url = new URL("/api/drafts/variants", window.location.origin);
+      url.searchParams.set("spu", spu);
+      const runFilter = String(selectedFolder || "").trim();
+      if (runFilter) {
+        url.searchParams.set("run", runFilter);
+      }
+      const response = await fetch(url.toString());
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load variants for this product.");
+      }
+      const items = Array.isArray(payload?.items)
+        ? (payload.items as DraftSkuRow[]).filter((row) => Boolean(String(row?.id || "").trim()))
+        : [];
+      return items;
+    },
+    [selectedFolder]
+  );
+  useEffect(() => {
+    setVariantPickerRowsBySpu({});
+  }, [selectedFolder]);
+  useEffect(() => {
+    if (contextMenuSubmenu !== "assign-variant") return;
+    if (!contextMenuVariantSpu) return;
+    let cancelled = false;
+    setContextMenuVariantRowsLoading(true);
+    setContextMenuVariantRowsRefreshing(
+      (variantPickerRowsBySpu[contextMenuVariantSpu] ?? []).length > 0
+    );
+    setContextMenuVariantRowsError(null);
+    const run = async () => {
+      try {
+        const items = await fetchVariantPickerRowsForSpu(contextMenuVariantSpu);
+        if (cancelled) return;
+        setVariantPickerRowsBySpu((prev) => ({
+          ...prev,
+          [contextMenuVariantSpu]: items,
+        }));
+      } catch (err) {
+        if (cancelled) return;
+        setContextMenuVariantRowsError((err as Error).message);
+      } finally {
+        if (!cancelled) {
+          setContextMenuVariantRowsLoading(false);
+          setContextMenuVariantRowsRefreshing(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    contextMenuSubmenu,
+    contextMenuVariantSpu,
+    fetchVariantPickerRowsForSpu,
+  ]);
+  useEffect(() => {
+    const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!spu) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const items = await fetchVariantPickerRowsForSpu(spu);
+        if (cancelled) return;
+        setVariantPickerRowsBySpu((prev) => ({
+          ...prev,
+          [spu]: items,
+        }));
+      } catch {
+        // Keep current cache if refresh fails.
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentImageSpuForDraftFilter, fetchVariantPickerRowsForSpu]);
+  const applyVariantImageAssignmentToLocalState = useCallback(
+    (spu: string, variantId: string, nextImageValue: string | null) => {
+      const normalizedVariantId = String(variantId || "").trim();
+      if (!normalizedVariantId) return;
+      setSkuRows((prev) =>
+        prev.map((row) =>
+          String(row.id || "").trim() === normalizedVariantId
+            ? { ...row, draft_variant_image_url: nextImageValue }
+            : row
+        )
+      );
+      setVariantPickerRowsBySpu((prev) => {
+        if (!spu) return prev;
+        const existing = prev[spu];
+        if (!existing || existing.length === 0) return prev;
+        let changed = false;
+        const nextRows = existing.map((row) => {
+          if (String(row.id || "").trim() !== normalizedVariantId) return row;
+          changed = true;
+          return { ...row, draft_variant_image_url: nextImageValue };
+        });
+        if (!changed) return prev;
+        return {
+          ...prev,
+          [spu]: nextRows,
+        };
+      });
+    },
+    []
+  );
+  const handleToggleContextMenuVariantAssignment = useCallback(
+    async (variantIdRaw: string) => {
+      const variantId = String(variantIdRaw || "").trim();
+      if (!variantId) return;
+      if (!contextMenuVariantSpu || !contextMenuVariantImageFileName) return;
+      const targetRow = contextMenuVariantRowsById.get(variantId);
+      if (!targetRow) {
+        setError("Variant row not found.");
+        return;
+      }
+      const currentRefFileName = extractVariantImageFileName(targetRow.draft_variant_image_url);
+      const currentRefKey = normalizeVariantImageFileNameKey(currentRefFileName);
+      const nextImageValue =
+        currentRefKey === contextMenuVariantImageFileNameKey
+          ? null
+          : contextMenuVariantImageFileName;
+      const previousValue = targetRow.draft_variant_image_url ?? null;
+      setContextMenuVariantSavingIds((prev) => {
+        const next = new Set(prev);
+        next.add(variantId);
+        return next;
+      });
+      applyVariantImageAssignmentToLocalState(contextMenuVariantSpu, variantId, nextImageValue);
+      try {
+        const response = await fetch("/api/drafts/variants/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: variantId,
+            field: "draft_variant_image_url",
+            value: nextImageValue,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to update variant image mapping.");
+        }
+        try {
+          const refreshed = await fetchVariantPickerRowsForSpu(contextMenuVariantSpu);
+          setVariantPickerRowsBySpu((prev) => ({
+            ...prev,
+            [contextMenuVariantSpu]: refreshed,
+          }));
+        } catch {
+          // Keep optimistic update if refresh fails.
+        }
+      } catch (err) {
+        applyVariantImageAssignmentToLocalState(contextMenuVariantSpu, variantId, previousValue);
+        setError((err as Error).message);
+      } finally {
+        setContextMenuVariantSavingIds((prev) => {
+          if (!prev.has(variantId)) return prev;
+          const next = new Set(prev);
+          next.delete(variantId);
+          return next;
+        });
+      }
+    },
+    [
+      applyVariantImageAssignmentToLocalState,
+      contextMenuVariantImageFileName,
+      contextMenuVariantImageFileNameKey,
+      contextMenuVariantRowsById,
+      contextMenuVariantSpu,
+      fetchVariantPickerRowsForSpu,
+    ]
+  );
+  useEffect(() => {
+    if (contextMenuSubmenu !== "assign-variant") return;
+    if (!contextMenuVariantImageIsTaggedVar) return;
+    if (!contextMenuVariantImageFileNameKey) return;
+    if (contextMenuVariantRowsLoading || Boolean(contextMenuVariantRowsError)) return;
+    if (contextMenuVariantInferredRowIds.size !== 1) return;
+    const inferredVariantId = Array.from(contextMenuVariantInferredRowIds)[0];
+    if (!inferredVariantId) return;
+    if (contextMenuVariantSavingIds.has(inferredVariantId)) return;
+    const inferredRow = contextMenuVariantRowsById.get(inferredVariantId);
+    if (!inferredRow) return;
+    const currentFileName = extractVariantImageFileName(inferredRow.draft_variant_image_url);
+    const currentKey = normalizeVariantImageFileNameKey(currentFileName);
+    if (currentKey === contextMenuVariantImageFileNameKey) return;
+    if (currentKey) return;
+    void handleToggleContextMenuVariantAssignment(inferredVariantId);
+  }, [
+    contextMenuSubmenu,
+    contextMenuVariantImageFileNameKey,
+    contextMenuVariantImageIsTaggedVar,
+    contextMenuVariantInferredRowIds,
+    contextMenuVariantRowsById,
+    contextMenuVariantRowsError,
+    contextMenuVariantRowsLoading,
+    contextMenuVariantSavingIds,
+    handleToggleContextMenuVariantAssignment,
+  ]);
   const contextMenuMoveToMainPath = useMemo(() => {
     if (!contextMenu?.image) return "";
     const targets = resolveContextActionTargets(contextMenu.entry, {
@@ -11859,6 +13883,17 @@ export default function DraftExplorerPage() {
       }
       return;
     }
+    if (action.startsWith("assign-variant-toggle:")) {
+      const encodedVariantId = action.slice("assign-variant-toggle:".length).trim();
+      let variantId = encodedVariantId;
+      try {
+        variantId = decodeURIComponent(encodedVariantId);
+      } catch {
+        variantId = encodedVariantId;
+      }
+      void handleToggleContextMenuVariantAssignment(variantId);
+      return;
+    }
     setContextMenu(null);
     setContextMenuSubmenu(null);
     setContextMenuNestedSubmenu(null);
@@ -11880,6 +13915,21 @@ export default function DraftExplorerPage() {
     if (action === "open") {
       clearSelectedFilesForImageActions();
       openEntry(entry);
+      return;
+    }
+    if (action === "google-lens-search" || action.startsWith("google-lens-search:")) {
+      clearSelectedFilesForImageActions();
+      if (entry.type === "file" && isImage(entry.name)) {
+        const localeRaw =
+          action === "google-lens-search"
+            ? "sweden"
+            : action.slice("google-lens-search:".length).trim().toLowerCase();
+        const locale: ReverseSearchLocale =
+          localeRaw === "us_global" || localeRaw === "us" || localeRaw === "usa"
+            ? "us_global"
+            : "sweden";
+        void handleRunGoogleReverseSearch(entry, locale);
+      }
       return;
     }
     if (action === "move-to-main") {
@@ -11933,6 +13983,14 @@ export default function DraftExplorerPage() {
     if (action === "photopea") {
       clearSelectedFilesForImageActions();
       void openPhotopeaEditor(entry);
+      return;
+    }
+    if (action === "auto-levels") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        openAutoLevelsForEntries(targets);
+      }
       return;
     }
     if (action === "ai-auto-center-white") {
@@ -12315,6 +14373,23 @@ export default function DraftExplorerPage() {
     [normalizeFolderToken]
   );
 
+  const isDownloadedImagesFolderName = useCallback(
+    (name: string) => {
+      const normalized = normalizeFolderToken(name);
+      if (!normalized) return false;
+      if (
+        normalized === "downloaded" ||
+        normalized === "downloadedimages" ||
+        normalized === "downloadedimage" ||
+        normalized === "downloads"
+      ) {
+        return true;
+      }
+      return normalized.includes("downloaded") && normalized.includes("image");
+    },
+    [normalizeFolderToken]
+  );
+
   const isRejectVariantMismatchFolderName = useCallback(
     (name: string) => {
       const normalized = normalizeFolderToken(name);
@@ -12361,6 +14436,7 @@ export default function DraftExplorerPage() {
         mainPath: null as string | null,
         variantsPath: null as string | null,
         ocrPath: null as string | null,
+        downloadedPath: null as string | null,
         othersPath: null as string | null,
         othersPaths: [] as string[],
         active: null as ImageFolderTabValue | null,
@@ -12373,6 +14449,7 @@ export default function DraftExplorerPage() {
         mainPath: null,
         variantsPath: null,
         ocrPath: null,
+        downloadedPath: null,
         othersPath: null,
         othersPaths: [] as string[],
         active: null,
@@ -12386,6 +14463,7 @@ export default function DraftExplorerPage() {
         mainPath: null,
         variantsPath: null,
         ocrPath: null,
+        downloadedPath: null,
         othersPath: null,
         othersPaths: [] as string[],
         active: null,
@@ -12395,6 +14473,7 @@ export default function DraftExplorerPage() {
     const mainPath = `${run}/${top}`;
     let variantsPath: string | null = null;
     let ocrPath: string | null = null;
+    let downloadedPath: string | null = null;
     let othersPath: string | null = null;
     let othersPaths: string[] = [];
 
@@ -12450,6 +14529,19 @@ export default function DraftExplorerPage() {
       return null;
     };
 
+    const findDownloadedNode = (
+      node: DraftFolderTreeNode
+    ): DraftFolderTreeNode | null => {
+      const queue = [...node.children];
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (!next) break;
+        if (isDownloadedImagesFolderName(next.name)) return next;
+        queue.push(...next.children);
+      }
+      return null;
+    };
+
     const findOtherNodes = (
       node: DraftFolderTreeNode
     ): DraftFolderTreeNode[] => {
@@ -12477,6 +14569,8 @@ export default function DraftExplorerPage() {
         variantsPath = variantNode?.path ?? null;
         const ocrNode = findOcrNode(mainNode);
         ocrPath = ocrNode?.path ?? null;
+        const downloadedNode = findDownloadedNode(mainNode);
+        downloadedPath = downloadedNode?.path ?? null;
         const otherNodes = findOtherNodes(mainNode);
         othersPaths = Array.from(
           new Set(
@@ -12496,6 +14590,11 @@ export default function DraftExplorerPage() {
     ) {
       active = "variants";
     } else if (
+      downloadedPath &&
+      (currentPath === downloadedPath || currentPath.startsWith(`${downloadedPath}/`))
+    ) {
+      active = "downloaded";
+    } else if (
       ocrPath &&
       (currentPath === ocrPath || currentPath.startsWith(`${ocrPath}/`))
     ) {
@@ -12511,10 +14610,19 @@ export default function DraftExplorerPage() {
       active = "main";
     }
 
-    return { mainPath, variantsPath, ocrPath, othersPath, othersPaths, active };
+    return {
+      mainPath,
+      variantsPath,
+      ocrPath,
+      downloadedPath,
+      othersPath,
+      othersPaths,
+      active,
+    };
   }, [
     currentPath,
     folderTree,
+    isDownloadedImagesFolderName,
     isLegacyOthersFolderName,
     isOcrImagesFolderName,
     isOtherImagesFolderName,
@@ -12621,11 +14729,19 @@ export default function DraftExplorerPage() {
         )
       );
 
-      const [mainDirectCount, variantsCount, ocrCount, othersCounts, variantTagCount] =
+      const [
+        mainDirectCount,
+        variantsCount,
+        ocrCount,
+        downloadedCount,
+        othersCounts,
+        variantTagCount,
+      ] =
         await Promise.all([
           countImagesForPath(imageTabTargets.mainPath),
           countImagesForPath(imageTabTargets.variantsPath),
           countImagesForPath(imageTabTargets.ocrPath),
+          countImagesForPath(imageTabTargets.downloadedPath),
           Promise.all(uniqueOthersPaths.map((pathValue) => countImagesForPath(pathValue))),
           countTaggedImagesForPaths(
             [imageTabTargets.mainPath, imageTabTargets.variantsPath],
@@ -12641,6 +14757,7 @@ export default function DraftExplorerPage() {
         main: mainDirectCount + variantsCount,
         variants: variantTagCount,
         ocr: ocrCount,
+        downloaded: downloadedCount,
         others: othersCount,
       });
     };
@@ -12653,6 +14770,7 @@ export default function DraftExplorerPage() {
     countImagesForPath,
     countTaggedImagesForPaths,
     imageTabTargets.mainPath,
+    imageTabTargets.downloadedPath,
     imageTabTargets.ocrPath,
     imageTabTargets.othersPaths,
     imageTabTargets.variantsPath,
@@ -12668,11 +14786,11 @@ export default function DraftExplorerPage() {
     }
   }, [imageTabImageCounts.variants, mainImageViewFilter, mainViewShowsMergedImages]);
 
-  const selectedImageTabValue: ImageFolderTabValue | undefined = useMemo(() => {
+  const selectedImageTabValue: ImageFolderTabValue = useMemo(() => {
     if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
       return "variants";
     }
-    return imageTabTargets.active ?? undefined;
+    return imageTabTargets.active ?? "main";
   }, [imageTabTargets.active, mainImageViewFilter, mainViewShowsMergedImages]);
 
   useEffect(() => {
@@ -12742,6 +14860,64 @@ export default function DraftExplorerPage() {
     variantEntriesCacheRef.current.set(variantsPath, mainViewVariantImageEntries);
   }, [imageTabTargets.variantsPath, mainViewVariantImageEntries]);
 
+  const variantAssignedImageFileNameKeysForCurrentSpu = useMemo(() => {
+    const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!spu) return new Set<string>();
+    const mergedById = new Map<string, DraftSkuRow>();
+    const skuRowsForSpu = skuRows.filter(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === spu
+    );
+    const skuIdsForSpu = new Set(
+      skuRowsForSpu
+        .map((row) => String(row.id || "").trim())
+        .filter((rowId) => Boolean(rowId))
+    );
+    const shouldPruneCachedRows = !String(searchQuery || "").trim() && skuIdsForSpu.size > 0;
+    const cachedRows = variantPickerRowsBySpu[spu] ?? [];
+    cachedRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      if (shouldPruneCachedRows && !skuIdsForSpu.has(rowId)) return;
+      mergedById.set(rowId, row);
+    });
+    skuRowsForSpu.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      mergedById.set(rowId, row);
+    });
+    const keys = new Set<string>();
+    mergedById.forEach((row) => {
+      const fileName = extractVariantImageFileName(row.draft_variant_image_url);
+      const key = normalizeVariantImageFileNameKey(fileName);
+      if (key) {
+        keys.add(key);
+      }
+    });
+    return keys;
+  }, [currentImageSpuForDraftFilter, searchQuery, skuRows, variantPickerRowsBySpu]);
+
+  const entryHasVariantAssignment = useCallback(
+    (entry: DraftEntry) => {
+      const fileName = extractFileNameFromPath(entry.path || entry.name);
+      const key = normalizeVariantImageFileNameKey(fileName);
+      if (!key) return false;
+      return variantAssignedImageFileNameKeysForCurrentSpu.has(key);
+    },
+    [variantAssignedImageFileNameKeysForCurrentSpu]
+  );
+
+  const getDisplayImageTagsForEntry = useCallback(
+    (entry: DraftEntry) => {
+      const fileTags = extractImageTagsFromFileName(entry.name);
+      if (fileTags.includes("VAR")) return fileTags;
+      if (entryHasVariantAssignment(entry)) {
+        return normalizeImageTags([...fileTags, "VAR"]);
+      }
+      return fileTags;
+    },
+    [entryHasVariantAssignment]
+  );
+
   const displayImageEntries = useMemo(() => {
     const combined: DraftEntry[] = [];
     const seenPaths = new Set<string>();
@@ -12759,7 +14935,9 @@ export default function DraftExplorerPage() {
 
     if (combined.length <= 1) return combined;
 
-    const nextOrder = buildTaggedImageOrderPaths(combined);
+    const nextOrder = buildTaggedImageOrderPaths(combined, {
+      resolveTags: getDisplayImageTagsForEntry,
+    });
     if (nextOrder.length !== combined.length) return combined;
     const byPath = new Map(combined.map((entry) => [entry.path, entry]));
     const sorted = nextOrder
@@ -12769,14 +14947,13 @@ export default function DraftExplorerPage() {
 
     if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
       return sorted.filter((entry) =>
-        extractImageTagsFromFileName(entry.name).includes("VAR")
+        getDisplayImageTagsForEntry(entry).includes("VAR")
       );
     }
     return sorted;
   }, [
-    buildTaggedImageOrderPaths,
+    getDisplayImageTagsForEntry,
     imageEntries,
-    imageTabTargets.variantsPath,
     mainImageViewFilter,
     mainViewShowsMergedImages,
     mainViewVariantImageEntries,
@@ -12785,6 +14962,72 @@ export default function DraftExplorerPage() {
   useEffect(() => {
     displayImageEntriesRef.current = displayImageEntries;
   }, [displayImageEntries]);
+
+  useEffect(() => {
+    const imagePaths = displayImageEntries
+      .filter((entry) => entry.type === "file" && isImage(entry.name))
+      .map((entry) => String(entry.path || "").trim())
+      .filter(Boolean)
+      .slice(0, 180);
+    if (imagePaths.length === 0) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const storedJobs = await fetchStoredReverseSearchJobs(imagePaths, false);
+          if (cancelled) return;
+          const targetSet = new Set(imagePaths);
+          setReverseSearchJobsByPath((prev) => {
+            const next: Record<string, ReverseSearchJobState> = { ...prev };
+            imagePaths.forEach((pathValue) => {
+              const existing = prev[pathValue];
+              if (existing?.status === "running") {
+                next[pathValue] = existing;
+                return;
+              }
+              const stored = storedJobs[pathValue];
+              if (!stored) {
+                // Keep in-memory status when persistence is delayed/unavailable so the
+                // user can still see/open the latest Lens run result or error state.
+                if (existing) {
+                  next[pathValue] = existing;
+                }
+                return;
+              }
+              if (existing && existing.items.length > 0) {
+                next[pathValue] = {
+                  ...stored,
+                  items: existing.items,
+                  amazonLinks:
+                    existing.amazonLinks.length > 0
+                      ? existing.amazonLinks
+                      : stored.amazonLinks,
+                  inputPayload: existing.inputPayload || stored.inputPayload,
+                  debugPayload: existing.debugPayload || stored.debugPayload,
+                };
+              } else {
+                next[pathValue] = stored;
+              }
+            });
+
+            Object.keys(next).forEach((pathValue) => {
+              if (!targetSet.has(pathValue)) return;
+              const existing = next[pathValue];
+              if (!existing) return;
+              if (existing.status === "running") return;
+            });
+            return next;
+          });
+        } catch {
+          // Ignore failed hydration and keep in-memory state.
+        }
+      })();
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [displayImageEntries, fetchStoredReverseSearchJobs, isImage]);
 
   const currentSpuMainPath = imageTabTargets.mainPath;
   const currentMainProductContext = useMemo(() => {
@@ -13194,6 +15437,17 @@ export default function DraftExplorerPage() {
     [selectedRunsForMerge, isArchiveFolder]
   );
   const isSelectedFolderArchive = isArchiveFolder(selectedFolder);
+  const isBatchPickerActionTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest("[data-batch-picker-action='true']"));
+  }, []);
+  const handleBatchPickerRunSelect = useCallback(
+    (folderPath: string) => {
+      setBatchPickerOpen(false);
+      void handleSelectFolder(folderPath);
+    },
+    [handleSelectFolder]
+  );
   const nonImageFileEntries = entries.filter(
     (entry) => entry.type === "file" && !isImage(entry.name)
   );
@@ -13211,9 +15465,16 @@ export default function DraftExplorerPage() {
   const variantsTabDisabled =
     !imageTabTargets.mainPath ||
     movingEntry ||
-    imageTabImageCounts.variants === 0;
+    Math.max(
+      imageTabImageCounts.variants,
+      variantAssignedImageFileNameKeysForCurrentSpu.size
+    ) === 0;
   const ocrTabDisabled =
     !imageTabTargets.ocrPath || movingEntry || imageTabImageCounts.ocr === 0;
+  const downloadedTabDisabled =
+    !imageTabTargets.downloadedPath ||
+    movingEntry ||
+    imageTabImageCounts.downloaded === 0;
   const othersTabDisabled =
     imageTabTargets.othersPaths.length === 0 ||
     movingEntry ||
@@ -13435,6 +15696,10 @@ export default function DraftExplorerPage() {
     variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
   const variantsEditorSomeSelected =
     variantsEditorRows.some((row) => variantsEditorSelectedRows.has(row.key));
+  const autoLevelsBounds = useMemo(
+    () => mapAutoLevelsBounds(autoLevelsLevelPercent),
+    [autoLevelsLevelPercent]
+  );
   const getVariantSortIndicator = (key: VariantEditorSortKey) => {
     if (variantsEditorSort.key !== key) return "";
     return variantsEditorSort.direction === "asc" ? "▲" : "▼";
@@ -13454,6 +15719,7 @@ export default function DraftExplorerPage() {
       | "background"
       | "eraser"
       | "upscale"
+      | "google-search"
   ) => {
     if (type === "open") {
       return (
@@ -13495,6 +15761,26 @@ export default function DraftExplorerPage() {
           <path d="M4 12v-6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v8" />
           <path d="M20 18h-17" />
           <path d="M6 15l-3 3l3 3" />
+        </svg>
+      );
+    }
+    if (type === "google-search") {
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={styles.contextMenuIcon}
+          aria-hidden="true"
+        >
+          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+          <path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+          <path d="M10 10a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+          <path d="M16 16l-1.5 -1.5" />
         </svg>
       );
     }
@@ -13841,7 +16127,7 @@ export default function DraftExplorerPage() {
               appearance="outline"
               className={mergeClasses(
                 styles.draftToolbarActionButton,
-                draftTab === "spu" ? someSpuSelected : someSkuSelected
+                (draftTab === "spu" ? someSpuSelected : someSkuSelected)
                   ? styles.draftToolbarActionButtonActive
                   : undefined
               )}
@@ -13893,7 +16179,6 @@ export default function DraftExplorerPage() {
                 draftTab !== "spu" ||
                 !someSpuSelected ||
                 publishStatus === "running" ||
-                !skuReady ||
                 skuStatus === "running" ||
                 hasPendingDetailAiRewrite
               }
@@ -14078,6 +16363,22 @@ export default function DraftExplorerPage() {
                       spuMainFolderPath && completedSpuFolders.has(spuMainFolderPath)
                     );
                     const detailsAiRunning = detailBackgroundRegeneratingRowIds.has(row.id);
+                    const rowSpuKey = String(row.draft_spu || "").trim().toUpperCase();
+                    const variantIssueState =
+                      rowSpuKey && variantCriticalIssuesBySpu.has(rowSpuKey)
+                        ? variantCriticalIssuesBySpu.get(rowSpuKey) ?? null
+                        : null;
+                    const missingVariantPrice = Boolean(variantIssueState?.missingPrice);
+                    const missingVariantWeight = Boolean(variantIssueState?.missingWeight);
+                    const hasVariantCriticalIssue = missingVariantPrice || missingVariantWeight;
+                    const variantIssueTitle = hasVariantCriticalIssue
+                      ? [
+                          missingVariantPrice ? "Missing purchase price" : "",
+                          missingVariantWeight ? "Missing weight" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" • ")
+                      : undefined;
                     const rowClass = imagesMarkedCompleted
                       ? styles.tableRowCompleted
                       : altClass;
@@ -14227,11 +16528,62 @@ export default function DraftExplorerPage() {
                             <Button
                               size="small"
                               appearance="outline"
-                              className={styles.tableActionButton}
+                              className={mergeClasses(
+                                styles.tableActionButton,
+                                styles.variantEditButton,
+                                hasVariantCriticalIssue
+                                  ? styles.variantEditButtonCritical
+                                  : undefined
+                              )}
                               onClick={() => openVariantsEditor(row.draft_spu)}
                               disabled={!row.draft_spu}
+                              title={variantIssueTitle}
                             >
-                              {`Edit (${row.variant_count ?? 0})`}
+                              <span className={styles.variantEditButtonContent}>
+                                <span>{`Edit (${row.variant_count ?? 0})`}</span>
+                                {hasVariantCriticalIssue ? (
+                                  <span
+                                    className={styles.variantEditIssueIcons}
+                                    aria-label={variantIssueTitle}
+                                  >
+                                    {missingVariantPrice ? (
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={styles.variantEditIssueIcon}
+                                        aria-hidden="true"
+                                      >
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                        <path d="M12 19v-7l-5 -7" />
+                                        <path d="M17 5l-5 7" />
+                                        <path d="M8 13h8" />
+                                      </svg>
+                                    ) : null}
+                                    {missingVariantWeight ? (
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className={styles.variantEditIssueIcon}
+                                        aria-hidden="true"
+                                      >
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                        <path d="M9 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                                        <path d="M6.835 9h10.33a1 1 0 0 1 .984 .821l1.637 9a1 1 0 0 1 -.984 1.179h-13.604a1 1 0 0 1 -.984 -1.179l1.637 -9a1 1 0 0 1 .984 -.821" />
+                                      </svg>
+                                    ) : null}
+                                  </span>
+                                ) : null}
+                              </span>
                             </Button>
                           </TableCell>
                           <TableCell
@@ -15505,17 +17857,16 @@ export default function DraftExplorerPage() {
                         styles.batchPickerRow,
                         active ? styles.batchPickerRowActive : undefined
                       )}
-                      onClick={() => {
-                        setBatchPickerOpen(false);
-                        void handleSelectFolder(folder.path);
+                      onClick={(event) => {
+                        if (isBatchPickerActionTarget(event.target)) return;
+                        handleBatchPickerRunSelect(folder.path);
                       }}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setBatchPickerOpen(false);
-                          void handleSelectFolder(folder.path);
+                          handleBatchPickerRunSelect(folder.path);
                         }
                       }}
                     >
@@ -15527,6 +17878,7 @@ export default function DraftExplorerPage() {
                           styles.batchPickerViewButton,
                           styles.whiteActionButton
                         )}
+                        data-batch-picker-action="true"
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -15536,8 +17888,11 @@ export default function DraftExplorerPage() {
                         Preview
                       </Button>
                       <span
+                        data-batch-picker-action="true"
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                        }}
                         onClick={(event) => {
-                          event.preventDefault();
                           event.stopPropagation();
                         }}
                         onKeyDown={(event) => {
@@ -15546,8 +17901,15 @@ export default function DraftExplorerPage() {
                       >
                         <Checkbox
                           checked={checked}
-                          onChange={() => toggleRunForMerge(folder.path)}
+                          onChange={(event, data) => {
+                            event.stopPropagation();
+                            setRunMergeSelection(
+                              folder.path,
+                              data.checked === true
+                            );
+                          }}
                           className={styles.batchPickerMergeCheckbox}
+                          data-batch-picker-action="true"
                         />
                       </span>
                     </div>
@@ -15565,17 +17927,16 @@ export default function DraftExplorerPage() {
                             styles.batchPickerRowArchive,
                             active ? styles.batchPickerRowActive : undefined
                           )}
-                          onClick={() => {
-                            setBatchPickerOpen(false);
-                            void handleSelectFolder(folder.path);
+                          onClick={(event) => {
+                            if (isBatchPickerActionTarget(event.target)) return;
+                            handleBatchPickerRunSelect(folder.path);
                           }}
                           role="button"
                           tabIndex={0}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              setBatchPickerOpen(false);
-                              void handleSelectFolder(folder.path);
+                              handleBatchPickerRunSelect(folder.path);
                             }
                           }}
                         >
@@ -15963,7 +18324,6 @@ export default function DraftExplorerPage() {
                       !selectedFolder ||
                       currentBatchSpuCount === 0 ||
                       publishStatus === "running" ||
-                      !skuReady ||
                       skuStatus === "running" ||
                       hasPendingDetailAiRewrite
                     }
@@ -16285,6 +18645,8 @@ export default function DraftExplorerPage() {
                       const nextPath =
                         value === "main" || value === "variants"
                           ? imageTabTargets.mainPath
+                          : value === "downloaded"
+                            ? imageTabTargets.downloadedPath
                           : value === "ocr"
                             ? imageTabTargets.ocrPath
                             : value === "others"
@@ -16320,11 +18682,14 @@ export default function DraftExplorerPage() {
                             styles.imageTabBadge,
                             variantsTabDisabled ? styles.imageTabBadgeDisabled : undefined
                           )}
-                        >
-                          {imageTabImageCounts.variants}
-                        </span>
-                      </span>
-                    </Tab>
+	                        >
+	                          {Math.max(
+	                            imageTabImageCounts.variants,
+	                            variantAssignedImageFileNameKeysForCurrentSpu.size
+	                          )}
+	                        </span>
+	                      </span>
+	                    </Tab>
                     <Tab value="others" disabled={othersTabDisabled}>
                       <span className={styles.imageTabLabel}>
                         <span>Others</span>
@@ -16348,6 +18713,19 @@ export default function DraftExplorerPage() {
                           )}
                         >
                           {imageTabImageCounts.ocr}
+                        </span>
+                      </span>
+                    </Tab>
+                    <Tab value="downloaded" disabled={downloadedTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>Downloaded</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            downloadedTabDisabled ? styles.imageTabBadgeDisabled : undefined
+                          )}
+                        >
+                          {imageTabImageCounts.downloaded}
                         </span>
                       </span>
                     </Tab>
@@ -16696,7 +19074,7 @@ export default function DraftExplorerPage() {
                         const reloadBusy = reloadingImagePaths.has(entry.path);
                         const confirmBusy = confirmingAiEditPaths.has(entry.path);
                         const busy = Boolean(runtimeJob) || reloadBusy || confirmBusy;
-                        const imageTags = extractImageTagsFromFileName(entry.name);
+                        const imageTags = getDisplayImageTagsForEntry(entry);
                         const isDisplayOnlyMainVariant =
                           mainViewShowsMergedImages && !entryByPath.has(entry.path);
                         const originalPixelQualityScore =
@@ -16737,6 +19115,15 @@ export default function DraftExplorerPage() {
                                   : pixelQualityDelta
                               })`;
                         const hasZimageUpscaled = isImageEntryUpscaled(entry);
+                        const reverseSearchJob = reverseSearchJobsByPath[entry.path] ?? null;
+                        const reverseSearchRunning = reverseSearchJob?.status === "running";
+                        const reverseSearchReady =
+                          reverseSearchJob?.status === "ready" ||
+                          reverseSearchJob?.status === "error";
+                        const reverseSearchBadgeLabel =
+                          reverseSearchJob?.status === "error"
+                            ? "Google Lens search completed with errors. Open details."
+                            : "Google Lens search is ready. Open results.";
                         return (
                           <div
                             key={buildStableImageCardKey(entry)}
@@ -16939,7 +19326,10 @@ export default function DraftExplorerPage() {
                                 alt={entry.name}
                                 className={mergeClasses(
                                   styles.thumbImage,
-                                  busy ? styles.mediaImageBusy : undefined
+                                  busy ? styles.mediaImageBusy : undefined,
+                                  reverseSearchRunning
+                                    ? styles.mediaImageReverseSearchRunning
+                                    : undefined
                                 )}
                                 onLoad={(event) => {
                                   const img = event.currentTarget;
@@ -16966,6 +19356,33 @@ export default function DraftExplorerPage() {
                                     <span>Updating</span>
                                   </div>
                                 </div>
+                              ) : null}
+                              {reverseSearchRunning ? (
+                                <div className={styles.reverseSearchRunningOverlay}>
+                                  <div className={styles.reverseSearchRunningContent}>
+                                    <Spinner size="tiny" />
+                                  </div>
+                                </div>
+                              ) : null}
+                              {reverseSearchReady ? (
+                                <button
+                                  type="button"
+                                  className={styles.googleSearchReadyBadge}
+                                  title={reverseSearchBadgeLabel}
+                                  aria-label={reverseSearchBadgeLabel}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void openReverseSearchDialogForImage(entry.path);
+                                  }}
+                                >
+                                  <img
+                                    src={GOOGLE_SEARCH_BADGE_ICON_SRC}
+                                    alt=""
+                                    className={styles.googleSearchBadgeImage}
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                </button>
                               ) : null}
                             </div>
                           <div className={styles.mediaFooter}>
@@ -17579,29 +19996,34 @@ export default function DraftExplorerPage() {
           </div>
         )}
 
-	        {contextMenu ? (
-	          <div
-	            className={styles.contextMenu}
-	            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-	            ref={contextMenuRef}
-	            onContextMenu={(event) => event.preventDefault()}
-              onClick={(event) => event.stopPropagation()}
-	          >
-	            {contextMenu.image ? (
-	              <div
-	                className={styles.contextMenuSubmenuWrap}
-	                onMouseEnter={() => setContextMenuSubmenu("tag-image")}
-	              >
-                <button
-                  type="button"
-                  className={styles.contextMenuButton}
-                  onMouseEnter={() => setContextMenuSubmenu("tag-image")}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setContextMenuSubmenu("tag-image");
-                  }}
-                >
+		        {contextMenu ? (
+		          <div
+		            className={styles.contextMenu}
+		            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+		            ref={contextMenuRef}
+		            onContextMenu={(event) => event.preventDefault()}
+	              onClick={(event) => event.stopPropagation()}
+	              onMouseEnter={() => keepContextMenuOpen()}
+	              onMouseLeave={() => scheduleContextMenuClose()}
+		          >
+		            {contextMenu.image ? (
+			              <div
+			                className={styles.contextMenuSubmenuWrap}
+			                onMouseEnter={() => openContextMenuSubmenu("tag-image")}
+	                        onMouseLeave={() => {
+	                          scheduleContextMenuSubmenuClose("tag-image");
+	                        }}
+			              >
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => openContextMenuSubmenu("tag-image")}
+	                  onClick={(event) => {
+	                    event.preventDefault();
+	                    event.stopPropagation();
+	                    openContextMenuSubmenu("tag-image");
+	                  }}
+	                >
 	                  {renderContextMenuIcon("tag")}
 	                  <span>Tag Image</span>
 	                  <span className={styles.contextMenuButtonCaret}>
@@ -17609,14 +20031,16 @@ export default function DraftExplorerPage() {
 	                  </span>
 	                </button>
 	                {contextMenuSubmenu === "tag-image" ? (
-	                  <div
-	                    className={mergeClasses(
-	                      styles.contextMenuSubmenu,
-	                      contextMenuSubmenuSide === "left"
-	                        ? styles.contextMenuSubmenuLeft
-	                        : undefined
-	                    )}
-	                  >
+		                  <div
+		                    className={mergeClasses(
+		                      styles.contextMenuSubmenu,
+		                      contextMenuSubmenuSide === "left"
+		                        ? styles.contextMenuSubmenuLeft
+		                        : undefined
+		                    )}
+                        onMouseEnter={() => openContextMenuSubmenu("tag-image")}
+                        onMouseLeave={() => scheduleContextMenuSubmenuClose("tag-image")}
+		                  >
 	                    {TAG_IMAGE_OPTIONS.map((tag) => {
 	                      const state = getContextMenuImageTagState(tag);
 	                      return (
@@ -17666,22 +20090,203 @@ export default function DraftExplorerPage() {
 	                  </div>
                 ) : null}
               </div>
-            ) : null}
-	            <button
-	              type="button"
-	              className={styles.contextMenuButton}
-	              onMouseEnter={() => setContextMenuSubmenu(null)}
-	              onClick={() => handleContextMenuAction("open")}
-	            >
+	            ) : null}
+		            {contextMenu.image ? (
+		              <div
+		                className={styles.contextMenuSubmenuWrap}
+		                onMouseEnter={() => openContextMenuSubmenu("assign-variant")}
+		                onMouseLeave={() => {
+		                  scheduleContextMenuSubmenuClose("assign-variant");
+		                }}
+		              >
+		                <button
+		                  type="button"
+		                  className={styles.contextMenuButton}
+		                  onMouseEnter={() => openContextMenuSubmenu("assign-variant")}
+		                  onClick={(event) => {
+		                    event.preventDefault();
+		                    event.stopPropagation();
+		                    openContextMenuSubmenu("assign-variant");
+		                  }}
+		                >
+	                  {renderContextMenuIcon("tag")}
+	                  <span>Assign Variant</span>
+	                  <span className={styles.contextMenuButtonCaret}>
+	                    {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+	                  </span>
+	                </button>
+	                {contextMenuSubmenu === "assign-variant" ? (
+		                  <div
+		                    className={mergeClasses(
+		                      styles.contextMenuSubmenu,
+		                      styles.contextMenuSubmenuScrollable,
+		                      contextMenuSubmenuSide === "left"
+		                        ? styles.contextMenuSubmenuLeft
+		                        : undefined
+		                    )}
+                        onMouseEnter={() => openContextMenuSubmenu("assign-variant")}
+                        onMouseLeave={() => scheduleContextMenuSubmenuClose("assign-variant")}
+		                  >
+                    {contextMenuVariantRowsError ? (
+                      <div className={styles.contextMenuButton}>
+                        <span>{contextMenuVariantRowsError}</span>
+                      </div>
+                    ) : contextMenuVariantRows.length === 0 && contextMenuVariantRowsLoading ? (
+                      <div className={styles.contextMenuButton}>
+                        <Spinner size="tiny" />
+                        <span>Loading variants...</span>
+                      </div>
+                    ) : contextMenuVariantRows.length === 0 ? (
+                      <div className={styles.contextMenuButton}>
+                        <span>No variants found for this product.</span>
+                      </div>
+                    ) : (
+                      <>
+                        {contextMenuVariantRowsRefreshing ? (
+                          <div className={styles.contextMenuButton}>
+                            <Spinner size="tiny" />
+                            <span>Refreshing variants...</span>
+                          </div>
+                        ) : null}
+                        {contextMenuVariantRows.map((row) => {
+                          const rowId = String(row.id || "").trim();
+                          if (!rowId) return null;
+                          const currentFileName = extractVariantImageFileName(
+                            row.draft_variant_image_url
+                          );
+                          const isExplicitlyChecked =
+                            normalizeVariantImageFileNameKey(currentFileName) ===
+                            contextMenuVariantImageFileNameKey;
+                          const isInferredChecked = contextMenuVariantInferredRowIds.has(rowId);
+                          const isChecked = isExplicitlyChecked || isInferredChecked;
+                          const isSaving = contextMenuVariantSavingIds.has(rowId);
+                          const swedishLabel = buildVariantSwedishReadableLabel(row);
+                          const skuLabel = String(row.draft_sku || "").trim();
+                          return (
+                            <button
+                              type="button"
+                              className={styles.contextMenuButton}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleContextMenuAction(
+                                  `assign-variant-toggle:${encodeURIComponent(rowId)}`
+                                );
+                              }}
+                              disabled={isSaving}
+                              key={`assign-variant-${rowId}`}
+                            >
+                              <span className={styles.contextMenuVariantLabelWrap}>
+                                <span className={styles.contextMenuVariantPrimaryLabel}>
+                                  {swedishLabel || "-"}
+                                </span>
+                                {skuLabel ? (
+                                  <span className={styles.contextMenuVariantSecondaryLabel}>
+                                    {skuLabel}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className={styles.contextMenuVariantSelectionWrap}>
+                                <span
+                                  className={mergeClasses(
+                                    styles.contextMenuTagCheckbox,
+                                    isChecked ? styles.contextMenuTagCheckboxChecked : undefined
+                                  )}
+                                  aria-hidden="true"
+                                >
+                                  {isChecked ? (
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 12 12"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className={styles.contextMenuTagCheckboxIcon}
+                                    >
+                                      <path d="M2.4 6.4l2.2 2.2l5 -5" />
+                                    </svg>
+                                  ) : null}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+	              </div>
+	            ) : null}
+		            <button
+			              type="button"
+			              className={styles.contextMenuButton}
+		              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+		              onClick={() => handleContextMenuAction("open")}
+		            >
               {renderContextMenuIcon("open")}
               <span>Open</span>
             </button>
+		            {contextMenu.image ? (
+		              <div
+		                className={styles.contextMenuSubmenuWrap}
+		                onMouseEnter={() => openContextMenuSubmenu("google-lens-search")}
+	                    onMouseLeave={() => {
+	                      scheduleContextMenuSubmenuClose("google-lens-search");
+	                    }}
+		              >
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={() => openContextMenuSubmenu("google-lens-search")}
+	                  onClick={(event) => {
+	                    event.preventDefault();
+	                    event.stopPropagation();
+	                    openContextMenuSubmenu("google-lens-search");
+	                  }}
+	                >
+                  {renderContextMenuIcon("google-search")}
+                  <span>Google Lens Search</span>
+                  <span className={styles.contextMenuButtonCaret}>
+                    {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                  </span>
+                </button>
+                {contextMenuSubmenu === "google-lens-search" ? (
+	                  <div
+	                    className={mergeClasses(
+	                      styles.contextMenuSubmenu,
+	                      contextMenuSubmenuSide === "left"
+	                        ? styles.contextMenuSubmenuLeft
+	                        : undefined
+	                    )}
+                      onMouseEnter={() => openContextMenuSubmenu("google-lens-search")}
+                      onMouseLeave={() => scheduleContextMenuSubmenuClose("google-lens-search")}
+	                  >
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      onClick={() => handleContextMenuAction("google-lens-search:sweden")}
+                    >
+                      <span>Sweden</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      onClick={() => handleContextMenuAction("google-lens-search:us_global")}
+                    >
+                      <span>USA / Global</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {contextMenu.image ? (
               <button
                 type="button"
                 className={styles.contextMenuButton}
                 disabled={contextMenuMoveToMainDisabled}
-                onMouseEnter={() => setContextMenuSubmenu(null)}
+                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
                 onClick={() => handleContextMenuAction("move-to-main")}
               >
                 {renderContextMenuIcon("move-main")}
@@ -17691,7 +20296,7 @@ export default function DraftExplorerPage() {
 	            <button
 	              type="button"
 	              className={styles.contextMenuButton}
-	              onMouseEnter={() => setContextMenuSubmenu(null)}
+	              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	              onClick={() => handleContextMenuAction("download")}
 	            >
               {renderContextMenuIcon("download")}
@@ -17701,7 +20306,7 @@ export default function DraftExplorerPage() {
 	              <button
 	                type="button"
 	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                onClick={() => handleContextMenuAction("view")}
 	              >
                 {renderContextMenuIcon("open")}
@@ -17711,7 +20316,7 @@ export default function DraftExplorerPage() {
 	            <button
 		              type="button"
 		              className={styles.contextMenuButton}
-		              onMouseEnter={() => setContextMenuSubmenu(null)}
+		              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 		              onClick={() => handleContextMenuAction("create-copy")}
 		            >
 	              {renderContextMenuIcon("duplicate")}
@@ -17721,7 +20326,7 @@ export default function DraftExplorerPage() {
 	              <button
 	                type="button"
 	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                onClick={() => handleContextMenuAction("copy-to-clipboard")}
 	              >
 	                {renderContextMenuIcon("clipboard")}
@@ -17732,7 +20337,7 @@ export default function DraftExplorerPage() {
 	              <button
 	                type="button"
 	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
+	                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                onClick={() => handleContextMenuAction("undo-last-change")}
 	              >
 	                {renderContextMenuIcon("undo")}
@@ -17740,41 +20345,96 @@ export default function DraftExplorerPage() {
 	              </button>
 	            ) : null}
 	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={() => setContextMenuSubmenu(null)}
-	                onClick={() => handleContextMenuAction("photopea")}
-	              >
-	                {renderContextMenuIcon("photopea")}
-	                <span>Edit with Photopea</span>
-	              </button>
+                <div
+                  className={styles.contextMenuSubmenuWrap}
+                  onMouseEnter={() => openContextMenuSubmenu("edit-image")}
+                  onMouseLeave={() => {
+                    scheduleContextMenuSubmenuClose("edit-image");
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={styles.contextMenuButton}
+                    onMouseEnter={() => openContextMenuSubmenu("edit-image")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openContextMenuSubmenu("edit-image");
+                    }}
+                  >
+                    {renderContextMenuIcon("photopea")}
+                    <span>Edit Image</span>
+                    <span className={styles.contextMenuButtonCaret}>
+                      {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                    </span>
+                  </button>
+                  {contextMenuSubmenu === "edit-image" ? (
+                    <div
+                      className={mergeClasses(
+                        styles.contextMenuSubmenu,
+                        contextMenuSubmenuSide === "left"
+                          ? styles.contextMenuSubmenuLeft
+                          : undefined
+                      )}
+                      onMouseEnter={() => openContextMenuSubmenu("edit-image")}
+                      onMouseLeave={() => scheduleContextMenuSubmenuClose("edit-image")}
+                    >
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
+                        onClick={() => handleContextMenuAction("photopea")}
+                      >
+                        <span>Edit with Photopea</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
+                        onClick={() => handleContextMenuAction("auto-levels")}
+                      >
+                        <span>Auto Levels</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
 	            ) : null}
 	            {contextMenu.image ? (
 	              <>
 			                <button
 			                  type="button"
 			                  className={styles.contextMenuButton}
-		                  onMouseEnter={() => setContextMenuSubmenu(null)}
+		                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 		                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
 		                >
 	                  {renderContextMenuIcon("focuscenter")}
 	                  <span>Edit Auto Center Wide</span>
 	                </button>
-	                <div
-	                  className={styles.contextMenuSubmenuWrap}
-	                  onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
-	                >
-                  <button
-                    type="button"
-                    className={styles.contextMenuButton}
-                    onMouseEnter={() => setContextMenuSubmenu("edit-chatgpt")}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setContextMenuSubmenu("edit-chatgpt");
-                    }}
-                  >
+			                <div
+			                  className={styles.contextMenuSubmenuWrap}
+			                  onMouseEnter={() => {
+	                            openContextMenuSubmenu("edit-chatgpt", {
+                              resetNested: true,
+                            });
+	                          }}
+	                          onMouseLeave={() => {
+	                            scheduleContextMenuSubmenuClose("edit-chatgpt");
+	                          }}
+			                >
+		                  <button
+		                    type="button"
+		                    className={styles.contextMenuButton}
+		                    onMouseEnter={() => {
+	                          openContextMenuSubmenu("edit-chatgpt", {
+                              resetNested: true,
+                            });
+	                        }}
+		                    onClick={(event) => {
+		                      event.preventDefault();
+		                      event.stopPropagation();
+		                      openContextMenuSubmenu("edit-chatgpt", {
+                              resetNested: true,
+                            });
+		                    }}
+		                  >
 	                    {renderContextMenuIcon("ai")}
 	                    <span>Edit ChatGPT</span>
 	                    <span className={styles.contextMenuButtonCaret}>
@@ -17782,45 +20442,62 @@ export default function DraftExplorerPage() {
 	                    </span>
 	                  </button>
 		                  {contextMenuSubmenu === "edit-chatgpt" ? (
-		                    <div
-		                      className={mergeClasses(
-		                        styles.contextMenuSubmenu,
-		                        contextMenuSubmenuSide === "left"
-		                          ? styles.contextMenuSubmenuLeft
-		                          : undefined
-		                      )}
-		                    >
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-template")}
-	                      >
-	                        <span>Standard Template</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
-	                      >
-	                        <span>Direct</span>
-	                      </button>
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() =>
-                            setContextMenuNestedSubmenu("chatgpt-digideal-single")
-                          }
-                        >
+			                    <div
+			                      className={mergeClasses(
+			                        styles.contextMenuSubmenu,
+			                        contextMenuSubmenuSide === "left"
+			                          ? styles.contextMenuSubmenuLeft
+			                          : undefined
+			                      )}
+                              onMouseEnter={() =>
+                                openContextMenuSubmenu("edit-chatgpt", {
+                                  resetNested: false,
+                                })
+                              }
+                              onMouseLeave={() =>
+                                scheduleContextMenuSubmenuClose("edit-chatgpt")
+                              }
+			                    >
+		                      <button
+		                        type="button"
+		                        className={styles.contextMenuButton}
+                                onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+		                        onClick={() => handleContextMenuAction("ai-chatgpt-template")}
+		                      >
+		                        <span>Standard Template</span>
+		                      </button>
+		                      <button
+		                        type="button"
+		                        className={styles.contextMenuButton}
+                                onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+		                        onClick={() => handleContextMenuAction("ai-chatgpt-direct")}
+		                      >
+		                        <span>Direct</span>
+		                      </button>
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+		                            openContextMenuNestedSubmenu("chatgpt-digideal-single")
+		                          }
+	                              onMouseLeave={() =>
+	                                scheduleContextMenuNestedClose(
+                                    "chatgpt-digideal-single"
+                                  )
+	                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() =>
-                              setContextMenuNestedSubmenu("chatgpt-digideal-single")
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-digideal-single");
-                            }}
+	                            onMouseEnter={() =>
+	                              openContextMenuNestedSubmenu("chatgpt-digideal-single")
+	                            }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu(
+                                "chatgpt-digideal-single"
+                              );
+	                            }}
                           >
                             <span>DigiDeal Main Single</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -17828,14 +20505,24 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "chatgpt-digideal-single" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu(
+                                    "chatgpt-digideal-single"
+                                  )
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose(
+                                    "chatgpt-digideal-single"
+                                  )
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -17867,23 +20554,26 @@ export default function DraftExplorerPage() {
                           ) : null}
                         </div>
 
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() =>
-                            setContextMenuNestedSubmenu("chatgpt-digideal-dual")
-                          }
-                        >
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+		                            openContextMenuNestedSubmenu("chatgpt-digideal-dual")
+		                          }
+	                              onMouseLeave={() =>
+	                                scheduleContextMenuNestedClose("chatgpt-digideal-dual")
+	                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() =>
-                              setContextMenuNestedSubmenu("chatgpt-digideal-dual")
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-digideal-dual");
-                            }}
+	                            onMouseEnter={() =>
+	                              openContextMenuNestedSubmenu("chatgpt-digideal-dual")
+	                            }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu("chatgpt-digideal-dual");
+	                            }}
                           >
                             <span>DigiDeal Main Dual</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -17891,14 +20581,20 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "chatgpt-digideal-dual" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu("chatgpt-digideal-dual")
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose("chatgpt-digideal-dual")
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -17930,19 +20626,26 @@ export default function DraftExplorerPage() {
                           ) : null}
                         </div>
 
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
-                        >
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+                                openContextMenuNestedSubmenu("chatgpt-scene")
+                              }
+	                              onMouseLeave={() =>
+                                scheduleContextMenuNestedClose("chatgpt-scene")
+                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("chatgpt-scene")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("chatgpt-scene");
-                            }}
+	                            onMouseEnter={() =>
+                                openContextMenuNestedSubmenu("chatgpt-scene")
+                              }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu("chatgpt-scene");
+	                            }}
                           >
                             <span>Product Scene</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -17950,14 +20653,20 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "chatgpt-scene" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu("chatgpt-scene")
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose("chatgpt-scene")
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -17988,34 +20697,48 @@ export default function DraftExplorerPage() {
                             </div>
                           ) : null}
                         </div>
-                        <button
-                          type="button"
-                          className={styles.contextMenuButton}
-                          disabled={!contextMenuCollectionAllowed}
-                          onClick={() =>
-                            handleContextMenuAction("ai-chatgpt-product-collection")
-                          }
-                        >
+	                        <button
+	                          type="button"
+	                          className={styles.contextMenuButton}
+	                          disabled={!contextMenuCollectionAllowed}
+                              onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+	                          onClick={() =>
+	                            handleContextMenuAction("ai-chatgpt-product-collection")
+	                          }
+	                        >
                           <span>Product Collection</span>
                         </button>
 	                    </div>
 	                  ) : null}
 	                </div>
 
-	                <div
-	                  className={styles.contextMenuSubmenuWrap}
-	                  onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
-	                >
-                  <button
-                    type="button"
-                    className={styles.contextMenuButton}
-                    onMouseEnter={() => setContextMenuSubmenu("edit-gemini")}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setContextMenuSubmenu("edit-gemini");
-                    }}
-                  >
+				                <div
+				                  className={styles.contextMenuSubmenuWrap}
+				                  onMouseEnter={() => {
+	                            openContextMenuSubmenu("edit-gemini", {
+                              resetNested: true,
+                            });
+	                          }}
+	                          onMouseLeave={() => {
+	                            scheduleContextMenuSubmenuClose("edit-gemini");
+	                          }}
+			                >
+		                  <button
+		                    type="button"
+		                    className={styles.contextMenuButton}
+		                    onMouseEnter={() => {
+	                          openContextMenuSubmenu("edit-gemini", {
+                              resetNested: true,
+                            });
+	                        }}
+		                    onClick={(event) => {
+		                      event.preventDefault();
+		                      event.stopPropagation();
+		                      openContextMenuSubmenu("edit-gemini", {
+                              resetNested: true,
+                            });
+		                    }}
+		                  >
 	                    {renderContextMenuIcon("ai")}
 	                    <span>Edit Gemini</span>
 	                    <span className={styles.contextMenuButtonCaret}>
@@ -18023,45 +20746,58 @@ export default function DraftExplorerPage() {
 	                    </span>
 	                  </button>
 		                  {contextMenuSubmenu === "edit-gemini" ? (
-		                    <div
-		                      className={mergeClasses(
-		                        styles.contextMenuSubmenu,
-		                        contextMenuSubmenuSide === "left"
-		                          ? styles.contextMenuSubmenuLeft
-		                          : undefined
-		                      )}
-		                    >
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-template")}
-	                      >
-	                        <span>Standard Template</span>
-	                      </button>
-	                      <button
-	                        type="button"
-	                        className={styles.contextMenuButton}
-	                        onClick={() => handleContextMenuAction("ai-gemini-direct")}
-	                      >
-	                        <span>Direct</span>
-	                      </button>
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() =>
-                            setContextMenuNestedSubmenu("gemini-digideal-single")
-                          }
-                        >
+			                    <div
+			                      className={mergeClasses(
+			                        styles.contextMenuSubmenu,
+			                        contextMenuSubmenuSide === "left"
+			                          ? styles.contextMenuSubmenuLeft
+			                          : undefined
+			                      )}
+                              onMouseEnter={() =>
+                                openContextMenuSubmenu("edit-gemini", {
+                                  resetNested: false,
+                                })
+                              }
+                              onMouseLeave={() =>
+                                scheduleContextMenuSubmenuClose("edit-gemini")
+                              }
+			                    >
+		                      <button
+		                        type="button"
+		                        className={styles.contextMenuButton}
+                                onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+		                        onClick={() => handleContextMenuAction("ai-gemini-template")}
+		                      >
+		                        <span>Standard Template</span>
+		                      </button>
+		                      <button
+		                        type="button"
+		                        className={styles.contextMenuButton}
+                                onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+		                        onClick={() => handleContextMenuAction("ai-gemini-direct")}
+		                      >
+		                        <span>Direct</span>
+		                      </button>
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+		                            openContextMenuNestedSubmenu("gemini-digideal-single")
+		                          }
+	                              onMouseLeave={() =>
+	                                scheduleContextMenuNestedClose("gemini-digideal-single")
+	                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() =>
-                              setContextMenuNestedSubmenu("gemini-digideal-single")
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-digideal-single");
-                            }}
+	                            onMouseEnter={() =>
+	                              openContextMenuNestedSubmenu("gemini-digideal-single")
+	                            }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu("gemini-digideal-single");
+	                            }}
                           >
                             <span>DigiDeal Main Single</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -18069,14 +20805,20 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "gemini-digideal-single" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu("gemini-digideal-single")
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose("gemini-digideal-single")
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -18108,23 +20850,26 @@ export default function DraftExplorerPage() {
                           ) : null}
                         </div>
 
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() =>
-                            setContextMenuNestedSubmenu("gemini-digideal-dual")
-                          }
-                        >
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+		                            openContextMenuNestedSubmenu("gemini-digideal-dual")
+		                          }
+	                              onMouseLeave={() =>
+	                                scheduleContextMenuNestedClose("gemini-digideal-dual")
+	                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() =>
-                              setContextMenuNestedSubmenu("gemini-digideal-dual")
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-digideal-dual");
-                            }}
+	                            onMouseEnter={() =>
+	                              openContextMenuNestedSubmenu("gemini-digideal-dual")
+	                            }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu("gemini-digideal-dual");
+	                            }}
                           >
                             <span>DigiDeal Main Dual</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -18132,14 +20877,20 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "gemini-digideal-dual" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu("gemini-digideal-dual")
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose("gemini-digideal-dual")
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -18171,19 +20922,26 @@ export default function DraftExplorerPage() {
                           ) : null}
                         </div>
 
-                        <div
-                          className={styles.contextMenuSubmenuWrap}
-                          onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
-                        >
+		                        <div
+		                          className={styles.contextMenuSubmenuWrap}
+		                          onMouseEnter={() =>
+                                openContextMenuNestedSubmenu("gemini-scene")
+                              }
+	                              onMouseLeave={() =>
+                                scheduleContextMenuNestedClose("gemini-scene")
+                              }
+		                        >
                           <button
                             type="button"
                             className={styles.contextMenuButton}
-                            onMouseEnter={() => setContextMenuNestedSubmenu("gemini-scene")}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setContextMenuNestedSubmenu("gemini-scene");
-                            }}
+	                            onMouseEnter={() =>
+                                openContextMenuNestedSubmenu("gemini-scene")
+                              }
+	                            onClick={(event) => {
+	                              event.preventDefault();
+	                              event.stopPropagation();
+	                              openContextMenuNestedSubmenu("gemini-scene");
+	                            }}
                           >
                             <span>Product Scene</span>
                             <span className={styles.contextMenuButtonCaret}>
@@ -18191,14 +20949,20 @@ export default function DraftExplorerPage() {
                             </span>
                           </button>
                           {contextMenuNestedSubmenu === "gemini-scene" ? (
-                            <div
-                              className={mergeClasses(
-                                styles.contextMenuSubmenu,
-                                contextMenuSubmenuSide === "left"
-                                  ? styles.contextMenuSubmenuLeft
-                                  : undefined
-                              )}
-                            >
+	                            <div
+	                              className={mergeClasses(
+	                                styles.contextMenuSubmenu,
+	                                contextMenuSubmenuSide === "left"
+	                                  ? styles.contextMenuSubmenuLeft
+	                                  : undefined
+	                              )}
+                                onMouseEnter={() =>
+                                  openContextMenuNestedSubmenu("gemini-scene")
+                                }
+                                onMouseLeave={() =>
+                                  scheduleContextMenuNestedClose("gemini-scene")
+                                }
+	                            >
                               <button
                                 type="button"
                                 className={styles.contextMenuButton}
@@ -18229,14 +20993,15 @@ export default function DraftExplorerPage() {
                             </div>
                           ) : null}
                         </div>
-                        <button
-                          type="button"
-                          className={styles.contextMenuButton}
-                          disabled={!contextMenuCollectionAllowed}
-                          onClick={() =>
-                            handleContextMenuAction("ai-gemini-product-collection")
-                          }
-                        >
+	                        <button
+	                          type="button"
+	                          className={styles.contextMenuButton}
+	                          disabled={!contextMenuCollectionAllowed}
+                              onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+	                          onClick={() =>
+	                            handleContextMenuAction("ai-gemini-product-collection")
+	                          }
+	                        >
                           <span>Product Collection</span>
                         </button>
 	                    </div>
@@ -18245,7 +21010,7 @@ export default function DraftExplorerPage() {
 	                <button
 	                  type="button"
 	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                  onClick={() => handleContextMenuAction("ai-zimage-direct")}
 	                >
                   {renderContextMenuIcon("ai")}
@@ -18254,7 +21019,7 @@ export default function DraftExplorerPage() {
 	                <button
 	                  type="button"
 	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                  onClick={() => handleContextMenuAction("ai-zimage-white")}
 	                >
                   {renderContextMenuIcon("background")}
@@ -18263,7 +21028,7 @@ export default function DraftExplorerPage() {
 	                <button
 	                  type="button"
 	                  className={styles.contextMenuButton}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                  onClick={() => handleContextMenuAction("ai-zimage-eraser")}
 	                >
                   {renderContextMenuIcon("eraser")}
@@ -18273,7 +21038,7 @@ export default function DraftExplorerPage() {
 	                  type="button"
 	                  className={styles.contextMenuButton}
                     disabled={contextMenuUpscaleDisabled}
-	                  onMouseEnter={() => setContextMenuSubmenu(null)}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
 	                  onClick={() => handleContextMenuAction("ai-zimage-upscale")}
 	                >
                   {renderContextMenuIcon("upscale")}
@@ -18283,6 +21048,160 @@ export default function DraftExplorerPage() {
             ) : null}
 	          </div>
 	        ) : null}
+
+        <Dialog
+          open={autoLevelsOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAutoLevelsDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.autoLevelsSurface}>
+            <DialogBody className={styles.autoLevelsBody}>
+              <DialogTitle>{`Auto Levels (${autoLevelsTargets.length})`}</DialogTitle>
+              {autoLevelsError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {autoLevelsError}
+                </Text>
+              ) : (
+                <Text size={100} className={styles.filesInfo}>
+                  Adjust level intensity and quality, then apply to selected images.
+                </Text>
+              )}
+              <div className={styles.autoLevelsControls}>
+                <div className={styles.autoLevelsControlCard}>
+                  <Field label="Level Percent">
+                    <div className={styles.autoLevelsInlineRow}>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={autoLevelsLevelPercent}
+                        className={styles.autoLevelsSlider}
+                        disabled={autoLevelsSubmitting}
+                        onChange={(event) => {
+                          const nextValue = Number(event.currentTarget.value);
+                          setAutoLevelsLevelPercent(clampAutoLevelsPercent(nextValue));
+                        }}
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={String(autoLevelsLevelPercent)}
+                        className={styles.autoLevelsNumberInput}
+                        disabled={autoLevelsSubmitting}
+                        onChange={(_, data) => {
+                          const raw = String(data.value || "").trim();
+                          if (!raw) {
+                            setAutoLevelsLevelPercent(50);
+                            return;
+                          }
+                          const nextValue = Number(raw);
+                          if (!Number.isFinite(nextValue)) return;
+                          setAutoLevelsLevelPercent(clampAutoLevelsPercent(nextValue));
+                        }}
+                      />
+                    </div>
+                  </Field>
+                  <Field label="Quality">
+                    <div className={styles.autoLevelsInlineRow}>
+                      <input
+                        type="range"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={autoLevelsQuality}
+                        className={styles.autoLevelsSlider}
+                        disabled={autoLevelsSubmitting}
+                        onChange={(event) => {
+                          const nextValue = Number(event.currentTarget.value);
+                          setAutoLevelsQuality(clampAutoLevelsQuality(nextValue));
+                        }}
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={String(autoLevelsQuality)}
+                        className={styles.autoLevelsNumberInput}
+                        disabled={autoLevelsSubmitting}
+                        onChange={(_, data) => {
+                          const raw = String(data.value || "").trim();
+                          if (!raw) {
+                            setAutoLevelsQuality(92);
+                            return;
+                          }
+                          const nextValue = Number(raw);
+                          if (!Number.isFinite(nextValue)) return;
+                          setAutoLevelsQuality(clampAutoLevelsQuality(nextValue));
+                        }}
+                      />
+                    </div>
+                  </Field>
+                  <Text size={100} className={styles.filesInfo}>
+                    {`Mapped bounds: lower ${autoLevelsBounds.lower} / upper ${autoLevelsBounds.upper}`}
+                  </Text>
+                </div>
+                <div className={styles.autoLevelsThumbWrap}>
+                  <div
+                    className={mergeClasses(
+                      styles.autoLevelsThumbGrid,
+                      autoLevelsSubmitting ? styles.autoLevelsThumbGridBusy : undefined
+                    )}
+                  >
+                    {autoLevelsTargets.map((entry) => (
+                      <div key={entry.path} className={styles.autoLevelsThumbCard}>
+                        <div className={styles.autoLevelsThumbImageFrame}>
+                          <img
+                            src={buildDraftDownloadUrl(
+                              entry.path,
+                              entryByPath.get(entry.path)?.modifiedAt ?? entry.modifiedAt
+                            )}
+                            alt={entry.name}
+                            className={styles.autoLevelsThumbImage}
+                          />
+                        </div>
+                        <Text
+                          size={100}
+                          className={styles.autoLevelsThumbName}
+                          title={entry.name}
+                        >
+                          {entry.name}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
+                  {autoLevelsSubmitting ? (
+                    <div className={styles.autoLevelsBusyOverlay}>
+                      <Spinner size="medium" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={() => closeAutoLevelsDialog()}
+                  disabled={autoLevelsSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void applyAutoLevelsForDialogTargets()}
+                  disabled={autoLevelsSubmitting || autoLevelsTargets.length === 0}
+                >
+                  {autoLevelsSubmitting ? "Applying..." : "Save and Edit"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
 
 	        <Dialog
 	          open={photopeaOpen}
@@ -19066,6 +21985,303 @@ export default function DraftExplorerPage() {
                   disabled={importEditsSubmitting || (!excelFile && !zipFile)}
                 >
                   {importEditsSubmitting ? "Uploading..." : "Upload"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={reverseSearchOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeReverseSearchDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.reverseSearchSurface}>
+            <DialogBody className={styles.reverseSearchBody}>
+              <DialogTitle>
+                {reverseSearchImageName
+                  ? `Google Lens Search - ${reverseSearchImageName}`
+                  : "Google Lens Search"}
+              </DialogTitle>
+              <div className={styles.reverseSearchHeaderRow}>
+                <div className={styles.reverseSearchSourceBlock}>
+                  <span className={styles.reverseSearchSourceFrame}>
+                    {reverseSearchDisplayImageUrl ? (
+                      <img
+                        src={reverseSearchDisplayImageUrl}
+                        alt={reverseSearchImageName || "Selected image"}
+                        className={styles.reverseSearchSourceImage}
+                      />
+                    ) : null}
+                  </span>
+                  <div className={styles.reverseSearchSourceMeta}>
+                    <Text size={300} weight="semibold" className={styles.reverseSearchSourceTitle}>
+                      {reverseSearchDisplayProductTitle || "Selected product"}
+                    </Text>
+                    <Text
+                      size={100}
+                      className={styles.reverseSearchSmallText}
+                      title={reverseSearchDisplayImageUrl || reverseSearchDisplayImagePath || reverseSearchImagePath || "No image selected"}
+                    >
+                      {reverseSearchDisplayImageUrl || reverseSearchDisplayImagePath || reverseSearchImagePath || "No image selected"}
+                    </Text>
+                    <Text size={100} className={styles.reverseSearchSmallText}>
+                      {`${reverseSearchItems.length} result(s) loaded`}
+                    </Text>
+                  </div>
+                </div>
+                <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                  {reverseSearchSearchId ? (
+                    <Text size={100} className={styles.reverseSearchSmallText}>
+                      {`Search ID: ${reverseSearchSearchId}`}
+                    </Text>
+                  ) : null}
+                </div>
+              </div>
+              {reverseSearchError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {reverseSearchError}
+                </Text>
+              ) : null}
+              <div className={styles.reverseSearchContent}>
+                <div
+                  className={mergeClasses(
+                    styles.reverseSearchTableWrap,
+                    reverseSearchLoading ? styles.reverseSearchBlurred : undefined
+                  )}
+                >
+                  {reverseSearchItems.length === 0 && !reverseSearchLoading ? (
+                    <div style={{ padding: "14px" }}>
+                      <Text size={200}>No search results found.</Text>
+                    </div>
+                  ) : (
+                    <Table
+                      size="small"
+                      aria-label="Google Lens search results table"
+                      className={styles.reverseSearchTable}
+                    >
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell className={styles.reverseSearchImageColumn}>
+                            Image
+                          </TableHeaderCell>
+                          <TableHeaderCell className={styles.reverseSearchTitleColumn}>
+                            Title
+                          </TableHeaderCell>
+                          <TableHeaderCell className={styles.reverseSearchLinkColumn}>
+                            Link
+                          </TableHeaderCell>
+                          <TableHeaderCell className={styles.reverseSearchActionColumn}>
+                            Action
+                          </TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reverseSearchItems.map((item, index) => {
+                          const rawPreviewUrl =
+                            item.thumbnail || item.image || item.originalImage || "";
+                          const useFallbackPreview = Boolean(
+                            rawPreviewUrl && reverseSearchBrokenPreviewUrls[rawPreviewUrl]
+                          );
+                          const previewUrl =
+                            !rawPreviewUrl || useFallbackPreview
+                              ? reverseSearchDisplayImageUrl
+                              : rawPreviewUrl;
+                          const linkHost =
+                            item.sourceDomain ||
+                            item.domain ||
+                            (() => {
+                              try {
+                                return item.link ? new URL(item.link).hostname : "";
+                              } catch {
+                                return "";
+                              }
+                            })();
+                          const amazonAsin = item.isAmazon ? extractAmazonAsin(item) : "";
+                          const rowKey = `${item.link || "nolink"}-${item.rank}-${index}`;
+                          return (
+                            <TableRow key={rowKey}>
+                              <TableCell
+                                className={mergeClasses(
+                                  styles.reverseSearchImageColumn,
+                                  styles.reverseSearchImageCell
+                                )}
+                              >
+                                <span className={styles.reverseSearchImageCellContent}>
+                                  <span className={styles.reverseSearchThumbWrap}>
+                                    {previewUrl ? (
+                                      <img
+                                        src={previewUrl}
+                                        alt={item.title || `Result ${index + 1}`}
+                                        className={styles.reverseSearchThumb}
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer"
+                                        onError={() => {
+                                          if (!rawPreviewUrl) return;
+                                          if (reverseSearchBrokenPreviewUrls[rawPreviewUrl]) return;
+                                          setReverseSearchBrokenPreviewUrls((prev) => ({
+                                            ...prev,
+                                            [rawPreviewUrl]: true,
+                                          }));
+                                        }}
+                                      />
+                                    ) : null}
+                                  </span>
+                                </span>
+                              </TableCell>
+                              <TableCell
+                                className={mergeClasses(
+                                  styles.reverseSearchTitleColumn,
+                                  styles.reverseSearchRowCellMiddle
+                                )}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "4px",
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  <Text
+                                    size={200}
+                                    className={styles.reverseSearchTitleClamp}
+                                    title={item.title || "-"}
+                                  >
+                                    {item.title || "-"}
+                                  </Text>
+                                </div>
+                              </TableCell>
+                              <TableCell
+                                className={mergeClasses(
+                                  styles.reverseSearchLinkColumn,
+                                  styles.reverseSearchRowCellMiddle
+                                )}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  {item.link ? (
+                                    <Button
+                                      size="small"
+                                      appearance="outline"
+                                      className={styles.reverseSearchOpenLinkButton}
+                                      onClick={() => {
+                                        window.open(item.link || "", "_blank", "noopener,noreferrer");
+                                      }}
+                                    >
+                                      Open Link
+                                    </Button>
+                                  ) : (
+                                    <Text size={200}>-</Text>
+                                  )}
+                                  {item.link ? (
+                                    <Text className={styles.reverseSearchLinkMeta}>
+                                      {linkHost || "-"}
+                                    </Text>
+                                  ) : null}
+                                </div>
+                              </TableCell>
+                              <TableCell
+                                className={mergeClasses(
+                                  styles.reverseSearchActionColumn,
+                                  styles.reverseSearchRowCellMiddle
+                                )}
+                              >
+                                {item.isAmazon && item.link ? (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      alignItems: "flex-end",
+                                    }}
+                                  >
+                                    <Button
+                                      size="small"
+                                      appearance="outline"
+                                      className={styles.reverseSearchRowActionButton}
+                                      disabled={
+                                        reverseSearchLoading ||
+                                        reverseSearchFetchingAmazon ||
+                                        reverseSearchAddingDownloaded
+                                      }
+                                      onClick={() =>
+                                        void handleFetchAmazonDataFromReverseSearch([
+                                          String(item.link || ""),
+                                        ])
+                                      }
+                                    >
+                                      {reverseSearchFetchingAmazon
+                                        ? "Fetching..."
+                                        : "Fetch Amazon Data"}
+                                    </Button>
+                                    <Text className={styles.reverseSearchLinkMeta}>
+                                      {amazonAsin ? `ASIN ${amazonAsin}` : "ASIN -"}
+                                    </Text>
+                                  </div>
+                                ) : (
+                                  <Text size={100} className={styles.reverseSearchSmallText}>
+                                    -
+                                  </Text>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+                {reverseSearchLoading ? (
+                  <div className={styles.reverseSearchLoadingOverlay}>
+                    <div className={styles.reverseSearchBusyContent}>
+                      <Spinner size="medium" />
+                      <Text size={200}>Searching Google Lens...</Text>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <DialogActions className={styles.reverseSearchActions}>
+                <Button
+                  appearance="outline"
+                  onClick={handleOpenDownloadedFolderFromReverseSearch}
+                  disabled={
+                    reverseSearchLoading ||
+                    reverseSearchAddingDownloaded ||
+                    reverseSearchDownloadedCount === 0
+                  }
+                >
+                  Open Downloaded
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={handleDownloadReverseSearchJson}
+                  disabled={
+                    reverseSearchLoading ||
+                    (!reverseSearchDebugPayload &&
+                      !reverseSearchInputPayload &&
+                      reverseSearchItems.length === 0)
+                  }
+                >
+                  Download JSON
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={closeReverseSearchDialog}
+                  disabled={
+                    reverseSearchLoading ||
+                    reverseSearchFetchingAmazon ||
+                    reverseSearchAddingDownloaded
+                  }
+                >
+                  {t("common.close")}
                 </Button>
               </DialogActions>
             </DialogBody>

@@ -1,4 +1,4 @@
-export const ORDER_IMPORT_HEADERS = [
+export const ORDER_IMPORT_PENDING_HEADERS = [
   "Sales Channel ID",
   "Quantity",
   "Order number",
@@ -16,6 +16,10 @@ export const ORDER_IMPORT_HEADERS = [
   "Ignore2",
   "Transaction Date",
   "Sales value EUR",
+] as const;
+
+export const ORDER_IMPORT_SHIPPED_HEADERS = [
+  ...ORDER_IMPORT_PENDING_HEADERS,
   "Date shipped",
   "Ignore3",
   "Ignore4",
@@ -26,3 +30,5 @@ export const ORDER_IMPORT_HEADERS = [
   "Tracking number",
 ] as const;
 
+// Backward compatibility for code paths still importing the previous symbol.
+export const ORDER_IMPORT_HEADERS = ORDER_IMPORT_SHIPPED_HEADERS;

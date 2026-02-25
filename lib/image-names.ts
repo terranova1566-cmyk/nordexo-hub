@@ -45,6 +45,11 @@ export const isPublishableImageName = (name: string) =>
 const hasTag = (name: string, tag: string) =>
   name.toUpperCase().includes(tag.toUpperCase());
 
+const DIGI_OR_DIG_TAG_IN_FILE_NAME =
+  /(?:\(\s*DIGI?\s*\)|(?:^|[-_ ])DIGI?(?:[-_ .)]|$))/i;
+
+const hasDigiTag = (name: string) => DIGI_OR_DIG_TAG_IN_FILE_NAME.test(name);
+
 const toTempName = (name: string, index: number) => {
   const ext = path.extname(name);
   const stamp = Date.now().toString(36);
@@ -95,7 +100,8 @@ export const normalizeImageNamesInFolder = async (
     if (hasTag(name, "ENV")) parts.push("ENV");
     if (hasTag(name, "VAR")) parts.push("VAR");
     if (hasTag(name, "INF")) parts.push("INF");
-    if (hasTag(name, "DIGI")) parts.push("DIGI");
+    // Preserve either DIG or DIGI input markers as DIGI in publish names.
+    if (hasDigiTag(name)) parts.push("DIGI");
     return {
       sourceName: name,
       targetName: `${parts.join("-")}${ext}`,

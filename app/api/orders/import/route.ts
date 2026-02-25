@@ -2,11 +2,21 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import ExcelJS from "exceljs";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { ORDER_IMPORT_HEADERS } from "@/lib/orders/import-template";
+import {
+  ORDER_IMPORT_PENDING_HEADERS,
+  ORDER_IMPORT_SHIPPED_HEADERS,
+} from "@/lib/orders/import-template";
+import {
+  ORDER_STATUS,
+  pickHigherPriorityOrderStatus,
+} from "@/lib/orders/status";
 import { promises as fs } from "fs";
 import path from "path";
 
-const EXPECTED_HEADERS = [...ORDER_IMPORT_HEADERS];
+const PENDING_HEADERS = [...ORDER_IMPORT_PENDING_HEADERS];
+const SHIPPED_HEADERS = [...ORDER_IMPORT_SHIPPED_HEADERS];
+
+type ImportMode = "pending" | "shipped";
 
 type ParsedOrderItem = {
   sales_channel_id: string;
@@ -149,6 +159,43 @@ async function hasTrackingSentDateColumn(
   return (data?.length ?? 0) > 0;
 }
 
+async function hasOrdersStatusColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "status")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+function detectImportMode(headerMap: Map<string, number>) {
+  const hasAll = (headers: string[]) => headers.every((header) => headerMap.has(header));
+  if (hasAll(SHIPPED_HEADERS)) {
+    return {
+      mode: "shipped" as ImportMode,
+      headers: SHIPPED_HEADERS,
+    };
+  }
+  if (hasAll(PENDING_HEADERS)) {
+    return {
+      mode: "pending" as ImportMode,
+      headers: PENDING_HEADERS,
+    };
+  }
+  return {
+    mode: null,
+    headers: [] as string[],
+    missingPending: PENDING_HEADERS.filter((header) => !headerMap.has(header)),
+    missingShipped: SHIPPED_HEADERS.filter((header) => !headerMap.has(header)),
+  };
+}
+
 type DbError = {
   code?: string | null;
   message?: string | null;
@@ -237,15 +284,23 @@ export async function POST(request: Request) {
     }
   });
 
-  const missingHeaders = EXPECTED_HEADERS.filter((header) => !headerMap.has(header));
-  if (missingHeaders.length > 0) {
+  const importModeMatch = detectImportMode(headerMap);
+  if (!importModeMatch.mode) {
+    const missingPending = importModeMatch.missingPending ?? [];
+    const missingShipped = importModeMatch.missingShipped ?? [];
     return NextResponse.json(
       {
-        error: `Missing headers: ${missingHeaders.join(", ")}`,
+        error: `Unsupported template. Missing pending headers: ${missingPending.join(
+          ", "
+        )}. Missing shipped headers: ${missingShipped.join(", ")}.`,
       },
       { status: 400 }
     );
   }
+  const importMode = importModeMatch.mode;
+  const expectedHeaders = importModeMatch.headers;
+  const importedOrderStatus =
+    importMode === "pending" ? ORDER_STATUS.PENDING : ORDER_STATUS.SHIPPED;
 
   const ordersMap = new Map<string, Record<string, unknown>>();
   const trackingMap = new Map<string, Map<string, string | null>>();
@@ -256,7 +311,7 @@ export async function POST(request: Request) {
     if (!row || row.cellCount === 0) continue;
 
     const rowData: Record<string, string> = {};
-    EXPECTED_HEADERS.forEach((header) => {
+    expectedHeaders.forEach((header) => {
       const colIndex = headerMap.get(header) ?? 0;
       rowData[header] = readCellText(row.getCell(colIndex));
     });
@@ -274,6 +329,7 @@ export async function POST(request: Request) {
     const existing = ordersMap.get(key) ?? {
       sales_channel_id: salesChannelId,
       order_number: orderNumber,
+      status: importedOrderStatus,
     };
 
     const mergeField = (field: string, value: string) => {
@@ -291,15 +347,24 @@ export async function POST(request: Request) {
     mergeField("customer_phone", rowData["Customer cell phone"]);
     mergeField("customer_email", rowData["Customer email"]);
     const transactionDate = normalizeDateForDb(rowData["Transaction Date"]);
-    const dateShipped = normalizeDateForDb(rowData["Date shipped"]);
+    const dateShipped =
+      importMode === "shipped"
+        ? normalizeDateForDb(rowData["Date shipped"] ?? "")
+        : null;
 
     mergeField("transaction_date", transactionDate ?? "");
-    mergeField("date_shipped", dateShipped ?? "");
+    if (importMode === "shipped") {
+      mergeField("date_shipped", dateShipped ?? "");
+    }
+    existing.status = pickHigherPriorityOrderStatus(existing.status, importedOrderStatus);
     existing.raw_row = rowData;
 
     ordersMap.set(key, existing);
 
-    const trackingNumber = rowData["Tracking number"].trim();
+    const trackingNumber =
+      importMode === "shipped"
+        ? String(rowData["Tracking number"] ?? "").trim()
+        : "";
     if (trackingNumber) {
       if (!trackingMap.has(key)) {
         trackingMap.set(key, new Map());
@@ -337,6 +402,90 @@ export async function POST(request: Request) {
   }
 
   const orders = Array.from(ordersMap.values());
+  const canWriteOrderStatus = await hasOrdersStatusColumn(adminClient);
+  const existingOrderStateByKey = new Map<
+    string,
+    { date_shipped: string | null; status: string | null }
+  >();
+  type ExistingOrderStateRow = {
+    sales_channel_id: string | null;
+    order_number: string | null;
+    date_shipped: string | null;
+    status?: string | null;
+  };
+
+  for (const orderChunk of chunkList(orders, 200)) {
+    const orderNumbers = Array.from(
+      new Set(orderChunk.map((order) => String(order.order_number ?? "").trim()))
+    ).filter(Boolean);
+    const salesChannelIds = Array.from(
+      new Set(orderChunk.map((order) => String(order.sales_channel_id ?? "").trim()))
+    ).filter(Boolean);
+
+    if (orderNumbers.length === 0 || salesChannelIds.length === 0) {
+      continue;
+    }
+
+    let existingRows: ExistingOrderStateRow[] = [];
+    let existingOrdersError: DbError | null = null;
+    if (canWriteOrderStatus) {
+      const { data, error } = await adminClient
+        .from("orders_global")
+        .select("sales_channel_id,order_number,date_shipped,status")
+        .in("sales_channel_id", salesChannelIds)
+        .in("order_number", orderNumbers);
+      existingRows = (data ?? []) as ExistingOrderStateRow[];
+      existingOrdersError = error;
+    } else {
+      const { data, error } = await adminClient
+        .from("orders_global")
+        .select("sales_channel_id,order_number,date_shipped")
+        .in("sales_channel_id", salesChannelIds)
+        .in("order_number", orderNumbers);
+      existingRows = (data ?? []) as ExistingOrderStateRow[];
+      existingOrdersError = error;
+    }
+
+    if (existingOrdersError) {
+      return NextResponse.json(
+        buildDbErrorPayload(
+          existingOrdersError,
+          "Unable to read existing orders for status merge."
+        ),
+        { status: 500 }
+      );
+    }
+
+    existingRows.forEach((row) => {
+      const key = `${row.sales_channel_id}::${row.order_number}`;
+      existingOrderStateByKey.set(key, {
+        date_shipped: row.date_shipped ? String(row.date_shipped) : null,
+        status:
+          canWriteOrderStatus && "status" in row && row.status
+            ? String(row.status)
+            : null,
+      });
+    });
+  }
+
+  orders.forEach((order) => {
+    const key = `${order.sales_channel_id}::${order.order_number}`;
+    const existingState = existingOrderStateByKey.get(key);
+    const existingDateShipped = String(existingState?.date_shipped ?? "").trim();
+    const incomingDateShipped = String(order.date_shipped ?? "").trim();
+    if (!incomingDateShipped && existingDateShipped) {
+      order.date_shipped = existingDateShipped;
+    }
+    if (canWriteOrderStatus) {
+      order.status = pickHigherPriorityOrderStatus(
+        existingState?.status,
+        order.status ?? importedOrderStatus
+      );
+    } else {
+      delete order.status;
+    }
+  });
+
   const orderIdMap = new Map<string, string>();
   for (const orderChunk of chunkList(orders, 500)) {
     const { data: upsertedOrderRows, error: orderError } = await adminClient
@@ -547,6 +696,7 @@ export async function POST(request: Request) {
     stored_name: storedName,
     stored_path: storedPath,
     row_count: items.length,
+    import_mode: importMode,
     created_at: new Date().toISOString(),
   };
 
@@ -562,6 +712,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    importMode,
     ordersCount: orders.length,
     itemsCount: itemsToInsert.length,
     duplicateItemsSkipped: itemsWithIds.length - itemsToInsert.length,

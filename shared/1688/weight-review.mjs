@@ -8,7 +8,8 @@ import {
 } from "./core.mjs";
 
 const WEIGHT_TOKEN_RE = /(-?\d+(?:[.,]\d+)?)\s*(kg|g|公斤|千克|克)\b/gi;
-const WEIGHT_KEYWORD_RE = /(重量|净重|毛重|单重|克重|每个|每件|规格|主机|片|套|pack|pcs?|kg|g)/i;
+const WEIGHT_KEYWORD_RE =
+  /(重量|净重|毛重|单重|克重|每个|每件|规格|主机|片|套|pack|pcs?|公斤|千克|克|\b\d+(?:[.,]\d+)?\s*(?:kg|g)\b)/i;
 const MULTI_PACK_HINT_RE = /(主机|套|片|pcs?|pack|个|只|台|枚|张|组)/i;
 const PACKAGING_WEIGHT_HINT_RE =
   /(整箱|外箱|箱规|箱装|装箱|毛重|包装重量|包装重|箱重|净含量|件\/箱|每箱|carton|ctn|master\s*carton|outer\s*box|gross\s*weight|shipping\s*weight)/i;

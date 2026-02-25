@@ -838,7 +838,7 @@
     },
     {
       "key": "orders.filters.searchPlaceholder",
-      "text": "Search by order number, customer, or channel",
+      "text": "Search by order number, customer name, email, address, SKU, or SPU",
       "context": "Orders filter placeholder"
     },
     {
@@ -860,6 +860,96 @@
       "key": "orders.filters.shippedTo",
       "text": "Shipped To",
       "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.country",
+      "text": "Country",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.countryAll",
+      "text": "All countries",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.salesChannel",
+      "text": "Sales Channel",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.salesChannelAll",
+      "text": "All sales channels",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.status",
+      "text": "Status",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.statusAll",
+      "text": "All statuses",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.warnings",
+      "text": "Warnings",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.warningsAll",
+      "text": "All orders",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.warningsDelayed",
+      "text": "Delayed only",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.warningsOnTime",
+      "text": "Not delayed",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.actions.button",
+      "text": "Actions",
+      "context": "Orders actions menu button"
+    },
+    {
+      "key": "orders.actions.changeStatus",
+      "text": "Change order status",
+      "context": "Orders actions menu item"
+    },
+    {
+      "key": "orders.statusDialog.title",
+      "text": "Change order status",
+      "context": "Orders status dialog title"
+    },
+    {
+      "key": "orders.statusDialog.selectionCount",
+      "text": "Selected orders: {count}",
+      "context": "Orders status dialog selected orders count"
+    },
+    {
+      "key": "orders.statusDialog.statusLabel",
+      "text": "Status",
+      "context": "Orders status dialog field label"
+    },
+    {
+      "key": "orders.statusDialog.actions.close",
+      "text": "Close",
+      "context": "Orders status dialog action"
+    },
+    {
+      "key": "orders.statusDialog.actions.save",
+      "text": "Save",
+      "context": "Orders status dialog action"
+    },
+    {
+      "key": "orders.statusDialog.error.update",
+      "text": "Unable to update order status.",
+      "context": "Orders status dialog error"
     },
     {
       "key": "orders.export.button",
@@ -1042,6 +1132,11 @@
       "context": "Orders column"
     },
     {
+      "key": "orders.columns.country",
+      "text": "Country",
+      "context": "Orders column"
+    },
+    {
       "key": "orders.columns.email",
       "text": "Customer Email",
       "context": "Orders column"
@@ -1057,9 +1152,204 @@
       "context": "Orders column"
     },
     {
+      "key": "orders.columns.status",
+      "text": "Status",
+      "context": "Orders column"
+    },
+    {
       "key": "orders.columns.dateShipped",
       "text": "Date Shipped",
       "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.warnings",
+      "text": "Warnings",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.columns.notifications",
+      "text": "Notifications",
+      "context": "Orders column"
+    },
+    {
+      "key": "orders.status.pending",
+      "text": "Pending",
+      "context": "Order status label"
+    },
+    {
+      "key": "orders.status.purchased",
+      "text": "Purchased",
+      "context": "Order status label"
+    },
+    {
+      "key": "orders.status.beingPackedAndShipped",
+      "text": "Being packed and shipped",
+      "context": "Order status label"
+    },
+    {
+      "key": "orders.status.shipped",
+      "text": "Shipped",
+      "context": "Order status label"
+    },
+    {
+      "key": "orders.country.no",
+      "text": "Norway",
+      "context": "Order country label"
+    },
+    {
+      "key": "orders.country.se",
+      "text": "Sweden",
+      "context": "Order country label"
+    },
+    {
+      "key": "orders.country.fi",
+      "text": "Finland",
+      "context": "Order country label"
+    },
+    {
+      "key": "orders.country.unknown",
+      "text": "Unknown",
+      "context": "Order country fallback label"
+    },
+    {
+      "key": "orders.flags.delayedDays",
+      "text": "Delayed {days}d",
+      "context": "Order warning label"
+    },
+    {
+      "key": "orders.notifications.none",
+      "text": "No notification yet",
+      "context": "Orders notification placeholder"
+    },
+    {
+      "key": "orders.email.button",
+      "text": "Send Email",
+      "context": "Orders send email button"
+    },
+    {
+      "key": "orders.email.dialogTitle",
+      "text": "Send order emails",
+      "context": "Orders send email dialog title"
+    },
+    {
+      "key": "orders.email.selectionCount",
+      "text": "Selected orders: {count}",
+      "context": "Orders send email selection count"
+    },
+    {
+      "key": "orders.email.previewCustomer",
+      "text": "Preview uses first order: {order} ({customer})",
+      "context": "Orders send email preview customer"
+    },
+    {
+      "key": "orders.email.templateLabel",
+      "text": "Template",
+      "context": "Orders send email template field"
+    },
+    {
+      "key": "orders.email.templatePlaceholder",
+      "text": "Select template",
+      "context": "Orders send email template placeholder"
+    },
+    {
+      "key": "orders.email.senderLabel",
+      "text": "SendPulse sender",
+      "context": "Orders send email sender field"
+    },
+    {
+      "key": "orders.email.senderPlaceholder",
+      "text": "Select sender",
+      "context": "Orders send email sender placeholder"
+    },
+    {
+      "key": "orders.email.bccLabel",
+      "text": "BCC",
+      "context": "Orders send email BCC field"
+    },
+    {
+      "key": "orders.email.bccPlaceholder",
+      "text": "No BCC",
+      "context": "Orders send email BCC placeholder"
+    },
+    {
+      "key": "orders.email.sendpulseNote",
+      "text": "SendPulse API currently provides template metadata/listing, but not full editable HTML retrieval; this preview uses your internal template with order macros.",
+      "context": "Orders send email sendpulse note"
+    },
+    {
+      "key": "orders.email.editorTitle",
+      "text": "Edit before sending",
+      "context": "Orders send email editor section title"
+    },
+    {
+      "key": "orders.email.editorHint",
+      "text": "Template content is loaded with macros. You can adjust subject/body before sending.",
+      "context": "Orders send email editor section hint"
+    },
+    {
+      "key": "orders.email.editorSubjectLabel",
+      "text": "Subject template",
+      "context": "Orders send email subject template editor label"
+    },
+    {
+      "key": "orders.email.editorBodyLabel",
+      "text": "Body template",
+      "context": "Orders send email body template editor label"
+    },
+    {
+      "key": "orders.email.previewTitle",
+      "text": "Template preview",
+      "context": "Orders send email preview section title"
+    },
+    {
+      "key": "orders.email.previewSubjectLabel",
+      "text": "Rendered subject",
+      "context": "Orders send email preview subject label"
+    },
+    {
+      "key": "orders.email.previewSubjectEmpty",
+      "text": "(empty subject)",
+      "context": "Orders send email preview empty subject"
+    },
+    {
+      "key": "orders.email.previewMissingMacros",
+      "text": "Missing required macros: {macros}",
+      "context": "Orders send email preview missing macros warning"
+    },
+    {
+      "key": "orders.email.macrosUsed",
+      "text": "Macros used in this template",
+      "context": "Orders send email template macro badges title"
+    },
+    {
+      "key": "orders.email.noMacros",
+      "text": "No macros detected.",
+      "context": "Orders send email no macros text"
+    },
+    {
+      "key": "orders.email.sendSummary",
+      "text": "Will send to {count} order(s).",
+      "context": "Orders send email summary text"
+    },
+    {
+      "key": "orders.email.send.success",
+      "text": "Sent {sent} email(s).",
+      "context": "Orders send email success text"
+    },
+    {
+      "key": "orders.email.send.partial",
+      "text": "Sent {sent} email(s), failed {failed}.",
+      "context": "Orders send email partial result text"
+    },
+    {
+      "key": "orders.email.actions.cancel",
+      "text": "Cancel",
+      "context": "Orders send email dialog cancel button"
+    },
+    {
+      "key": "orders.email.actions.send",
+      "text": "Send via SendPulse",
+      "context": "Orders send email dialog send button"
     },
     {
       "key": "orders.empty",
@@ -1084,6 +1374,11 @@
     {
       "key": "orders.details.columns.sku",
       "text": "SKU",
+      "context": "Orders details column"
+    },
+    {
+      "key": "orders.details.columns.image",
+      "text": "Image",
       "context": "Orders details column"
     },
     {
@@ -1137,6 +1432,11 @@
       "context": "Orders details label"
     },
     {
+      "key": "orders.details.status",
+      "text": "Status:",
+      "context": "Orders details label"
+    },
+    {
       "key": "orders.details.customerNote",
       "text": "Notes:",
       "context": "Orders details label"
@@ -1168,7 +1468,7 @@
     },
     {
       "key": "orders.import.subtitle",
-      "text": "Upload an Excel file to import order data.",
+      "text": "Upload an Excel file to import all orders (pending is the default flow).",
       "context": "Orders import page subtitle"
     },
     {
@@ -1193,7 +1493,7 @@
     },
     {
       "key": "orders.import.instructions1",
-      "text": "First row must include the required headers exactly (spelling/case).",
+      "text": "Pending-order template is the standard format; first row must include required headers exactly.",
       "context": "Orders import instructions"
     },
     {
@@ -1203,7 +1503,7 @@
     },
     {
       "key": "orders.import.instructions3",
-      "text": "Tracking numbers are collected per order; duplicate numbers are ignored.",
+      "text": "Legacy shipped template is still supported; tracking numbers are collected per order and deduplicated.",
       "context": "Orders import instructions"
     },
     {

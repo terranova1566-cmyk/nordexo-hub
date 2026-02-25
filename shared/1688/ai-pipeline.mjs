@@ -68,9 +68,11 @@ const normalizeVariations = (value) => {
 
 const toReadableText = (item) =>
   asText(
-    item?.text_1688?.readable_full ||
-      item?.readable_1688_full ||
+    item?.text_1688?.readable_ai_clean ||
       item?.readable_1688 ||
+      item?.text_1688?.readable_compact ||
+      item?.readable_1688_full ||
+      item?.text_1688?.readable_full ||
       item?.readable1688 ||
       ""
   );
@@ -428,4 +430,3 @@ export const enhance1688ItemsWithAi = async (items, options = {}) => {
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
   return out;
 };
-

@@ -124,6 +124,230 @@ const DEFAULT_EMAIL_MACRO_DEFINITIONS: EmailMacroDefinition[] = [
     createdAt: null,
     updatedAt: null,
   },
+  {
+    id: "default-orders-id",
+    macroKey: "orders_id",
+    label: "Order ID",
+    description: "Internal order UUID.",
+    dataSource: "variables.orders_id",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-number",
+    macroKey: "orders_number",
+    label: "Order number",
+    description: "Marketplace/customer-facing order number.",
+    dataSource: "variables.orders_number",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-date",
+    macroKey: "orders_date",
+    label: "Order date",
+    description: "Primary order date used in communication templates.",
+    dataSource: "variables.orders_date",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-transaction-date",
+    macroKey: "orders_transaction_date",
+    label: "Order transaction date",
+    description: "Order transaction date (YYYY-MM-DD when available).",
+    dataSource: "variables.orders_transaction_date",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-ship-date",
+    macroKey: "orders_ship_date",
+    label: "Order ship date",
+    description: "Shipping date for the order (YYYY-MM-DD when available).",
+    dataSource: "variables.orders_ship_date",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-date-shipped",
+    macroKey: "orders_date_shipped",
+    label: "Order date shipped",
+    description: "Alias for the order shipping date.",
+    dataSource: "variables.orders_date_shipped",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-customer-name",
+    macroKey: "orders_customer_name",
+    label: "Order customer name",
+    description: "Customer full name for the order.",
+    dataSource: "variables.orders_customer_name",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-customer-email",
+    macroKey: "orders_customer_email",
+    label: "Order customer email",
+    description: "Customer email address for the order.",
+    dataSource: "variables.orders_customer_email",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-status",
+    macroKey: "orders_status",
+    label: "Order status",
+    description: "Current order status string.",
+    dataSource: "variables.orders_status",
+    formatter: "trim|lower",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-platform-id",
+    macroKey: "orders_platform_id",
+    label: "Order platform ID",
+    description: "Platform/sales channel identifier for the order.",
+    dataSource: "variables.orders_platform_id",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-orders-platform-name",
+    macroKey: "orders_platform_name",
+    label: "Order platform name",
+    description: "Normalized platform/seller name for the order.",
+    dataSource: "variables.orders_platform_name",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-order-content-list",
+    macroKey: "order_content_list",
+    label: "Order content list",
+    description: "Order products listed as one row per item: quantity x title.",
+    dataSource: "variables.order_content_list",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-platform-id",
+    macroKey: "platform_id",
+    label: "Platform ID",
+    description: "Partner platform/sales channel identifier from the order.",
+    dataSource: "variables.platform_id",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-platform-name",
+    macroKey: "platform_name",
+    label: "Platform name",
+    description: "Partner platform/sales channel display name.",
+    dataSource: "variables.platform_name",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-platform-seller-name",
+    macroKey: "platform_seller_name",
+    label: "Platform seller name",
+    description: "Seller name alias mapped from platform name.",
+    dataSource: "variables.platform_seller_name",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
+  {
+    id: "default-seller-name",
+    macroKey: "seller_name",
+    label: "Seller name",
+    description: "Legacy seller alias mapped from platform name.",
+    dataSource: "variables.seller_name",
+    formatter: "trim",
+    fallbackValue: null,
+    isRequired: false,
+    isDeprecated: false,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  },
 ];
 
 export function validateMacroKey(value: string): string | null {
@@ -187,24 +411,12 @@ export async function listEmailMacroDefinitions(
     includeDeprecated?: boolean;
   }
 ) {
-  const includeInactive = Boolean(options?.includeInactive);
-  const includeDeprecated = Boolean(options?.includeDeprecated);
-
-  let query = supabase
+  const { data, error } = await supabase
     .from(EMAIL_MACRO_TABLE)
     .select(
       "id,macro_key,label,description,data_source,formatter,fallback_value,is_required,is_deprecated,is_active,created_at,updated_at"
     )
     .order("macro_key", { ascending: true });
-
-  if (!includeInactive) {
-    query = query.eq("is_active", true);
-  }
-  if (!includeDeprecated) {
-    query = query.eq("is_deprecated", false);
-  }
-
-  const { data, error } = await query;
   if (error) {
     if (isMissingEmailMacroRegistryTableError(error)) {
       return {
@@ -216,9 +428,24 @@ export async function listEmailMacroDefinitions(
   }
 
   const rows = ((data as unknown) as EmailMacroRow[] | null) ?? [];
+  const mergedByKey = new Map<string, EmailMacroDefinition>();
+  for (const definition of DEFAULT_EMAIL_MACRO_DEFINITIONS) {
+    const key = normalizeMacroKey(definition.macroKey).toLowerCase();
+    if (!key) continue;
+    mergedByKey.set(key, definition);
+  }
+  for (const row of rows) {
+    const normalized = normalizeMacroRow(row);
+    const key = normalizeMacroKey(normalized.macroKey).toLowerCase();
+    if (!key) continue;
+    mergedByKey.set(key, normalized);
+  }
+  const mergedMacros = Array.from(mergedByKey.values()).sort((a, b) =>
+    a.macroKey.localeCompare(b.macroKey)
+  );
   return {
     missingTable: false,
-    macros: rows.map((row) => normalizeMacroRow(row)),
+    macros: applyListFilters(mergedMacros, options),
   };
 }
 

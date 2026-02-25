@@ -205,6 +205,22 @@ type VariantsPayload = {
   type1_label?: string;
   type2_label?: string;
   type3_label?: string;
+  sek_pricing_context?: {
+    market: string;
+    currency: "SEK";
+    shipping_class: string;
+    fx_rate_cny: number;
+    weight_threshold_g: number;
+    packing_fee: number;
+    markup_percent: number;
+    markup_fixed: number;
+    rate_low: number;
+    rate_high: number;
+    base_low: number;
+    base_high: number;
+    mult_low: number;
+    mult_high: number;
+  } | null;
 };
 
 type SourceFilter = "all" | "image" | "url";
@@ -785,6 +801,9 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     lineHeight: "1.2",
     marginTop: "1px",
+  },
+  variantMetaMultiline: {
+    whiteSpace: "pre-line",
   },
   variantDataList: {
     display: "flex",
@@ -1716,6 +1735,63 @@ const formatCurrencyValue = (value: number | null | undefined, currency: unknown
   return `${formatCompactNumber(value)} ${code}`;
 };
 
+const toPositiveDecimal = (value: unknown) => {
+  const raw = toText(value).replace(",", ".");
+  if (!raw) return null;
+  const direct = Number(raw);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const match = raw.match(/\d+(?:\.\d+)?/);
+  if (!match?.[0]) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const toWeightGramsValue = (value: unknown) => {
+  const raw = toText(value).replace(",", ".");
+  if (!raw) return null;
+  const match = raw.match(/-?\d+(?:\.\d+)?/);
+  if (!match?.[0]) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const lowered = raw.toLowerCase();
+  if (lowered.includes("kg")) return Math.round(num * 1000);
+  return Math.round(num);
+};
+
+const computeSekPriceFromPricingContext = (
+  purchasePriceCny: number | null,
+  weightGrams: number | null,
+  pricingContext: VariantsPayload["sek_pricing_context"]
+) => {
+  if (!pricingContext) return null;
+  if (!Number.isFinite(Number(purchasePriceCny)) || Number(purchasePriceCny) <= 0) return null;
+  if (!Number.isFinite(Number(weightGrams)) || Number(weightGrams) <= 0) return null;
+
+  const purchase = Number(purchasePriceCny);
+  const weight = Math.round(Number(weightGrams));
+  const threshold = Number(pricingContext.weight_threshold_g);
+  const useLow = Number.isFinite(threshold) ? weight <= threshold : true;
+  const rate = Number(useLow ? pricingContext.rate_low : pricingContext.rate_high);
+  const base = Number(useLow ? pricingContext.base_low : pricingContext.base_high);
+  const mult = Number(useLow ? pricingContext.mult_low : pricingContext.mult_high);
+  const fx = Number(pricingContext.fx_rate_cny);
+  const packingFee = Number(pricingContext.packing_fee);
+  const markupPercent = Number(pricingContext.markup_percent);
+  const markupFixed = Number(pricingContext.markup_fixed);
+
+  if (![rate, base, mult, fx, packingFee, markupPercent, markupFixed].every(Number.isFinite)) {
+    return null;
+  }
+
+  const shippingCny = weight * mult * rate + base;
+  const shippingSek = shippingCny * fx + packingFee;
+  const stockSek = purchase * fx;
+  const totalSek = stockSek + shippingSek;
+  const rawSek = totalSek * (1 + markupPercent) + markupFixed;
+  if (!Number.isFinite(rawSek)) return null;
+  return Math.round(rawSek);
+};
+
 const toText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value).trim();
 
@@ -1724,6 +1800,15 @@ const normalizeSuggestionErrorText = (value: unknown) => {
   if (!text) return "";
   if (/missing normalized image for supplier search/i.test(text)) {
     return "Missing image for search.";
+  }
+  return text;
+};
+
+const normalizePayloadErrorText = (value: unknown) => {
+  const text = toText(value);
+  if (!text) return "";
+  if (/^1688 payload was empty \(no variants\/images\)\.\s*please retry this supplier\.?$/i.test(text)) {
+    return "1688 payload was empty (no variants/images).\nPlease retry this supplier.";
   }
   return text;
 };
@@ -1901,7 +1986,7 @@ const imageIdentity = (value: unknown): string => {
     const absolute = raw.startsWith("//") ? `https:${raw}` : raw;
     const parsed = new URL(absolute, "https://identity.local");
     let host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    let pathname = stripImageSizeTokens(parsed.pathname).toLowerCase();
+    const pathname = stripImageSizeTokens(parsed.pathname).toLowerCase();
     if (!host && parsed.origin === "https://identity.local") host = "local";
     return `${host}${pathname}`;
   } catch {
@@ -2216,12 +2301,13 @@ export default function DigiDealProductSuggestionsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supplierOfferImageWarmRef = useRef<Set<string>>(new Set());
   const supplierOfferTranslateInFlightRef = useRef<Set<string>>(new Set());
-  const translatedSupplierIdsRef = useRef<Set<string>>(new Set());
   const supplierTranslateBusyRef = useRef(false);
+  const supplierTranslateAttemptsRef = useRef<Map<string, number>>(new Map());
   const variantsCacheRef = useRef<Record<string, VariantsPayload>>({});
   const variantFetchInFlightRef = useRef<
     Map<string, Promise<VariantsPayload | null>>
   >(new Map());
+  const variantWarmAttemptsRef = useRef<Map<string, number>>(new Map());
   const supplierGalleryStripRef = useRef<HTMLDivElement | null>(null);
   const supplierGalleryProbeCacheRef = useRef<
     Map<string, SupplierGalleryProbeResult | null>
@@ -2255,6 +2341,9 @@ export default function DigiDealProductSuggestionsPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [viewerPriceRole, setViewerPriceRole] = useState<ViewerPriceRole>("partner");
+  const isAdminViewer = viewerPriceRole === "admin";
+  const hideSupplier1688Details = !isAdminViewer;
+  const allowCnyPriceEditing = isAdminViewer;
 
   const [items, setItems] = useState<SuggestionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -2773,6 +2862,13 @@ export default function DigiDealProductSuggestionsPage() {
       }
       setSelectedOfferId(toText(item.selection?.selected_offer_id));
       const cachedVariants = variantsCacheRef.current[item.id];
+      const cachedComboCount = Array.isArray(cachedVariants?.combos)
+        ? cachedVariants.combos.length
+        : 0;
+      const cachedGalleryCount = Array.isArray(cachedVariants?.gallery_images)
+        ? cachedVariants.gallery_images.length
+        : 0;
+      const cachedHasVariantData = cachedComboCount > 0 || cachedGalleryCount > 0;
       if (cachedVariants) {
         applyVariantsPayload(cachedVariants);
       } else {
@@ -2787,8 +2883,11 @@ export default function DigiDealProductSuggestionsPage() {
         toText(item.selection?.selected_offer_id) ||
           toText(item.selection?.selected_detail_url)
       );
-      if (supplierSelected && !cachedVariants) {
-        void fetchVariants(item, { waitForPayload: true });
+      if (supplierSelected && (!cachedVariants || !cachedHasVariantData)) {
+        void fetchVariants(item, {
+          force: Boolean(cachedVariants) && !cachedHasVariantData,
+          waitForPayload: true,
+        });
       }
 
       const hasOffers =
@@ -2906,12 +3005,14 @@ export default function DigiDealProductSuggestionsPage() {
         .map(([rawIndex, draft]) => {
           const index = Number(rawIndex);
           if (!Number.isInteger(index) || index < 0) return null;
-          const priceRaw = toText(draft.price).replace(",", ".");
+          const priceRaw = allowCnyPriceEditing
+            ? toText(draft.price).replace(",", ".")
+            : "";
           const weightRaw = toText(draft.weightGrams).replace(",", ".");
           const priceNum = Number(priceRaw);
           const weightNum = Number(weightRaw);
           const price =
-            Number.isFinite(priceNum) && priceNum > 0
+            allowCnyPriceEditing && Number.isFinite(priceNum) && priceNum > 0
               ? Number(priceNum.toFixed(4))
               : null;
           const weightGrams =
@@ -2991,6 +3092,7 @@ export default function DigiDealProductSuggestionsPage() {
       setVariantsSaving(false);
     }
   }, [
+    allowCnyPriceEditing,
     offerDialogItem,
     packsText,
     selectedVariantIndexes,
@@ -3132,11 +3234,60 @@ export default function DigiDealProductSuggestionsPage() {
   );
 
   const selectedDialogOffer = useMemo(() => {
-    if (!selectedOfferId) return null;
-    return (
-      offerDialogOffers.find((offer) => toText(offer.offerId) === selectedOfferId) || null
-    );
-  }, [offerDialogOffers, selectedOfferId]);
+    const fromOfferList =
+      selectedOfferId
+        ? offerDialogOffers.find((offer) => toText(offer.offerId) === selectedOfferId) || null
+        : null;
+    const fromSelection =
+      offerDialogItem?.selection?.selected_offer &&
+      typeof offerDialogItem.selection.selected_offer === "object"
+        ? (offerDialogItem.selection.selected_offer as Record<string, unknown>)
+        : null;
+    if (!fromOfferList && !fromSelection) return null;
+
+    if (fromOfferList && fromSelection) {
+      const listOfferId = toText(
+        (fromOfferList as Record<string, unknown>)?.offerId ||
+          (fromOfferList as Record<string, unknown>)?.offer_id
+      );
+      const listDetailUrl = toText(
+        (fromOfferList as Record<string, unknown>)?.detailUrl ||
+          (fromOfferList as Record<string, unknown>)?.detail_url
+      );
+      const selectedOfferIdFromSelection = toText(
+        fromSelection?.offerId ||
+          fromSelection?.offer_id ||
+          offerDialogItem?.selection?.selected_offer_id
+      );
+      const selectedDetailUrlFromSelection = toText(
+        fromSelection?.detailUrl ||
+          fromSelection?.detail_url ||
+          offerDialogItem?.selection?.selected_detail_url
+      );
+      const sameOffer =
+        Boolean(listOfferId && selectedOfferIdFromSelection && listOfferId === selectedOfferIdFromSelection) ||
+        Boolean(listDetailUrl && selectedDetailUrlFromSelection && listDetailUrl === selectedDetailUrlFromSelection);
+      if (sameOffer) {
+        return {
+          ...(fromOfferList as Record<string, unknown>),
+          ...fromSelection,
+        } as SupplierOffer;
+      }
+      return {
+        ...(fromOfferList as Record<string, unknown>),
+        ...fromSelection,
+      } as SupplierOffer;
+    }
+
+    if (fromSelection) return fromSelection as unknown as SupplierOffer;
+    return fromOfferList as SupplierOffer;
+  }, [
+    offerDialogItem?.selection?.selected_detail_url,
+    offerDialogItem?.selection?.selected_offer,
+    offerDialogItem?.selection?.selected_offer_id,
+    offerDialogOffers,
+    selectedOfferId,
+  ]);
 
   const dialogSourceMainImageUrl = useMemo(
     () =>
@@ -3794,7 +3945,6 @@ export default function DigiDealProductSuggestionsPage() {
     if (supplierTranslateBusyRef.current) return;
 
     const candidate = items.find((item) => {
-      if (translatedSupplierIdsRef.current.has(item.id)) return false;
       if (!Array.isArray(item.search?.offers) || item.search.offers.length === 0) return false;
       const pendingOfferTitles = item.search.offers.filter((offer) => {
         const subject = toText(offer?.subject);
@@ -3802,19 +3952,25 @@ export default function DigiDealProductSuggestionsPage() {
         const existingEn = toText(offer?.subject_en);
         return !existingEn || hasCjk(existingEn);
       });
-      return pendingOfferTitles.length > 0;
+      if (pendingOfferTitles.length === 0) {
+        supplierTranslateAttemptsRef.current.delete(item.id);
+        return false;
+      }
+      const attempts = supplierTranslateAttemptsRef.current.get(item.id) ?? 0;
+      return attempts < 4;
     });
 
     if (!candidate) return;
 
-    translatedSupplierIdsRef.current.add(candidate.id);
     supplierTranslateBusyRef.current = true;
+    supplierTranslateAttemptsRef.current.set(
+      candidate.id,
+      (supplierTranslateAttemptsRef.current.get(candidate.id) ?? 0) + 1
+    );
 
     let timeoutId = 0;
     const controller = new AbortController();
     timeoutId = window.setTimeout(() => controller.abort(), 15000);
-
-    let translationSucceeded = false;
 
     void fetch("/api/production/suppliers/translate", {
       method: "POST",
@@ -3829,14 +3985,10 @@ export default function DigiDealProductSuggestionsPage() {
         if (!response.ok) return;
         await response.json().catch(() => null);
         await loadItems();
-        translationSucceeded = true;
       })
       .catch(() => null)
       .finally(() => {
         window.clearTimeout(timeoutId);
-        if (!translationSucceeded) {
-          translatedSupplierIdsRef.current.delete(candidate.id);
-        }
         supplierTranslateBusyRef.current = false;
       });
   }, [items, loadItems]);
@@ -3865,8 +4017,13 @@ export default function DigiDealProductSuggestionsPage() {
     const quickNonVariant = supplierGalleryCandidates.filter(
       (entry) => !supplierVariantImageIdentitySet.has(entry.identity)
     );
+    const quickVariant = supplierGalleryCandidates.filter((entry) =>
+      supplierVariantImageIdentitySet.has(entry.identity)
+    );
     const quickCandidates =
-      quickNonVariant.length > 0 ? quickNonVariant : supplierGalleryCandidates;
+      quickNonVariant.length > 0
+        ? [...quickNonVariant, ...quickVariant]
+        : supplierGalleryCandidates;
     setSupplierGalleryVisibleImages(quickCandidates.slice(0, 120));
     if (quickCandidates.length === 0) {
       setSupplierGalleryFiltering(false);
@@ -3969,16 +4126,53 @@ export default function DigiDealProductSuggestionsPage() {
             toText(item.selection?.selected_detail_url)
         );
         const payloadStatus = normalizePayloadStatus(item.selection?.payload_status);
+        const cached = variantsCacheRef.current[item.id];
+        const cachedComboCount = Array.isArray(cached?.combos)
+          ? cached.combos.length
+          : 0;
+        const cachedGalleryCount = Array.isArray(cached?.gallery_images)
+          ? cached.gallery_images.length
+          : 0;
+        const cachedHasVariantData = cachedComboCount > 0 || cachedGalleryCount > 0;
+        if (cachedHasVariantData) {
+          variantWarmAttemptsRef.current.delete(item.id);
+          return false;
+        }
+        const attempts = variantWarmAttemptsRef.current.get(item.id) ?? 0;
         return (
           supplierSelected &&
           payloadStatus === "ready" &&
-          !variantsCacheRef.current[item.id]
+          attempts < 4
         );
       })
-      .slice(0, 6);
+      .slice(0, 12);
     if (warmCandidates.length === 0) return;
     warmCandidates.forEach((item) => {
-      void fetchVariants(item, { background: true });
+      const cached = variantsCacheRef.current[item.id];
+      const cachedComboCount = Array.isArray(cached?.combos)
+        ? cached.combos.length
+        : 0;
+      const cachedGalleryCount = Array.isArray(cached?.gallery_images)
+        ? cached.gallery_images.length
+        : 0;
+      const forceRefresh = Boolean(cached) && cachedComboCount === 0 && cachedGalleryCount === 0;
+      variantWarmAttemptsRef.current.set(
+        item.id,
+        (variantWarmAttemptsRef.current.get(item.id) ?? 0) + 1
+      );
+      void fetchVariants(item, {
+        background: true,
+        force: forceRefresh,
+        waitForPayload: true,
+      }).then((payload) => {
+        const comboCount = Array.isArray(payload?.combos) ? payload.combos.length : 0;
+        const galleryCount = Array.isArray(payload?.gallery_images)
+          ? payload.gallery_images.length
+          : 0;
+        if (comboCount > 0 || galleryCount > 0) {
+          variantWarmAttemptsRef.current.delete(item.id);
+        }
+      });
     });
   }, [items, fetchVariants]);
 
@@ -4422,7 +4616,7 @@ export default function DigiDealProductSuggestionsPage() {
               filteredItems.map((item) => {
                 const searching = Boolean(activeSearchIds[item.id]);
                 const payloadStatus = normalizePayloadStatus(item.selection?.payload_status);
-                const payloadError = toText(item.selection?.payload_error);
+                const payloadError = normalizePayloadErrorText(item.selection?.payload_error);
                 const searchJobStatus = toText(item.searchJob?.status).toLowerCase();
                 const searchJobErrorRaw = toText(item.searchJob?.error);
                 const searchJobError = normalizeSuggestionErrorText(searchJobErrorRaw);
@@ -4605,11 +4799,16 @@ export default function DigiDealProductSuggestionsPage() {
 
                 const isPayloadLoading = payloadStatus === "fetching" || payloadStatus === "queued";
                 const supplierStatusText = payloadStatus === "failed"
-                  ? payloadError || "1688 data failed"
+                  ? payloadError ||
+                    (hideSupplier1688Details ? "Supplier data failed" : "1688 data failed")
                   : isPayloadLoading
-                    ? "Fetching 1688 data..."
+                    ? hideSupplier1688Details
+                      ? "Fetching supplier data..."
+                      : "Fetching 1688 data..."
                   : payloadStatus === "ready"
-                    ? "1688 data fetched ✓"
+                    ? hideSupplier1688Details
+                      ? "Supplier data fetched ✓"
+                      : "1688 data fetched ✓"
                     : searchIsBusy
                       ? "Finding suppliers..."
                       : hasSearchDataLoaded
@@ -4627,16 +4826,23 @@ export default function DigiDealProductSuggestionsPage() {
                 const variantsStatusText = !supplierSelected
                   ? "Select supplier first"
                   : isPayloadLoading
-                    ? "Fetching 1688 data..."
+                    ? hideSupplier1688Details
+                      ? "Fetching supplier data..."
+                      : "Fetching 1688 data..."
                     : payloadStatus === "failed"
-                      ? payloadError || "1688 data failed"
+                      ? payloadError ||
+                        (hideSupplier1688Details ? "Supplier data failed" : "1688 data failed")
                       : hasPickedVariants && item.variantMetrics
                         ? `Picked: ${item.variantMetrics.selectedCount}/${item.variantMetrics.availableCount}`
                         : variantsReady
                           ? "No variants chosen"
-                          : "Waiting for 1688 data";
+                          : hideSupplier1688Details
+                            ? "Waiting for supplier data"
+                            : "Waiting for 1688 data";
                 const canViewJson =
-                  Boolean(item.selection?.payload_file_name) && hasPickedVariants;
+                  isAdminViewer &&
+                  Boolean(item.selection?.payload_file_name) &&
+                  hasPickedVariants;
 
                 return (
                   <TableRow key={item.id}>
@@ -4827,14 +5033,22 @@ export default function DigiDealProductSuggestionsPage() {
                         >
                           {variantsButtonLabel}
                         </Button>
-                        <Text size={100} className={styles.variantMetaTight}>
+                        <Text
+                          size={100}
+                          className={mergeClasses(
+                            styles.variantMetaTight,
+                            styles.variantMetaMultiline
+                          )}
+                        >
                           {variantsStatusText}
                         </Text>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className={styles.variantCellStack}>
-                        {item.selection?.selected_detail_url ? (
+                        {hideSupplier1688Details ? (
+                          <Text>-</Text>
+                        ) : item.selection?.selected_detail_url ? (
                           <>
                             <Button
                               appearance="outline"
@@ -4907,17 +5121,19 @@ export default function DigiDealProductSuggestionsPage() {
 
                               return (
                                 <>
-                                  <Text className={styles.variantDataLine}>
-                                    <span className={styles.variantDataLabel}>{priceLabel}</span>
-                                    <span
-                                      className={mergeClasses(
-                                        styles.variantDataValue,
-                                        priceValueText === "-" ? styles.variantDataValueMuted : undefined
-                                      )}
-                                    >
-                                      {priceValueText}
-                                    </span>
-                                  </Text>
+                                  {hideSupplier1688Details ? null : (
+                                    <Text className={styles.variantDataLine}>
+                                      <span className={styles.variantDataLabel}>{priceLabel}</span>
+                                      <span
+                                        className={mergeClasses(
+                                          styles.variantDataValue,
+                                          priceValueText === "-" ? styles.variantDataValueMuted : undefined
+                                        )}
+                                      >
+                                        {priceValueText}
+                                      </span>
+                                    </Text>
+                                  )}
                                   <Text className={styles.variantDataLine}>
                                     <span className={styles.variantDataLabel}>{weightLabel}</span>
                                     <span
@@ -5538,7 +5754,7 @@ export default function DigiDealProductSuggestionsPage() {
                                   Selected
                                 </Badge>
                               ) : null}
-                              {offerLink ? (
+                              {isAdminViewer && offerLink ? (
                                 <a
                                   href={offerLink}
                                   target="_blank"
@@ -5742,6 +5958,50 @@ export default function DigiDealProductSuggestionsPage() {
                             disabled={!offerDialogItem || variantsLoading || variantsSaving}
                             onClick={async () => {
                               if (!offerDialogItem) return;
+                              const reloaded = await fetchVariants(offerDialogItem, {
+                                force: true,
+                                waitForPayload: true,
+                              });
+                              const comboCount = Array.isArray(reloaded?.combos)
+                                ? reloaded.combos.length
+                                : 0;
+                              const galleryCount = Array.isArray(reloaded?.gallery_images)
+                                ? reloaded.gallery_images.length
+                                : 0;
+                              if (comboCount > 0 || galleryCount > 0) return;
+
+                              const latestItem =
+                                itemsRef.current.find((entry) => entry.id === offerDialogItem.id) ||
+                                offerDialogItem;
+                              const payloadStatus = normalizePayloadStatus(
+                                latestItem.selection?.payload_status
+                              );
+                              const hasSelectedSupplier = Boolean(
+                                toText(latestItem.selection?.selected_offer_id) ||
+                                  toText(latestItem.selection?.selected_detail_url)
+                              );
+                              if (
+                                !hasSelectedSupplier ||
+                                (payloadStatus !== "ready" && payloadStatus !== "failed")
+                              ) {
+                                return;
+                              }
+
+                              const retryResponse = await fetch(
+                                "/api/production/suppliers/payload/retry",
+                                {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    provider: PROVIDER,
+                                    product_id: offerDialogItem.id,
+                                  }),
+                                }
+                              ).catch(() => null);
+                              if (!retryResponse?.ok) return;
+                              await retryResponse.json().catch(() => null);
+                              await sleep(900);
+                              await loadItems({ silent: true });
                               await fetchVariants(offerDialogItem, {
                                 force: true,
                                 waitForPayload: true,
@@ -5785,7 +6045,7 @@ export default function DigiDealProductSuggestionsPage() {
                                   styles.variantHeaderTextRight
                                 )}
                               >
-                                Price (CNY)
+                                {allowCnyPriceEditing ? "Price (CNY)" : "Price (SEK)"}
                               </span>
                             </TableHeaderCell>
                             <TableHeaderCell className={styles.variantWeightCol}>
@@ -5895,6 +6155,19 @@ export default function DigiDealProductSuggestionsPage() {
                               ? "无产品选择"
                               : variantNameZh || "-";
                             const variantDraft = resolveVariantDraft(combo);
+                            const comboPurchaseCny =
+                              toPositiveDecimal(variantDraft.price) ??
+                              toPositiveDecimal(combo.price) ??
+                              toPositiveDecimal(combo.price_raw);
+                            const comboWeightGrams =
+                              toWeightGramsValue(variantDraft.weightGrams) ??
+                              toWeightGramsValue(combo.weight_grams) ??
+                              toWeightGramsValue(combo.weight_raw);
+                            const comboSekPrice = computeSekPriceFromPricingContext(
+                              comboPurchaseCny,
+                              comboWeightGrams,
+                              variants.sek_pricing_context
+                            );
                             return (
                               <TableRow key={`variant-${combo.index}`}>
                                 <TableCell className={styles.variantImageCol}>
@@ -5995,19 +6268,27 @@ export default function DigiDealProductSuggestionsPage() {
                                 </TableCell>
                                 <TableCell className={styles.variantPriceCol}>
                                   <div className={styles.variantValueWrap}>
-                                    <Input
-                                      size="small"
-                                      className={styles.variantEditInput}
-                                      inputMode="decimal"
-                                      value={variantDraft.price}
-                                      onChange={(_, data) =>
-                                        updateVariantDraftField(
-                                          combo,
-                                          "price",
-                                          data.value.replace(/[^\d.,]/g, "")
-                                        )
-                                      }
-                                    />
+                                    {allowCnyPriceEditing ? (
+                                      <Input
+                                        size="small"
+                                        className={styles.variantEditInput}
+                                        inputMode="decimal"
+                                        value={variantDraft.price}
+                                        onChange={(_, data) =>
+                                          updateVariantDraftField(
+                                            combo,
+                                            "price",
+                                            data.value.replace(/[^\d.,]/g, "")
+                                          )
+                                        }
+                                      />
+                                    ) : comboSekPrice !== null ? (
+                                      <Badge className={styles.priceBadgeGreen}>
+                                        {`${formatCompactNumber(comboSekPrice)} SEK`}
+                                      </Badge>
+                                    ) : (
+                                      <Text>-</Text>
+                                    )}
                                   </div>
                                 </TableCell>
                                 <TableCell className={styles.variantWeightCol}>

@@ -849,7 +849,7 @@ export const listFolders = (): DraftEntry[] => {
   if (!fs.existsSync(DRAFT_ROOT)) return [];
   const entries = fs.readdirSync(DRAFT_ROOT, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => {
       const full = path.join(DRAFT_ROOT, entry.name);
       const stat = fs.statSync(full);

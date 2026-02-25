@@ -1028,6 +1028,18 @@ const loadPromptTemplate = (
 };
 
 const DIGIDEAL_DUAL_INPUT_RULES_TAG = "DIGIDEAL_DUAL_INPUT_RULES_V1";
+const DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG = "DIGIDEAL_SOFT_WHITE_FADE_RULES_V1";
+const DIGIDEAL_SOFT_WHITE_FADE_RULES = [
+  `<${DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG}>`,
+  "CENTER TRANSITION RULE (CRITICAL):",
+  "- Use a smooth tonal fade to pure white at the center seam.",
+  "- The transition band should be approximately 20% of the total output width.",
+  "- This is a SOFT WHITE FADE, not a blur merge, not a paint stroke, and not a textured brush effect.",
+  "- Left and right sides must each fade into white independently; do not blend side A pixels directly into side B pixels.",
+  "- Keep both sides sharp and clear outside the transition band (no foggy/smeared/gaussian-blur look).",
+  `</${DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG}>`,
+].join("\n");
+
 const DIGIDEAL_DUAL_INPUT_RULES = [
   `<${DIGIDEAL_DUAL_INPUT_RULES_TAG}>`,
   "INPUT FORMAT OVERRIDE (CRITICAL):",
@@ -1043,6 +1055,8 @@ const DIGIDEAL_DUAL_INPUT_RULES = [
   "- Final output must still be a two-sided hero composition: left white product side + right lifestyle side.",
   "- The LEFT side of final output must be derived from the LEFT source side only.",
   "- The RIGHT side of final output must be guided by the RIGHT source side only.",
+  "",
+  DIGIDEAL_SOFT_WHITE_FADE_RULES,
   "",
   "Strict product integrity:",
   "- Product identity must come from LEFT source side only.",
@@ -1684,7 +1698,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
               : "COLL";
       const suffixTag =
         input.templatePreset === "product_scene"
-          ? " (ENV) (DIGI)"
+          ? " (ENV)"
           : input.templatePreset === "product_collection"
             ? " (COLL)"
             : " (DIGI)";

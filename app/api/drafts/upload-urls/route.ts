@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { convertBufferToJpeg } from "@/lib/image-jpeg";
@@ -55,6 +56,14 @@ const normalizeUrls = (value: unknown) => {
   return out;
 };
 
+const parsePositiveInt = (value: unknown) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  const rounded = Math.round(numeric);
+  if (rounded <= 0) return 0;
+  return Math.min(rounded, 10_000);
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   const {
@@ -93,9 +102,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No valid image URLs provided." }, { status: 400 });
   }
 
+  const minWidth = parsePositiveInt(
+    body.minWidth ?? body.min_width ?? body.minDimension ?? body.min_dimension
+  );
+  const minHeight = parsePositiveInt(
+    body.minHeight ?? body.min_height ?? body.minDimension ?? body.min_dimension
+  );
+
   fs.mkdirSync(targetPath, { recursive: true });
 
   const errors: Array<{ url: string; error: string }> = [];
+  const skippedLowRes: Array<{
+    url: string;
+    width: number | null;
+    height: number | null;
+    minWidth: number;
+    minHeight: number;
+  }> = [];
   const items: UploadedImageItem[] = [];
   let uploaded = 0;
 
@@ -119,6 +142,25 @@ export async function POST(request: Request) {
       const buffer = Buffer.from(await response.arrayBuffer());
       if (!buffer.length) {
         throw new Error("Empty image response.");
+      }
+
+      if (minWidth > 0 || minHeight > 0) {
+        let width: number | null = null;
+        let height: number | null = null;
+        try {
+          const metadata = await sharp(buffer, { failOn: "none" }).metadata();
+          width = Number.isFinite(Number(metadata.width)) ? Number(metadata.width) : null;
+          height = Number.isFinite(Number(metadata.height)) ? Number(metadata.height) : null;
+        } catch {
+          width = null;
+          height = null;
+        }
+        const belowWidth = minWidth > 0 && (width === null || width < minWidth);
+        const belowHeight = minHeight > 0 && (height === null || height < minHeight);
+        if (belowWidth || belowHeight) {
+          skippedLowRes.push({ url: sourceUrl, width, height, minWidth, minHeight });
+          continue;
+        }
       }
 
       const parsedUrl = new URL(sourceUrl);
@@ -148,12 +190,19 @@ export async function POST(request: Request) {
   }
 
   if (uploaded === 0) {
+    const onlyLowResSkipped = skippedLowRes.length > 0 && errors.length === 0;
     return NextResponse.json(
       {
-        error: "Unable to add images from provided URLs.",
+        error: onlyLowResSkipped
+          ? "No images met the minimum dimension filter."
+          : "Unable to add images from provided URLs.",
         uploaded,
         failed: errors.length,
         errors,
+        skippedLowResCount: skippedLowRes.length,
+        skippedLowRes,
+        minWidth,
+        minHeight,
       },
       { status: 400 }
     );
@@ -163,6 +212,10 @@ export async function POST(request: Request) {
     uploaded,
     failed: errors.length,
     errors,
+    skippedLowResCount: skippedLowRes.length,
+    skippedLowRes,
+    minWidth,
+    minHeight,
     items,
   });
 }
