@@ -5,13 +5,15 @@ import { PARTNER_SUGGESTION_PROVIDER } from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
 const DIGIDEAL_PROVIDER = "digideal";
+const OFFERILLA_PROVIDER = "offerilla";
 const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
   PARTNER_SUGGESTION_PROVIDER || ""
 ).trim().toLowerCase();
+const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
 const isSupportedSupplierProvider = (provider: string) => {
   const normalized = String(provider || "").trim().toLowerCase();
   return (
-    normalized === DIGIDEAL_PROVIDER ||
+    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
     normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
   );
 };
@@ -161,7 +163,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  const provider = String(payload?.provider ?? "").trim();
+  const provider = String(payload?.provider ?? "").trim().toLowerCase();
   const productId = String(payload?.product_id ?? "").trim();
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
@@ -171,7 +173,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
       },
       { status: 409 }
     );

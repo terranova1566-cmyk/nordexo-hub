@@ -173,8 +173,10 @@ const normalizeVariantLookupKeys = (value) => {
 const buildStructuredTableSignal = ({ variantRows, readableText }) => {
   const rows = Array.isArray(variantRows) ? variantRows : [];
   const comboCount = rows.length;
+  const variantLabels = rows.flatMap((row) => [asText(row?.label), asText(row?.label_en)]).filter(Boolean);
   const parsedTable = parseVariantWeightTableFromReadableText(readableText, {
     maxScanLines: 220,
+    variantLabels,
   });
   const weightByName = parsedTable?.weightByName instanceof Map ? parsedTable.weightByName : new Map();
   const tableWeights = Array.isArray(parsedTable?.weights)

@@ -3,19 +3,37 @@ import { normalizeOrderPlatformName } from "@/lib/orders/platform";
 type OrderEmailMacroInput = {
   id?: unknown;
   order_number?: unknown;
+  preferred_order_id?: unknown;
   transaction_date?: unknown;
   date_shipped?: unknown;
   customer_name?: unknown;
   customer_email?: unknown;
   sales_channel_id?: unknown;
   sales_channel_name?: unknown;
+  sales_channel_order_number?: unknown;
+  marketplace_order_number?: unknown;
   status?: unknown;
   order_content_list?: unknown;
+};
+
+type OrderReferenceItemInput = {
+  sales_channel_order_number?: unknown;
+  marketplace_order_number?: unknown;
 };
 
 const dateYmdPattern = /^\d{4}-\d{2}-\d{2}$/;
 
 const normalizeText = (value: unknown) => String(value ?? "").trim();
+const marketplaceDividerPattern = /\s-\s/;
+
+const normalizeMarketplaceOrderNumber = (value: unknown) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+  const dividerMatch = normalized.match(marketplaceDividerPattern);
+  if (!dividerMatch || dividerMatch.index === undefined) return normalized;
+  const leftPart = normalized.slice(0, dividerMatch.index).trim();
+  return leftPart || normalized;
+};
 
 const normalizeDateText = (value: unknown) => {
   const raw = normalizeText(value);
@@ -25,6 +43,26 @@ const normalizeDateText = (value: unknown) => {
   if (isoPrefix) return isoPrefix[1];
   return raw;
 };
+
+export function resolvePreferredOrderIdFromItems(items: OrderReferenceItemInput[]) {
+  if (!Array.isArray(items) || items.length === 0) return "";
+  let marketplaceOrder = "";
+  let salesChannelOrder = "";
+
+  for (const item of items) {
+    if (!marketplaceOrder) {
+      marketplaceOrder = normalizeMarketplaceOrderNumber(
+        item.marketplace_order_number
+      );
+    }
+    if (!salesChannelOrder) {
+      salesChannelOrder = normalizeText(item.sales_channel_order_number);
+    }
+    if (marketplaceOrder && salesChannelOrder) break;
+  }
+
+  return marketplaceOrder || salesChannelOrder || "";
+}
 
 export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
   const salesChannelName = normalizeText(input.sales_channel_name);
@@ -38,8 +76,18 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
 
   const transactionDate = normalizeDateText(input.transaction_date);
   const dateShipped = normalizeDateText(input.date_shipped);
-  const ordersId = normalizeText(input.id);
-  const ordersNumber = normalizeText(input.order_number);
+  const originalOrderNumber = normalizeText(input.order_number);
+  const preferredOrderId = normalizeText(input.preferred_order_id);
+  const salesChannelOrderNumber = normalizeText(input.sales_channel_order_number);
+  const marketplaceOrderNumber = normalizeMarketplaceOrderNumber(
+    input.marketplace_order_number
+  );
+  const resolvedOrderNumber =
+    preferredOrderId ||
+    marketplaceOrderNumber ||
+    salesChannelOrderNumber ||
+    originalOrderNumber;
+  const ordersNumber = resolvedOrderNumber;
   const ordersCustomerName = normalizeText(input.customer_name);
   const ordersCustomerEmail = normalizeText(input.customer_email);
   const ordersStatus = normalizeText(input.status);
@@ -47,7 +95,6 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
 
   return {
     // Preferred naming for order workflows.
-    orders_id: ordersId,
     orders_number: ordersNumber,
     orders_date: transactionDate,
     orders_transaction_date: transactionDate,
@@ -66,7 +113,8 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
     platform_seller_name: platformName,
 
     // Legacy aliases retained for backward compatibility.
-    order_id: ordersId,
+    orders_id: ordersNumber,
+    order_id: ordersNumber,
     order_number: ordersNumber,
     transaction_date: transactionDate,
     date_shipped: dateShipped,

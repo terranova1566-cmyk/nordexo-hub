@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { listEmailSenderSignatures } from "@/lib/email-sender-signatures";
 import { listSenders } from "@/lib/sendpulse";
 
 export const runtime = "nodejs";
@@ -29,7 +30,24 @@ export async function GET() {
     const activeSenders = senders.filter(
       (sender) => sender.status?.toLowerCase() !== "inactive"
     );
-    return NextResponse.json({ senders: activeSenders });
+    const { signatures } = await listEmailSenderSignatures(supabase, {
+      emails: activeSenders.map((sender) => sender.email),
+    });
+    const signatureBySenderEmail = new Map(
+      signatures.map((signature) => [signature.senderEmail, signature])
+    );
+    return NextResponse.json({
+      senders: activeSenders.map((sender) => {
+        const signature = signatureBySenderEmail.get(
+          String(sender.email ?? "").trim().toLowerCase()
+        );
+        return {
+          ...sender,
+          signature: signature?.signatureText ?? null,
+          signatureUpdatedAt: signature?.updatedAt ?? null,
+        };
+      }),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: (error as Error).message },

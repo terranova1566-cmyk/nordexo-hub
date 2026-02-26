@@ -2681,22 +2681,53 @@ const useStyles = makeStyles({
 });
 
 const normalizeImageUrls = (value: unknown): string[] => {
+  const toCleanText = (entry: unknown) =>
+    typeof entry === "string" ? entry.trim() : "";
+
   if (Array.isArray(value)) {
-    return value.filter((entry): entry is string => typeof entry === "string");
+    return value.map(toCleanText).filter(Boolean);
   }
+
   if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return [];
     try {
-      const parsed = JSON.parse(value);
+      const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.filter(
-          (entry): entry is string => typeof entry === "string"
-        );
+        return parsed.map(toCleanText).filter(Boolean);
       }
+      const parsedText = toCleanText(parsed);
+      if (parsedText) return [parsedText];
     } catch {
-      return [];
+      // fall through to plain-text handling
     }
+    if (raw.includes(",") && !/^https?:\/\//i.test(raw)) {
+      return raw
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+    return [raw];
   }
+
   return [];
+};
+
+const normalizeDealImageUrl = (value: unknown): string | null => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return null;
+  if (raw.startsWith("//")) return `https:${raw}`;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return raw;
+  return null;
+};
+
+const buildDealImageCandidates = (item: Pick<DigidealItem, "primary_image_url" | "image_urls">) => {
+  const candidates = [
+    normalizeDealImageUrl(item.primary_image_url),
+    ...normalizeImageUrls(item.image_urls).map((entry) => normalizeDealImageUrl(entry)),
+  ].filter((entry): entry is string => Boolean(entry));
+  return Array.from(new Set(candidates));
 };
 
 const normalizeAnalysisImages = (value: unknown): AnalysisImage[] => {
@@ -2875,6 +2906,9 @@ export default function DigidealCampaignsPage() {
   const [supplierThumbPreviewKey, setSupplierThumbPreviewKey] = useState<string | null>(null);
   const [supplierSearchHeroPreviewOpen, setSupplierSearchHeroPreviewOpen] = useState(false);
   const [supplierSearchHeroZoomReady, setSupplierSearchHeroZoomReady] = useState(false);
+  const [thumbnailFailIndexByProductId, setThumbnailFailIndexByProductId] = useState<
+    Record<string, number>
+  >({});
 
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
@@ -7165,8 +7199,14 @@ export default function DigidealCampaignsPage() {
         const secondaryTitleSegments = secondaryTitle
           ? splitStrongQuantitySegments(secondaryTitle)
           : [];
-        const imageUrls = normalizeImageUrls(item.image_urls);
-        const imageSrc = item.primary_image_url || imageUrls[0] || null;
+        const imageCandidates = buildDealImageCandidates(item);
+        const imageFailIndexRaw = thumbnailFailIndexByProductId[item.product_id] ?? 0;
+        const imageFailIndex =
+          Number.isFinite(imageFailIndexRaw) && imageFailIndexRaw >= 0
+            ? Math.trunc(imageFailIndexRaw)
+            : 0;
+        const imageSrc = imageCandidates[imageFailIndex] || imageCandidates[0] || null;
+        const hasNextImageCandidate = imageFailIndex + 1 < imageCandidates.length;
         const productId = item.prodno || item.product_id;
         const googlePath =
           typeof item.google_taxonomy_path === "string"
@@ -7208,16 +7248,28 @@ export default function DigidealCampaignsPage() {
         );
         const priceValue = item.last_price ?? null;
         const prevPrice = item.last_original_price ?? null;
+        const salesCurrency = provider === "offerilla" ? "EUR" : "SEK";
         const shippingCost =
           typeof item.shipping_cost === "number" ? item.shipping_cost : null;
         const shippingCostLabel =
           shippingCost !== null
             ? shippingCost === 0
-              ? "0 kr"
-              : formatCurrency(shippingCost, "SEK")
+              ? salesCurrency === "EUR"
+                ? "€0"
+                : "0 kr"
+              : formatCurrency(shippingCost, salesCurrency)
             : "—";
         const discount = item.last_discount_percent;
         const saveKr = item.last_you_save_kr;
+        const saveLabel =
+          saveKr !== null
+            ? salesCurrency === "EUR"
+              ? (() => {
+                  const formatted = formatCurrency(saveKr, salesCurrency);
+                  return formatted ? `Save ${formatted}` : null;
+                })()
+              : t("digideal.save", { value: saveKr })
+            : null;
         const statusLabel = item.status ?? "-";
         const seller = item.seller_name ?? "-";
         const sellerId = item.seller_orgnr;
@@ -7319,7 +7371,9 @@ export default function DigidealCampaignsPage() {
                 styles.estimatedPriceHintCritical
               )
             : styles.estimatedPriceHintText;
-        const canManageSupplier = isAdmin && provider === "digideal" && !isNordexo;
+        const isAutoSupplierProvider = provider === "digideal";
+        const canManageSupplier =
+          isAdmin && (provider === "digideal" || provider === "offerilla") && !isNordexo;
         const hasManualSupplierData =
           item.purchase_price !== null ||
           item.weight_grams !== null ||
@@ -7358,15 +7412,23 @@ export default function DigidealCampaignsPage() {
             ? "Supplier Selected"
             : hasManualSupplierData
               ? t("digideal.supplier.edit")
-              : supplierHasSuggestions
+              : supplierHasSuggestions && isAutoSupplierProvider
                 ? "Select Supplier"
-                : t("digideal.supplier.add");
+                : provider === "offerilla"
+                  ? "Find Supplier"
+                  : t("digideal.supplier.add");
         const highlightAddSupplier =
           canManageSupplier &&
           !supplierPayloadReady &&
           !hasManualSupplierData &&
           !supplierSelected &&
-          !supplierHasSuggestions;
+          (!isAutoSupplierProvider || !supplierHasSuggestions);
+        const showDirectFindSupplierButton =
+          provider === "offerilla" &&
+          !supplierPayloadReady &&
+          !hasManualSupplierData &&
+          !supplierSelected &&
+          !supplierLocked;
         const itemViewIds = new Set(viewMembershipByProductId[item.product_id] ?? []);
         if (viewIdFilter) {
           itemViewIds.add(viewIdFilter);
@@ -7394,7 +7456,20 @@ export default function DigidealCampaignsPage() {
               <div className={styles.thumbnailWrap}>
                 <div className={styles.thumbnailFrame}>
                   {imageSrc ? (
-                    <Image src={imageSrc} alt={title} className={styles.thumbnail} />
+                    <Image
+                      src={imageSrc}
+                      alt={title}
+                      className={styles.thumbnail}
+                      referrerPolicy="no-referrer"
+                      onError={() => {
+                        if (!hasNextImageCandidate) return;
+                        setThumbnailFailIndexByProductId((prev) => {
+                          const current = prev[item.product_id] ?? 0;
+                          if (current + 1 >= imageCandidates.length) return prev;
+                          return { ...prev, [item.product_id]: current + 1 };
+                        });
+                      }}
+                    />
                   ) : null}
                 </div>
                 {imageSrc ? (
@@ -7404,6 +7479,7 @@ export default function DigidealCampaignsPage() {
                         src={imageSrc}
                         alt={title}
                         className={styles.previewImage}
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                   </div>
@@ -7577,7 +7653,7 @@ export default function DigidealCampaignsPage() {
                 <div className={styles.priceRow}>
                   <Text className={styles.priceCurrent}>
                     {priceValue !== null
-                      ? formatCurrency(priceValue, "SEK")
+                      ? formatCurrency(priceValue, salesCurrency)
                       : "-"}
                   </Text>
                   {shippingCost !== null ? (
@@ -7589,7 +7665,7 @@ export default function DigidealCampaignsPage() {
                   )}
                   {prevPrice !== null && prevPrice > (priceValue ?? 0) ? (
                     <Text className={styles.pricePrevious}>
-                      {formatCurrency(prevPrice, "SEK")}
+                      {formatCurrency(prevPrice, salesCurrency)}
                     </Text>
                   ) : null}
                 </div>
@@ -7599,9 +7675,7 @@ export default function DigidealCampaignsPage() {
                       ? t("digideal.discount", { value: discount })
                       : null}
                     {discount !== null && saveKr !== null ? " · " : null}
-                    {saveKr !== null
-                      ? t("digideal.save", { value: saveKr })
-                      : null}
+                    {saveLabel}
                   </Text>
                 ) : null}
               </div>
@@ -7841,7 +7915,20 @@ export default function DigidealCampaignsPage() {
                                   </MenuList>
                                 </MenuPopover>
                               </Menu>
-		                    ) : supplierFinding ? (
+		                    ) : showDirectFindSupplierButton ? (
+		                      <Button
+		                        appearance="outline"
+		                        size="small"
+		                        className={mergeClasses(
+		                          styles.linkButton,
+		                          styles.estimatedPriceEditButton,
+		                          styles.supplierAddButton
+		                        )}
+		                        onClick={() => void openSupplierSearchDialog(item)}
+		                      >
+		                        Find Supplier
+		                      </Button>
+		                    ) : supplierFinding && isAutoSupplierProvider ? (
 		                      <Button
 		                        appearance="outline"
 		                        size="small"
@@ -7870,7 +7957,10 @@ export default function DigidealCampaignsPage() {
 		                          <span>Looking for supplier</span>
 		                        </span>
 		                      </Button>
-		                    ) : supplierHasSuggestions && !supplierSelected && !supplierLocked ? (
+		                    ) : supplierHasSuggestions &&
+                            isAutoSupplierProvider &&
+                            !supplierSelected &&
+                            !supplierLocked ? (
 		                      <Button
 		                        appearance="outline"
 		                        size="small"
@@ -8183,6 +8273,7 @@ export default function DigidealCampaignsPage() {
       computePriceComputation,
       openPriceDialog,
       selectedIds,
+      thumbnailFailIndexByProductId,
       supplierFindingIds,
       toggleRowSelected,
       isRowSelectionBackgroundClick,

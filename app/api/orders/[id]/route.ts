@@ -427,7 +427,7 @@ export async function GET(
 
       const { data: products } = await adminClient
         .from("catalog_products")
-        .select("id,title,spu,image_folder")
+        .select("id,title,legacy_title_sv,spu,image_folder")
         .in("id", productIds);
 
       const productMap = new Map<
@@ -456,7 +456,7 @@ export async function GET(
           }
 
           productMap.set(productId, {
-            title: shortTitle || product.title || null,
+            title: shortTitle || product.legacy_title_sv || product.title || null,
             spu: product.spu ?? null,
             image_folder: imageFolder,
             fallback_image_url: fallbackImageUrl,

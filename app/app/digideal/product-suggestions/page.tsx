@@ -14,6 +14,11 @@ import {
   DialogTitle,
   Field,
   Input,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   MessageBar,
   Option,
   Popover,
@@ -89,7 +94,6 @@ type ExternalData = {
   mainImageUrl?: string | null;
   rawMainImageUrl?: string | null;
   galleryImageUrls?: string[];
-  rawGalleryImageUrls?: string[];
   errors?: string[];
   aiReview?: {
     model?: string | null;
@@ -122,6 +126,11 @@ type ProductionStatusState = {
 type SuggestionItem = {
   id: string;
   createdAt: string;
+  user?: string | null;
+  partner_name?: string | null;
+  partnerName?: string | null;
+  submitted_by?: string | null;
+  submittedBy?: string | null;
   sourceType: "image" | "url";
   sourceLabel: string | null;
   sourceUrl: string | null;
@@ -189,6 +198,8 @@ type SuggestionItem = {
     b2bPriceMax?: number | null;
   }>;
   productionStatus?: ProductionStatusState | null;
+  production_assigned_spu?: string | null;
+  reviewStatus?: "new" | "unqualified" | string | null;
 };
 
 type VariantsPayload = {
@@ -226,6 +237,7 @@ type VariantsPayload = {
 type SourceFilter = "all" | "image" | "url";
 type SupplierFilter = "all" | "not_started" | "searching" | "selected";
 type VariantFilter = "all" | "picked" | "not_picked";
+type SuggestionReviewStatus = "new" | "unqualified";
 type ViewerPriceRole = "admin" | "partner" | "non_admin";
 type CategorySelection = { level: "l1" | "l2" | "l3"; value: string };
 type CategoryNode = { name: string; children?: CategoryNode[] };
@@ -523,19 +535,34 @@ const useStyles = makeStyles({
       backgroundColor: "#d4e8ff",
     },
   },
-  sendButtonActive: {
-    border: "1px solid #0f6cbd",
-    color: "#0f6cbd",
-    backgroundColor: "#e8f3ff",
+  actionsButtonActive: {
+    border: `1px solid ${tokens.colorBrandBackground}`,
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorBrandBackground,
     "&:hover": {
-      border: "1px solid #0f6cbd",
-      color: "#0f6cbd",
-      backgroundColor: "#dcedff",
+      border: `1px solid ${tokens.colorBrandBackgroundHover}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorBrandBackgroundHover,
     },
     "&:active": {
-      border: "1px solid #0f6cbd",
-      color: "#0f6cbd",
-      backgroundColor: "#d4e8ff",
+      border: `1px solid ${tokens.colorBrandBackgroundPressed}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorBrandBackgroundPressed,
+    },
+  },
+  sendButtonActive: {
+    border: `1px solid ${tokens.colorBrandBackground}`,
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorBrandBackground,
+    "&:hover": {
+      border: `1px solid ${tokens.colorBrandBackgroundHover}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorBrandBackgroundHover,
+    },
+    "&:active": {
+      border: `1px solid ${tokens.colorBrandBackgroundPressed}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorBrandBackgroundPressed,
     },
   },
   tableCard: {
@@ -559,11 +586,51 @@ const useStyles = makeStyles({
       whiteSpace: "nowrap",
     },
   },
+  tableRowUnqualified: {
+    "& .fui-TableCell": {
+      backgroundColor: "#fff7f7",
+    },
+  },
+  rowStatusInProgress: {
+    "& .fui-TableCell": {
+      backgroundColor: "#fffdf2",
+    },
+  },
+  rowStatusReady: {
+    "& .fui-TableCell": {
+      backgroundColor: "#f4f9ff",
+    },
+  },
+  rowStatusDone: {
+    "& .fui-TableCell": {
+      backgroundColor: "#edf9ee",
+    },
+  },
   selectCol: {
     width: "52px",
     minWidth: "52px",
     maxWidth: "52px",
     textAlign: "center",
+  },
+  tableSelectCheckbox: {
+    "& input ~ .fui-Checkbox__indicator": {
+      "--fui-Checkbox__indicator--backgroundColor": "#ffffff",
+      backgroundColor: "#ffffff",
+    } as any,
+    "& input:not(:checked) ~ .fui-Checkbox__indicator": {
+      borderColor: tokens.colorNeutralStroke1,
+      color: "transparent",
+    } as any,
+    "& input:checked ~ .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+      borderColor: tokens.colorBrandStroke1,
+      color: tokens.colorBrandForeground1,
+    } as any,
+    "& input:disabled ~ .fui-Checkbox__indicator": {
+      backgroundColor: "#ffffff",
+      borderColor: tokens.colorNeutralStrokeDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+    } as any,
   },
   imageCol: {
     width: "1%",
@@ -640,7 +707,7 @@ const useStyles = makeStyles({
   titleCell: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: "2px",
     minWidth: 0,
   },
   titleText: {
@@ -661,7 +728,7 @@ const useStyles = makeStyles({
   productMeta: {
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase100,
-    lineHeight: "1.2",
+    lineHeight: "1.15",
     display: "inline-flex",
     alignItems: "center",
     gap: "4px",
@@ -670,8 +737,13 @@ const useStyles = makeStyles({
   productMetaSeparator: {
     color: tokens.colorNeutralForeground4,
   },
+  productMetaHighlight: {
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
+  },
   sourceInlineLink: {
-    color: tokens.colorNeutralForeground3,
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
     textDecorationLine: "none",
     textUnderlineOffset: "2px",
     "&:hover": {
@@ -696,11 +768,11 @@ const useStyles = makeStyles({
   taxonomyStatusRow: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "4px",
-    minHeight: "14px",
+    gap: "3px",
+    minHeight: "12px",
     fontSize: tokens.fontSizeBase100,
     color: tokens.colorNeutralForeground3,
-    lineHeight: "1.15",
+    lineHeight: "1.1",
   },
   taxonomyStatusOk: {
     color: "#107c10",
@@ -811,8 +883,8 @@ const useStyles = makeStyles({
     gap: "2px",
   },
   variantDataLine: {
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: "1.15",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: "1.2",
     color: tokens.colorNeutralForeground2,
     display: "flex",
     alignItems: "baseline",
@@ -888,18 +960,43 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     gap: "6px",
   },
-  productionStatusText: {
-    fontSize: tokens.fontSizeBase100,
+  statusStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  statusCurrent: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
     lineHeight: "1.2",
+  },
+  statusCurrentNew: {
     color: tokens.colorNeutralForeground3,
   },
-  productionStatusInProgress: {
-    color: tokens.colorPaletteBlueForeground2,
-    fontWeight: tokens.fontWeightSemibold,
+  statusCurrentDone: {
+    color: "#1b851a",
   },
-  productionStatusDone: {
-    color: "#107c10",
-    fontWeight: tokens.fontWeightSemibold,
+  statusCurrentUnqualified: {
+    color: "#a4262c",
+  },
+  statusTimestamp: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    lineHeight: "1.2",
+    marginTop: "0",
+  },
+  statusSpuLink: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground1,
+    lineHeight: "1.2",
+    textDecorationLine: "none",
+    width: "fit-content",
+    "&:hover": {
+      color: tokens.colorBrandForeground1,
+      textDecorationLine: "underline",
+    },
   },
   badgeWhite: {
     backgroundColor: tokens.colorNeutralBackground1,
@@ -908,6 +1005,7 @@ const useStyles = makeStyles({
   },
   warningText: {
     color: tokens.colorPaletteDarkOrangeForeground2,
+    lineHeight: "1.1",
   },
   dialogSurface: {
     width: "min(1340px, 96vw)",
@@ -1277,6 +1375,20 @@ const useStyles = makeStyles({
     border: "1px solid #0f6cbd",
     backgroundColor: "#eef6fd",
   },
+  offerCardLoading: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  offerCardLoadingOverlay: {
+    position: "absolute",
+    inset: "0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.42)",
+    backdropFilter: "blur(1.6px)",
+    pointerEvents: "none",
+  },
   offerImage: {
     width: "74px",
     height: "100%",
@@ -1451,6 +1563,20 @@ const useStyles = makeStyles({
   variantPickCol: {
     width: "54px",
   },
+  manualSupplierDialogSurface: {
+    width: "min(560px, 92vw)",
+    maxWidth: "min(560px, 92vw)",
+  },
+  manualSupplierDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  manualSupplierDialogActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+  },
   variantImageThumb: {
     width: "44px",
     height: "44px",
@@ -1554,6 +1680,8 @@ const useStyles = makeStyles({
     backgroundColor: "#dfffd4",
     opacity: 1,
     fontWeight: tokens.fontWeightSemibold,
+    paddingLeft: "8px",
+    paddingRight: "8px",
     "&.fui-Badge": {
       backgroundColor: "#dfffd4",
       opacity: 1,
@@ -1813,6 +1941,29 @@ const normalizePayloadErrorText = (value: unknown) => {
   return text;
 };
 
+const extractOfferIdFromDetailUrl = (value: unknown) => {
+  const text = toText(value);
+  if (!text) return "";
+  const match = text.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
+  return match?.[1] ? match[1] : "";
+};
+
+const normalizeManualSupplierDetailUrl = (value: unknown) => {
+  const raw = toText(value);
+  if (!raw) return "";
+
+  const idFromUrl = extractOfferIdFromDetailUrl(raw);
+  if (idFromUrl) {
+    return `https://detail.1688.com/offer/${idFromUrl}.html`;
+  }
+
+  if (/^https?:\/\/detail\.1688\.com\/offer\/\d{6,}\.html(?:[?#].*)?$/i.test(raw)) {
+    return raw.replace(/(\.html)(?:[?#].*)+$/i, "$1");
+  }
+
+  return "";
+};
+
 const hasCjk = (value: unknown) => /[\u3400-\u9fff]/.test(toText(value));
 
 const truncateTitleText = (value: unknown, maxChars = 40) => {
@@ -1952,6 +2103,9 @@ const normalizePayloadStatus = (value: unknown) => {
   }
   return "";
 };
+
+const normalizeSuggestionReviewStatus = (value: unknown): SuggestionReviewStatus =>
+  toText(value).toLowerCase() === "unqualified" ? "unqualified" : "new";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
@@ -2192,6 +2346,43 @@ const getSourceLinkMeta = (value: unknown): { url: string; domain: string } | nu
   return { url, domain };
 };
 
+const normalizePartnerLabel = (value: unknown) => {
+  const text = toText(value).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (/^(?:none|null|undefined|not set|n\/a|-)\s*$/i.test(text)) return "";
+  return text.slice(0, 120);
+};
+
+const getSuggestionPartnerLabel = (item: SuggestionItem) => {
+  const record =
+    item && typeof item === "object" ? (item as unknown as Record<string, unknown>) : {};
+  const attrs =
+    record.platform_attributes && typeof record.platform_attributes === "object"
+      ? (record.platform_attributes as Record<string, unknown>)
+      : {};
+  const submission =
+    attrs.submission && typeof attrs.submission === "object"
+      ? (attrs.submission as Record<string, unknown>)
+      : {};
+
+  const candidates = [
+    (item as any).submitted_by,
+    (item as any).submittedBy,
+    (item as any).partner_name,
+    (item as any).partnerName,
+    (item as any).user,
+    submission.partner_name,
+    submission.submitted_by,
+    submission.source_user,
+  ];
+
+  for (const candidate of candidates) {
+    const label = normalizePartnerLabel(candidate);
+    if (label) return label;
+  }
+  return "";
+};
+
 const deriveViewerPriceRole = (payload: unknown): ViewerPriceRole => {
   const record =
     payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
@@ -2244,29 +2435,39 @@ const filterPricingByViewerRole = (
   });
 };
 
-const getSuggestionProductionStatusKey = (
-  status: ProductionStatusState | null | undefined
-) => {
-  const queueStatus = toText(status?.status).toLowerCase();
-  const done = Boolean(toText(status?.production_done_at)) || queueStatus === "production_done";
-  if (done) return "production_done" as const;
-  const started =
-    Boolean(toText(status?.production_started_at)) || queueStatus === "production_started";
-  if (started) return "production_started" as const;
-  const assigned = Boolean(toText(status?.spu_assigned_at)) || queueStatus === "spu_assigned";
-  if (assigned) return "spu_assigned" as const;
-  if (queueStatus === "queued_for_production" || queueStatus === "queued") {
-    return "queued_for_production" as const;
-  }
-  return "none" as const;
-};
-
 const hasSuggestionPriceData = (item: SuggestionItem) =>
   Array.isArray(item.pricing) &&
   item.pricing.some((entry) => {
     const amount = Number(entry?.b2bPrice);
     return Number.isFinite(amount) && amount > 0;
   });
+
+const isProductionStatusAllowedForQueueSend = (
+  status: ProductionStatusState | null | undefined
+) => {
+  const hasProductionProgress = Boolean(
+    toText(status?.production_done_at) ||
+      toText(status?.production_started_at) ||
+      toText(status?.spu_assigned_at)
+  );
+  if (hasProductionProgress) return false;
+
+  const queueStatus = toText(status?.status).toLowerCase();
+  if (!queueStatus || queueStatus === "-" || queueStatus === "none") return true;
+  if (
+    queueStatus === "not in production" ||
+    queueStatus === "not_in_production" ||
+    queueStatus === "not-in-production"
+  ) {
+    return true;
+  }
+  if (queueStatus.startsWith("new")) return true;
+  return false;
+};
+
+const isSuggestionAllowedForQueueSend = (item: SuggestionItem) =>
+  isSuggestionReadyForProduction(item) &&
+  isProductionStatusAllowedForQueueSend(item.productionStatus);
 
 const isSuggestionReadyForProduction = (item: SuggestionItem) => {
   const supplierSelected = Boolean(
@@ -2324,6 +2525,7 @@ export default function DigiDealProductSuggestionsPage() {
   const [urlsText, setUrlsText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isSendingToProduction, setIsSendingToProduction] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
 
@@ -2357,6 +2559,9 @@ export default function DigiDealProductSuggestionsPage() {
   const [offerDialogItem, setOfferDialogItem] = useState<SuggestionItem | null>(null);
   const [offerDialogOffers, setOfferDialogOffers] = useState<SupplierOffer[]>([]);
   const [offerDialogBusy, setOfferDialogBusy] = useState(false);
+  const [manualSupplierDialogOpen, setManualSupplierDialogOpen] = useState(false);
+  const [manualSupplierUrlDraft, setManualSupplierUrlDraft] = useState("");
+  const [manualSupplierSaving, setManualSupplierSaving] = useState(false);
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
   const [selectingOfferId, setSelectingOfferId] = useState<string>("");
 
@@ -2857,6 +3062,9 @@ export default function DigiDealProductSuggestionsPage() {
       setOfferDialogItem(item);
       setOfferDialogOffers(item.search?.offers || []);
       setSupplierImagePreviewEntry(null);
+      setManualSupplierDialogOpen(false);
+      setManualSupplierUrlDraft("");
+      setManualSupplierSaving(false);
       if (Array.isArray(item.search?.offers) && item.search.offers.length > 0) {
         void translateSupplierOffers(item.id, item.search.offers);
       }
@@ -2920,13 +3128,14 @@ export default function DigiDealProductSuggestionsPage() {
       if (!offerDialogItem) return;
 
       const offerId = toText(picked.offerId);
-      if (!offerId) {
-        setError("Selected offer is missing an offer ID.");
+      const detailUrl = normalizeManualSupplierDetailUrl(toText(picked.detailUrl));
+      if (!offerId && !detailUrl) {
+        setError("Selected offer is missing a valid supplier URL.");
         return;
       }
 
       // If this supplier is already selected and variants are cached, render instantly.
-      if (selectedOfferId === offerId) {
+      if (offerId && selectedOfferId === offerId) {
         const cached = variantsCacheRef.current[offerDialogItem.id];
         if (cached) {
           applyVariantsPayload(cached);
@@ -2936,9 +3145,11 @@ export default function DigiDealProductSuggestionsPage() {
         return;
       }
 
-      setSelectingOfferId(offerId);
+      setSelectingOfferId(offerId || detailUrl);
       setError(null);
-      setSelectedOfferId(offerId);
+      if (offerId) {
+        setSelectedOfferId(offerId);
+      }
       setVariants(null);
       setVariantDraftOverrides({});
       setSelectedVariantIndexes([]);
@@ -2951,8 +3162,8 @@ export default function DigiDealProductSuggestionsPage() {
           body: JSON.stringify({
             provider: PROVIDER,
             product_id: offerDialogItem.id,
-            offer_id: offerId,
-            detail_url: toText(picked.detailUrl) || null,
+            offer_id: offerId || null,
+            detail_url: detailUrl || toText(picked.detailUrl) || null,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -2995,110 +3206,246 @@ export default function DigiDealProductSuggestionsPage() {
     [applyVariantsPayload, fetchVariants, loadItems, offerDialogItem, selectedOfferId]
   );
 
-  const saveVariantSelection = useCallback(async () => {
-    if (!offerDialogItem || !variants) return;
-    setVariantsSaving(true);
+  const saveManualSupplier = useCallback(async () => {
+    if (!offerDialogItem) return;
+
+    const normalizedDetailUrl = normalizeManualSupplierDetailUrl(manualSupplierUrlDraft);
+    if (!normalizedDetailUrl) {
+      setError("Supplier URL must be a valid 1688 offer link.");
+      return;
+    }
+
+    const pendingOfferId = extractOfferIdFromDetailUrl(normalizedDetailUrl);
+    const pendingOffer: SupplierOffer = {
+      offerId: pendingOfferId || `manual-${Date.now()}`,
+      detailUrl: normalizedDetailUrl,
+      subject: "",
+      subject_en: "",
+      imageUrl: null,
+      rank: -1,
+      _manual_added: true,
+      _manual_status: "loading",
+      _manual_loading: true,
+      _manual_added_at: new Date().toISOString(),
+    };
+
     setError(null);
+    setManualSupplierSaving(true);
+    setOfferDialogOffers((prev) => {
+      const rest = prev.filter((entry) => {
+        const entryOfferId = toText(entry.offerId);
+        const entryDetailUrl = normalizeManualSupplierDetailUrl(toText(entry.detailUrl));
+        if (pendingOfferId && entryOfferId && entryOfferId === pendingOfferId) return false;
+        if (entryDetailUrl && entryDetailUrl === normalizedDetailUrl) return false;
+        return true;
+      });
+      return [pendingOffer, ...rest];
+    });
 
     try {
-      const comboOverrides = Object.entries(variantDraftOverrides)
-        .map(([rawIndex, draft]) => {
-          const index = Number(rawIndex);
-          if (!Number.isInteger(index) || index < 0) return null;
-          const priceRaw = allowCnyPriceEditing
-            ? toText(draft.price).replace(",", ".")
-            : "";
-          const weightRaw = toText(draft.weightGrams).replace(",", ".");
-          const priceNum = Number(priceRaw);
-          const weightNum = Number(weightRaw);
-          const price =
-            allowCnyPriceEditing && Number.isFinite(priceNum) && priceNum > 0
-              ? Number(priceNum.toFixed(4))
-              : null;
-          const weightGrams =
-            Number.isFinite(weightNum) && weightNum > 0
-              ? Math.round(weightNum)
-              : null;
-          if (price === null && weightGrams === null) return null;
-          return {
-            index,
-            price,
-            weight_grams: weightGrams,
-          };
-        })
-        .filter(
-          (
-            row
-          ): row is { index: number; price: number | null; weight_grams: number | null } =>
-            Boolean(row)
-        );
-
-      const response = await fetch("/api/production/suppliers/variants", {
+      const response = await fetch("/api/production/suppliers/manual-add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: PROVIDER,
           product_id: offerDialogItem.id,
-          selected_combo_indexes: selectedVariantIndexes,
-          packs_text: normalizePacksText(packsText),
-          combo_overrides: comboOverrides,
+          detail_url: normalizedDetailUrl,
         }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(toText(payload?.error) || "Unable to save variants.");
+        throw new Error(toText(payload?.error) || "Unable to add supplier.");
       }
 
-      setMessage("Variant selection saved.");
-      const overrideMap = new Map(
-        comboOverrides.map((row) => [row.index, row] as const)
-      );
-      const combosWithOverrides = variants.combos.map((combo) => {
-        const override = overrideMap.get(combo.index);
-        if (!override) return combo;
-        return {
-          ...combo,
-          price:
-            override.price !== null && override.price !== undefined
-              ? override.price
-              : combo.price,
-          price_raw:
-            override.price !== null && override.price !== undefined
-              ? formatCompactNumber(override.price)
-              : combo.price_raw,
-          weight_grams:
-            override.weight_grams !== null && override.weight_grams !== undefined
-              ? override.weight_grams
-              : combo.weight_grams,
-          weight_raw:
-            override.weight_grams !== null && override.weight_grams !== undefined
-              ? `${override.weight_grams}g`
-              : combo.weight_raw,
-        };
-      });
-      variantsCacheRef.current[offerDialogItem.id] = {
-        ...variants,
-        combos: combosWithOverrides,
-        selected_combo_indexes: selectedVariantIndexes,
-        packs_text: normalizePacksText(packsText),
-      };
-      await loadItems();
-      setOfferDialogOpen(false);
-      setOfferDialogItem(null);
-      setVariantDraftOverrides({});
+      const returnedOffers = Array.isArray(payload?.offers)
+        ? (payload.offers as SupplierOffer[])
+        : null;
+      const addedOffer =
+        payload?.offer && typeof payload.offer === "object"
+          ? (payload.offer as SupplierOffer)
+          : pendingOffer;
+
+      if (returnedOffers && returnedOffers.length > 0) {
+        setOfferDialogOffers(returnedOffers);
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.id === offerDialogItem.id
+              ? {
+                  ...entry,
+                  search: {
+                    ...entry.search,
+                    offerCount: returnedOffers.length,
+                    offers: returnedOffers,
+                  },
+                }
+              : entry
+          )
+        );
+        setOfferDialogItem((prev) =>
+          prev && prev.id === offerDialogItem.id
+            ? {
+                ...prev,
+                search: {
+                  ...prev.search,
+                  offerCount: returnedOffers.length,
+                  offers: returnedOffers,
+                },
+              }
+            : prev
+        );
+        void translateSupplierOffers(offerDialogItem.id, returnedOffers);
+      } else {
+        setOfferDialogOffers((prev) => {
+          const rest = prev.filter((entry) => {
+            const entryOfferId = toText(entry.offerId);
+            const entryDetailUrl = normalizeManualSupplierDetailUrl(toText(entry.detailUrl));
+            if (pendingOfferId && entryOfferId && entryOfferId === pendingOfferId) return false;
+            if (entryDetailUrl && entryDetailUrl === normalizedDetailUrl) return false;
+            return true;
+          });
+          return [addedOffer, ...rest];
+        });
+      }
+
+      setManualSupplierDialogOpen(false);
+      setManualSupplierUrlDraft("");
+      setMessage("Supplier added. Loading variants...");
+      await selectSupplierOfferById(addedOffer);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save variants.");
+      setError(err instanceof Error ? err.message : "Unable to add supplier.");
     } finally {
-      setVariantsSaving(false);
+      setManualSupplierSaving(false);
     }
+  }, [
+    manualSupplierUrlDraft,
+    offerDialogItem,
+    selectSupplierOfferById,
+    translateSupplierOffers,
+  ]);
+
+  const saveVariantSelection = useCallback(() => {
+    if (!offerDialogItem || !variants || variantsSaving) return;
+    setVariantsSaving(true);
+    setError(null);
+
+    const savingProductId = offerDialogItem.id;
+    const savedSelectedIndexes = [...selectedVariantIndexes];
+    const savedPacksText = normalizePacksText(packsText);
+    const savedVariants = variants;
+    const savedDraftOverrides: Record<string, VariantDraftOverride> = {
+      ...variantDraftOverrides,
+    };
+
+    const comboOverrides = Object.entries(savedDraftOverrides)
+      .map(([rawIndex, draft]) => {
+        const index = Number(rawIndex);
+        if (!Number.isInteger(index) || index < 0) return null;
+        const priceRaw = allowCnyPriceEditing
+          ? toText(draft.price).replace(",", ".")
+          : "";
+        const weightRaw = toText(draft.weightGrams).replace(",", ".");
+        const priceNum = Number(priceRaw);
+        const weightNum = Number(weightRaw);
+        const price =
+          allowCnyPriceEditing && Number.isFinite(priceNum) && priceNum > 0
+            ? Number(priceNum.toFixed(4))
+            : null;
+        const weightGrams =
+          Number.isFinite(weightNum) && weightNum > 0
+            ? Math.round(weightNum)
+            : null;
+        if (price === null && weightGrams === null) return null;
+        return {
+          index,
+          price,
+          weight_grams: weightGrams,
+        };
+      })
+      .filter(
+        (
+          row
+        ): row is { index: number; price: number | null; weight_grams: number | null } =>
+          Boolean(row)
+      );
+
+    // Close immediately so the user can continue working while save runs in background.
+    setOfferDialogOpen(false);
+    setOfferDialogItem(null);
+    setPacksPopoverOpen(false);
+    setPacksDraft("");
+    setVariantDraftOverrides({});
+    setSupplierImagePreviewEntry(null);
+    setManualSupplierDialogOpen(false);
+    setManualSupplierUrlDraft("");
+    setMessage("Saving variants in background...");
+    setVariantsSaving(false);
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/production/suppliers/variants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: PROVIDER,
+            product_id: savingProductId,
+            selected_combo_indexes: savedSelectedIndexes,
+            packs_text: savedPacksText,
+            combo_overrides: comboOverrides,
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(toText(payload?.error) || "Unable to save variants.");
+        }
+
+        const overrideMap = new Map(
+          comboOverrides.map((row) => [row.index, row] as const)
+        );
+        const combosWithOverrides = savedVariants.combos.map((combo) => {
+          const override = overrideMap.get(combo.index);
+          if (!override) return combo;
+          return {
+            ...combo,
+            price:
+              override.price !== null && override.price !== undefined
+                ? override.price
+                : combo.price,
+            price_raw:
+              override.price !== null && override.price !== undefined
+                ? formatCompactNumber(override.price)
+                : combo.price_raw,
+            weight_grams:
+              override.weight_grams !== null && override.weight_grams !== undefined
+                ? override.weight_grams
+                : combo.weight_grams,
+            weight_raw:
+              override.weight_grams !== null && override.weight_grams !== undefined
+                ? `${override.weight_grams}g`
+                : combo.weight_raw,
+          };
+        });
+        variantsCacheRef.current[savingProductId] = {
+          ...savedVariants,
+          combos: combosWithOverrides,
+          selected_combo_indexes: savedSelectedIndexes,
+          packs_text: savedPacksText,
+        };
+
+        await loadItems({ silent: true });
+        setMessage("Variant selection saved.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to save variants.");
+      }
+    })();
   }, [
     allowCnyPriceEditing,
     offerDialogItem,
     packsText,
     selectedVariantIndexes,
     variants,
-    loadItems,
     variantDraftOverrides,
+    variantsSaving,
+    loadItems,
   ]);
 
   const openPayloadJson = useCallback(async (item: SuggestionItem) => {
@@ -3612,6 +3959,11 @@ export default function DigiDealProductSuggestionsPage() {
         item.sourceLabel,
         item.sourceUrl,
         item.crawlFinalUrl,
+        (item as any).submitted_by,
+        (item as any).submittedBy,
+        (item as any).partner_name,
+        (item as any).partnerName,
+        (item as any).user,
         item.externalData?.title,
         item.externalData?.description,
         item.externalData?.inputUrl,
@@ -3639,10 +3991,17 @@ export default function DigiDealProductSuggestionsPage() {
   ]);
 
   const visibleItemIds = useMemo(() => filteredItems.map((item) => item.id), [filteredItems]);
+  const itemById = useMemo(() => {
+    const map = new Map<string, SuggestionItem>();
+    items.forEach((item) => {
+      map.set(item.id, item);
+    });
+    return map;
+  }, [items]);
   const eligibleItemIdSet = useMemo(
     () =>
       new Set(
-        items.filter((item) => isSuggestionReadyForProduction(item)).map((item) => item.id)
+        items.filter((item) => isSuggestionAllowedForQueueSend(item)).map((item) => item.id)
       ),
     [items]
   );
@@ -3652,6 +4011,25 @@ export default function DigiDealProductSuggestionsPage() {
   );
   const selectedEligibleCount = selectedEligibleItemIds.length;
   const selectedIneligibleCount = Math.max(0, selectedItemIds.length - selectedEligibleCount);
+  const selectedNotReadyCount = useMemo(
+    () =>
+      selectedItemIds.reduce((count, id) => {
+        const item = itemById.get(id);
+        if (!item) return count;
+        return count + (isSuggestionReadyForProduction(item) ? 0 : 1);
+      }, 0),
+    [itemById, selectedItemIds]
+  );
+  const selectedAlreadyInProductionCount = useMemo(
+    () =>
+      selectedItemIds.reduce((count, id) => {
+        const item = itemById.get(id);
+        if (!item) return count;
+        if (!isSuggestionReadyForProduction(item)) return count;
+        return count + (isProductionStatusAllowedForQueueSend(item.productionStatus) ? 0 : 1);
+      }, 0),
+    [itemById, selectedItemIds]
+  );
   const canSendSelectedToProduction =
     selectedItemIds.length > 0 &&
     selectedEligibleCount === selectedItemIds.length &&
@@ -3716,14 +4094,71 @@ export default function DigiDealProductSuggestionsPage() {
     }
   }, [loadItems, selectedItemIds]);
 
+  const updateSelectedSuggestionStatus = useCallback(
+    async (status: SuggestionReviewStatus) => {
+      if (selectedItemIds.length === 0) return;
+
+      setIsUpdatingStatus(true);
+      setError(null);
+      setMessage(null);
+      try {
+        const response = await fetch("/api/digideal/product-suggestions", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ids: selectedItemIds,
+            status,
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(toText(payload?.error) || "Failed to update status.");
+        }
+
+        const updatedIds = Array.isArray(payload?.updatedIds)
+          ? payload.updatedIds.map((entry: unknown) => toText(entry)).filter(Boolean)
+          : selectedItemIds;
+        const updatedIdSet = new Set(updatedIds);
+
+        setItems((prev) =>
+          prev.map((entry) =>
+            updatedIdSet.has(entry.id)
+              ? {
+                  ...entry,
+                  reviewStatus: status,
+                }
+              : entry
+          )
+        );
+
+        setMessage(
+          status === "unqualified"
+            ? `Marked ${updatedIds.length} product(s) as Unqualified.`
+            : `Marked ${updatedIds.length} product(s) as New.`
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update status.");
+      } finally {
+        setIsUpdatingStatus(false);
+      }
+    },
+    [selectedItemIds]
+  );
+
   const sendSelectedToProduction = useCallback(async () => {
     if (selectedItemIds.length === 0) {
       setError("Select at least one ready product to send.");
       return;
     }
-    if (selectedIneligibleCount > 0) {
+    if (selectedNotReadyCount > 0) {
       setError(
         "Only ready products can be sent to production. Remove non-ready rows from selection."
+      );
+      return;
+    }
+    if (selectedAlreadyInProductionCount > 0) {
+      setError(
+        "Some selected products are already in production/sent. Only blank, '-', 'not in production', or 'new*' statuses can be sent."
       );
       return;
     }
@@ -3750,7 +4185,16 @@ export default function DigiDealProductSuggestionsPage() {
       const nowIso = new Date().toISOString();
       const fileName = toText(payload?.file_name) || null;
       const jobId = toText(payload?.job?.jobId) || null;
-      const sentIdSet = new Set(targetIds);
+      const acceptedIds = Array.isArray(payload?.accepted_items)
+        ? payload.accepted_items
+            .map((entry: unknown) =>
+              entry && typeof entry === "object"
+                ? toText((entry as Record<string, unknown>).product_id)
+                : ""
+            )
+            .filter(Boolean)
+        : targetIds;
+      const sentIdSet = new Set(acceptedIds);
       setItems((prev) =>
         prev.map((entry) => {
           if (!sentIdSet.has(entry.id)) return entry;
@@ -3770,19 +4214,31 @@ export default function DigiDealProductSuggestionsPage() {
       const missingCount = Number(payload?.missing_count);
       const normalizedMissingCount =
         Number.isFinite(missingCount) && missingCount > 0 ? Math.trunc(missingCount) : 0;
-      const sentCount = Math.max(0, targetIds.length - normalizedMissingCount);
+      const blockedCount = Number(payload?.blocked_count);
+      const normalizedBlockedCount =
+        Number.isFinite(blockedCount) && blockedCount > 0 ? Math.trunc(blockedCount) : 0;
+      const sentCount = sentIdSet.size;
       const missingText =
         normalizedMissingCount > 0
           ? ` ${normalizedMissingCount} item(s) had missing payload JSON.`
           : "";
-      setMessage(`Sent ${sentCount} product(s) to production queue.${missingText}`);
+      const blockedText =
+        normalizedBlockedCount > 0
+          ? ` ${normalizedBlockedCount} item(s) were already in/sent to production and were skipped.`
+          : "";
+      setMessage(`Sent ${sentCount} product(s) to production queue.${missingText}${blockedText}`);
       await loadItems({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send selected products.");
     } finally {
       setIsSendingToProduction(false);
     }
-  }, [loadItems, selectedIneligibleCount, selectedItemIds]);
+  }, [
+    loadItems,
+    selectedAlreadyInProductionCount,
+    selectedItemIds,
+    selectedNotReadyCount,
+  ]);
 
   useEffect(() => {
     if (!message) {
@@ -4543,20 +4999,64 @@ export default function DigiDealProductSuggestionsPage() {
           </div>
           <div className={styles.toolbarActions}>
             {isLoading ? <Spinner size="tiny" label="Loading" /> : null}
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance={selectedItemIds.length > 0 ? "primary" : "outline"}
+                  className={
+                    selectedItemIds.length > 0 && !isUpdatingStatus && !isDeleting
+                      ? styles.actionsButtonActive
+                      : undefined
+                  }
+                  disabled={selectedItemIds.length === 0 || isUpdatingStatus || isDeleting}
+                >
+                  {isUpdatingStatus ? "Updating..." : isDeleting ? "Deleting..." : "Actions"}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <Menu positioning="after-top">
+                    <MenuTrigger disableButtonEnhancement>
+                      <MenuItem hasSubmenu disabled={isUpdatingStatus || isDeleting}>
+                        Change Status
+                      </MenuItem>
+                    </MenuTrigger>
+                    <MenuPopover>
+                      <MenuList>
+                        <MenuItem
+                          disabled={isUpdatingStatus || isDeleting}
+                          onClick={() => {
+                            void updateSelectedSuggestionStatus("new");
+                          }}
+                        >
+                          New
+                        </MenuItem>
+                        <MenuItem
+                          disabled={isUpdatingStatus || isDeleting}
+                          onClick={() => {
+                            void updateSelectedSuggestionStatus("unqualified");
+                          }}
+                        >
+                          Unqualified
+                        </MenuItem>
+                      </MenuList>
+                    </MenuPopover>
+                  </Menu>
+                  <MenuItem
+                    disabled={selectedItemIds.length === 0 || isDeleting || isUpdatingStatus}
+                    onClick={() => {
+                      void deleteSelectedSuggestions();
+                    }}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
             <Button
-              appearance="outline"
+              appearance={selectedItemIds.length > 0 ? "primary" : "outline"}
               className={
-                selectedItemIds.length > 0 && !isDeleting ? styles.deleteButtonActive : undefined
-              }
-              disabled={selectedItemIds.length === 0 || isDeleting}
-              onClick={deleteSelectedSuggestions}
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </Button>
-            <Button
-              appearance={canSendSelectedToProduction ? "primary" : "outline"}
-              className={
-                canSendSelectedToProduction && !isSendingToProduction
+                selectedItemIds.length > 0 && !isSendingToProduction
                   ? styles.sendButtonActive
                   : undefined
               }
@@ -4588,6 +5088,7 @@ export default function DigiDealProductSuggestionsPage() {
               <TableHeaderCell>Production JSON</TableHeaderCell>
               <TableHeaderCell className={styles.selectCol}>
                 <Checkbox
+                  className={styles.tableSelectCheckbox}
                   checked={selectAllState}
                   aria-label="Select all visible products"
                   onChange={(_, data) =>
@@ -4663,6 +5164,7 @@ export default function DigiDealProductSuggestionsPage() {
                   item.sourceUrl
                 );
                 const sourceLinkMeta = getSourceLinkMeta(sourceProductUrl);
+                const partnerLabel = getSuggestionPartnerLabel(item);
                 const sourceJobStatus = toText(item.sourceJob?.status).toLowerCase();
                 const sourceJobStage = toText(item.sourceJob?.stage).toLowerCase();
                 const sourceJobActive =
@@ -4681,15 +5183,98 @@ export default function DigiDealProductSuggestionsPage() {
                 const sekPricing = visiblePricing.filter(
                   (entry) => normalizeCurrencyCode(entry.currency || entry.market) === "SEK"
                 );
-                const productionStatusKey = getSuggestionProductionStatusKey(
-                  item.productionStatus
+                const reviewStatus = normalizeSuggestionReviewStatus(item.reviewStatus);
+                const productionSpu = toText(item.production_assigned_spu);
+                const queueStatusRaw = toText(item.productionStatus?.status).toLowerCase();
+                const queueStatus = queueStatusRaw.replace(/\s+/g, "_").replace(/-/g, "_");
+                const spuAssignedAt = toText(item.productionStatus?.spu_assigned_at) || null;
+                const productionStartedAt =
+                  toText(item.productionStatus?.production_started_at) || null;
+                const productionDoneAt = toText(item.productionStatus?.production_done_at) || null;
+                const statusUpdatedAt = toText(item.productionStatus?.updated_at) || null;
+                const statusIsDone = Boolean(
+                  productionDoneAt || queueStatus === "production_done"
                 );
-                const productionStatusLabel =
-                  productionStatusKey === "production_done"
-                    ? "Production Done"
-                    : productionStatusKey === "none"
-                      ? "-"
-                      : "In Production";
+                const statusIsInProduction =
+                  !statusIsDone &&
+                  Boolean(
+                    productionStartedAt ||
+                      spuAssignedAt ||
+                      queueStatus === "production_started" ||
+                      queueStatus === "spu_assigned" ||
+                      queueStatus === "queued_for_production" ||
+                      queueStatus === "queued" ||
+                      queueStatus === "in_production"
+                  );
+                const statusIsUnqualified =
+                  !statusIsDone && !statusIsInProduction && reviewStatus === "unqualified";
+                const variantPrice = Number(item.variantMetrics?.purchasePriceCny);
+                const variantWeight = Number(item.variantMetrics?.weightGrams);
+                const variantPriceMin = Number(item.variantMetrics?.priceMinCny);
+                const variantPriceMax = Number(item.variantMetrics?.priceMaxCny);
+                const variantWeightMin = Number(item.variantMetrics?.weightMinGrams);
+                const variantWeightMax = Number(item.variantMetrics?.weightMaxGrams);
+                const hasVariantPrice =
+                  (Number.isFinite(variantPrice) && variantPrice > 0) ||
+                  (Number.isFinite(variantPriceMin) && variantPriceMin > 0) ||
+                  (Number.isFinite(variantPriceMax) && variantPriceMax > 0);
+                const hasVariantWeight =
+                  (Number.isFinite(variantWeight) && variantWeight > 0) ||
+                  (Number.isFinite(variantWeightMin) && variantWeightMin > 0) ||
+                  (Number.isFinite(variantWeightMax) && variantWeightMax > 0);
+                const statusIsReady =
+                  !statusIsDone &&
+                  !statusIsInProduction &&
+                  !statusIsUnqualified &&
+                  supplierSelected &&
+                  hasPickedVariants &&
+                  hasVariantPrice &&
+                  hasVariantWeight;
+                const displayStatusLabel = statusIsDone
+                  ? "Production done"
+                  : statusIsInProduction
+                    ? "In production"
+                    : statusIsReady
+                      ? "Ready"
+                    : statusIsUnqualified
+                      ? "Unqualified"
+                      : "New Product";
+                const latestStatusAt =
+                  productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt;
+                const displayStatusAt =
+                  latestStatusAt || toText(item.createdAt) || null;
+                const displayStatusTimestamp = displayStatusAt
+                  ? formatDateTime(displayStatusAt)
+                  : null;
+                const statusCurrentClass = mergeClasses(
+                  styles.statusCurrent,
+                  statusIsDone
+                    ? styles.statusCurrentDone
+                    : statusIsUnqualified
+                      ? styles.statusCurrentUnqualified
+                      : statusIsInProduction
+                        ? undefined
+                        : styles.statusCurrentNew
+                );
+                const showInProductionSpu = Boolean(statusIsInProduction && productionSpu);
+                const showDoneSpu = Boolean(statusIsDone && productionSpu);
+                const doneSpuHref = productionSpu
+                  ? `/app/products/spu/${encodeURIComponent(productionSpu)}`
+                  : "";
+                const draftExplorerSpuHref = productionSpu
+                  ? `/app/production/draft-explorer?open_spu=${encodeURIComponent(
+                      productionSpu
+                    )}`
+                  : "";
+                const rowStatusClass = statusIsDone
+                  ? styles.rowStatusDone
+                  : statusIsInProduction
+                    ? styles.rowStatusInProgress
+                    : statusIsReady
+                      ? styles.rowStatusReady
+                    : statusIsUnqualified
+                      ? styles.tableRowUnqualified
+                      : undefined;
                 const sourceTitleText = toText(
                   external?.status?.title?.value || external?.title || item.title
                 );
@@ -4766,8 +5351,8 @@ export default function DigiDealProductSuggestionsPage() {
                     : "bad";
                 const aiLabel = isAiCleanupLoading
                   ? sourceJobStage === "ai_cleanup"
-                    ? "AI Cleanup running..."
-                    : "AI Cleanup waiting..."
+                    ? "AI cleanup running..."
+                    : "AI cleanup pending..."
                   : aiModel
                     ? "AI Cleanup OK"
                     : "AI cleanup unavailable";
@@ -4845,7 +5430,10 @@ export default function DigiDealProductSuggestionsPage() {
                   hasPickedVariants;
 
                 return (
-                  <TableRow key={item.id}>
+                  <TableRow
+                    key={item.id}
+                    className={rowStatusClass}
+                  >
                     <TableCell className={styles.imageCol}>
                       {item.mainImageUrl ? (
                         <Tooltip
@@ -4888,7 +5476,13 @@ export default function DigiDealProductSuggestionsPage() {
                       <div className={styles.titleCell}>
                         <Text className={styles.titleText}>{displayTitle}</Text>
                         <Text className={styles.productMeta}>
-                          <span>{productSourceLabel}</span>
+                          {partnerLabel ? (
+                            <>
+                              <span className={styles.productMetaHighlight}>{partnerLabel}</span>
+                              <span className={styles.productMetaSeparator}>/</span>
+                            </>
+                          ) : null}
+                          <span className={styles.productMetaHighlight}>{productSourceLabel}</span>
                           <span className={styles.productMetaSeparator}>/</span>
                           {sourceLinkMeta ? (
                             <a
@@ -5356,18 +5950,32 @@ export default function DigiDealProductSuggestionsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Text
-                        className={mergeClasses(
-                          styles.productionStatusText,
-                          productionStatusKey === "production_done"
-                            ? styles.productionStatusDone
-                            : productionStatusKey !== "none"
-                              ? styles.productionStatusInProgress
-                              : undefined
-                        )}
-                      >
-                        {productionStatusLabel}
-                      </Text>
+                      <div className={styles.statusStack}>
+                        <Text className={statusCurrentClass}>{displayStatusLabel}</Text>
+                        {displayStatusTimestamp ? (
+                          <Text className={styles.statusTimestamp}>{displayStatusTimestamp}</Text>
+                        ) : null}
+                        {showDoneSpu ? (
+                          <a
+                            href={doneSpuHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.statusSpuLink}
+                          >
+                            {productionSpu}
+                          </a>
+                        ) : null}
+                        {showInProductionSpu ? (
+                          <a
+                            href={draftExplorerSpuHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.statusSpuLink}
+                          >
+                            {productionSpu}
+                          </a>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {canViewJson ? (
@@ -5385,6 +5993,7 @@ export default function DigiDealProductSuggestionsPage() {
                     </TableCell>
                     <TableCell className={styles.selectCol}>
                       <Checkbox
+                        className={styles.tableSelectCheckbox}
                         checked={selectedIdSet.has(item.id)}
                         aria-label={`Select ${item.id}`}
                         onChange={(_, data) => toggleRowSelected(item.id, Boolean(data.checked))}
@@ -5601,6 +6210,55 @@ export default function DigiDealProductSuggestionsPage() {
       </Dialog>
 
       <Dialog
+        open={manualSupplierDialogOpen}
+        onOpenChange={(_, data) => {
+          setManualSupplierDialogOpen(data.open);
+          if (!data.open && !manualSupplierSaving) {
+            setManualSupplierUrlDraft("");
+          }
+        }}
+      >
+        <DialogSurface className={styles.manualSupplierDialogSurface}>
+          <DialogBody className={styles.manualSupplierDialogBody}>
+            <DialogTitle>Add supplier</DialogTitle>
+            <DialogContent>
+              <Field label="Supplier URL">
+                <Input
+                  value={manualSupplierUrlDraft}
+                  placeholder="https://detail.1688.com/offer/1234567890123.html"
+                  onChange={(_, data) => setManualSupplierUrlDraft(data.value)}
+                />
+              </Field>
+            </DialogContent>
+            <DialogActions className={styles.manualSupplierDialogActions}>
+              <Button
+                appearance="secondary"
+                disabled={manualSupplierSaving}
+                onClick={() => {
+                  if (manualSupplierSaving) return;
+                  setManualSupplierDialogOpen(false);
+                  setManualSupplierUrlDraft("");
+                }}
+              >
+                Close
+              </Button>
+              <Button
+                appearance="primary"
+                disabled={
+                  manualSupplierSaving ||
+                  !offerDialogItem ||
+                  !normalizeManualSupplierDetailUrl(manualSupplierUrlDraft)
+                }
+                onClick={saveManualSupplier}
+              >
+                {manualSupplierSaving ? "Saving..." : "Save"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
         open={offerDialogOpen}
         onOpenChange={(_, data) => {
           setOfferDialogOpen(data.open);
@@ -5609,6 +6267,9 @@ export default function DigiDealProductSuggestionsPage() {
             setPacksDraft("");
             setVariantDraftOverrides({});
             setSupplierImagePreviewEntry(null);
+            setManualSupplierDialogOpen(false);
+            setManualSupplierUrlDraft("");
+            setManualSupplierSaving(false);
           }
         }}
       >
@@ -5623,6 +6284,23 @@ export default function DigiDealProductSuggestionsPage() {
                   <div className={styles.saveRow}>
                     <Text weight="semibold">Supplier Offers</Text>
                     <div className={styles.saveActions}>
+                      <Button
+                        appearance="outline"
+                        size="small"
+                        className={styles.actionOutlineButton}
+                        disabled={
+                          !offerDialogItem ||
+                          offerDialogBusy ||
+                          Boolean(selectingOfferId) ||
+                          manualSupplierSaving
+                        }
+                        onClick={() => {
+                          setManualSupplierUrlDraft("");
+                          setManualSupplierDialogOpen(true);
+                        }}
+                      >
+                        Add supplier
+                      </Button>
                       <Button
                         appearance="outline"
                         size="small"
@@ -5661,14 +6339,25 @@ export default function DigiDealProductSuggestionsPage() {
                     ) : (
                       offerDialogOffers.map((offer) => {
                         const offerId = toText(offer.offerId);
+                        const detailUrlCanonical = normalizeManualSupplierDetailUrl(
+                          toText(offer.detailUrl)
+                        );
+                        const offerManualStatus = toText(
+                          (offer as unknown as Record<string, unknown>)._manual_status
+                        ).toLowerCase();
+                        const offerManualLoading =
+                          offerManualStatus === "loading" ||
+                          Boolean((offer as unknown as Record<string, unknown>)._manual_loading);
                         const selected = selectedOfferId === offerId;
-                        const isSelectingOffer = selectingOfferId === offerId;
+                        const isSelectingOffer =
+                          selectingOfferId === offerId || selectingOfferId === detailUrlCanonical;
                         const canSelectOffer =
-                          Boolean(offerId) &&
+                          Boolean(offerId || detailUrlCanonical) &&
                           !offerDialogBusy &&
                           !variantsLoading &&
                           !variantsSaving &&
-                          !Boolean(selectingOfferId);
+                          !Boolean(selectingOfferId) &&
+                          !offerManualLoading;
                         const offerImageUrlRaw = extractOfferImageUrl(offer);
                         const offerImageUrl =
                           buildImageProxyUrl(offerImageUrlRaw, 160, 160) || offerImageUrlRaw;
@@ -5690,6 +6379,7 @@ export default function DigiDealProductSuggestionsPage() {
                             key={`${offerId}-${toText(offer.detailUrl)}`}
                             className={mergeClasses(
                               styles.offerCard,
+                              offerManualLoading ? styles.offerCardLoading : undefined,
                               selected ? styles.offerCardSelected : undefined,
                               canSelectOffer ? styles.offerCardInteractive : styles.offerCardDisabled
                             )}
@@ -5707,7 +6397,7 @@ export default function DigiDealProductSuggestionsPage() {
                               }
                             }}
                           >
-                            {offerImageUrl ? (
+                            {!offerManualLoading && offerImageUrl ? (
                               <Tooltip
                                 relationship="label"
                                 withArrow
@@ -5740,12 +6430,12 @@ export default function DigiDealProductSuggestionsPage() {
                             )}
                             <div className={styles.offerMeta}>
                               <Text className={styles.offerTitleEn}>
-                                {titleEn || titleZh || "Untitled offer"}
+                                {offerManualLoading ? " " : titleEn || titleZh || "Untitled offer"}
                               </Text>
                               <Text className={styles.offerTitleZh}>
-                                {titleZh || "-"}
+                                {offerManualLoading ? " " : titleZh || "-"}
                               </Text>
-                              {isSelectingOffer ? (
+                              {offerManualLoading ? null : isSelectingOffer ? (
                                 <Text size={100} className={styles.variantMetaTight}>
                                   Selecting supplier...
                                 </Text>
@@ -5754,7 +6444,7 @@ export default function DigiDealProductSuggestionsPage() {
                                   Selected
                                 </Badge>
                               ) : null}
-                              {isAdminViewer && offerLink ? (
+                              {!offerManualLoading && isAdminViewer && offerLink ? (
                                 <a
                                   href={offerLink}
                                   target="_blank"
@@ -5767,6 +6457,11 @@ export default function DigiDealProductSuggestionsPage() {
                                 </a>
                               ) : null}
                             </div>
+                            {offerManualLoading ? (
+                              <div className={styles.offerCardLoadingOverlay}>
+                                <Spinner size="tiny" />
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })

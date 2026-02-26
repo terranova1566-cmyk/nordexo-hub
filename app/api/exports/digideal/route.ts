@@ -5,6 +5,8 @@ import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+export const runtime = "nodejs";
+
 const TEMPLATE_PATH = path.join(
   process.cwd(),
   "public",
@@ -27,6 +29,71 @@ const PRODUCT_META_KEYS = [
   "specs",
 ];
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
+const B2B_MARKETS = ["SE", "NO", "DK", "FI"] as const;
+const ALL_DATA_HEADERS = [
+  "SPU",
+  "SKU",
+  "Original SKU",
+  "Product ID",
+  "Variant ID",
+  "Name SE",
+  "Variant Name",
+  "Amount SE",
+  "Color SE",
+  "Size SE",
+  "Other SE",
+  "Combined Text",
+  "Long Title SE",
+  "Subtitle SE",
+  "Bullets (Partner)",
+  "Description (Partner)",
+  "Specs (Partner)",
+  "B2B Price",
+  "MOQ",
+  "Images ZIP",
+  "Supplier Link",
+  "Purchase Price CNY",
+  "Weight KG",
+  "Option1 ZH",
+  "Option2 ZH",
+  "Option3 ZH",
+  "Option4 ZH",
+  "Option Combined ZH",
+  "Short Title ZH",
+  "Option1",
+  "Option2",
+  "Option3",
+  "Option4",
+  "Variant Image",
+  "B2B SE",
+  "B2B NO",
+  "B2B DK",
+  "B2B FI",
+  "Description Short",
+  "Description Extended",
+  "Bullets Short",
+  "Bullets",
+  "Bullets Long",
+  "Specs Raw",
+  "Short Title",
+  "Long Title",
+  "Subtitle",
+  "Supplier Name",
+  "Supplier Location",
+  "Shipping Name EN",
+  "Shipping Name ZH",
+  "Shipping Class",
+] as const;
+
+type B2BMarket = (typeof B2B_MARKETS)[number];
+type ExportDataset = "partner" | "all";
+type OptionBucket = {
+  amount: string;
+  color: string;
+  size: string;
+  other: string;
+};
+type ExportCell = string | number;
 
 const normalizeHtml = (value: string) =>
   value
@@ -56,13 +123,6 @@ const formatAmount = (value?: string | null) => {
   return trimmed;
 };
 
-type OptionBucket = {
-  amount: string;
-  color: string;
-  size: string;
-  other: string;
-};
-
 const sanitizeFilePart = (value: string) => {
   const sanitized = value
     .trim()
@@ -77,6 +137,56 @@ const formatTimestamp = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
     now.getDate()
   )}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+};
+
+const normalizeDataset = (value: unknown): ExportDataset => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "all" || normalized === "full") return "all";
+  return "partner";
+};
+
+const buildPartnerWorkbook = async (rows: ExportCell[][]) => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(TEMPLATE_PATH);
+  const sheet = workbook.worksheets[0];
+  const templateRow = sheet.getRow(2);
+
+  if (rows.length === 0) {
+    if (sheet.rowCount > 1) {
+      sheet.spliceRows(2, sheet.rowCount - 1);
+    }
+    return workbook.xlsx.writeBuffer();
+  }
+
+  templateRow.values = rows[0];
+  for (let i = 1; i < rows.length; i += 1) {
+    const inserted = sheet.insertRow(2 + i, rows[i]);
+    inserted.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const styleCell = templateRow.getCell(colNumber);
+      cell.style = { ...styleCell.style };
+      cell.numFmt = styleCell.numFmt;
+    });
+  }
+
+  const expectedRows = 1 + rows.length;
+  if (sheet.rowCount > expectedRows) {
+    sheet.spliceRows(expectedRows + 1, sheet.rowCount - expectedRows);
+  }
+
+  return workbook.xlsx.writeBuffer();
+};
+
+const buildAllDataWorkbook = async (rows: ExportCell[][]) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("All Data");
+  sheet.addRow([...ALL_DATA_HEADERS]);
+  rows.forEach((row) => sheet.addRow(row));
+  sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  sheet.columns = ALL_DATA_HEADERS.map(() => ({ width: 20 }));
+  return workbook.xlsx.writeBuffer();
 };
 
 export async function POST(request: Request) {
@@ -104,6 +214,7 @@ export async function POST(request: Request) {
   let requestedName = "";
   let listId: string | null = null;
   let requestedMarket = "SE";
+  let dataset: ExportDataset = "partner";
   try {
     const body = await request.json();
     if (body?.name) {
@@ -115,13 +226,17 @@ export async function POST(request: Request) {
     if (body?.market) {
       requestedMarket = String(body.market).trim().toUpperCase() || "SE";
     }
+    if (body?.dataset !== undefined) {
+      dataset = normalizeDataset(body.dataset);
+    }
   } catch {
     requestedName = "";
     listId = null;
+    dataset = "partner";
   }
 
-  const allowedMarkets = new Set(["SE", "NO", "DK", "FI"]);
-  if (!allowedMarkets.has(requestedMarket)) {
+  const allowedMarkets = new Set(B2B_MARKETS);
+  if (!allowedMarkets.has(requestedMarket as B2BMarket)) {
     return NextResponse.json({ error: "Unsupported market." }, { status: 400 });
   }
   if (!activeMarkets.includes(requestedMarket)) {
@@ -130,6 +245,7 @@ export async function POST(request: Request) {
       { status: 403 }
     );
   }
+  const requestedMarketTyped = requestedMarket as B2BMarket;
 
   const emailPrefix = user.email?.split("@")[0] ?? "export";
   const defaultName = `${emailPrefix} products ${new Date()
@@ -185,18 +301,17 @@ export async function POST(request: Request) {
 
   productIds = Array.from(new Set(productIds));
   if (productIds.length === 0) {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(TEMPLATE_PATH);
-    const sheet = workbook.worksheets[0];
-    if (sheet.rowCount > 1) {
-      sheet.spliceRows(2, sheet.rowCount - 1);
-    }
-    const buffer = await workbook.xlsx.writeBuffer();
+    const buffer =
+      dataset === "all"
+        ? await buildAllDataWorkbook([])
+        : await buildPartnerWorkbook([]);
+    const emptyFileName =
+      dataset === "all" ? "digideal_export_all.xlsx" : "digideal_export.xlsx";
     return new NextResponse(buffer, {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": 'attachment; filename="digideal_export.xlsx"',
+        "Content-Disposition": `attachment; filename="${emptyFileName}"`,
       },
     });
   }
@@ -204,7 +319,7 @@ export async function POST(request: Request) {
   let productQuery = supabase
     .from("catalog_products")
     .select(
-      "id, spu, title, subtitle, description_html, option1_name, option2_name, option3_name, nordic_partner_enabled"
+      "id, spu, title, subtitle, description_html, supplier_1688_url, option1_name, option2_name, option3_name, option4_name, nordic_partner_enabled"
     )
     .in("id", productIds);
 
@@ -221,7 +336,7 @@ export async function POST(request: Request) {
   const { data: variants, error: variantError } = await supabase
     .from("catalog_variants")
     .select(
-      "id, product_id, sku, option1, option2, option3, variation_color_se, variation_size_se, variation_other_se, variation_amount_se, b2b_dropship_price_se, b2b_dropship_price_no, b2b_dropship_price_dk, b2b_dropship_price_fi"
+      "id, product_id, sku, option1, option2, option3, option4, option_combined_zh, option1_zh, option2_zh, option3_zh, option4_zh, short_title_zh, variation_color_se, variation_size_se, variation_other_se, variation_amount_se, b2b_dropship_price_se, b2b_dropship_price_no, b2b_dropship_price_dk, b2b_dropship_price_fi, purchase_price_cny, weight, variant_image_url, supplier_name, supplier_location, shipping_name_en, shipping_name_zh, shipping_class"
     )
     .in("product_id", productIds)
     .order("sku", { ascending: true });
@@ -231,17 +346,14 @@ export async function POST(request: Request) {
   }
 
   const variantIds = variants?.map((variant) => variant.id).filter(Boolean) ?? [];
-  const variantPriceRows = new Map<
-    string,
-    Map<string, Map<string, number | null>>
-  >();
+  const variantPriceRows = new Map<string, Map<string, Map<string, number | null>>>();
 
   if (variantIds.length > 0) {
     const { data: priceRows } = await supabase
       .from("catalog_variant_prices")
-      .select("catalog_variant_id, market, currency, price, price_type")
+      .select("catalog_variant_id, market, price, price_type")
       .in("catalog_variant_id", variantIds)
-      .eq("market", requestedMarket)
+      .in("market", [...B2B_MARKETS])
       .in("price_type", ["b2b_fixed", "b2b_calc", "b2b_dropship"])
       .is("deleted_at", null);
 
@@ -252,7 +364,7 @@ export async function POST(request: Request) {
       const entry = variantPriceRows.get(variantId) ?? new Map();
       const typeEntry = entry.get(type) ?? new Map<string, number | null>();
       const market = row.market?.toUpperCase();
-      if (market) {
+      if (market && allowedMarkets.has(market as B2BMarket)) {
         let priceValue: number | null = null;
         if (row.price !== null && row.price !== undefined) {
           const numeric = Number(row.price);
@@ -269,11 +381,12 @@ export async function POST(request: Request) {
 
   const resolveMarketPrice = (
     variantId: string,
+    market: B2BMarket,
     fallback: number | null | undefined
   ) => {
     const entry = variantPriceRows.get(variantId);
     if (!entry) return fallback ?? null;
-    const readPrice = (type: string) => entry.get(type)?.get(requestedMarket);
+    const readPrice = (type: string) => entry.get(type)?.get(market);
     const fixed = readPrice("b2b_fixed") ?? readPrice("b2b_dropship");
     if (fixed !== undefined && fixed !== null) return fixed;
     const calc = readPrice("b2b_calc");
@@ -351,48 +464,57 @@ export async function POST(request: Request) {
     variantsByProduct.set(variant.product_id, list);
   });
 
-  const rows: Array<Array<string | number>> = [];
+  const partnerRows: ExportCell[][] = [];
+  const allRows: ExportCell[][] = [];
 
   (products ?? []).forEach((product) => {
     const productVariants = variantsByProduct.get(product.id) ?? [];
-    const descriptionShort = pickMetaValue(product.id, "description_short");
-    const descriptionExtended = pickMetaValue(product.id, "description_extended");
-    const shortTitle = pickMetaValue(product.id, "short_title");
-    const longTitle = pickMetaValue(product.id, "long_title");
-    const subtitle =
+    const descriptionShortRaw = pickMetaValue(product.id, "description_short") ?? "";
+    const descriptionExtendedRaw =
+      pickMetaValue(product.id, "description_extended") ?? "";
+    const shortTitleRaw = pickMetaValue(product.id, "short_title") ?? "";
+    const longTitleRaw = pickMetaValue(product.id, "long_title") ?? "";
+    const subtitleRaw =
       pickMetaValue(product.id, "subtitle") ??
       pickMetaValue(product.id, "subtitle_sv") ??
       product.subtitle ??
       "";
-    const bullets =
-      pickMetaValue(product.id, "bullets") ??
-      pickMetaValue(product.id, "bullets_long") ??
-      pickMetaValue(product.id, "bullets_short") ??
-      "";
-    const specs = pickMetaValue(product.id, "specs") ?? "";
+    const bulletsShortRaw = pickMetaValue(product.id, "bullets_short") ?? "";
+    const bulletsRaw = pickMetaValue(product.id, "bullets") ?? "";
+    const bulletsLongRaw = pickMetaValue(product.id, "bullets_long") ?? "";
+    const specsRaw = pickMetaValue(product.id, "specs") ?? "";
+    const bulletsPartnerRaw = bulletsRaw || bulletsLongRaw || bulletsShortRaw;
 
     const longDescription = normalizeHtml(product.description_html ?? "");
-    const mainDescription = longDescription || descriptionShort || "";
+    const mainDescription = longDescription || descriptionShortRaw || "";
     const descriptionCell =
-      mainDescription && descriptionExtended
-        ? `${mainDescription}\n\n${descriptionExtended}`
-        : mainDescription || descriptionExtended || "";
+      mainDescription && descriptionExtendedRaw
+        ? `${mainDescription}\n\n${descriptionExtendedRaw}`
+        : mainDescription || descriptionExtendedRaw || "";
 
-    const bulletList = formatBulletList(splitList(bullets));
-    const specsList = formatBulletList(splitList(specs));
+    const bulletList = formatBulletList(splitList(bulletsPartnerRaw));
+    const specsList = formatBulletList(splitList(specsRaw));
 
-    const nameSe = shortTitle ?? product.title ?? product.spu;
-    const longTitleSe = longTitle ?? product.title ?? product.spu;
+    const nameSe = shortTitleRaw || product.title || product.spu || "";
+    const longTitleSe = longTitleRaw || product.title || product.spu || "";
 
     const variantsToExport =
       productVariants.length > 0
         ? productVariants
         : [
             {
+              id: "",
               sku: product.spu,
               option1: null,
               option2: null,
               option3: null,
+              option4: null,
+              option_combined_zh: null,
+              option1_zh: null,
+              option2_zh: null,
+              option3_zh: null,
+              option4_zh: null,
+              short_title_zh: null,
               variation_color_se: null,
               variation_size_se: null,
               variation_other_se: null,
@@ -401,7 +523,14 @@ export async function POST(request: Request) {
               b2b_dropship_price_no: null,
               b2b_dropship_price_dk: null,
               b2b_dropship_price_fi: null,
-              id: "",
+              purchase_price_cny: null,
+              weight: null,
+              variant_image_url: null,
+              supplier_name: null,
+              supplier_location: null,
+              shipping_name_en: null,
+              shipping_name_zh: null,
+              shipping_class: null,
             },
           ];
 
@@ -421,21 +550,36 @@ export async function POST(request: Request) {
       ].filter(Boolean);
       const variantName = variantParts.join("; ");
       const combinedText = variantName ? `${nameSe} - ${variantName}` : nameSe;
-      const fallbackPrice =
-        requestedMarket === "SE"
-          ? variant.b2b_dropship_price_se
-          : requestedMarket === "NO"
-            ? variant.b2b_dropship_price_no
-            : requestedMarket === "DK"
-              ? variant.b2b_dropship_price_dk
-              : variant.b2b_dropship_price_fi;
+      const fallbackByMarket = {
+        SE: variant.b2b_dropship_price_se,
+        NO: variant.b2b_dropship_price_no,
+        DK: variant.b2b_dropship_price_dk,
+        FI: variant.b2b_dropship_price_fi,
+      };
       const b2bPrice = variant.id
-        ? resolveMarketPrice(variant.id, fallbackPrice)
-        : fallbackPrice;
+        ? resolveMarketPrice(
+            variant.id,
+            requestedMarketTyped,
+            fallbackByMarket[requestedMarketTyped]
+          )
+        : fallbackByMarket[requestedMarketTyped];
+      const b2bSe = variant.id
+        ? resolveMarketPrice(variant.id, "SE", fallbackByMarket.SE)
+        : fallbackByMarket.SE;
+      const b2bNo = variant.id
+        ? resolveMarketPrice(variant.id, "NO", fallbackByMarket.NO)
+        : fallbackByMarket.NO;
+      const b2bDk = variant.id
+        ? resolveMarketPrice(variant.id, "DK", fallbackByMarket.DK)
+        : fallbackByMarket.DK;
+      const b2bFi = variant.id
+        ? resolveMarketPrice(variant.id, "FI", fallbackByMarket.FI)
+        : fallbackByMarket.FI;
+      const currentSku = variant.sku ?? product.spu ?? "";
 
-      rows.push([
-        product.spu,
-        variant.sku ?? product.spu,
+      partnerRows.push([
+        product.spu ?? "",
+        currentSku,
         nameSe,
         variantName,
         amountFormatted,
@@ -444,7 +588,7 @@ export async function POST(request: Request) {
         bucket.other,
         combinedText,
         longTitleSe,
-        subtitle,
+        subtitleRaw,
         bulletList,
         descriptionCell,
         specsList,
@@ -452,39 +596,73 @@ export async function POST(request: Request) {
         1000,
         `${IMAGE_ZIP_BASE}/${product.spu}.zip`,
       ]);
+
+      allRows.push([
+        product.spu ?? "",
+        currentSku,
+        currentSku,
+        product.id,
+        variant.id ?? "",
+        nameSe,
+        variantName,
+        amountFormatted,
+        bucket.color,
+        bucket.size,
+        bucket.other,
+        combinedText,
+        longTitleSe,
+        subtitleRaw,
+        bulletList,
+        descriptionCell,
+        specsList,
+        b2bPrice ?? "",
+        1000,
+        `${IMAGE_ZIP_BASE}/${product.spu}.zip`,
+        product.supplier_1688_url ?? "",
+        variant.purchase_price_cny ?? "",
+        variant.weight ?? "",
+        variant.option1_zh ?? "",
+        variant.option2_zh ?? "",
+        variant.option3_zh ?? "",
+        variant.option4_zh ?? "",
+        variant.option_combined_zh ?? "",
+        variant.short_title_zh ?? "",
+        variant.option1 ?? "",
+        variant.option2 ?? "",
+        variant.option3 ?? "",
+        variant.option4 ?? "",
+        variant.variant_image_url ?? "",
+        b2bSe ?? "",
+        b2bNo ?? "",
+        b2bDk ?? "",
+        b2bFi ?? "",
+        descriptionShortRaw,
+        descriptionExtendedRaw,
+        bulletsShortRaw,
+        bulletsRaw,
+        bulletsLongRaw,
+        specsRaw,
+        shortTitleRaw,
+        longTitleRaw,
+        subtitleRaw,
+        variant.supplier_name ?? "",
+        variant.supplier_location ?? "",
+        variant.shipping_name_en ?? "",
+        variant.shipping_name_zh ?? "",
+        variant.shipping_class ?? "",
+      ]);
     });
   });
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(TEMPLATE_PATH);
-  const sheet = workbook.worksheets[0];
-  const templateRow = sheet.getRow(2);
+  const rowsToWrite = dataset === "all" ? allRows : partnerRows;
+  const buffer =
+    dataset === "all"
+      ? await buildAllDataWorkbook(rowsToWrite)
+      : await buildPartnerWorkbook(rowsToWrite);
 
-  if (rows.length === 0) {
-    if (sheet.rowCount > 1) {
-      sheet.spliceRows(2, sheet.rowCount - 1);
-    }
-  } else {
-    templateRow.values = rows[0];
-    for (let i = 1; i < rows.length; i += 1) {
-      const inserted = sheet.insertRow(2 + i, rows[i]);
-      inserted.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        const styleCell = templateRow.getCell(colNumber);
-        cell.style = { ...styleCell.style };
-        cell.numFmt = styleCell.numFmt;
-      });
-    }
-
-    const expectedRows = 1 + rows.length;
-    if (sheet.rowCount > expectedRows) {
-      sheet.spliceRows(expectedRows + 1, sheet.rowCount - expectedRows);
-    }
-  }
-
-  const buffer = await workbook.xlsx.writeBuffer();
   await fs.mkdir(EXPORT_DIR, { recursive: true });
   const timestamp = formatTimestamp();
-  const filename = `digideal_${sanitizeFilePart(
+  const filename = `digideal_${dataset}_${sanitizeFilePart(
     exportName
   )}_${timestamp}_${randomUUID().slice(0, 8)}.xlsx`;
   const storedPath = path.join("digideal", filename);
@@ -497,13 +675,14 @@ export async function POST(request: Request) {
       status: "generated",
       file_path: storedPath,
       meta: {
-        template: "digideal",
+        template: dataset === "all" ? "digideal_all" : "digideal",
+        dataset,
         export_name: exportName,
-        market: requestedMarket,
+        market: requestedMarketTyped,
         product_count: productIds.length,
-        row_count: rows.length,
+        row_count: rowsToWrite.length,
         spu_count: productIds.length,
-        sku_count: rows.length,
+        sku_count: rowsToWrite.length,
         list_id: listId,
         list_name: listName,
       },
@@ -518,6 +697,7 @@ export async function POST(request: Request) {
     }));
     await supabase.from("partner_export_items").insert(exportItems);
   }
+
   return new NextResponse(buffer, {
     headers: {
       "Content-Type":

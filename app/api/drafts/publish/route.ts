@@ -1544,6 +1544,15 @@ const applyExplicitSkuFieldClears = async (
     .map((row) => ({
       spu: normalizeText(row.spu),
       sku: normalizeText(row.sku),
+      clear_option1: !normalizeText(row.option1),
+      clear_option2: !normalizeText(row.option2),
+      clear_option3: !normalizeText(row.option3),
+      clear_option4: !normalizeText(row.option4),
+      clear_option_combined_zh: !normalizeText(row.option_combined_zh),
+      clear_option1_zh: !normalizeText(row.option1_zh),
+      clear_option2_zh: !normalizeText(row.option2_zh),
+      clear_option3_zh: !normalizeText(row.option3_zh),
+      clear_option4_zh: !normalizeText(row.option4_zh),
       clear_weight: !normalizeText(row.weight),
       clear_price: !normalizeText(row.price),
       clear_compare_at_price: !normalizeText(row.compare_at_price),
@@ -1573,6 +1582,15 @@ const applyExplicitSkuFieldClears = async (
     {
       spu: string;
       sku: string;
+      clear_option1: boolean;
+      clear_option2: boolean;
+      clear_option3: boolean;
+      clear_option4: boolean;
+      clear_option_combined_zh: boolean;
+      clear_option1_zh: boolean;
+      clear_option2_zh: boolean;
+      clear_option3_zh: boolean;
+      clear_option4_zh: boolean;
       clear_weight: boolean;
       clear_price: boolean;
       clear_compare_at_price: boolean;
@@ -1591,6 +1609,16 @@ const applyExplicitSkuFieldClears = async (
       intentBySpuSku.set(key, row);
       continue;
     }
+    existing.clear_option1 = existing.clear_option1 || row.clear_option1;
+    existing.clear_option2 = existing.clear_option2 || row.clear_option2;
+    existing.clear_option3 = existing.clear_option3 || row.clear_option3;
+    existing.clear_option4 = existing.clear_option4 || row.clear_option4;
+    existing.clear_option_combined_zh =
+      existing.clear_option_combined_zh || row.clear_option_combined_zh;
+    existing.clear_option1_zh = existing.clear_option1_zh || row.clear_option1_zh;
+    existing.clear_option2_zh = existing.clear_option2_zh || row.clear_option2_zh;
+    existing.clear_option3_zh = existing.clear_option3_zh || row.clear_option3_zh;
+    existing.clear_option4_zh = existing.clear_option4_zh || row.clear_option4_zh;
     existing.clear_weight = existing.clear_weight || row.clear_weight;
     existing.clear_price = existing.clear_price || row.clear_price;
     existing.clear_compare_at_price =
@@ -1610,6 +1638,15 @@ const applyExplicitSkuFieldClears = async (
 
   const clearIntents = Array.from(intentBySpuSku.values()).filter(
     (row) =>
+      row.clear_option1 ||
+      row.clear_option2 ||
+      row.clear_option3 ||
+      row.clear_option4 ||
+      row.clear_option_combined_zh ||
+      row.clear_option1_zh ||
+      row.clear_option2_zh ||
+      row.clear_option3_zh ||
+      row.clear_option4_zh ||
       row.clear_weight ||
       row.clear_price ||
       row.clear_compare_at_price ||
@@ -1694,6 +1731,15 @@ const applyExplicitSkuFieldClears = async (
     if (!variantId) continue;
 
     const catalogPatch: Record<string, unknown> = {};
+    if (intent.clear_option1) catalogPatch.option1 = null;
+    if (intent.clear_option2) catalogPatch.option2 = null;
+    if (intent.clear_option3) catalogPatch.option3 = null;
+    if (intent.clear_option4) catalogPatch.option4 = null;
+    if (intent.clear_option_combined_zh) catalogPatch.option_combined_zh = null;
+    if (intent.clear_option1_zh) catalogPatch.option1_zh = null;
+    if (intent.clear_option2_zh) catalogPatch.option2_zh = null;
+    if (intent.clear_option3_zh) catalogPatch.option3_zh = null;
+    if (intent.clear_option4_zh) catalogPatch.option4_zh = null;
     if (intent.clear_weight) catalogPatch.weight = null;
     if (intent.clear_price) catalogPatch.price = null;
     if (intent.clear_compare_at_price) catalogPatch.compare_at_price = null;
@@ -1934,6 +1980,20 @@ export async function POST(request: Request) {
     const list = variantsBySpu.get(row.draft_spu) ?? [];
     list.push(row);
     variantsBySpu.set(row.draft_spu, list);
+  }
+  const noVariantSpus = products
+    .map((row) => normalizeText(row.draft_spu))
+    .filter((spu): spu is string => typeof spu === "string" && spu.length > 0)
+    .filter((spu) => !variantsBySpu.has(spu));
+  if (noVariantSpus.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Publish blocked: selected products are missing variant SKU rows. Generate SKUs before publishing.",
+        missing_variant_spus: noVariantSpus.slice(0, 200),
+      },
+      { status: 400 }
+    );
   }
   const fallbackVariants: DraftVariantRow[] = [];
   for (const product of products) {
@@ -2382,6 +2442,26 @@ export async function POST(request: Request) {
         row.draft_price ||
         (rawRow ? getRawText(rawRow, "price") : "")
     );
+    const hasRawVariationColor =
+      !!rawRow && Object.prototype.hasOwnProperty.call(rawRow, "variation_color_se");
+    const hasRawVariationSize =
+      !!rawRow && Object.prototype.hasOwnProperty.call(rawRow, "variation_size_se");
+    const hasRawVariationOther =
+      !!rawRow && Object.prototype.hasOwnProperty.call(rawRow, "variation_other_se");
+    const hasRawVariationAmount =
+      !!rawRow && Object.prototype.hasOwnProperty.call(rawRow, "variation_amount_se");
+    const variationColorSe = hasRawVariationColor
+      ? getRawText(rawRow, "variation_color_se")
+      : normalizeText(row.draft_option1);
+    const variationSizeSe = hasRawVariationSize
+      ? getRawText(rawRow, "variation_size_se")
+      : normalizeText(row.draft_option2);
+    const variationOtherSe = hasRawVariationOther
+      ? getRawText(rawRow, "variation_other_se")
+      : normalizeText(row.draft_option3);
+    const variationAmountSe = hasRawVariationAmount
+      ? getRawText(rawRow, "variation_amount_se")
+      : normalizeText(row.draft_option4);
     const sku = normalizeText(row.draft_sku);
     const resolvedVariantImage = resolveVariantImageForPublish({
       spu: row.draft_spu,
@@ -2413,10 +2493,10 @@ export async function POST(request: Request) {
       option2_zh: normalizeText(row.draft_option2_zh),
       option3_zh: normalizeText(row.draft_option3_zh),
       option4_zh: normalizeText(row.draft_option4_zh),
-      variation_color_se: getRawText(rawRow, "variation_color_se"),
-      variation_size_se: getRawText(rawRow, "variation_size_se"),
-      variation_other_se: getRawText(rawRow, "variation_other_se"),
-      variation_amount_se: getRawText(rawRow, "variation_amount_se"),
+      variation_color_se: variationColorSe,
+      variation_size_se: variationSizeSe,
+      variation_other_se: variationOtherSe,
+      variation_amount_se: variationAmountSe,
       price: normalizeText(row.draft_price),
       compare_at_price: normalizeText(row.draft_compare_at_price),
       cost: normalizeText(row.draft_cost),

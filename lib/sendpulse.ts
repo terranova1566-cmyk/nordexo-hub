@@ -202,7 +202,8 @@ export async function sendRenderedEmail(payload: SendRenderedEmailPayload) {
 }
 
 export async function appendSendLog(entry: Record<string, unknown>) {
-  const logDir = "/srv/partner-product-explorer/exports";
+  const logDir =
+    process.env.SENDPULSE_LOG_DIR?.trim() || "/srv/nordexo-hub/exports";
   const filePath = path.join(logDir, "sendpulse-email-log.jsonl");
   try {
     await fs.mkdir(logDir, { recursive: true });

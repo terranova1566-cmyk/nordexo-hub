@@ -136,55 +136,174 @@ const enrichVariantWeightsFromReadableText = (payload) => {
   const combos = Array.isArray(variations?.combos) ? variations.combos : null;
   if (!combos || combos.length === 0) return payload;
 
-  const table = parseVariantWeightTableFromReadableText(extracted.readableText);
-  const fallbackFromTable =
-    Array.isArray(table.weights) && table.weights.length > 0
-      ? Math.max(
-          ...table.weights.filter(
-            (entry) => Number.isFinite(Number(entry)) && Number(entry) > 0
-          )
-        )
-      : null;
-  if (
-    (!table.weightByName || table.weightByName.size === 0) &&
-    (!fallbackFromTable || !Number.isFinite(Number(fallbackFromTable)))
-  ) {
+  const comboLabels = combos
+    .flatMap((combo) => {
+      const t1 = firstString(combo?.t1, combo?.t1_zh, combo?.t1_en);
+      const t2 = firstString(combo?.t2, combo?.t2_zh, combo?.t2_en);
+      const t3 = firstString(combo?.t3, combo?.t3_zh, combo?.t3_en);
+      return [
+        firstString(combo?.name, combo?.title),
+        t1,
+        t2,
+        t3,
+        t1 && t2 ? `${t1} / ${t2}` : "",
+        t1 && t2 && t3 ? `${t1} / ${t2} / ${t3}` : "",
+      ];
+    })
+    .filter(Boolean);
+  const table = parseVariantWeightTableFromReadableText(extracted.readableText, {
+    variantLabels: comboLabels,
+    maxScanLines: 260,
+  });
+  const weightByName = table?.weightByName instanceof Map ? table.weightByName : new Map();
+  const weightByCombo = table?.weightByCombo instanceof Map ? table.weightByCombo : new Map();
+  const rawRows = Array.isArray(table?.rows) ? table.rows : [];
+  const dedupRows = [];
+  const seenRowKeys = new Set();
+  for (const row of rawRows) {
+    const name = asText(row?.name);
+    const comboName = asText(row?.combo_name || row?.name);
+    const gramsRaw = Number(row?.weight_grams);
+    if (!comboName || !Number.isFinite(gramsRaw) || gramsRaw <= 0) continue;
+    const strict = normalizeVariantNameStrict(comboName);
+    const loose = normalizeVariantNameLoose(comboName);
+    const key = strict || loose;
+    if (key && seenRowKeys.has(key)) continue;
+    if (key) seenRowKeys.add(key);
+    dedupRows.push({
+      name,
+      combo_name: comboName,
+      weight_grams: Math.round(gramsRaw),
+    });
+  }
+  if (weightByName.size === 0 && weightByCombo.size === 0 && dedupRows.length === 0) {
+    return payload;
+  }
+  if (combos.length >= 6 && dedupRows.length < 3) {
     return payload;
   }
 
-  const nextCombos = combos.map((combo) => {
-    if (!combo || typeof combo !== "object") return combo;
-    const row = { ...combo };
-    const candidates = [
-      row.t1,
-      row.t1_zh,
-      row.t1_en,
-      row.t2,
-      row.t2_zh,
-      row.t2_en,
-      row.t3,
-      row.t3_zh,
-      row.t3_en,
-      row.name,
+  const collectComboLabels = (combo) => {
+    const t1 = firstString(combo?.t1, combo?.t1_zh, combo?.t1_en);
+    const t2 = firstString(combo?.t2, combo?.t2_zh, combo?.t2_en);
+    const t3 = firstString(combo?.t3, combo?.t3_zh, combo?.t3_en);
+    const labels = [
+      firstString(combo?.name, combo?.title),
+      t1,
+      t2,
+      t3,
+      t1 && t2 ? `${t1} / ${t2}` : "",
+      t1 && t2 && t3 ? `${t1} / ${t2} / ${t3}` : "",
     ]
       .map((v) => asText(v))
       .filter(Boolean);
+    return Array.from(new Set(labels));
+  };
 
-    const strictKeys = candidates.map((c) => normalizeVariantNameStrict(c)).filter(Boolean);
-    const looseKeys = candidates.map((c) => normalizeVariantNameLoose(c)).filter(Boolean);
-    const grams =
-      strictKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
-      looseKeys.map((k) => table.weightByName.get(k)).find((v) => Number.isFinite(Number(v)) && Number(v) > 0) ??
-      (Number.isFinite(Number(fallbackFromTable)) && Number(fallbackFromTable) > 0
-        ? Number(fallbackFromTable)
-        : null) ??
-      null;
+  const hasSecondary = (combo) =>
+    Boolean(
+      firstString(combo?.t2, combo?.t2_zh, combo?.t2_en) ||
+        firstString(combo?.t3, combo?.t3_zh, combo?.t3_en)
+    );
+
+  const lookupWeight = (labels, map) => {
+    if (!(map instanceof Map) || map.size === 0) return null;
+    const strictKeys = labels.map((label) => normalizeVariantNameStrict(label)).filter(Boolean);
+    const looseKeys = labels.map((label) => normalizeVariantNameLoose(label)).filter(Boolean);
+    const byStrict = strictKeys
+      .map((k) => map.get(k))
+      .find((v) => Number.isFinite(Number(v)) && Number(v) > 0);
+    if (Number.isFinite(Number(byStrict)) && Number(byStrict) > 0) return Math.round(Number(byStrict));
+    const byLoose = looseKeys
+      .map((k) => map.get(k))
+      .find((v) => Number.isFinite(Number(v)) && Number(v) > 0);
+    if (Number.isFinite(Number(byLoose)) && Number(byLoose) > 0) return Math.round(Number(byLoose));
+    return null;
+  };
+
+  const resolveNameWeight = (combo) => {
+    const labels = collectComboLabels(combo);
+    const byCombo = lookupWeight(labels, weightByCombo);
+    if (byCombo) return byCombo;
+
+    // If we have secondary dimensions and a combo-aware table map, avoid collapsing by first label.
+    if (weightByCombo.size > 0 && hasSecondary(combo)) return null;
+
+    const byName = lookupWeight(labels, weightByName);
+    if (byName) return byName;
+    return null;
+  };
+
+  const exactMatchCount = combos.reduce(
+    (count, combo) => count + (resolveNameWeight(combo) ? 1 : 0),
+    0
+  );
+  const dedupWeights = Array.from(
+    new Set(
+      dedupRows
+        .map((row) => Number(row.weight_grams))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+        .map((entry) => Math.round(entry))
+    )
+  );
+  const useIndexFallback =
+    exactMatchCount === 0 &&
+    combos.length >= 2 &&
+    dedupRows.length === combos.length &&
+    dedupWeights.length >= 2;
+
+  const parseExistingWeight = (combo) => {
+    const direct = Number(combo?.weight_grams);
+    if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
+    const raw = firstString(combo?.weightRaw, combo?.weight_raw, combo?.weight);
+    if (!raw) return null;
+    const normalized = raw.replace(/,/g, ".");
+    const match = normalized.match(/-?\d+(?:\.\d+)?/);
+    if (!match?.[0]) return null;
+    const num = Number(match[0]);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    if (/kg|公斤|千克/i.test(normalized)) return Math.round(num * 1000);
+    return Math.round(num);
+  };
+
+  const nextCombos = combos.map((combo, index) => {
+    if (!combo || typeof combo !== "object") return combo;
+    const row = { ...combo };
+    const existingWeight = parseExistingWeight(row);
+    if (existingWeight) {
+      row.weight_grams = existingWeight;
+      if (!asText(row.weightRaw)) row.weightRaw = `${existingWeight}g`;
+      if (!asText(row.weight_raw)) row.weight_raw = `${existingWeight}g`;
+      return row;
+    }
+    const byName = resolveNameWeight(row);
+    const byIndex =
+      useIndexFallback &&
+      dedupRows[index] &&
+      Number.isFinite(Number(dedupRows[index].weight_grams)) &&
+      Number(dedupRows[index].weight_grams) > 0
+        ? Math.round(Number(dedupRows[index].weight_grams))
+        : null;
+    const grams = byName ?? byIndex ?? null;
     if (!grams) return row;
 
     row.weight_grams = Number(grams);
     row.weightRaw = `${Number(grams)}g`;
+    row.weight_raw = `${Number(grams)}g`;
     return row;
   });
+
+  const autofillCount = nextCombos.reduce((count, combo, index) => {
+    const before = combos[index];
+    const beforeWeight =
+      Number.isFinite(Number(before?.weight_grams)) && Number(before?.weight_grams) > 0;
+    const afterWeight =
+      Number.isFinite(Number(combo?.weight_grams)) && Number(combo?.weight_grams) > 0;
+    return count + (!beforeWeight && afterWeight ? 1 : 0);
+  }, 0);
+  if (combos.length >= 6 && autofillCount > 0 && autofillCount / combos.length < 0.5) {
+    return payload;
+  }
 
   return {
     ...payload,
@@ -1300,7 +1419,6 @@ const loadPartnerSuggestionSeed = async (productId) => {
     );
     const imageUrls = uniqueUrls([
       ...(Array.isArray(external?.galleryImageUrls) ? external.galleryImageUrls : []),
-      ...(Array.isArray(external?.rawGalleryImageUrls) ? external.rawGalleryImageUrls : []),
       external?.mainImageUrl,
       external?.rawMainImageUrl,
       ...(Array.isArray(parsed?.galleryImageUrls) ? parsed.galleryImageUrls : []),

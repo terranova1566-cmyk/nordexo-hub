@@ -3,6 +3,11 @@ import { requireAdmin } from "@/lib/auth-admin";
 import { renderTemplate, stripHtml } from "@/lib/email-templates";
 import { sanitizeEmailHtml } from "@/lib/email-html";
 import {
+  appendSignatureToEmailHtml,
+  appendSignatureToEmailText,
+  listEmailSenderSignatures,
+} from "@/lib/email-sender-signatures";
+import {
   listEmailMacroDefinitions,
   resolveTemplateMacros,
 } from "@/lib/email-macro-registry";
@@ -193,11 +198,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 
+  let senderSignatureText = "";
+  try {
+    if (resolvedSenderEmail) {
+      const { signatures } = await listEmailSenderSignatures(auth.supabase, {
+        emails: [resolvedSenderEmail],
+      });
+      senderSignatureText = signatures[0]?.signatureText ?? "";
+    }
+  } catch {
+    senderSignatureText = "";
+  }
+
+  const renderedBodyWithSignature = sanitizeEmailHtml(
+    appendSignatureToEmailHtml(renderedBody, senderSignatureText)
+  );
+  const renderedTextWithSignature = appendSignatureToEmailText(
+    stripHtml(renderedBody),
+    senderSignatureText
+  );
+
   try {
     responsePayload = await sendEmailViaSmtp({
       subject: renderedSubject,
-      html: renderedBody,
-      text: stripHtml(renderedBody),
+      html: renderedBodyWithSignature,
+      text: renderedTextWithSignature,
       to: recipients,
       fromEmail: resolvedSenderEmail || undefined,
       fromName: resolvedSenderName || undefined,
@@ -217,7 +242,7 @@ export async function POST(request: Request) {
     to_emails: recipients.map((recipient) => recipient.email),
     variables,
     rendered_subject: renderedSubject,
-    rendered_body: renderedBody,
+    rendered_body: renderedBodyWithSignature,
     status,
     response: responsePayload,
     error: errorMessage,

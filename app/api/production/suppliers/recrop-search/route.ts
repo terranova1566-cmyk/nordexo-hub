@@ -14,16 +14,19 @@ import {
   getPublicBaseUrlFromRequest,
   run1688ImageSearch,
 } from "@/shared/1688/image-search-runner";
+import { getDealsProviderConfig, resolveDealsProvider } from "@/lib/deals/provider";
 
 export const runtime = "nodejs";
 const DIGIDEAL_PROVIDER = "digideal";
+const OFFERILLA_PROVIDER = "offerilla";
 const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
   PARTNER_SUGGESTION_PROVIDER || ""
 ).trim().toLowerCase();
+const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
 const isSupportedSupplierProvider = (provider: string) => {
   const normalized = String(provider || "").trim().toLowerCase();
   return (
-    normalized === DIGIDEAL_PROVIDER ||
+    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
     normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
   );
 };
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  const provider = String((payload as any).provider ?? "").trim();
+  const provider = String((payload as any).provider ?? "").trim().toLowerCase();
   const productId = String((payload as any).product_id ?? "").trim();
   const imageUrlRaw = String((payload as any).image_url ?? "").trim();
   const crop = (payload as any).crop;
@@ -186,7 +189,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
       },
       { status: 409 }
     );
@@ -201,9 +204,11 @@ export async function POST(request: NextRequest) {
 
   // Keep exposing the current manual supplier URL for UI context.
   let lockedSupplierUrl: string | null = null;
-  if (provider === "digideal") {
+  if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
+    const dealsProvider = resolveDealsProvider(provider);
+    const providerConfig = getDealsProviderConfig(dealsProvider);
     const { data: manualRow } = await adminClient
-      .from("digideal_products")
+      .from(providerConfig.productsTable)
       .select('product_id, "1688_URL", 1688_url')
       .eq("product_id", productId)
       .maybeSingle();

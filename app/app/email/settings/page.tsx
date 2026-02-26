@@ -3,6 +3,12 @@
 import {
   Button,
   Card,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
   Field,
   Input,
   MessageBar,
@@ -14,6 +20,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Textarea,
   Text,
   makeStyles,
   tokens,
@@ -39,6 +46,8 @@ type SendpulseSender = {
   email: string;
   name: string | null;
   status: string | null;
+  signature?: string | null;
+  signatureUpdatedAt?: string | null;
 };
 
 type SettingsPayload = {
@@ -54,6 +63,7 @@ type SettingsPayload = {
   } | null;
   sendpulseSenders?: SendpulseSender[];
   sendpulseError?: string | null;
+  senderSignaturesTableMissing?: boolean;
   error?: string;
 };
 
@@ -113,6 +123,20 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     overflow: "hidden",
   },
+  signatureButton: {
+    minWidth: "72px",
+  },
+  signatureHint: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+  },
+  signatureDialog: {
+    width: "min(640px, calc(100vw - 32px))",
+    maxWidth: "100%",
+  },
+  signatureEditor: {
+    minHeight: "220px",
+  },
   clickableRow: {
     cursor: "pointer",
     "&:hover": {
@@ -147,9 +171,14 @@ export default function EmailConfigPage() {
   const [accounts, setAccounts] = useState<SmtpAccount[]>([]);
   const [sendpulseSenders, setSendpulseSenders] = useState<SendpulseSender[]>([]);
   const [sendpulseError, setSendpulseError] = useState<string | null>(null);
+  const [senderSignaturesTableMissing, setSenderSignaturesTableMissing] = useState(false);
   const [tableMissing, setTableMissing] = useState(false);
   const [envSender, setEnvSender] = useState<SettingsPayload["envSender"]>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
+  const [signatureDialogSenderEmail, setSignatureDialogSenderEmail] = useState("");
+  const [signatureDraft, setSignatureDraft] = useState("");
+  const [signatureSaving, setSignatureSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
     null
   );
@@ -181,6 +210,7 @@ export default function EmailConfigPage() {
       setEnvSender(payload.envSender ?? null);
       setSendpulseSenders(Array.isArray(payload.sendpulseSenders) ? payload.sendpulseSenders : []);
       setSendpulseError(payload.sendpulseError ?? null);
+      setSenderSignaturesTableMissing(Boolean(payload.senderSignaturesTableMissing));
     } catch (error) {
       setMessage({ type: "error", text: (error as Error).message });
     } finally {
@@ -273,6 +303,73 @@ export default function EmailConfigPage() {
       setMessage({ type: "error", text: (error as Error).message });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const openSignatureDialog = (sender: SendpulseSender) => {
+    setSignatureDialogSenderEmail(String(sender.email ?? "").trim());
+    setSignatureDraft(String(sender.signature ?? ""));
+    setSignatureDialogOpen(true);
+  };
+
+  const closeSignatureDialog = (force = false) => {
+    if (signatureSaving && !force) return;
+    setSignatureDialogOpen(false);
+    setSignatureDialogSenderEmail("");
+    setSignatureDraft("");
+  };
+
+  const saveSignature = async () => {
+    if (!signatureDialogSenderEmail) return;
+    setSignatureSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/email/settings/signatures", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderEmail: signatureDialogSenderEmail,
+          signature: signatureDraft,
+        }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        signature?: {
+          senderEmail?: string;
+          signatureText?: string;
+          updatedAt?: string | null;
+        } | null;
+      };
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save sender signature.");
+      }
+
+      const normalizedEmail = signatureDialogSenderEmail.trim().toLowerCase();
+      const nextSignatureText = String(payload?.signature?.signatureText ?? "").trim();
+      const nextSignatureUpdatedAt = payload?.signature?.updatedAt ?? null;
+
+      setSendpulseSenders((prev) =>
+        prev.map((sender) => {
+          if (String(sender.email ?? "").trim().toLowerCase() !== normalizedEmail) {
+            return sender;
+          }
+          return {
+            ...sender,
+            signature: nextSignatureText || null,
+            signatureUpdatedAt: nextSignatureText ? nextSignatureUpdatedAt : null,
+          };
+        })
+      );
+
+      setMessage({
+        type: "success",
+        text: nextSignatureText ? "Sender signature saved." : "Sender signature removed.",
+      });
+      closeSignatureDialog(true);
+    } catch (error) {
+      setMessage({ type: "error", text: (error as Error).message });
+    } finally {
+      setSignatureSaving(false);
     }
   };
 
@@ -497,6 +594,13 @@ export default function EmailConfigPage() {
             Used for SendPulse API channel in automations and transactional mail flows.
           </Text>
         )}
+        {senderSignaturesTableMissing ? (
+          <MessageBar intent="warning">
+            Signature settings table is missing. Run{" "}
+            <code>0069_partner_email_sender_signatures.sql</code> to manage
+            sender signatures here.
+          </MessageBar>
+        ) : null}
 
         <div className={styles.tableWrap}>
           <Table>
@@ -505,6 +609,7 @@ export default function EmailConfigPage() {
                 <TableHeaderCell>Email</TableHeaderCell>
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Signature</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -513,11 +618,22 @@ export default function EmailConfigPage() {
                   <TableCell>{sender.email}</TableCell>
                   <TableCell>{sender.name || "-"}</TableCell>
                   <TableCell>{sender.status || "-"}</TableCell>
+                  <TableCell>
+                    <Button
+                      appearance="secondary"
+                      className={styles.signatureButton}
+                      disabled={senderSignaturesTableMissing}
+                      onClick={() => openSignatureDialog(sender)}
+                    >
+                      {String(sender.signature ?? "").trim() ? "Edit" : "Add"}
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {sendpulseSenders.length === 0 ? (
                 <TableRow>
                   <TableCell>No senders found</TableCell>
+                  <TableCell>-</TableCell>
                   <TableCell>-</TableCell>
                   <TableCell>-</TableCell>
                 </TableRow>
@@ -526,6 +642,44 @@ export default function EmailConfigPage() {
           </Table>
         </div>
       </Card>
+
+      <Dialog
+        open={signatureDialogOpen}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeSignatureDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.signatureDialog}>
+          <DialogBody>
+            <DialogTitle>
+              Add a signature for {signatureDialogSenderEmail || "sender"}
+            </DialogTitle>
+            <DialogContent>
+              <Field label="Signature">
+                <Textarea
+                  value={signatureDraft}
+                  onChange={(_, data) => setSignatureDraft(data.value)}
+                  resize="vertical"
+                  className={styles.signatureEditor}
+                />
+              </Field>
+              <Text className={styles.signatureHint}>
+                A blank row is inserted before the signature in outgoing emails.
+              </Text>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => closeSignatureDialog()}>
+                Close
+              </Button>
+              <Button appearance="primary" onClick={saveSignature} disabled={signatureSaving}>
+                {signatureSaving ? "Saving..." : "Save"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   );
 }

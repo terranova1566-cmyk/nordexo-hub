@@ -42,6 +42,8 @@ logs/
 tmp/
 .cache/
 exports/
+!app/api/exports/
+!app/api/exports/**
 imports/
 next.log
 nohup.out

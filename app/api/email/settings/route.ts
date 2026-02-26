@@ -5,6 +5,7 @@ import {
   isMissingSmtpAccountsTableError,
   listEmailSmtpAccounts,
 } from "@/lib/email-smtp-accounts";
+import { listEmailSenderSignatures } from "@/lib/email-sender-signatures";
 import { listSenders as listSendpulseSenders } from "@/lib/sendpulse";
 
 export const runtime = "nodejs";
@@ -30,6 +31,8 @@ type SendpulseSenderResponse = {
   email: string;
   name: string | null;
   status: string | null;
+  signature: string | null;
+  signatureUpdatedAt: string | null;
 };
 
 type CreateOrUpdatePayload = {
@@ -115,13 +118,33 @@ export async function GET() {
 
   let sendpulseSenders: SendpulseSenderResponse[] = [];
   let sendpulseError: string | null = null;
+  let senderSignaturesTableMissing = false;
   try {
     const list = await listSendpulseSenders();
-    sendpulseSenders = list.map((sender) => ({
+    const baseSendpulseSenders = list.map((sender) => ({
       email: sender.email,
       name: sender.name ?? null,
       status: sender.status ?? null,
+      signature: null,
+      signatureUpdatedAt: null,
     }));
+
+    const { signatures, missingTable } = await listEmailSenderSignatures(auth.supabase, {
+      emails: baseSendpulseSenders.map((sender) => sender.email),
+    });
+    senderSignaturesTableMissing = missingTable;
+    const signatureBySenderEmail = new Map(
+      signatures.map((signature) => [signature.senderEmail, signature])
+    );
+
+    sendpulseSenders = baseSendpulseSenders.map((sender) => {
+      const signature = signatureBySenderEmail.get(String(sender.email).trim().toLowerCase());
+      return {
+        ...sender,
+        signature: signature?.signatureText ?? null,
+        signatureUpdatedAt: signature?.updatedAt ?? null,
+      };
+    });
   } catch (error) {
     sendpulseError = normalizeSendpulseError(error);
   }
@@ -142,6 +165,7 @@ export async function GET() {
     envSender,
     sendpulseSenders,
     sendpulseError,
+    senderSignaturesTableMissing,
     sendpulseConfigured,
   });
 }

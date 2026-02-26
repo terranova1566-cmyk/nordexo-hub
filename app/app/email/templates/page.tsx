@@ -510,7 +510,6 @@ const PREVIEW_DATASETS: PreviewDataset[] = [
     name: "Orders pending sample",
     description: "Pending order payload for order + platform macros.",
     variables: {
-      orders_id: "f9a96526-779a-4546-8eab-293bf4fdfd8b",
       orders_number: "ND-550321",
       orders_date: "2026-02-24",
       orders_transaction_date: "2026-02-24",
@@ -519,12 +518,11 @@ const PREVIEW_DATASETS: PreviewDataset[] = [
       orders_customer_name: "Sofia Berg",
       orders_customer_email: "sofia.berg@example.com",
       orders_status: "pending",
-      order_content_list: "2 X Example Product A\n1 X Example Product B",
+      order_content_list: "2 x Example Product A\n1 x Example Product B",
       platform_id: "LETSDEAL_SE",
       platform_name: "LetsDeal",
 
       // Legacy aliases for older templates.
-      order_id: "f9a96526-779a-4546-8eab-293bf4fdfd8b",
       order_number: "ND-550321",
       transaction_date: "2026-02-24",
       date_shipped: "",

@@ -26,7 +26,7 @@ export type ExtractorPreviewItem = {
 };
 
 const FILE_SUMMARY_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_summary_cache");
-const FILE_SUMMARY_CACHE_VERSION = 1;
+const FILE_SUMMARY_CACHE_VERSION = 2;
 
 type ExtractorFileSummaryCache = {
   cacheVersion: number;
@@ -115,6 +115,22 @@ const firstStringFromArray = (value: unknown) => {
   for (const entry of value) {
     const str = asString(entry);
     if (str) return str;
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const nested = firstString(record, [
+      "url",
+      "src",
+      "href",
+      "value",
+      "image_url",
+      "imageUrl",
+      "image_full_url",
+      "full_url",
+      "url_full",
+      "main_image_url",
+      "mainImageUrl",
+    ]);
+    if (nested) return nested;
   }
   return "";
 };
@@ -246,14 +262,25 @@ const extractImage = (entry: Record<string, unknown>) => {
   const direct = firstString(entry, [
     "main_image_1688",
     "main_image_url",
+    "main_image",
     "mainImage",
+    "mainImageUrl",
     "image",
     "image_url",
+    "imageUrl",
     "thumbnail",
     "thumb",
     "cover",
   ]);
   if (direct) return direct;
+  const mainImageUrls = firstStringFromArray(entry.main_image_urls);
+  if (mainImageUrls) return mainImageUrls;
+  const mainImageUrlsCamel = firstStringFromArray(entry.mainImageUrls);
+  if (mainImageUrlsCamel) return mainImageUrlsCamel;
+  const mainImages = firstStringFromArray(entry.main_images);
+  if (mainImages) return mainImages;
+  const mainImagesCamel = firstStringFromArray(entry.mainImages);
+  if (mainImagesCamel) return mainImagesCamel;
   const array = firstStringFromArray(entry.images);
   if (array) return array;
   const imageUrls1688 = firstStringFromArray(entry.image_urls_1688);

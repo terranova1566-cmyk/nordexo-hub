@@ -39,7 +39,10 @@ import { useI18n } from "@/components/i18n-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { collectMacros } from "@/lib/email-templates";
 import { formatOrderContentList } from "@/lib/orders/content-list";
-import { buildOrderEmailMacroVariables } from "@/lib/orders/email-macros";
+import {
+  buildOrderEmailMacroVariables,
+  resolvePreferredOrderIdFromItems,
+} from "@/lib/orders/email-macros";
 import { normalizeOrderPlatformName } from "@/lib/orders/platform";
 
 type OrderRow = {
@@ -51,6 +54,8 @@ type OrderRow = {
   customer_email: string | null;
   customer_city: string | null;
   customer_zip: string | null;
+  customer_country_code?: string | null;
+  customer_country?: string | null;
   transaction_date: string | null;
   date_shipped: string | null;
   status: string | null;
@@ -135,6 +140,8 @@ type EmailSenderOption = {
   email: string;
   name?: string | null;
   status?: string | null;
+  signature?: string | null;
+  signatureUpdatedAt?: string | null;
 };
 
 type EmailTemplatePreview = {
@@ -725,12 +732,25 @@ const normalizeDisplayStatus = (status: unknown): DisplayOrderStatus => {
   return "shipped";
 };
 
-const getCountryCodeFromSalesChannelId = (salesChannelId: unknown): CountryCode | null => {
+const normalizeCountryCode = (value: unknown): string | null => {
+  const token = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
+  return token.length === 2 ? token : null;
+};
+
+const getCountryCodeFromSalesChannelId = (salesChannelId: unknown): string | null => {
   const value = String(salesChannelId ?? "").trim().toUpperCase();
   const suffix = value.slice(-2);
-  if (suffix === "NO" || suffix === "SE" || suffix === "FI") {
-    return suffix;
-  }
+  return normalizeCountryCode(suffix);
+};
+
+const getCountryCodeForOrder = (row: Pick<OrderRow, "sales_channel_id" | "customer_country_code">): CountryCode | null => {
+  const value =
+    normalizeCountryCode(row.customer_country_code) ||
+    getCountryCodeFromSalesChannelId(row.sales_channel_id);
+  if (value === "NO" || value === "SE" || value === "FI") return value;
   return null;
 };
 
@@ -753,7 +773,7 @@ export default function OrdersPage() {
   const [shippedTo, setShippedTo] = useState("");
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [warningFilter, setWarningFilter] = useState<string>("all");
   const [isExporting, setIsExporting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
@@ -827,7 +847,7 @@ export default function OrdersPage() {
 
   const filteredRows = useMemo(() => {
     const next = rows.filter((row) => {
-      const normalizedCountry = getCountryCodeFromSalesChannelId(row.sales_channel_id);
+      const normalizedCountry = getCountryCodeForOrder(row);
       if (countryFilter !== "all" && normalizedCountry !== countryFilter) {
         return false;
       }
@@ -891,6 +911,10 @@ export default function OrdersPage() {
       emailSenders.find((sender) => sender.email === selectedEmailSenderEmail) ?? null,
     [emailSenders, selectedEmailSenderEmail]
   );
+  const selectedEmailSenderSignature = useMemo(
+    () => String(selectedEmailSender?.signature ?? ""),
+    [selectedEmailSender]
+  );
   const selectedEmailMacroKeys = useMemo(() => {
     if (!selectedEmailTemplate) return [];
     return Array.from(
@@ -936,7 +960,7 @@ export default function OrdersPage() {
         : 0;
     return t("orders.flags.delayedDays", { days });
   };
-  const getCountryName = (code: CountryCode | null) => {
+  const getCountryName = (row: OrderRow, code: CountryCode | null) => {
     switch (code) {
       case "NO":
         return t("orders.country.no");
@@ -945,6 +969,9 @@ export default function OrdersPage() {
       case "FI":
         return t("orders.country.fi");
       default:
+        if (row.customer_country) return row.customer_country;
+        const genericCountryCode = normalizeCountryCode(row.customer_country_code);
+        if (genericCountryCode) return genericCountryCode;
         return t("orders.country.unknown");
     }
   };
@@ -1123,6 +1150,55 @@ export default function OrdersPage() {
       }
       const sentCount = Number(payload?.sent_count ?? 0);
       const failedCount = Number(payload?.failed_count ?? 0);
+      const resultEntries = Array.isArray(payload?.results)
+        ? (payload.results as Array<{
+            order_id?: unknown;
+            status?: unknown;
+            latest_notification_name?: unknown;
+            latest_notification_sent_at?: unknown;
+          }>)
+        : [];
+      const fallbackNotificationName =
+        String(payload?.notification_name ?? "").trim() ||
+        selectedEmailTemplate.name ||
+        "Notification sent";
+      const fallbackNotificationSentAt = String(
+        payload?.notification_sent_at ?? ""
+      ).trim();
+      const sentNotificationByOrderId = new Map<
+        string,
+        { name: string | null; sentAt: string | null }
+      >();
+      resultEntries.forEach((entry) => {
+        if (String(entry?.status ?? "") !== "sent") return;
+        const orderId = String(entry?.order_id ?? "").trim();
+        if (!orderId) return;
+        const latestName = String(entry.latest_notification_name ?? "").trim();
+        const latestSentAt = String(
+          entry.latest_notification_sent_at ?? ""
+        ).trim();
+        sentNotificationByOrderId.set(orderId, {
+          name: latestName || fallbackNotificationName || null,
+          sentAt: latestSentAt || fallbackNotificationSentAt || null,
+        });
+      });
+      if (sentNotificationByOrderId.size > 0) {
+        setRows((prev) =>
+          prev.map((row) => {
+            const nextNotification = sentNotificationByOrderId.get(row.id);
+            if (!nextNotification) return row;
+            return {
+              ...row,
+              latest_notification_name:
+                nextNotification.name ?? row.latest_notification_name ?? null,
+              latest_notification_sent_at:
+                nextNotification.sentAt ??
+                row.latest_notification_sent_at ??
+                null,
+            };
+          })
+        );
+      }
       setEmailDialogInfo(
         failedCount > 0
           ? t("orders.email.send.partial", {
@@ -1196,9 +1272,13 @@ export default function OrdersPage() {
             sku: item.sku,
           }))
         );
+        const preferredOrderId = resolvePreferredOrderIdFromItems(
+          orderItemsForPreview
+        );
         const orderVariables = buildOrderEmailMacroVariables({
           id: previewOrderRow.id,
           order_number: previewOrderRow.order_number,
+          preferred_order_id: preferredOrderId,
           transaction_date: previewOrderRow.transaction_date,
           date_shipped: previewOrderRow.date_shipped,
           customer_name: previewOrderRow.customer_name,
@@ -1217,6 +1297,7 @@ export default function OrdersPage() {
             macros: selectedEmailMacroKeys,
             variables: orderVariables,
             context: { order: orderVariables },
+            sender_signature: selectedEmailSenderSignature,
           }),
         });
         const payload = await response.json();
@@ -1245,6 +1326,7 @@ export default function OrdersPage() {
     emailDialogOpen,
     emailSubjectTemplateDraft,
     previewOrderRow,
+    selectedEmailSenderSignature,
     selectedEmailMacroKeys,
     selectedEmailTemplate,
   ]);
@@ -1271,7 +1353,15 @@ export default function OrdersPage() {
           throw new Error(message || "Unable to load orders.");
         }
         const payload = await response.json();
-        setRows(payload.items ?? []);
+        const loadedRows = Array.isArray(payload.items)
+          ? (payload.items as Array<OrderRow & { id?: unknown }>)
+              .map((row) => ({
+                ...row,
+                id: String(row.id ?? "").trim(),
+              }))
+              .filter((row) => row.id.length > 0)
+          : [];
+        setRows(loadedRows);
       } catch (err) {
         setError((err as Error).message);
         setRows([]);
@@ -1715,7 +1805,13 @@ export default function OrdersPage() {
               value={
                 countryFilter === "all"
                   ? t("orders.filters.countryAll")
-                  : getCountryName(countryFilter as CountryCode)
+                  : countryFilter === "NO"
+                    ? t("orders.country.no")
+                    : countryFilter === "SE"
+                      ? t("orders.country.se")
+                      : countryFilter === "FI"
+                        ? t("orders.country.fi")
+                        : t("orders.country.unknown")
               }
               onOptionSelect={(_, data) => {
                 setCountryFilter(String(data.optionValue ?? "all"));
@@ -2016,10 +2112,8 @@ export default function OrdersPage() {
                         : false;
                     const rowClass =
                       index % 2 === 1 ? styles.tableRowAlt : styles.tableRow;
-                    const countryCode = getCountryCodeFromSalesChannelId(
-                      row.sales_channel_id
-                    );
-                    const countryName = getCountryName(countryCode);
+                    const countryCode = getCountryCodeForOrder(row);
+                    const countryName = getCountryName(row, countryCode);
                     const platformDisplayName = getNormalizedSalesChannelName(row);
                     const latestNotificationText = getLatestNotificationText(row);
                     return (

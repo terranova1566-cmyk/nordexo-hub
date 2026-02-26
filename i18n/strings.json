@@ -3847,6 +3847,16 @@
       "context": "Export list Excel button"
     },
     {
+      "key": "products.lists.exportPartnerData",
+      "text": "Export partner data",
+      "context": "Export list partner data option"
+    },
+    {
+      "key": "products.lists.exportAllData",
+      "text": "Export all data",
+      "context": "Export list all data option"
+    },
+    {
       "key": "products.lists.exportImages",
       "text": "Export Images",
       "context": "Export list images button"
@@ -3905,6 +3915,26 @@
       "key": "products.lists.exportError",
       "text": "Unable to export list.",
       "context": "Export list error"
+    },
+    {
+      "key": "products.lists.importExcel",
+      "text": "Import Excel",
+      "context": "Import list Excel button"
+    },
+    {
+      "key": "products.lists.importing",
+      "text": "Importing...",
+      "context": "Import list loading"
+    },
+    {
+      "key": "products.lists.importDone",
+      "text": "Import completed.",
+      "context": "Import list success"
+    },
+    {
+      "key": "products.lists.importError",
+      "text": "Unable to import list.",
+      "context": "Import list error"
     },
     {
       "key": "products.lists.name",

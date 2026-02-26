@@ -45,6 +45,14 @@ type QueueRow = {
   created_at: string;
 };
 
+type ProductionSpuRow = {
+  product_id: string;
+  spu: string | null;
+  assigned_at: string | null;
+};
+
+type SuggestionReviewStatus = "new" | "unqualified";
+
 const asText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value).trim();
 
@@ -106,6 +114,10 @@ const toBool = (value: unknown, fallback = true) => {
   if (["0", "false", "no", "off"].includes(text)) return false;
   return fallback;
 };
+
+const normalizeSuggestionReviewStatus = (
+  value: unknown
+): SuggestionReviewStatus => (asText(value).toLowerCase() === "unqualified" ? "unqualified" : "new");
 
 const spawnBackgroundSupplierSearchWorker = (
   request: Request,
@@ -271,6 +283,7 @@ const buildFallbackRecord = (
     updatedAt: createdAt,
     error: "Suggestion metadata file is missing.",
   },
+  reviewStatus: "new",
 });
 
 const createImageSuggestion = async (
@@ -331,6 +344,7 @@ const createImageSuggestion = async (
       updatedAt: createdAt,
       error: null,
     },
+    reviewStatus: "new",
   };
 
   const normalized = normalizeExternalDataForRecord(record);
@@ -372,6 +386,7 @@ export async function GET(request: Request) {
     { data: searchRows, error: searchError },
     { data: selectionRows, error: selectionError },
     { data: productionStatusRows, error: productionStatusError },
+    { data: productionSpuRows, error: productionSpuError },
   ] = await Promise.all([
     adminClient
       .from("discovery_production_supplier_searches")
@@ -390,6 +405,11 @@ export async function GET(request: Request) {
       )
       .eq("provider", PARTNER_SUGGESTION_PROVIDER)
       .in("product_id", ids),
+    adminClient
+      .from("discovery_production_item_spus")
+      .select("product_id, spu, assigned_at")
+      .eq("provider", PARTNER_SUGGESTION_PROVIDER)
+      .in("product_id", ids),
   ]);
 
   if (searchError) {
@@ -400,6 +420,9 @@ export async function GET(request: Request) {
   }
   if (productionStatusError) {
     return NextResponse.json({ error: productionStatusError.message }, { status: 500 });
+  }
+  if (productionSpuError) {
+    return NextResponse.json({ error: productionSpuError.message }, { status: 500 });
   }
 
   const [{ data: marketRows }, { data: classRows }] = await Promise.all([
@@ -441,6 +464,23 @@ export async function GET(request: Request) {
     productionStatusById.set(id, rowRecord || {});
   });
 
+  const productionSpuById = new Map<string, ProductionSpuRow>();
+  (productionSpuRows as ProductionSpuRow[] | null | undefined)?.forEach((row) => {
+    const id = asText(row?.product_id);
+    const spu = asText(row?.spu);
+    if (!id || !spu) return;
+    const existing = productionSpuById.get(id);
+    const existingAt = Date.parse(asText(existing?.assigned_at || "")) || 0;
+    const nextAt = Date.parse(asText(row?.assigned_at || "")) || 0;
+    if (!existing || nextAt >= existingAt) {
+      productionSpuById.set(id, {
+        product_id: id,
+        spu,
+        assigned_at: asText(row?.assigned_at) || null,
+      });
+    }
+  });
+
   const taxonomyQueueIds = new Set<string>();
   const items = await Promise.all(
     rows.map(async (row) => {
@@ -451,6 +491,16 @@ export async function GET(request: Request) {
       let suggestion = normalizeExternalDataForRecord(loadedSuggestion);
       let shouldSaveSuggestion =
         JSON.stringify(loadedSuggestion) !== JSON.stringify(suggestion);
+      const normalizedReviewStatus = normalizeSuggestionReviewStatus(
+        suggestion.reviewStatus
+      );
+      if (suggestion.reviewStatus !== normalizedReviewStatus) {
+        suggestion = {
+          ...suggestion,
+          reviewStatus: normalizedReviewStatus,
+        };
+        shouldSaveSuggestion = true;
+      }
 
       const nowIso = new Date().toISOString();
       const searchJobStatus = asText(suggestion.searchJob?.status).toLowerCase();
@@ -558,6 +608,7 @@ export async function GET(request: Request) {
       const search = searchById.get(id);
       const selection = selectionById.get(id);
       const productionStatus = productionStatusById.get(id);
+      const productionSpu = productionSpuById.get(id);
       const offers = Array.isArray(search?.offers) ? (search?.offers as unknown[]) : [];
       let normalizedSelection = selection;
       let selectedOffer =
@@ -809,11 +860,6 @@ export async function GET(request: Request) {
             mainImageUrl:
               makeAbsoluteIfRelative(request, suggestion.externalData.mainImageUrl) ||
               suggestion.externalData.mainImageUrl,
-            rawGalleryImageUrls: Array.isArray(suggestion.externalData.rawGalleryImageUrls)
-              ? suggestion.externalData.rawGalleryImageUrls.map(
-                  (entry) => makeAbsoluteIfRelative(request, entry) || entry
-                )
-              : [],
             galleryImageUrls: Array.isArray(suggestion.externalData.galleryImageUrls)
               ? suggestion.externalData.galleryImageUrls.map(
                   (entry) => makeAbsoluteIfRelative(request, entry) || entry
@@ -837,6 +883,7 @@ export async function GET(request: Request) {
 
       return {
         ...suggestion,
+        reviewStatus: normalizedReviewStatus,
         createdAt,
         sourceUrl: normalizedSourceUrl,
         mainImageUrl: normalizedMainImageUrl,
@@ -879,6 +926,7 @@ export async function GET(request: Request) {
               last_job_id: firstString(productionStatus.last_job_id) || null,
             }
           : null,
+        production_assigned_spu: productionSpu?.spu || null,
       };
     })
   );
@@ -1058,6 +1106,7 @@ export async function POST(request: Request) {
         updatedAt: createdAt,
         error: null,
       },
+      reviewStatus: "new",
     });
 
     try {
@@ -1181,11 +1230,6 @@ export async function POST(request: Request) {
           mainImageUrl:
             makeAbsoluteIfRelative(request, normalized.externalData.mainImageUrl) ||
             normalized.externalData.mainImageUrl,
-          rawGalleryImageUrls: Array.isArray(normalized.externalData.rawGalleryImageUrls)
-            ? normalized.externalData.rawGalleryImageUrls.map(
-                (entry) => makeAbsoluteIfRelative(request, entry) || entry
-              )
-            : [],
           galleryImageUrls: Array.isArray(normalized.externalData.galleryImageUrls)
             ? normalized.externalData.galleryImageUrls.map(
                 (entry) => makeAbsoluteIfRelative(request, entry) || entry
@@ -1224,6 +1268,72 @@ export async function POST(request: Request) {
     queueWorkerStarted,
     taxonomyWorkerStarted,
     errors,
+  });
+}
+
+export async function PATCH(request: Request) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const payload = await request.json().catch(() => null);
+  const ids: string[] = Array.from(
+    new Set(
+      (Array.isArray(payload?.ids) ? payload.ids : [])
+        .map((entry: unknown) => asText(entry))
+        .filter((entry: string) => /^[a-z0-9][a-z0-9_-]{5,80}$/i.test(entry))
+    )
+  );
+
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "No valid suggestion IDs provided." }, { status: 400 });
+  }
+
+  const statusRaw = asText(payload?.status).toLowerCase();
+  if (statusRaw !== "new" && statusRaw !== "unqualified") {
+    return NextResponse.json(
+      { error: "Status must be either 'new' or 'unqualified'." },
+      { status: 400 }
+    );
+  }
+  const nextStatus = statusRaw as SuggestionReviewStatus;
+
+  let updateResults: Array<{ id: string; updated: boolean }>;
+  try {
+    updateResults = await Promise.all(
+      ids.map(async (id) => {
+        const current = await loadSuggestionRecord(id);
+        if (!current) {
+          return { id, updated: false as const };
+        }
+        const nextRecord = normalizeExternalDataForRecord({
+          ...current,
+          reviewStatus: nextStatus,
+        });
+        await saveSuggestionRecord(nextRecord);
+        return { id, updated: true as const };
+      })
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error && asText(error.message)
+            ? error.message
+            : "Failed to update suggestion status.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const updatedIds = updateResults.filter((entry) => entry.updated).map((entry) => entry.id);
+  const missingIds = updateResults.filter((entry) => !entry.updated).map((entry) => entry.id);
+
+  return NextResponse.json({
+    ok: true,
+    status: nextStatus,
+    updatedCount: updatedIds.length,
+    updatedIds,
+    missingIds,
   });
 }
 

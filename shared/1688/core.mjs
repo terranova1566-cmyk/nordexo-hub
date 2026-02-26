@@ -112,8 +112,11 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
   const maxScanLines = Number.isFinite(Number(options.maxScanLines))
     ? Math.max(1, Math.trunc(Number(options.maxScanLines)))
     : 45;
+  const variantLabels = Array.isArray(options.variantLabels)
+    ? options.variantLabels.map((entry) => asText(entry)).filter(Boolean)
+    : [];
   const text = asText(value).replace(/\r/g, "\n");
-  const out = { weightByName: new Map(), weights: [] };
+  const out = { weightByName: new Map(), weightByCombo: new Map(), weights: [], rows: [] };
   if (!text) return out;
 
   const lines = text
@@ -133,6 +136,68 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
     return Math.round(num);
   };
 
+  const variantCandidates = variantLabels
+    .map((label) => ({
+      label,
+      strict: normalizeNameStrict(label),
+      loose: normalizeNameLoose(label),
+    }))
+    .filter((entry) => entry.strict || entry.loose)
+    .sort((a, b) => b.strict.length - a.strict.length);
+  const headerNameRe = /(颜色|规格|型号|款式|选项|名称|name|variant|spec)/i;
+
+  const findVariantLabelFromLine = (line) => {
+    if (variantCandidates.length === 0) return "";
+    const strictLine = normalizeNameStrict(line);
+    const looseLine = normalizeNameLoose(line);
+    for (const entry of variantCandidates) {
+      if (entry.strict && strictLine.includes(entry.strict)) return entry.label;
+      if (entry.loose && looseLine.includes(entry.loose)) return entry.label;
+    }
+    return "";
+  };
+
+  const parseNonTabLine = (line, weightIdx, unit) => {
+    const textLine = asText(line);
+    if (!textLine) return null;
+    const tail = textLine.match(/(-?\d+(?:[.,]\d+)?)\s*(kg|g|公斤|千克|克)?\s*$/i);
+    if (tail && typeof tail.index === "number") {
+      const rawToken = `${tail[1]}${tail[2] ? ` ${tail[2]}` : ""}`;
+      const grams =
+        toWeightGrams(rawToken, { allowUnitless: !tail[2] }) ??
+        toGramsFromHeaderUnit(tail[1], unit);
+      if (Number.isFinite(grams) && Number(grams) > 0) {
+        const lead = textLine.slice(0, tail.index).trim();
+        return {
+          grams: Math.round(Number(grams)),
+          lead,
+          parts: lead ? lead.split(/\s+/).map((part) => part.trim()).filter(Boolean) : [],
+        };
+      }
+    }
+
+    const parts = textLine.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length <= weightIdx) return null;
+    const grams =
+      toGramsFromHeaderUnit(parts[weightIdx], unit) ??
+      toWeightGrams(parts[weightIdx], { allowUnitless: true });
+    if (!Number.isFinite(grams) || Number(grams) <= 0) return null;
+    return {
+      grams: Math.round(Number(grams)),
+      lead: parts.slice(0, Math.max(1, weightIdx)).join(" ").trim(),
+      parts,
+    };
+  };
+
+  const resolveRowName = ({ line, lead, parts, hasTabs }) => {
+    const matched = findVariantLabelFromLine(line);
+    if (matched) return matched;
+    if (!hasTabs && variantCandidates.length) return "";
+    const leadText = asText(lead);
+    if (leadText) return leadText;
+    return asText(parts[0]);
+  };
+
   for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
     const headerLine = lines[headerIndex];
     if (!headerLine) continue;
@@ -149,6 +214,10 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
       0,
       headerCells.findIndex((cell) => /(重量|weight)/i.test(cell))
     );
+    const nameIdx = Math.max(
+      0,
+      headerCells.findIndex((cell) => headerNameRe.test(cell))
+    );
 
     let started = false;
     for (
@@ -158,45 +227,103 @@ export const parseVariantWeightTableFromReadableText = (value, options = {}) => 
     ) {
       const line = lines[i];
       if (!line) break;
-      if (/^【/.test(line)) break;
+      if (/^【/.test(line)) {
+        const tailHasWeight = /(-?\d+(?:[.,]\d+)?)\s*(kg|g|公斤|千克|克)?\s*$/i.test(line);
+        if (!tailHasWeight) break;
+      }
       if (/登录查看全部|展开全部|内容声明/i.test(line)) break;
 
       if (hasTabs && !line.includes("\t")) {
         if (started) break;
         continue;
       }
-      if (!hasTabs) {
-        const probeParts = line.split(/\s+/).map((part) => part.trim()).filter(Boolean);
-        if (probeParts.length <= weightIdx) {
-          if (started) break;
-          continue;
-        }
-        const probeWeight = toGramsFromHeaderUnit(probeParts[weightIdx], unit);
-        if (!probeWeight) {
-          if (started) break;
-          continue;
-        }
+      const parsed = hasTabs
+        ? (() => {
+            const parts = line.split(/\t+/).map((part) => part.trim());
+            if (parts.length <= weightIdx) return null;
+            const grams =
+              toGramsFromHeaderUnit(parts[weightIdx], unit) ??
+              toWeightGrams(parts[weightIdx], { allowUnitless: true });
+            if (!Number.isFinite(grams) || Number(grams) <= 0) return null;
+            return {
+              grams: Math.round(Number(grams)),
+              lead: asText(parts[nameIdx] || parts[0]),
+              parts,
+            };
+          })()
+        : parseNonTabLine(line, weightIdx, unit);
+      if (!parsed) {
+        if (started && /^(参数|详情|商品|颜色|规格|型号|title|description)/i.test(line)) break;
+        if (started && hasTabs) break;
+        continue;
       }
 
-      const parts = hasTabs
-        ? line.split(/\t+/).map((part) => part.trim())
-        : line.split(/\s+/).map((part) => part.trim());
-      if (parts.length <= weightIdx) continue;
-
-      const grams = toGramsFromHeaderUnit(parts[weightIdx], unit);
-      if (!grams) continue;
-
       started = true;
-      out.weights.push(grams);
-      const name = asText(parts[0]);
+      const name = resolveRowName({
+        line,
+        lead: parsed.lead,
+        parts: parsed.parts,
+        hasTabs,
+      });
+      if (!name) continue;
+      const leadingParts = Array.isArray(parsed.parts)
+        ? parsed.parts.slice(0, Math.max(0, weightIdx)).map((part) => asText(part)).filter(Boolean)
+        : [];
+      const comboCompact = asText(
+        (leadingParts.length >= 2 ? leadingParts.slice(0, 2).join(" / ") : "") ||
+          (leadingParts.length === 1 ? leadingParts[0] : "")
+      );
+      const comboName = asText(
+        (leadingParts.length >= 2 ? leadingParts.join(" / ") : "") ||
+          comboCompact ||
+          name
+      );
+      out.weights.push(parsed.grams);
       const strictName = normalizeNameStrict(name);
       const looseName = normalizeNameLoose(name);
-      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, grams);
-      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, grams);
+      if (strictName && !out.weightByName.has(strictName)) out.weightByName.set(strictName, parsed.grams);
+      if (looseName && !out.weightByName.has(looseName)) out.weightByName.set(looseName, parsed.grams);
+      const strictCombo = normalizeNameStrict(comboName);
+      const looseCombo = normalizeNameLoose(comboName);
+      if (strictCombo && !out.weightByCombo.has(strictCombo)) out.weightByCombo.set(strictCombo, parsed.grams);
+      if (looseCombo && !out.weightByCombo.has(looseCombo)) out.weightByCombo.set(looseCombo, parsed.grams);
+      const strictCompact = normalizeNameStrict(comboCompact);
+      const looseCompact = normalizeNameLoose(comboCompact);
+      if (strictCompact && !out.weightByCombo.has(strictCompact)) out.weightByCombo.set(strictCompact, parsed.grams);
+      if (looseCompact && !out.weightByCombo.has(looseCompact)) out.weightByCombo.set(looseCompact, parsed.grams);
+      out.rows.push({
+        name,
+        combo_name: comboCompact || comboName || name,
+        combo_name_full: comboName || comboCompact || name,
+        weight_grams: parsed.grams,
+      });
     }
   }
 
-  return out;
+  const dedupRows = [];
+  const seenRowKeys = new Set();
+  for (const row of out.rows) {
+    const name = asText(row?.name);
+    const comboName = asText(row?.combo_name || name);
+    const comboFull = asText(row?.combo_name_full || comboName);
+    const grams = Number(row?.weight_grams);
+    if (!name || !Number.isFinite(grams) || grams <= 0) continue;
+    const key = `${normalizeNameStrict(comboName)}:${Math.round(grams)}`;
+    if (seenRowKeys.has(key)) continue;
+    seenRowKeys.add(key);
+    dedupRows.push({
+      name,
+      combo_name: comboName || name,
+      combo_name_full: comboFull || comboName || name,
+      weight_grams: Math.round(grams),
+    });
+  }
+
+  return {
+    ...out,
+    rows: dedupRows,
+    weights: dedupRows.map((row) => row.weight_grams),
+  };
 };
 
 export const pickFallbackWeightGrams = (candidates, options = {}) => {

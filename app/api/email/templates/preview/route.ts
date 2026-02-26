@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth-admin";
 import { renderTemplate } from "@/lib/email-templates";
 import { sanitizeEmailHtml } from "@/lib/email-html";
+import { appendSignatureToEmailHtml } from "@/lib/email-sender-signatures";
 import {
   listEmailMacroDefinitions,
   resolveTemplateMacros,
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
   const subjectTemplate = String(payload.subject_template ?? payload.subjectTemplate ?? "");
   const bodyTemplate = sanitizeEmailHtml(
     String(payload.body_template ?? payload.bodyTemplate ?? "")
+  );
+  const senderSignature = String(
+    payload.sender_signature ?? payload.senderSignature ?? ""
   );
   const providedMacros = Array.isArray(payload.macros)
     ? payload.macros.map((entry) => String(entry ?? "").trim()).filter(Boolean)
@@ -68,10 +72,13 @@ export async function POST(request: Request) {
 
   const renderedSubject = renderTemplate(subjectTemplate, renderVariables);
   const renderedBody = sanitizeEmailHtml(renderTemplate(bodyTemplate, renderVariables));
+  const renderedBodyWithSignature = sanitizeEmailHtml(
+    appendSignatureToEmailHtml(renderedBody, senderSignature)
+  );
 
   return NextResponse.json({
     rendered_subject: renderedSubject,
-    rendered_body: renderedBody,
+    rendered_body: renderedBodyWithSignature,
     macro_resolution: macroResolution,
   });
 }

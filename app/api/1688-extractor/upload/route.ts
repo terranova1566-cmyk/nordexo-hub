@@ -1,8 +1,19 @@
 import fs from "fs";
 import path from "path";
+import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
 import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
+import {
+  PARTNER_SUGGESTION_DIR,
+  PARTNER_SUGGESTION_PROVIDER,
+  createSuggestionId,
+  fetchAndNormalizeImage,
+  normalizeExternalDataForRecord,
+  saveSuggestionRecord,
+  type ProductSuggestionRecord,
+} from "@/lib/product-suggestions";
 import { enhance1688ItemsWithAi } from "@/shared/1688/ai-pipeline";
 import { canonical1688OfferUrlText } from "@/shared/1688/core";
 
@@ -11,6 +22,17 @@ export const runtime = "nodejs";
 const DEFAULT_BASE = "1688_product_extraction";
 const UPLOAD_DIR =
   process.env.NODEXO_EXTRACTOR_UPLOAD_DIR || "/srv/node-files/1688-extractor";
+const PRODUCT_SUGGESTION_PAYLOAD_TYPE = "product_suggestions_browser_v1";
+const PRODUCT_SUGGESTION_IMPORT_MAX = 200;
+const DEFAULT_PUBLIC_BASE_URL =
+  process.env.PUBLIC_BASE_URL || process.env.HUB_PUBLIC_URL || "https://hub.nordexo.se";
+const BACKGROUND_SEARCH_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/product-suggestions-supplier-search-worker.mjs";
+const BACKGROUND_TAXONOMY_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/product-suggestions-taxonomy-worker.mjs";
+const BACKGROUND_SOURCE_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/product-suggestions-source-worker.ts";
+const TSX_BIN_PATH = "/srv/nordexo-hub/node_modules/.bin/tsx";
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -303,6 +325,522 @@ function buildTimestamp() {
   return { date, time };
 }
 
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) return null;
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
+
+const isUuid = (value: unknown) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    asText(value)
+  );
+
+const toObjectRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const pickFirstText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = asText(value);
+    if (text) return text;
+  }
+  return "";
+};
+
+const normalizeHttpUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/i.test(parsed.protocol)) return "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
+const normalizeImageUrlList = (values: unknown[], max = 120) => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of values) {
+    const normalized = normalizeHttpUrl(entry);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= max) break;
+  }
+  return out;
+};
+
+const collectUploadedSuggestionImages = (entry: Record<string, unknown>) => {
+  const attrs = toObjectRecord(entry.platform_attributes);
+  const scopedLists: unknown[] = [];
+  Object.values(attrs).forEach((scope) => {
+    const scoped = toObjectRecord(scope);
+    scopedLists.push(
+      scoped.gallery_image_urls,
+      scoped.main_image_urls,
+      scoped.image_urls,
+      scoped.description_image_urls,
+      scoped.images
+    );
+  });
+
+  return normalizeImageUrlList(
+    [
+      ...(Array.isArray(entry.main_image_urls) ? entry.main_image_urls : []),
+      ...(Array.isArray(entry.gallery_image_urls) ? entry.gallery_image_urls : []),
+      ...(Array.isArray(entry.image_urls) ? entry.image_urls : []),
+      ...(Array.isArray(entry.supplementary_image_urls) ? entry.supplementary_image_urls : []),
+      entry.main_image_url,
+      ...scopedLists.flatMap((value) => (Array.isArray(value) ? value : [value])),
+    ],
+    120
+  );
+};
+
+const isProductSuggestionPayload = (
+  payloadRecord: Record<string, unknown> | null,
+  items: unknown[]
+) => {
+  const payloadType = asText(
+    payloadRecord?.payloadType || payloadRecord?.payload_type
+  ).toLowerCase();
+  if (payloadType === PRODUCT_SUGGESTION_PAYLOAD_TYPE) return true;
+  return items.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const record = entry as Record<string, unknown>;
+    return (
+      asText(record.payload_type).toLowerCase() === PRODUCT_SUGGESTION_PAYLOAD_TYPE ||
+      asText(record.record_type).toLowerCase() === "product_suggestion"
+    );
+  });
+};
+
+const resolveSuggestionQueueUserId = async (
+  adminClient: ReturnType<typeof getAdminClient>,
+  payloadRecord: Record<string, unknown> | null
+) => {
+  const envUserId = asText(process.env.NODEXO_PRODUCT_SUGGESTION_UPLOAD_USER_ID);
+  if (isUuid(envUserId)) return envUserId;
+
+  const payloadUserId = pickFirstText(
+    payloadRecord?.queue_user_id,
+    payloadRecord?.queueUserId,
+    payloadRecord?.user_id,
+    payloadRecord?.userId
+  );
+  if (isUuid(payloadUserId)) return payloadUserId;
+
+  if (!adminClient) return "";
+
+  const { data: existingRow } = await adminClient
+    .from("discovery_production_items")
+    .select("user_id")
+    .eq("provider", PARTNER_SUGGESTION_PROVIDER)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const existingUserId = asText(existingRow?.user_id);
+  if (isUuid(existingUserId)) return existingUserId;
+
+  const { data: adminRow } = await adminClient
+    .from("partner_user_settings")
+    .select("user_id")
+    .eq("is_admin", true)
+    .limit(1)
+    .maybeSingle();
+  const adminUserId = asText(adminRow?.user_id);
+  if (isUuid(adminUserId)) return adminUserId;
+
+  try {
+    const entries = fs
+      .readdirSync(PARTNER_SUGGESTION_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
+      .map((entry) => {
+        const fullPath = path.join(PARTNER_SUGGESTION_DIR, entry.name);
+        const mtimeMs = fs.statSync(fullPath).mtimeMs || 0;
+        return { fullPath, mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(0, 60);
+
+    for (const entry of entries) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(entry.fullPath, "utf8")) as Record<
+          string,
+          unknown
+        >;
+        const createdBy = pickFirstText(parsed.createdBy, parsed.created_by);
+        if (isUuid(createdBy)) return createdBy;
+      } catch {
+        // best effort
+      }
+    }
+  } catch {
+    // best effort
+  }
+
+  return "";
+};
+
+const spawnBackgroundSupplierSearchWorker = (suggestionIds: string[]) => {
+  const ids = Array.from(
+    new Set(suggestionIds.map((entry) => asText(entry)).filter(Boolean))
+  );
+  if (ids.length === 0) return false;
+
+  try {
+    const child = spawn(
+      process.execPath,
+      [
+        BACKGROUND_SEARCH_WORKER_PATH,
+        "--provider",
+        PARTNER_SUGGESTION_PROVIDER,
+        "--ids",
+        ids.join(","),
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          PUBLIC_BASE_URL: DEFAULT_PUBLIC_BASE_URL,
+        },
+      }
+    );
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const spawnBackgroundTaxonomyWorker = (suggestionIds: string[]) => {
+  const ids = Array.from(
+    new Set(suggestionIds.map((entry) => asText(entry)).filter(Boolean))
+  );
+  if (ids.length === 0) return false;
+
+  try {
+    const child = spawn(process.execPath, [BACKGROUND_TAXONOMY_WORKER_PATH, "--ids", ids.join(",")], {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+      },
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const spawnBackgroundSourceWorker = (suggestionIds: string[]) => {
+  const ids = Array.from(
+    new Set(suggestionIds.map((entry) => asText(entry)).filter(Boolean))
+  );
+  if (ids.length === 0) return false;
+
+  try {
+    const child = spawn(TSX_BIN_PATH, [BACKGROUND_SOURCE_WORKER_PATH, "--ids", ids.join(",")], {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+      },
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+type SuggestionImportSummary = {
+  enabled: boolean;
+  attempted: number;
+  imported: number;
+  queued: number;
+  sourceQueued: number;
+  searchWorkerStarted: boolean;
+  taxonomyWorkerStarted: boolean;
+  sourceWorkerStarted: boolean;
+  skippedReason: string | null;
+  errors: string[];
+};
+
+const importSuggestionsToPartnerQueue = async (
+  items: unknown[],
+  payloadRecord: Record<string, unknown> | null
+): Promise<SuggestionImportSummary> => {
+  if (!isProductSuggestionPayload(payloadRecord, items)) {
+    return {
+      enabled: false,
+      attempted: 0,
+      imported: 0,
+      queued: 0,
+      sourceQueued: 0,
+      searchWorkerStarted: false,
+      taxonomyWorkerStarted: false,
+      sourceWorkerStarted: false,
+      skippedReason: "payload_not_product_suggestions",
+      errors: [],
+    };
+  }
+
+  const adminClient = getAdminClient();
+  if (!adminClient) {
+    return {
+      enabled: true,
+      attempted: 0,
+      imported: 0,
+      queued: 0,
+      sourceQueued: 0,
+      searchWorkerStarted: false,
+      taxonomyWorkerStarted: false,
+      sourceWorkerStarted: false,
+      skippedReason: "missing_supabase_service_credentials",
+      errors: [],
+    };
+  }
+
+  const queueUserId = await resolveSuggestionQueueUserId(adminClient, payloadRecord);
+  if (!isUuid(queueUserId)) {
+    return {
+      enabled: true,
+      attempted: 0,
+      imported: 0,
+      queued: 0,
+      sourceQueued: 0,
+      searchWorkerStarted: false,
+      taxonomyWorkerStarted: false,
+      sourceWorkerStarted: false,
+      skippedReason: "missing_queue_user_id",
+      errors: ["Unable to resolve a valid queue user ID for product suggestions."],
+    };
+  }
+
+  const candidates = items
+    .filter((entry) => entry && typeof entry === "object")
+    .slice(0, PRODUCT_SUGGESTION_IMPORT_MAX)
+    .map((entry) => entry as Record<string, unknown>);
+
+  const createdRecords: ProductSuggestionRecord[] = [];
+  const errors: string[] = [];
+  const importedAt = new Date().toISOString();
+
+  for (const entry of candidates) {
+    const sourcePlatform = asText(entry.source_platform || entry.sourcePlatform).toLowerCase();
+    const title = pickFirstText(entry.product_title, entry.title, entry.name) || null;
+    const sourceUrl =
+      normalizeHttpUrl(
+        pickFirstText(entry.product_url, entry.url, entry.source_url, entry.sourceUrl)
+      ) || null;
+    const hasExternalSourceUrl = Boolean(sourceUrl);
+    const description = pickFirstText(entry.product_description, entry.description) || null;
+    const imageUrls = collectUploadedSuggestionImages(entry);
+    const remoteMainImageUrl = imageUrls[0] || null;
+    const createdAt = importedAt;
+    const scrapedAt = asText(entry.scraped_at) || null;
+    const partnerName = pickFirstText(
+      entry.partner_name,
+      entry.partnerName,
+      entry.user,
+      entry.submitted_by,
+      payloadRecord?.partnerName,
+      payloadRecord?.partner_name,
+      payloadRecord?.user,
+      payloadRecord?.sourceUser
+    );
+
+    const recordErrors: string[] = [];
+    let image: ProductSuggestionRecord["image"] = null;
+    let mainImageUrl = remoteMainImageUrl;
+    if (remoteMainImageUrl) {
+      try {
+        const fetched = await fetchAndNormalizeImage(remoteMainImageUrl);
+        image = fetched.image;
+        mainImageUrl = fetched.image.publicPath;
+      } catch (error) {
+        recordErrors.push(
+          `Image download failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    } else {
+      recordErrors.push("No product image URL found in uploaded suggestion.");
+    }
+
+    const record: ProductSuggestionRecord = {
+      id: createSuggestionId(),
+      provider: PARTNER_SUGGESTION_PROVIDER,
+      createdAt,
+      createdBy: queueUserId,
+      sourceType: "url",
+      sourceLabel: pickFirstText(entry.source_host, sourcePlatform, "browser_extension") || null,
+      sourceUrl: sourceUrl || remoteMainImageUrl || null,
+      crawlFinalUrl: sourceUrl || null,
+      title,
+      description,
+      mainImageUrl: mainImageUrl || remoteMainImageUrl || null,
+      galleryImageUrls: imageUrls,
+      image,
+      errors: recordErrors,
+      searchJob: {
+        status: "queued",
+        queuedAt: importedAt,
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        lastRunAt: importedAt,
+      },
+      sourceJob: {
+        status: hasExternalSourceUrl ? "queued" : "done",
+        stage: hasExternalSourceUrl ? "queued" : "done",
+        queuedAt: hasExternalSourceUrl ? importedAt : null,
+        startedAt: hasExternalSourceUrl ? null : importedAt,
+        finishedAt: hasExternalSourceUrl ? null : importedAt,
+        updatedAt: importedAt,
+        error: null,
+      },
+      reviewStatus: "new",
+    };
+
+    const mutableRecord = record as Record<string, unknown>;
+    mutableRecord.partner_name = partnerName;
+    mutableRecord.partnerName = partnerName;
+    mutableRecord.user = partnerName;
+    mutableRecord.submitted_by = partnerName;
+    mutableRecord.source_platform = sourcePlatform;
+    mutableRecord.payload_type = PRODUCT_SUGGESTION_PAYLOAD_TYPE;
+    const sourceAttrs = toObjectRecord(entry.platform_attributes);
+    const submissionAttrs = {
+      ...toObjectRecord(sourceAttrs.submission),
+      partner_name: partnerName,
+      source: "nordexo_product_scraper_extension",
+      tagged_at: importedAt,
+      scraped_at: scrapedAt,
+    };
+    mutableRecord.platform_attributes = {
+      ...sourceAttrs,
+      submission: submissionAttrs,
+    };
+
+    try {
+      const normalized = normalizeExternalDataForRecord(record);
+      await saveSuggestionRecord(normalized);
+      createdRecords.push(normalized);
+    } catch (error) {
+      errors.push(
+        `Failed to save suggestion "${asText(title) || sourceUrl || "unknown"}": ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  if (createdRecords.length === 0) {
+    return {
+      enabled: true,
+      attempted: candidates.length,
+      imported: 0,
+      queued: 0,
+      sourceQueued: 0,
+      searchWorkerStarted: false,
+      taxonomyWorkerStarted: false,
+      sourceWorkerStarted: false,
+      skippedReason: "no_records_created",
+      errors,
+    };
+  }
+
+  const queueRows = createdRecords.map((record) => ({
+    user_id: queueUserId,
+    provider: PARTNER_SUGGESTION_PROVIDER,
+    product_id: record.id,
+    created_at: record.createdAt,
+  }));
+  const { error: queueError } = await adminClient
+    .from("discovery_production_items")
+    .upsert(queueRows, { onConflict: "user_id,provider,product_id" });
+  if (queueError) {
+    errors.push(`Failed to queue product suggestions: ${queueError.message}`);
+  }
+
+  const searchWorkerStarted = spawnBackgroundSupplierSearchWorker(
+    createdRecords.map((record) => record.id)
+  );
+  if (!searchWorkerStarted) {
+    errors.push("Background supplier search worker failed to start.");
+  }
+
+  const taxonomyWorkerStarted = spawnBackgroundTaxonomyWorker(
+    createdRecords
+      .filter((record) => Boolean(asText(record.title)))
+      .map((record) => record.id)
+  );
+  if (!taxonomyWorkerStarted) {
+    errors.push("Background taxonomy worker failed to start.");
+  }
+
+  const sourceWorkerIds = createdRecords
+    .filter((record) => /^https?:\/\//i.test(asText(record.crawlFinalUrl)))
+    .map((record) => record.id);
+  const sourceQueued = sourceWorkerIds.length;
+  const sourceWorkerStarted = spawnBackgroundSourceWorker(sourceWorkerIds);
+  if (sourceQueued > 0 && !sourceWorkerStarted) {
+    errors.push("Background source crawl worker failed to start.");
+    const failedAt = new Date().toISOString();
+    await Promise.all(
+      createdRecords
+        .filter((record) => sourceWorkerIds.includes(record.id))
+        .map(async (record) => {
+          const patched = normalizeExternalDataForRecord({
+            ...record,
+            sourceJob: {
+              status: "error",
+              stage: "done",
+              queuedAt: record.sourceJob?.queuedAt || failedAt,
+              startedAt: record.sourceJob?.startedAt || failedAt,
+              finishedAt: failedAt,
+              updatedAt: failedAt,
+              error: "Background source crawl worker failed to start.",
+            },
+          });
+          await saveSuggestionRecord(patched);
+        })
+    );
+  }
+
+  return {
+    enabled: true,
+    attempted: candidates.length,
+    imported: createdRecords.length,
+    queued: queueError ? 0 : queueRows.length,
+    sourceQueued,
+    searchWorkerStarted,
+    taxonomyWorkerStarted,
+    sourceWorkerStarted: sourceQueued > 0 ? sourceWorkerStarted : true,
+    skippedReason: null,
+    errors,
+  };
+};
+
 export async function POST(request: Request) {
   const tokens = parseTokens();
   if (tokens.length) {
@@ -359,6 +897,10 @@ export async function POST(request: Request) {
   void warmQueueImageCacheForFile(safeName).catch(() => {
     // best effort for upload path
   });
+  const productSuggestionsImport = await importSuggestionsToPartnerQueue(
+    finalItems,
+    payloadRecord
+  );
 
   return NextResponse.json(
     {
@@ -368,6 +910,7 @@ export async function POST(request: Request) {
       count: finalItems.length,
       ai_enhanced: aiEnhanced.usedAi,
       ai_error: aiEnhanced.error,
+      product_suggestions_import: productSuggestionsImport,
     },
     { headers: CORS_HEADERS }
   );

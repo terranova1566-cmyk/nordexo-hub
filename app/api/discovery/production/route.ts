@@ -122,6 +122,8 @@ type ProductionStatusSnapshot = {
   last_job_id: string | null;
 };
 
+const SPU_RECONCILE_GRACE_MS = 30 * 60 * 1000;
+
 const keyOf = (provider: string, productId: string) =>
   `${provider}:${productId}`;
 
@@ -134,11 +136,23 @@ const parseRefKey = (key: string) => {
   return { provider, product_id };
 };
 
+const parseIsoTimestampMs = (value: unknown) => {
+  const text = firstString(value);
+  if (!text) return null;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const shouldReconcileSpuAssignedStatus = (row: ProductionStatusSnapshot | null | undefined) => {
   if (!row) return false;
   const status = (firstString(row.status) || "").toLowerCase();
   if (status !== "spu_assigned") return false;
   if (firstString(row.production_started_at) || firstString(row.production_done_at)) return false;
+  const assignedOrUpdatedAt =
+    parseIsoTimestampMs(row.spu_assigned_at) ?? parseIsoTimestampMs(row.updated_at);
+  if (assignedOrUpdatedAt !== null && Date.now() - assignedOrUpdatedAt < SPU_RECONCILE_GRACE_MS) {
+    return false;
+  }
   return true;
 };
 

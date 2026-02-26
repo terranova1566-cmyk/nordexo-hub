@@ -15,6 +15,11 @@ import {
   DialogTitle,
   Field,
   Image,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   MessageBar,
   Popover,
   PopoverSurface,
@@ -165,9 +170,8 @@ type CatalogProduct = {
 };
 
 const QUEUE_PRODUCTION_STATUS_OPTIONS = [
-  { value: "none", label: "No status" },
-  { value: "queued_for_production", label: "Queued for Production" },
-  { value: "spu_assigned", label: "SPU Assigned" },
+  { value: "queued_for_production", label: "Queued" },
+  { value: "spu_assigned", label: "In production" },
   { value: "production_started", label: "Production Started" },
   { value: "production_done", label: "Production Done" },
 ] as const;
@@ -1525,7 +1529,7 @@ const useStyles = makeStyles({
   },
   rowStatusQueued: {
     "& .fui-TableCell": {
-      backgroundColor: "#eaf4ff",
+      backgroundColor: "#ffffff",
     },
   },
   rowStatusDone: {
@@ -3303,16 +3307,20 @@ export default function ProductionPage() {
             typeof it.production_status === "string"
               ? it.production_status.trim().toLowerCase()
               : "";
-          const isQueued =
-            queueStatus === "queued_for_production" || queueStatus === "queued";
           const isDone =
             (typeof it.production_status_done_at === "string" &&
               it.production_status_done_at.trim().length > 0) ||
             queueStatus === "production_done";
-          const hasSpu =
-            typeof it.production_assigned_spu === "string" &&
-            it.production_assigned_spu.trim().length > 0;
-          return !(isDone && hasSpu) && !isQueued;
+          const isStarted =
+            (typeof it.production_status_started_at === "string" &&
+              it.production_status_started_at.trim().length > 0) ||
+            queueStatus === "production_started" ||
+            queueStatus === "in_production";
+          const isSpuAssigned =
+            (typeof it.production_status_spu_assigned_at === "string" &&
+              it.production_status_spu_assigned_at.trim().length > 0) ||
+            queueStatus === "spu_assigned";
+          return !(isDone || isStarted || isSpuAssigned);
         })
         .map((it) => `${it.provider}:${it.product_id}`)
     );
@@ -3706,7 +3714,6 @@ export default function ProductionPage() {
     async (targetItems: ProductionItem[], options?: { bulk?: boolean }) => {
       if (!targetItems.length) return;
       const targetKeys = targetItems.map((item) => `${item.provider}:${item.product_id}`);
-      const targetKeySet = new Set(targetKeys);
       const isBulk = Boolean(options?.bulk);
       setSendingQueueRowKeys((prev) => {
         const next = new Set(prev);
@@ -3730,12 +3737,26 @@ export default function ProductionPage() {
         if (!response.ok) {
           throw new Error(payload?.error || t("production.action.sendError"));
         }
+        const acceptedKeys = Array.isArray((payload as any)?.accepted_items)
+          ? ((payload as any).accepted_items as unknown[])
+              .map((entry) => {
+                const rec =
+                  entry && typeof entry === "object"
+                    ? (entry as Record<string, unknown>)
+                    : null;
+                const provider = String(rec?.provider || "").trim();
+                const productId = String(rec?.product_id || "").trim();
+                return provider && productId ? `${provider}:${productId}` : "";
+              })
+              .filter(Boolean)
+          : targetKeys;
+        const acceptedKeySet = new Set(acceptedKeys);
         if (isBulk) setSelectedKeys(new Set());
         const nowIso = new Date().toISOString();
         setItems((prev) =>
           prev.map((entry) => {
             const key = `${entry.provider}:${entry.product_id}`;
-            if (!targetKeySet.has(key)) return entry;
+            if (!acceptedKeySet.has(key)) return entry;
             return {
               ...entry,
               production_status: "queued_for_production",
@@ -3836,7 +3857,7 @@ export default function ProductionPage() {
     if (queueStatus === "queued_for_production" || queueStatus === "queued") {
       return "queued_for_production" as const;
     }
-    return "none" as const;
+    return "queued_for_production" as const;
   }, []);
 
   const isItemQueuedForProduction = useCallback(
@@ -3847,11 +3868,11 @@ export default function ProductionPage() {
   const isItemLockedForProduction = useCallback(
     (item: ProductionItem) => {
       const statusKey = getLatestProductionStatusKey(item);
-      const producedSpu =
-        typeof item.production_assigned_spu === "string"
-          ? item.production_assigned_spu.trim()
-          : "";
-      return statusKey === "production_done" && producedSpu.length > 0;
+      return (
+        statusKey === "spu_assigned" ||
+        statusKey === "production_started" ||
+        statusKey === "production_done"
+      );
     },
     [getLatestProductionStatusKey]
   );
@@ -3948,13 +3969,11 @@ export default function ProductionPage() {
 	    }
       const selectedRows = items.filter((it) => {
         if (!selectedKeys.has(`${it.provider}:${it.product_id}`)) return false;
-        return !isItemLockedForProduction(it) && !isItemQueuedForProduction(it);
+        return !isItemLockedForProduction(it);
       });
 	    const selectedCount = selectedRows.length;
 	    const selectableVisibleRowKeys = filteredItems
-        .filter(
-          (it) => !isItemLockedForProduction(it) && !isItemQueuedForProduction(it)
-        )
+        .filter((it) => !isItemLockedForProduction(it))
         .map((it) => `${it.provider}:${it.product_id}`);
 	    const visibleSelectedCount = selectableVisibleRowKeys.filter((k) => selectedKeys.has(k)).length;
 	    const allSelected =
@@ -4253,28 +4272,27 @@ export default function ProductionPage() {
               : productionStartedAt
                 ? t("production.status.productionStarted")
                 : spuAssignedAt
-                  ? t("production.status.spuAssigned")
+                  ? "In production"
                   : queueStatus === "production_done"
                     ? t("production.status.productionDone")
                     : queueStatus === "production_started"
                       ? t("production.status.productionStarted")
                       : queueStatus === "spu_assigned"
-                        ? t("production.status.spuAssigned")
+                        ? "In production"
                         : isQueuedForProductionStatus
-                          ? t("production.status.queuedForProduction")
+                          ? "Queued"
                         : null;
             const latestStatusAt =
               productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt;
-            const displayStatusLabel = latestStatusLabel ?? "New Product";
+            const displayStatusLabel = latestStatusLabel ?? "Queued";
             const displayStatusAt = latestStatusAt || item.created_at || null;
             const displayStatusTimestamp = displayStatusAt
               ? formatDateTime(displayStatusAt)
               : null;
-            const statusIsNew = !latestStatusLabel;
             const statusIsDone = Boolean(productionDoneAt || queueStatus === "production_done");
             const statusCurrentClass = mergeClasses(
               styles.statusCurrent,
-              statusIsNew ? styles.statusCurrentNew : statusIsDone ? styles.statusCurrentDone : undefined
+              statusIsDone ? styles.statusCurrentDone : undefined
             );
             const producedSpu =
               typeof item.production_assigned_spu === "string"
@@ -4818,56 +4836,47 @@ export default function ProductionPage() {
 	                </TableCell>
 	                <TableCell className={styles.actionCell}>
 	                  <div className={styles.actionRow}>
-		                    <Button
-		                      appearance="outline"
-		                      size="small"
-		                      className={styles.linkButton}
-                          onClick={() => void sendQueueItems([item])}
-                          disabled={
-                            isProductionLocked ||
-                            isQueuedForProduction ||
-                            sendingQueueRowKeys.has(rowKey) ||
-                            !item.supplier_payload_file_path
-                          }
-		                    >
-		                      {sendingQueueRowKeys.has(rowKey)
-                            ? t("production.action.sending")
-                            : t("production.action.produce")}
-		                    </Button>
-	                    <Button
-	                      appearance="outline"
-	                      size="small"
-	                      className={mergeClasses(styles.linkButton, styles.removeIconButton)}
-	                      onClick={() => handleRemove(item)}
-	                      disabled={removingKey === rowKey}
-                        aria-label={t("production.action.remove")}
-	                    >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={styles.removeIcon}
-                          aria-hidden="true"
+                    <Menu positioning="below-end">
+                      <MenuTrigger disableButtonEnhancement>
+                        <Button
+                          appearance="outline"
+                          size="small"
+                          className={styles.linkButton}
+                          disabled={sendingQueueRowKeys.has(rowKey) || removingKey === rowKey}
                         >
-                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                          <path d="M4 7l16 0" />
-                          <path d="M10 11l0 6" />
-                          <path d="M14 11l0 6" />
-                          <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-	                          <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-	                        </svg>
-	                    </Button>
+                          Actions
+                        </Button>
+                      </MenuTrigger>
+                      <MenuPopover>
+                        <MenuList>
+                          <MenuItem
+                            disabled={
+                              isProductionLocked ||
+                              sendingQueueRowKeys.has(rowKey) ||
+                              !item.supplier_payload_file_path
+                            }
+                            onClick={() => void sendQueueItems([item])}
+                          >
+                            {sendingQueueRowKeys.has(rowKey)
+                              ? t("production.action.sending")
+                              : "Send to production"}
+                          </MenuItem>
+                          <MenuItem
+                            disabled={removingKey === rowKey}
+                            onClick={() => handleRemove(item)}
+                          >
+                            {removingKey === rowKey ? "Deleting..." : "Delete product"}
+                          </MenuItem>
+                        </MenuList>
+                      </MenuPopover>
+                    </Menu>
 		                  </div>
 		                </TableCell>
 	                <TableCell className={styles.selectCol}>
 	                  <Checkbox
                         className={styles.tableSelectCheckbox}
 	                    checked={selectedKeys.has(rowKey)}
-                      disabled={isProductionLocked || isQueuedForProduction}
+                      disabled={isProductionLocked}
 	                    onChange={(_, data) => {
 	                      const checked = data.checked === true;
 	                      setSelectedKeys((prev) => {

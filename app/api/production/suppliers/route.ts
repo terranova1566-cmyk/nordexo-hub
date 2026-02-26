@@ -21,6 +21,11 @@ import {
   getPublicBaseUrlFromRequest,
   run1688ImageSearch as run1688ImageSearchTool,
 } from "@/shared/1688/image-search-runner";
+import {
+  getDealsProviderConfig,
+  resolveDealsProvider,
+  type DealsProvider,
+} from "@/lib/deals/provider";
 
 export const runtime = "nodejs";
 
@@ -30,14 +35,16 @@ const PUBLIC_TEMP_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
 const PUBLIC_TEMP_PERSIST_DAYS = 180;
 const TEMP_IMAGE_ID_RE = /\/api\/public\/temp-images\/([a-f0-9]{32})/i;
 const DIGIDEAL_PROVIDER = "digideal";
+const OFFERILLA_PROVIDER = "offerilla";
 const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
   PARTNER_SUGGESTION_PROVIDER || ""
 ).trim().toLowerCase();
+const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
 
 const isSupportedSupplierProvider = (provider: string) => {
   const normalized = String(provider || "").trim().toLowerCase();
   return (
-    normalized === DIGIDEAL_PROVIDER ||
+    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
     normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
   );
 };
@@ -238,6 +245,70 @@ const pickFirstText = (...values: unknown[]) => {
     if (text) return text;
   }
   return "";
+};
+
+const extractFirstImageFromUnknown = (value: unknown) => {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const text = pickFirstText(entry);
+      if (text) return text;
+    }
+    return "";
+  }
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return "";
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const entry of parsed) {
+          const text = pickFirstText(entry);
+          if (text) return text;
+        }
+      }
+    } catch {
+      return raw;
+    }
+    return raw;
+  }
+  return "";
+};
+
+const readManualSupplierUrlForDealsProvider = async (
+  adminClient: any,
+  provider: DealsProvider,
+  productId: string
+) => {
+  const providerConfig = getDealsProviderConfig(provider);
+  const { data: manualRow, error: manualError } = await adminClient
+    .from(providerConfig.productsTable)
+    .select('product_id, "1688_URL", 1688_url')
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (manualError) {
+    throw new Error(manualError.message);
+  }
+  return pickFirstText((manualRow as any)?.["1688_URL"], (manualRow as any)?.["1688_url"]);
+};
+
+const readDealsImageCandidates = async (
+  adminClient: any,
+  provider: DealsProvider,
+  productId: string
+) => {
+  const providerConfig = getDealsProviderConfig(provider);
+  const { data: row, error } = await adminClient
+    .from(providerConfig.productsSearchView)
+    .select("primary_image_url, image_urls")
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  return [
+    pickFirstText((row as any)?.primary_image_url),
+    extractFirstImageFromUnknown((row as any)?.image_urls),
+  ].filter(Boolean);
 };
 
 const cleanSuggestionTitle = (value: string) => {
@@ -551,7 +622,7 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
-  const provider = String(sp.get("provider") ?? "").trim();
+  const provider = String(sp.get("provider") ?? "").trim().toLowerCase();
   const productId = String(sp.get("product_id") ?? "").trim();
   const refresh = String(sp.get("refresh") ?? "").trim() === "1";
   const limitParam = Number(sp.get("limit") ?? "10");
@@ -565,29 +636,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
       },
       { status: 409 }
     );
   }
 
   let lockedSupplierUrl: string | null = null;
-  if (provider === "digideal") {
-    const { data: manualRow, error: manualError } = await adminClient
-      .from("digideal_products")
-      .select('product_id, "1688_URL", 1688_url')
-      .eq("product_id", productId)
-      .maybeSingle();
-    if (manualError) {
-      return NextResponse.json({ error: manualError.message }, { status: 500 });
+  if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
+    try {
+      const dealsProvider = resolveDealsProvider(provider);
+      const url = await readManualSupplierUrlForDealsProvider(
+        adminClient,
+        dealsProvider,
+        productId
+      );
+      if (url) lockedSupplierUrl = url;
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Unable to read supplier lock.",
+        },
+        { status: 500 }
+      );
     }
-    const url =
-      typeof (manualRow as any)?.["1688_URL"] === "string"
-        ? String((manualRow as any)["1688_URL"]).trim()
-        : typeof (manualRow as any)?.["1688_url"] === "string"
-          ? String((manualRow as any)["1688_url"]).trim()
-          : "";
-    if (url) lockedSupplierUrl = url;
   }
 
   const [{ data: searchRow, error: searchError }, { data: selectionRow, error: selectionError }] =
@@ -671,30 +743,23 @@ export async function GET(request: NextRequest) {
     typeof previousInput?.picUrl === "string" ? previousInput.picUrl : null;
 
   let dbCandidates: string[] = [];
-  if (provider === "digideal") {
-    const { data: digidealRow, error: digidealError } = await adminClient
-      .from("digideal_products_search")
-      .select("primary_image_url, image_urls")
-      .eq("product_id", productId)
-      .maybeSingle();
-    if (digidealError) {
-      return NextResponse.json({ error: digidealError.message }, { status: 500 });
+  if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
+    try {
+      const dealsProvider = resolveDealsProvider(provider);
+      const dealCandidates = await readDealsImageCandidates(
+        adminClient,
+        dealsProvider,
+        productId
+      );
+      dbCandidates = toUniqueImageCandidates(request, ...dealCandidates);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Unable to read deal images.",
+        },
+        { status: 500 }
+      );
     }
-    const firstString = (value: unknown) =>
-      typeof value === "string" && value.trim() ? value.trim() : null;
-    const firstImageFromArray = (value: unknown) => {
-      if (!Array.isArray(value)) return null;
-      for (const entry of value) {
-        const text = firstString(entry);
-        if (text) return text;
-      }
-      return null;
-    };
-    dbCandidates = toUniqueImageCandidates(
-      request,
-      firstString((digidealRow as any)?.primary_image_url),
-      firstImageFromArray((digidealRow as any)?.image_urls)
-    );
   } else {
     const { data: productRow, error: productError } = await adminClient
       .from("discovery_products")
@@ -845,7 +910,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  const provider = String(payload?.provider ?? "").trim();
+  const provider = String(payload?.provider ?? "").trim().toLowerCase();
   const productId = String(payload?.product_id ?? "").trim();
   const offerId = String(payload?.offer_id ?? "").trim();
   const detailUrl = typeof payload?.detail_url === "string" ? payload.detail_url.trim() : "";
@@ -858,27 +923,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Supplier fetching is available only for DigiDeal and Product Suggestions.",
+          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
       },
       { status: 409 }
     );
   }
 
-  if (provider === "digideal") {
-    const { data: manualRow, error: manualError } = await adminClient
-      .from("digideal_products")
-      .select('product_id, "1688_URL", 1688_url')
-      .eq("product_id", productId)
-      .maybeSingle();
-    if (manualError) {
-      return NextResponse.json({ error: manualError.message }, { status: 500 });
+  if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
+    const dealsProvider = resolveDealsProvider(provider);
+    const providerConfig = getDealsProviderConfig(dealsProvider);
+    const productsTable = providerConfig.productsTable;
+
+    let manualUrl = "";
+    try {
+      manualUrl = await readManualSupplierUrlForDealsProvider(
+        adminClient,
+        dealsProvider,
+        productId
+      );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Unable to read manual supplier.",
+        },
+        { status: 500 }
+      );
     }
-    const url =
-      typeof (manualRow as any)?.["1688_URL"] === "string"
-        ? String((manualRow as any)["1688_URL"]).trim()
-        : typeof (manualRow as any)?.["1688_url"] === "string"
-          ? String((manualRow as any)["1688_url"]).trim()
-          : "";
 
     // This supplier is selected via image search. Clear manual/derived supplier fields so
     // reselection behaves like a fresh supplier flow.
@@ -895,7 +965,7 @@ export async function POST(request: NextRequest) {
       // Prefer the current canonical column and fallback if only the legacy/migration
       // column is present in this environment.
       const resetPrimary = await adminClient
-        .from("digideal_products")
+        .from(productsTable)
         .update({ ...baseReset, "1688_URL": null })
         .eq("product_id", productIdValue);
 
@@ -908,7 +978,7 @@ export async function POST(request: NextRequest) {
         }
 
         const resetFallback = await adminClient
-          .from("digideal_products")
+          .from(productsTable)
           .update({ ...baseReset, "1688_url": null })
           .eq("product_id", productIdValue);
         if (resetFallback.error) {
@@ -918,9 +988,9 @@ export async function POST(request: NextRequest) {
 
       // If an old manual URL existed, clear supplier URL too so downstream UI always derives it
       // from the newly selected supplier/variant path.
-      if (url) {
+      if (manualUrl) {
         await adminClient
-          .from("digideal_products")
+          .from(productsTable)
           .update({ supplier_url: null })
           .eq("product_id", productIdValue);
       }

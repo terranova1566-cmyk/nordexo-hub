@@ -425,6 +425,20 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground2,
     },
   },
+  draftToolbarActionButtonNeedsSku: {
+    backgroundColor: "#fff4ce",
+    border: "1px solid #f2c94c",
+    ":hover": {
+      backgroundColor: "#ffefb3",
+    },
+    ":active": {
+      backgroundColor: "#ffe699",
+    },
+    ":disabled": {
+      backgroundColor: "#fff4ce",
+      opacity: 0.8,
+    },
+  },
   draftToolbarFlagButton: {
     minWidth: "34px",
     width: "34px",
@@ -3986,6 +4000,36 @@ const normalizeVariantComparableValue = (value: string) =>
     .toLowerCase()
     .replace(/[^0-9a-z\u00c0-\u024f\u0400-\u04ff\u4e00-\u9fff]+/g, "");
 
+const hasHanCharacters = (value: string) => /[\u4e00-\u9fff]/.test(String(value || ""));
+
+const buildVariantComparableCandidatesFromRow = (row: DraftSkuRow) => {
+  const rawRow = parseDraftRawRow(row.draft_raw_row);
+  const zhCombined = buildVariantCombinedZhValue({
+    draft_option1: String(row.draft_option1 || "").trim(),
+    draft_option2: String(row.draft_option2 || "").trim(),
+    draft_option3: String(row.draft_option3 || "").trim(),
+    draft_option4: String(row.draft_option4 || "").trim(),
+    fallback: String(row.draft_option_combined_zh || "").trim(),
+  });
+  const candidates = [
+    zhCombined,
+    String(row.draft_option_combined_zh || "").trim(),
+    String(row.draft_option1 || "").trim(),
+    String(row.draft_option2 || "").trim(),
+    String(row.draft_option3 || "").trim(),
+    String(row.draft_option4 || "").trim(),
+    String(rawRow.variation_color_zh || "").trim(),
+    String(rawRow.variation_size_zh || "").trim(),
+    String(rawRow.variation_other_zh || "").trim(),
+    String(rawRow.variation_amount_zh || "").trim(),
+  ]
+    .filter((value) => Boolean(value))
+    .filter((value) => hasHanCharacters(value))
+    .map((value) => normalizeVariantComparableValue(value))
+    .filter((value) => value.length >= 2);
+  return Array.from(new Set(candidates));
+};
+
 const doesVariantRowLikelyMatchImageFileName = (
   row: DraftSkuRow,
   imageFileName: string,
@@ -4514,6 +4558,8 @@ export default function DraftExplorerPage() {
   const imageOrderSaveQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const entriesRequestSeqRef = useRef(0);
   const variantEntriesCacheRef = useRef<Map<string, DraftEntry[]>>(new Map());
+  const autoVariantLinkInFlightSpusRef = useRef<Set<string>>(new Set());
+  const autoVariantLinkAttemptedSignaturesRef = useRef<Set<string>>(new Set());
 
   const tagImagesRunning = tagImagesRunningPaths.size > 0;
   const hasPendingDetailAiRewrite =
@@ -5888,7 +5934,7 @@ export default function DraftExplorerPage() {
         new Set(spus.map((value) => String(value || "").trim()).filter(Boolean))
       );
       if (targetSpus.length === 0) {
-        return { ready: true, missingSkuRows: 0, inspectedRows: 0 };
+        return { ready: true, missingSkuRows: 0, missingVariantSpus: 0, inspectedRows: 0 };
       }
 
       const rowsBySpu = new Map<string, DraftSkuRow[]>();
@@ -5921,11 +5967,14 @@ export default function DraftExplorerPage() {
       }
 
       let missingSkuRows = 0;
+      let missingVariantSpus = 0;
       let inspectedRows = 0;
       for (const spu of targetSpus) {
         const rows = rowsBySpu.get(spu) ?? [];
-        // No variant rows is allowed: publish route will build fallback variant from SPU.
-        if (rows.length === 0) continue;
+        if (rows.length === 0) {
+          missingVariantSpus += 1;
+          continue;
+        }
         for (const row of rows) {
           inspectedRows += 1;
           if (!String(row?.draft_sku || "").trim()) {
@@ -5935,13 +5984,57 @@ export default function DraftExplorerPage() {
       }
 
       return {
-        ready: missingSkuRows === 0,
+        ready: missingSkuRows === 0 && missingVariantSpus === 0,
         missingSkuRows,
+        missingVariantSpus,
         inspectedRows,
       };
     },
     [selectedFolder, skuRows]
   );
+
+  const skuReadinessBySpu = useMemo(() => {
+    const map = new Map<
+      string,
+      { totalRows: number; missingSkuRows: number; hasVariants: boolean; ready: boolean }
+    >();
+    for (const row of skuRows) {
+      const spu = String(row?.draft_spu || "").trim();
+      if (!spu) continue;
+      const current = map.get(spu) ?? {
+        totalRows: 0,
+        missingSkuRows: 0,
+        hasVariants: false,
+        ready: false,
+      };
+      current.totalRows += 1;
+      current.hasVariants = true;
+      if (!String(row?.draft_sku || "").trim()) {
+        current.missingSkuRows += 1;
+      }
+      current.ready = current.hasVariants && current.missingSkuRows === 0;
+      map.set(spu, current);
+    }
+    return map;
+  }, [skuRows]);
+
+  const selectedSpuCodesForPublish = useMemo(
+    () =>
+      visibleSpuRows
+        .filter((row) => selectedSpus.has(row.id))
+        .map((row) => String(row.draft_spu || "").trim())
+        .filter(Boolean),
+    [selectedSpus, visibleSpuRows]
+  );
+
+  const selectedPublishHasSkuGaps = useMemo(() => {
+    if (String(searchQuery || "").trim()) return false;
+    if (selectedSpuCodesForPublish.length === 0) return false;
+    return selectedSpuCodesForPublish.some((spu) => {
+      const state = skuReadinessBySpu.get(spu);
+      return !state || !state.ready;
+    });
+  }, [searchQuery, selectedSpuCodesForPublish, skuReadinessBySpu]);
 
   const handlePublishDrafts = async () => {
     if (draftTab !== "spu") return;
@@ -5985,10 +6078,25 @@ export default function DraftExplorerPage() {
       const readiness = await validateSkuReadinessForSpus(targetSpuValues);
       if (!readiness.ready) {
         setPublishStatus("error");
+        const issueParts: string[] = [];
+        if (readiness.missingVariantSpus > 0) {
+          issueParts.push(
+            `${readiness.missingVariantSpus} product${
+              readiness.missingVariantSpus === 1 ? "" : "s"
+            } without variants`
+          );
+        }
+        if (readiness.missingSkuRows > 0) {
+          issueParts.push(
+            `${readiness.missingSkuRows} row${
+              readiness.missingSkuRows === 1 ? "" : "s"
+            } without SKU`
+          );
+        }
         setPublishMessage(
-          `Selected SPUs still have missing SKU values (${readiness.missingSkuRows} row${
-            readiness.missingSkuRows === 1 ? "" : "s"
-          }). Generate SKUs for those products and retry.`
+          `Selected SPUs still have missing SKU coverage (${issueParts.join(
+            ", "
+          )}). Generate SKUs for those products and retry.`
         );
         return;
       }
@@ -7549,6 +7657,14 @@ export default function DraftExplorerPage() {
       ),
     [runSpuOptions]
   );
+  const currentBatchHasSkuGaps = useMemo(() => {
+    if (String(searchQuery || "").trim()) return false;
+    if (currentBatchSpuValues.length === 0) return false;
+    return currentBatchSpuValues.some((spu) => {
+      const state = skuReadinessBySpu.get(spu);
+      return !state || !state.ready;
+    });
+  }, [searchQuery, currentBatchSpuValues, skuReadinessBySpu]);
   const currentBatchSpuCount = currentBatchSpuValues.length;
   const runSpuShortTitleByCode = useMemo(() => {
     const next: Record<string, string> = {};
@@ -7616,10 +7732,25 @@ export default function DraftExplorerPage() {
       const readiness = await validateSkuReadinessForSpus(spus);
       if (!readiness.ready) {
         setPublishStatus("error");
+        const issueParts: string[] = [];
+        if (readiness.missingVariantSpus > 0) {
+          issueParts.push(
+            `${readiness.missingVariantSpus} product${
+              readiness.missingVariantSpus === 1 ? "" : "s"
+            } without variants`
+          );
+        }
+        if (readiness.missingSkuRows > 0) {
+          issueParts.push(
+            `${readiness.missingSkuRows} row${
+              readiness.missingSkuRows === 1 ? "" : "s"
+            } without SKU`
+          );
+        }
         setPublishMessage(
-          `Draft folder still has missing SKU values (${readiness.missingSkuRows} row${
-            readiness.missingSkuRows === 1 ? "" : "s"
-          }). Generate SKUs and retry.`
+          `Draft folder still has missing SKU coverage (${issueParts.join(
+            ", "
+          )}). Generate SKUs and retry.`
         );
         return;
       }
@@ -11702,6 +11833,44 @@ export default function DraftExplorerPage() {
     }
   };
 
+  const resolveDeletedImagesTargetPath = useCallback(
+    (sourcePathRaw: string) => {
+      const sourcePath = String(sourcePathRaw || "").trim();
+      if (!sourcePath) return "";
+      const parentPath = getParentFolderPathFromEntryPath(sourcePath);
+      const basePath = parentPath || String(currentPath || "").trim();
+      if (!basePath) return "";
+      return `${basePath}/deleted images`.replace(/\/{2,}/g, "/");
+    },
+    [currentPath]
+  );
+
+  const handleMoveEntriesToDeletedImages = useCallback(
+    async (sourcePaths: string[]) => {
+      const targetsByFolder = new Map<string, string[]>();
+      (Array.isArray(sourcePaths) ? sourcePaths : []).forEach((sourcePathRaw) => {
+        const sourcePath = String(sourcePathRaw || "").trim();
+        if (!sourcePath) return;
+        const targetPath = resolveDeletedImagesTargetPath(sourcePath);
+        if (!targetPath) return;
+        const existing = targetsByFolder.get(targetPath);
+        if (existing) {
+          if (!existing.includes(sourcePath)) {
+            existing.push(sourcePath);
+          }
+          return;
+        }
+        targetsByFolder.set(targetPath, [sourcePath]);
+      });
+
+      for (const [targetPath, paths] of targetsByFolder.entries()) {
+        if (paths.length === 0) continue;
+        await handleMoveEntriesToFolder(paths, targetPath);
+      }
+    },
+    [handleMoveEntriesToFolder, resolveDeletedImagesTargetPath]
+  );
+
   useEffect(() => {
     const handleDeleteKey = (event: KeyboardEvent) => {
       if (event.key !== "Delete") return;
@@ -11730,16 +11899,19 @@ export default function DraftExplorerPage() {
         return;
       }
 
-      const selectedFilePaths = Array.from(selectedFiles).filter(
-        (pathValue) => entryByPath.get(pathValue)?.type === "file"
+      const visibleImagePaths = new Set(
+        displayImageEntriesRef.current
+          .filter((entry) => entry.type === "file" && isImage(entry.name))
+          .map((entry) => entry.path)
       );
+      const selectedFilePaths = Array.from(selectedFiles).filter((pathValue) => {
+        const fileEntry = entryByPath.get(pathValue);
+        if (fileEntry?.type === "file") return true;
+        return visibleImagePaths.has(pathValue);
+      });
       if (selectedFilePaths.length === 0) return;
       event.preventDefault();
-      const deletedImagesPath = `${currentPath}/deleted images`.replace(
-        /\/{2,}/g,
-        "/"
-      );
-      void handleMoveEntriesToFolder(selectedFilePaths, deletedImagesPath);
+      void handleMoveEntriesToDeletedImages(selectedFilePaths);
     };
 
     window.addEventListener("keydown", handleDeleteKey);
@@ -11753,7 +11925,8 @@ export default function DraftExplorerPage() {
     detailOpen,
     entryByPath,
     fileViewerPath,
-    handleMoveEntriesToFolder,
+    handleMoveEntriesToDeletedImages,
+    isImage,
     movingEntry,
     previewPath,
     renamePending,
@@ -13706,6 +13879,47 @@ export default function DraftExplorerPage() {
       cancelled = true;
     };
   }, [currentImageSpuForDraftFilter, fetchVariantPickerRowsForSpu]);
+  const autoVariantRowsForCurrentSpu = useMemo(() => {
+    const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!spu) return [] as DraftSkuRow[];
+    const mergedById = new Map<string, DraftSkuRow>();
+    const skuRowsForSpu = skuRows.filter(
+      (row) => String(row.draft_spu || "").trim().toUpperCase() === spu
+    );
+    const skuIdsForSpu = new Set(
+      skuRowsForSpu
+        .map((row) => String(row.id || "").trim())
+        .filter((rowId) => Boolean(rowId))
+    );
+    const shouldPruneCachedRows = !String(searchQuery || "").trim() && skuIdsForSpu.size > 0;
+    const cachedRows = variantPickerRowsBySpu[spu] ?? [];
+    cachedRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      if (shouldPruneCachedRows && !skuIdsForSpu.has(rowId)) return;
+      mergedById.set(rowId, row);
+    });
+    skuRowsForSpu.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      mergedById.set(rowId, row);
+    });
+    return Array.from(mergedById.values());
+  }, [currentImageSpuForDraftFilter, searchQuery, skuRows, variantPickerRowsBySpu]);
+  const autoVariantImageFileNamesForCurrentSpu = useMemo(() => {
+    const uniqueByKey = new Map<string, string>();
+    [...entries, ...mainViewVariantImageEntries].forEach((entry) => {
+      if (entry.type !== "file" || !isImage(entry.name)) return;
+      const fileName = extractFileNameFromPath(entry.path || entry.name);
+      if (!fileName || fileName.startsWith(".")) return;
+      const key = normalizeVariantImageFileNameKey(fileName);
+      if (!key) return;
+      if (!uniqueByKey.has(key)) {
+        uniqueByKey.set(key, fileName);
+      }
+    });
+    return Array.from(uniqueByKey.values());
+  }, [entries, isImage, mainViewVariantImageEntries]);
   const applyVariantImageAssignmentToLocalState = useCallback(
     (spu: string, variantId: string, nextImageValue: string | null) => {
       const normalizedVariantId = String(variantId || "").trim();
@@ -13803,6 +14017,167 @@ export default function DraftExplorerPage() {
       fetchVariantPickerRowsForSpu,
     ]
   );
+  useEffect(() => {
+    const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
+    if (!spu) return;
+    if (autoVariantRowsForCurrentSpu.length === 0) return;
+    if (autoVariantImageFileNamesForCurrentSpu.length === 0) return;
+    if (autoVariantLinkInFlightSpusRef.current.has(spu)) return;
+
+    const rowById = new Map<string, DraftSkuRow>();
+    const assignedImageFileNameKeys = new Set<string>();
+    const rowMatchCandidates: Array<{ rowId: string; candidates: string[] }> = [];
+
+    autoVariantRowsForCurrentSpu.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      rowById.set(rowId, row);
+      const explicitFileName = extractVariantImageFileName(row.draft_variant_image_url);
+      const explicitKey = normalizeVariantImageFileNameKey(explicitFileName);
+      if (explicitKey) {
+        assignedImageFileNameKeys.add(explicitKey);
+        return;
+      }
+      const candidates = buildVariantComparableCandidatesFromRow(row);
+      if (candidates.length === 0) return;
+      rowMatchCandidates.push({ rowId, candidates });
+    });
+
+    if (rowMatchCandidates.length === 0) return;
+
+    const imageCandidates = autoVariantImageFileNamesForCurrentSpu
+      .map((fileName) => {
+        const fileNameKey = normalizeVariantImageFileNameKey(fileName);
+        if (!fileNameKey || assignedImageFileNameKeys.has(fileNameKey)) return null;
+        const label = extractVariantLabelFromFilename(fileName, spu);
+        if (!label || !hasHanCharacters(label)) return null;
+        const comparable = normalizeVariantComparableValue(label);
+        if (comparable.length < 2) return null;
+        return { fileName, fileNameKey, comparable };
+      })
+      .filter(
+        (
+          candidate
+        ): candidate is { fileName: string; fileNameKey: string; comparable: string } =>
+          Boolean(candidate)
+      );
+
+    if (imageCandidates.length === 0) return;
+
+    const candidateAssignments: Array<{ rowId: string; fileName: string; fileNameKey: string }> =
+      [];
+    imageCandidates.forEach((imageCandidate) => {
+      const exactMatches = new Set<string>();
+      const fuzzyMatches = new Set<string>();
+      rowMatchCandidates.forEach((rowCandidate) => {
+        if (rowCandidate.candidates.some((candidate) => candidate === imageCandidate.comparable)) {
+          exactMatches.add(rowCandidate.rowId);
+          return;
+        }
+        if (
+          rowCandidate.candidates.some(
+            (candidate) =>
+              candidate.length >= 2 &&
+              (imageCandidate.comparable.includes(candidate) ||
+                candidate.includes(imageCandidate.comparable))
+          )
+        ) {
+          fuzzyMatches.add(rowCandidate.rowId);
+        }
+      });
+      const matches = exactMatches.size > 0 ? exactMatches : fuzzyMatches;
+      if (matches.size !== 1) return;
+      candidateAssignments.push({
+        rowId: Array.from(matches)[0],
+        fileName: imageCandidate.fileName,
+        fileNameKey: imageCandidate.fileNameKey,
+      });
+    });
+
+    if (candidateAssignments.length === 0) return;
+
+    const rowHitCount = new Map<string, number>();
+    candidateAssignments.forEach((item) => {
+      rowHitCount.set(item.rowId, (rowHitCount.get(item.rowId) || 0) + 1);
+    });
+    const updates = candidateAssignments.filter(
+      (item) => (rowHitCount.get(item.rowId) || 0) === 1
+    );
+    if (updates.length === 0) return;
+
+    const signature = `${spu}::${updates
+      .map((item) => `${item.rowId}:${item.fileNameKey}`)
+      .sort()
+      .join("|")}`;
+    if (autoVariantLinkAttemptedSignaturesRef.current.has(signature)) return;
+    autoVariantLinkAttemptedSignaturesRef.current.add(signature);
+    const inFlightSpus = autoVariantLinkInFlightSpusRef.current;
+    inFlightSpus.add(spu);
+
+    let cancelled = false;
+    const run = async () => {
+      const failures: string[] = [];
+      let successfulUpdates = 0;
+      for (const update of updates) {
+        if (cancelled) break;
+        const currentRow = rowById.get(update.rowId);
+        const previousValue = currentRow?.draft_variant_image_url ?? null;
+        applyVariantImageAssignmentToLocalState(spu, update.rowId, update.fileName);
+        try {
+          const response = await fetch("/api/drafts/variants/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: update.rowId,
+              field: "draft_variant_image_url",
+              value: update.fileName,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Unable to update variant image mapping.");
+          }
+          successfulUpdates += 1;
+        } catch (err) {
+          applyVariantImageAssignmentToLocalState(spu, update.rowId, previousValue);
+          failures.push((err as Error).message);
+        }
+      }
+
+      if (!cancelled && successfulUpdates > 0) {
+        try {
+          const refreshed = await fetchVariantPickerRowsForSpu(spu);
+          if (!cancelled) {
+            setVariantPickerRowsBySpu((prev) => ({
+              ...prev,
+              [spu]: refreshed,
+            }));
+          }
+        } catch {
+          // Keep optimistic local state if refresh fails.
+        }
+      }
+
+      if (!cancelled && failures.length > 0) {
+        setError(
+          `Auto-assign variant images finished with ${failures.length} issue(s).`
+        );
+      }
+      inFlightSpus.delete(spu);
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      inFlightSpus.delete(spu);
+    };
+  }, [
+    applyVariantImageAssignmentToLocalState,
+    autoVariantImageFileNamesForCurrentSpu,
+    autoVariantRowsForCurrentSpu,
+    currentImageSpuForDraftFilter,
+    fetchVariantPickerRowsForSpu,
+  ]);
   useEffect(() => {
     if (contextMenuSubmenu !== "assign-variant") return;
     if (!contextMenuVariantImageIsTaggedVar) return;
@@ -14675,14 +15050,16 @@ export default function DraftExplorerPage() {
     [countImagesInEntryList, currentPath, entries, listPathEntries]
   );
 
-  const countTaggedImagesForPaths = useCallback(
-    async (pathValues: Array<string | null>, tag: ImageTagOption) => {
+  const countVariantImagesForPaths = useCallback(
+    async (
+      mainPathValue: string | null,
+      variantsPathValue: string | null,
+      assignedFileNameKeys: Set<string>
+    ) => {
+      const normalizedMainPath = String(mainPathValue || "").trim();
+      const normalizedVariantsPath = String(variantsPathValue || "").trim();
       const uniquePaths = Array.from(
-        new Set(
-          pathValues
-            .map((pathValue) => String(pathValue || "").trim())
-            .filter(Boolean)
-        )
+        new Set([normalizedMainPath, normalizedVariantsPath].filter(Boolean))
       );
       if (uniquePaths.length === 0) return 0;
 
@@ -14703,12 +15080,25 @@ export default function DraftExplorerPage() {
 
         items.forEach((entry) => {
           if (entry.type !== "file" || !isImage(entry.name)) return;
-          if (seenImagePaths.has(entry.path)) return;
-          seenImagePaths.add(entry.path);
-          const tags = extractImageTagsFromFileName(entry.name);
-          if (tags.includes(tag)) {
-            count += 1;
+          const entryPath = String(entry.path || "").trim();
+          if (!entryPath || seenImagePaths.has(entryPath)) return;
+
+          const fileTags = extractImageTagsFromFileName(entry.name);
+          const fileName = extractFileNameFromPath(entry.path || entry.name);
+          const fileNameKey = normalizeVariantImageFileNameKey(fileName);
+          const hasVariantAssignment = fileNameKey
+            ? assignedFileNameKeys.has(fileNameKey)
+            : false;
+          const isInsideVariantsPath =
+            Boolean(normalizedVariantsPath) &&
+            (entryPath === normalizedVariantsPath ||
+              entryPath.startsWith(`${normalizedVariantsPath}/`));
+          if (!(isInsideVariantsPath || fileTags.includes("VAR") || hasVariantAssignment)) {
+            return;
           }
+
+          seenImagePaths.add(entryPath);
+          count += 1;
         });
       }
 
@@ -14721,6 +15111,42 @@ export default function DraftExplorerPage() {
     let cancelled = false;
 
     const loadImageTabCounts = async () => {
+      const normalizedSpu = String(currentImageSpuForDraftFilter || "")
+        .trim()
+        .toUpperCase();
+      const variantAssignmentKeys = new Set<string>();
+      if (normalizedSpu) {
+        const mergedById = new Map<string, DraftSkuRow>();
+        const skuRowsForSpu = skuRows.filter(
+          (row) => String(row.draft_spu || "").trim().toUpperCase() === normalizedSpu
+        );
+        const skuIdsForSpu = new Set(
+          skuRowsForSpu
+            .map((row) => String(row.id || "").trim())
+            .filter((rowId) => Boolean(rowId))
+        );
+        const shouldPruneCachedRows =
+          !String(searchQuery || "").trim() && skuIdsForSpu.size > 0;
+        const cachedRows = variantPickerRowsBySpu[normalizedSpu] ?? [];
+        cachedRows.forEach((row) => {
+          const rowId = String(row.id || "").trim();
+          if (!rowId) return;
+          if (shouldPruneCachedRows && !skuIdsForSpu.has(rowId)) return;
+          mergedById.set(rowId, row);
+        });
+        skuRowsForSpu.forEach((row) => {
+          const rowId = String(row.id || "").trim();
+          if (!rowId) return;
+          mergedById.set(rowId, row);
+        });
+        mergedById.forEach((row) => {
+          const fileName = extractVariantImageFileName(row.draft_variant_image_url);
+          const key = normalizeVariantImageFileNameKey(fileName);
+          if (!key) return;
+          variantAssignmentKeys.add(key);
+        });
+      }
+
       const uniqueOthersPaths = Array.from(
         new Set(
           imageTabTargets.othersPaths
@@ -14735,7 +15161,7 @@ export default function DraftExplorerPage() {
         ocrCount,
         downloadedCount,
         othersCounts,
-        variantTagCount,
+        variantCount,
       ] =
         await Promise.all([
           countImagesForPath(imageTabTargets.mainPath),
@@ -14743,9 +15169,10 @@ export default function DraftExplorerPage() {
           countImagesForPath(imageTabTargets.ocrPath),
           countImagesForPath(imageTabTargets.downloadedPath),
           Promise.all(uniqueOthersPaths.map((pathValue) => countImagesForPath(pathValue))),
-          countTaggedImagesForPaths(
-            [imageTabTargets.mainPath, imageTabTargets.variantsPath],
-            "VAR"
+          countVariantImagesForPaths(
+            imageTabTargets.mainPath,
+            imageTabTargets.variantsPath,
+            variantAssignmentKeys
           ),
         ]);
 
@@ -14755,7 +15182,7 @@ export default function DraftExplorerPage() {
       setImageTabImageCounts({
         // Main view intentionally includes merged variant images.
         main: mainDirectCount + variantsCount,
-        variants: variantTagCount,
+        variants: variantCount,
         ocr: ocrCount,
         downloaded: downloadedCount,
         others: othersCount,
@@ -14768,12 +15195,16 @@ export default function DraftExplorerPage() {
     };
   }, [
     countImagesForPath,
-    countTaggedImagesForPaths,
+    countVariantImagesForPaths,
+    currentImageSpuForDraftFilter,
     imageTabTargets.mainPath,
     imageTabTargets.downloadedPath,
     imageTabTargets.ocrPath,
     imageTabTargets.othersPaths,
     imageTabTargets.variantsPath,
+    searchQuery,
+    skuRows,
+    variantPickerRowsBySpu,
   ]);
 
   const mainViewShowsMergedImages =
@@ -14909,13 +15340,21 @@ export default function DraftExplorerPage() {
   const getDisplayImageTagsForEntry = useCallback(
     (entry: DraftEntry) => {
       const fileTags = extractImageTagsFromFileName(entry.name);
+      const variantsPath = String(imageTabTargets.variantsPath || "").trim();
+      const entryPath = String(entry.path || "").trim();
+      const isInsideVariantsPath =
+        Boolean(variantsPath) &&
+        (entryPath === variantsPath || entryPath.startsWith(`${variantsPath}/`));
+      if (isInsideVariantsPath) {
+        return normalizeImageTags([...fileTags, "VAR"]);
+      }
       if (fileTags.includes("VAR")) return fileTags;
       if (entryHasVariantAssignment(entry)) {
         return normalizeImageTags([...fileTags, "VAR"]);
       }
       return fileTags;
     },
-    [entryHasVariantAssignment]
+    [entryHasVariantAssignment, imageTabTargets.variantsPath]
   );
 
   const displayImageEntries = useMemo(() => {
@@ -14945,13 +15384,22 @@ export default function DraftExplorerPage() {
       .filter((entry): entry is DraftEntry => Boolean(entry));
     if (sorted.length !== combined.length) return combined;
 
+    const variantsPath = String(imageTabTargets.variantsPath || "").trim();
     if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
-      return sorted.filter((entry) =>
-        getDisplayImageTagsForEntry(entry).includes("VAR")
-      );
+      return sorted.filter((entry) => {
+        const entryPath = String(entry.path || "").trim();
+        if (
+          variantsPath &&
+          (entryPath === variantsPath || entryPath.startsWith(`${variantsPath}/`))
+        ) {
+          return true;
+        }
+        return getDisplayImageTagsForEntry(entry).includes("VAR");
+      });
     }
     return sorted;
   }, [
+    imageTabTargets.variantsPath,
     getDisplayImageTagsForEntry,
     imageEntries,
     mainImageViewFilter,
@@ -15591,7 +16039,7 @@ export default function DraftExplorerPage() {
   );
 
   const handlePreviewDelete = useCallback(async () => {
-    if (!previewPath || !currentPath || previewDeletePending) return;
+    if (!previewPath || previewDeletePending) return;
     if (aiEditJobsByPath[previewPath]) {
       setError("Resolve running AI edits before deleting this image.");
       return;
@@ -15600,8 +16048,7 @@ export default function DraftExplorerPage() {
     setPreviewDeletePending(true);
     setError(null);
     try {
-      const deletedImagesPath = `${currentPath}/deleted images`.replace(/\/{2,}/g, "/");
-      await handleMoveEntriesToFolder([previewPath], deletedImagesPath);
+      await handleMoveEntriesToDeletedImages([previewPath]);
       setPreviewPath(nextPreviewPath);
     } catch (err) {
       setError((err as Error).message);
@@ -15610,8 +16057,7 @@ export default function DraftExplorerPage() {
     }
   }, [
     aiEditJobsByPath,
-    currentPath,
-    handleMoveEntriesToFolder,
+    handleMoveEntriesToDeletedImages,
     previewDeletePending,
     previewNav.nextPath,
     previewNav.prevPath,
@@ -16044,7 +16490,10 @@ export default function DraftExplorerPage() {
           <div className={styles.draftToolbarActions}>
             <Button
               appearance="outline"
-              className={styles.draftToolbarActionButton}
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                !skuReady ? styles.draftToolbarActionButtonNeedsSku : undefined
+              )}
               onClick={handleGenerateSkus}
               disabled={skuStatus === "running"}
             >
@@ -16178,6 +16627,7 @@ export default function DraftExplorerPage() {
               disabled={
                 draftTab !== "spu" ||
                 !someSpuSelected ||
+                selectedPublishHasSkuGaps ||
                 publishStatus === "running" ||
                 skuStatus === "running" ||
                 hasPendingDetailAiRewrite
@@ -18323,6 +18773,7 @@ export default function DraftExplorerPage() {
                     disabled={
                       !selectedFolder ||
                       currentBatchSpuCount === 0 ||
+                      currentBatchHasSkuGaps ||
                       publishStatus === "running" ||
                       skuStatus === "running" ||
                       hasPendingDetailAiRewrite

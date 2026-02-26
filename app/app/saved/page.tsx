@@ -32,7 +32,14 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import { createClient } from "@/lib/supabase/client";
@@ -781,14 +788,20 @@ function SavedListDetailView({ listId }: { listId: string }) {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportName, setExportName] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
   const [isConvertingLegacy, setIsConvertingLegacy] = useState(false);
   const [exportMode, setExportMode] = useState<"excel" | "images">("excel");
+  const [exportDataset, setExportDataset] = useState<"partner" | "all">(
+    "partner"
+  );
   const [exportImageMode, setExportImageMode] = useState<"all" | "original">(
     "all"
   );
   const [exportMarket, setExportMarket] = useState<"SE" | "NO" | "FI" | "DK">(
     "SE"
   );
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
@@ -804,7 +817,8 @@ function SavedListDetailView({ listId }: { listId: string }) {
   const openExportDialog = async (
     mode: "excel" | "images",
     market: "SE" | "NO" | "FI" | "DK" = "SE",
-    imageMode: "all" | "original" = "all"
+    imageMode: "all" | "original" = "all",
+    dataset: "partner" | "all" = "partner"
   ) => {
     if (!exportName.trim()) {
       const { data } = await supabase.auth.getUser();
@@ -813,12 +827,14 @@ function SavedListDetailView({ listId }: { listId: string }) {
     setExportMode(mode);
     setExportMarket(market);
     setExportImageMode(imageMode);
+    setExportDataset(dataset);
     setExportDialogOpen(true);
   };
 
   const handleExport = async () => {
     setIsExporting(true);
     setError(null);
+    setImportSummary(null);
     try {
       const endpoint =
         exportMode === "images"
@@ -832,6 +848,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
           listId,
           market: exportMarket,
           imageMode: exportImageMode,
+          dataset: exportMode === "excel" ? exportDataset : undefined,
         }),
       });
       if (!response.ok) {
@@ -857,6 +874,51 @@ function SavedListDetailView({ listId }: { listId: string }) {
       setError((err as Error).message);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleImportClick = () => {
+    if (isImporting) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsImporting(true);
+    setError(null);
+    setImportSummary(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/exports/digideal/import", {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) {
+        let message = t("products.lists.importError");
+        try {
+          const payload = await response.json();
+          message = String(payload?.error || message);
+        } catch {
+          const text = await response.text();
+          if (text.trim()) message = text.trim();
+        }
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      const updatedRows = Number(payload?.updatedRows || 0);
+      const skippedRows = Number(payload?.skippedRows || 0);
+      const rowErrors = Array.isArray(payload?.errors) ? payload.errors : [];
+      const summary = `${t("products.lists.importDone")} Updated: ${updatedRows}, Skipped: ${skippedRows}, Issues: ${rowErrors.length}`;
+      setImportSummary(summary);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -1154,26 +1216,33 @@ function SavedListDetailView({ listId }: { listId: string }) {
                   className={styles.exportButton}
                   disabled={listMissing || items.length === 0 || isLoading}
                 >
-                  {t("products.lists.exportExcel")}
+                  {t("products.lists.export")}
                 </Button>
               </MenuTrigger>
               <MenuPopover>
                 <MenuList>
-                  <MenuItem onClick={() => openExportDialog("excel", "SE")}>
-                    {t("products.lists.exportMarketSe")}
+                  <MenuItem
+                    onClick={() => openExportDialog("excel", "SE", "all", "partner")}
+                  >
+                    {t("products.lists.exportPartnerData")}
                   </MenuItem>
-                  <MenuItem onClick={() => openExportDialog("excel", "NO")}>
-                    {t("products.lists.exportMarketNo")}
-                  </MenuItem>
-                  <MenuItem onClick={() => openExportDialog("excel", "FI")}>
-                    {t("products.lists.exportMarketFi")}
-                  </MenuItem>
-                  <MenuItem onClick={() => openExportDialog("excel", "DK")}>
-                    {t("products.lists.exportMarketDk")}
+                  <MenuItem
+                    onClick={() => openExportDialog("excel", "SE", "all", "all")}
+                  >
+                    {t("products.lists.exportAllData")}
                   </MenuItem>
                 </MenuList>
               </MenuPopover>
             </Menu>
+            <Button
+              appearance="outline"
+              onClick={handleImportClick}
+              disabled={listMissing || items.length === 0 || isLoading || isImporting}
+            >
+              {isImporting
+                ? t("products.lists.importing")
+                : t("products.lists.importExcel")}
+            </Button>
             <Menu>
               <MenuTrigger disableButtonEnhancement>
                 <Button
@@ -1216,6 +1285,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
             ) : null}
           </MessageBar>
         ) : null}
+        {importSummary ? <MessageBar intent="success">{importSummary}</MessageBar> : null}
         {listMissing ? (
           <Text className={styles.metaText}>{t("products.lists.notFound")}</Text>
         ) : isLoading ? (
@@ -1274,6 +1344,14 @@ function SavedListDetailView({ listId }: { listId: string }) {
         </div>
       </Card>
 
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: "none" }}
+        onChange={handleImportFileChange}
+      />
+
       <Dialog
         open={exportDialogOpen}
         onOpenChange={(_, data) => {
@@ -1282,7 +1360,13 @@ function SavedListDetailView({ listId }: { listId: string }) {
       >
         <DialogSurface>
           <DialogBody>
-            <DialogTitle>{t("products.lists.exportTitle")}</DialogTitle>
+            <DialogTitle>
+              {exportMode === "images"
+                ? t("products.lists.exportTitle")
+                : exportDataset === "all"
+                  ? t("products.lists.exportAllData")
+                  : t("products.lists.exportPartnerData")}
+            </DialogTitle>
             <Field
               label={t("products.lists.exportNameLabel")}
               className={styles.exportField}
@@ -1306,7 +1390,9 @@ function SavedListDetailView({ listId }: { listId: string }) {
                   ? t("products.lists.exporting")
                   : exportMode === "images"
                     ? t("products.lists.exportImages")
-                    : t("products.lists.exportExcel")}
+                    : exportDataset === "all"
+                      ? t("products.lists.exportAllData")
+                      : t("products.lists.exportPartnerData")}
               </Button>
             </DialogActions>
           </DialogBody>

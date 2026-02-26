@@ -20,6 +20,15 @@ type QueueItem = {
   product_id: string;
 };
 
+type QueueStatusRow = {
+  provider: string;
+  product_id: string;
+  status: string | null;
+  spu_assigned_at: string | null;
+  production_started_at: string | null;
+  production_done_at: string | null;
+};
+
 type VariantSelection = {
   selected_combo_indexes: number[];
   packs: number[];
@@ -33,6 +42,8 @@ type VariantSelection = {
 
 const asText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value).trim();
+
+const queueItemKey = (provider: string, productId: string) => `${provider}:${productId}`;
 
 const getAdminClient = () => {
   const supabaseUrl =
@@ -86,12 +97,47 @@ async function requireAdmin() {
 
 const normalizeItems = (value: unknown): QueueItem[] => {
   if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
   return value
     .map((entry) => ({
       provider: asText((entry as any)?.provider),
       product_id: asText((entry as any)?.product_id),
     }))
-    .filter((entry) => entry.provider && entry.product_id);
+    .filter((entry) => {
+      if (!entry.provider || !entry.product_id) return false;
+      const key = queueItemKey(entry.provider, entry.product_id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const isQueueStatusAllowedForSend = (
+  statusRow: QueueStatusRow | null | undefined
+) => {
+  if (!statusRow) return true;
+
+  const hasProgress = Boolean(
+    asText(statusRow.production_done_at) ||
+      asText(statusRow.production_started_at) ||
+      asText(statusRow.spu_assigned_at)
+  );
+  if (hasProgress) return false;
+
+  const status = asText(statusRow.status).toLowerCase();
+  if (!status || status === "-" || status === "none") return true;
+  if (
+    status === "not in production" ||
+    status === "not_in_production" ||
+    status === "not-in-production"
+  ) {
+    return true;
+  }
+  if (status === "queued_for_production" || status === "queued") {
+    return true;
+  }
+  if (status.startsWith("new")) return true;
+  return false;
 };
 
 const formatStamp = (date = new Date()) => {
@@ -213,10 +259,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No products selected." }, { status: 400 });
   }
 
+  const providers = Array.from(new Set(queueItems.map((entry) => entry.provider)));
+  const productIds = Array.from(new Set(queueItems.map((entry) => entry.product_id)));
+  const { data: statusRows, error: statusError } = await adminClient
+    .from("discovery_production_status")
+    .select(
+      "provider, product_id, status, spu_assigned_at, production_started_at, production_done_at"
+    )
+    .in("provider", providers)
+    .in("product_id", productIds);
+
+  if (statusError) {
+    return NextResponse.json({ error: statusError.message }, { status: 500 });
+  }
+
+  const statusByKey = new Map<string, QueueStatusRow>();
+  (statusRows as QueueStatusRow[] | null)?.forEach((row) => {
+    statusByKey.set(queueItemKey(asText(row.provider), asText(row.product_id)), row);
+  });
+
+  const blockedItems: Array<QueueItem & { status: string | null }> = [];
+  const allowedQueueItems = queueItems.filter((item) => {
+    const statusRow = statusByKey.get(queueItemKey(item.provider, item.product_id));
+    const allowed = isQueueStatusAllowedForSend(statusRow);
+    if (!allowed) {
+      blockedItems.push({
+        ...item,
+        status: asText(statusRow?.status) || null,
+      });
+    }
+    return allowed;
+  });
+
+  if (allowedQueueItems.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Selected products are already in production or already sent. Only blank, '-', 'not in production', 'queued_for_production/queued', or 'new*' statuses can be sent.",
+        blocked_count: blockedItems.length,
+        blocked: blockedItems,
+      },
+      { status: 400 }
+    );
+  }
+
   const mergedItems: Record<string, unknown>[] = [];
   const missingFiles: QueueItem[] = [];
 
-  for (const item of queueItems) {
+  for (const item of allowedQueueItems) {
     const { data, error } = await adminClient
       .from("discovery_production_supplier_selection")
       .select("selected_offer")
@@ -359,6 +449,8 @@ export async function POST(request: Request) {
         error: missingText
           ? `No saved supplier JSON found for selected products: ${missingText}`
           : "No saved supplier JSON found for selected products.",
+        blocked_count: blockedItems.length,
+        blocked: blockedItems,
       },
       { status: 400 }
     );
@@ -403,11 +495,23 @@ export async function POST(request: Request) {
     }
   }
 
+  const missingKeySet = new Set(
+    missingFiles.map((entry) => queueItemKey(entry.provider, entry.product_id))
+  );
+  const acceptedItems = allowedQueueItems.filter(
+    (entry) => !missingKeySet.has(queueItemKey(entry.provider, entry.product_id))
+  );
+
   return NextResponse.json({
     ok: true,
     file_name: fileName,
     merged_count: mergedItems.length,
     selected_count: queueItems.length,
+    eligible_count: allowedQueueItems.length,
+    accepted_count: acceptedItems.length,
+    accepted_items: acceptedItems,
+    blocked_count: blockedItems.length,
+    blocked: blockedItems,
     missing_count: missingFiles.length,
     missing: missingFiles,
     queued_only: true,

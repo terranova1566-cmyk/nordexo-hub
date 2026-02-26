@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath } from "@/lib/drafts";
@@ -9,7 +10,12 @@ import { getPublicBaseUrlFromRequest } from "@/shared/1688/image-search-runner";
 
 export const runtime = "nodejs";
 
-const DEFAULT_LENS_SERVICE_URL = "http://127.0.0.1:3400";
+const DEFAULT_LENS_SERVICE_URLS = [
+  "http://127.0.0.1:3400",
+  "http://localhost:3400",
+  "http://127.0.0.1:3100",
+  "http://localhost:3100",
+];
 const SEARCH_ENDPOINT = "/api/google-lens/search";
 const HISTORY_ENDPOINT = "/api/google-lens/history";
 const HISTORY_RAW_TEMPLATE = "/api/google-lens/history/:id/raw";
@@ -27,6 +33,12 @@ const LENS_SEARCH_TYPES = new Set([
   "exact_matches",
   "visual_matches",
 ]);
+const LOCAL_LENS_SERVICE_DIR = "/srv/SerpApi/google-lens";
+const LENS_BOOTSTRAP_WAIT_MS = 1_200;
+const LENS_BOOTSTRAP_COOLDOWN_MS = 20_000;
+
+let lensServiceBootInFlight: Promise<void> | null = null;
+let lastLensServiceBootStartedAt = 0;
 
 type LensSearchResultItem = {
   rank: number;
@@ -69,12 +81,67 @@ const safeJsonParse = (value: string) => {
   }
 };
 
-const toServiceUrl = () => {
-  const configured = String(
+const toServiceUrls = () => {
+  const configuredRaw = String(
     process.env.GOOGLE_LENS_SERVICE_URL || process.env.GOOGLE_REVERSE_IMAGE_SERVICE_URL || ""
   ).trim();
-  const base = configured || DEFAULT_LENS_SERVICE_URL;
-  return base.replace(/\/+$/, "");
+  const configured = configuredRaw
+    .split(",")
+    .map((value) => String(value || "").trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  const defaults = DEFAULT_LENS_SERVICE_URLS.map((value) =>
+    value.replace(/\/+$/, "")
+  );
+  return Array.from(new Set([...configured, ...defaults]));
+};
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const maybeBootLocalLensService = async (serviceBaseUrls: string[]) => {
+  const supportsLocalBoot = serviceBaseUrls.some((baseUrl) => {
+    try {
+      const parsed = new URL(baseUrl);
+      const host = parsed.hostname.toLowerCase();
+      return host === "127.0.0.1" || host === "localhost";
+    } catch {
+      return false;
+    }
+  });
+  if (!supportsLocalBoot) return;
+
+  if (
+    Date.now() - lastLensServiceBootStartedAt < LENS_BOOTSTRAP_COOLDOWN_MS &&
+    lensServiceBootInFlight
+  ) {
+    await lensServiceBootInFlight;
+    return;
+  }
+
+  lastLensServiceBootStartedAt = Date.now();
+  lensServiceBootInFlight = (async () => {
+    try {
+      const serverPath = path.join(LOCAL_LENS_SERVICE_DIR, "src", "server.js");
+      await fs.access(serverPath);
+      const child = spawn(process.execPath, ["src/server.js"], {
+        cwd: LOCAL_LENS_SERVICE_DIR,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+    } catch {
+      // Best effort.
+    }
+    await wait(LENS_BOOTSTRAP_WAIT_MS);
+  })();
+
+  try {
+    await lensServiceBootInFlight;
+  } finally {
+    lensServiceBootInFlight = null;
+  }
 };
 
 const inferMimeType = (filePath: string) => {
@@ -467,12 +534,7 @@ export async function POST(request: Request) {
   const requestedLimit = clampResultLimit(
     payload.limit ?? payload.maxResults ?? payload.resultLimit
   );
-  const serviceBaseUrl = toServiceUrl();
-  const searchUrl = `${serviceBaseUrl}${SEARCH_ENDPOINT}`;
-  const historyUrl = `${serviceBaseUrl}${HISTORY_ENDPOINT}`;
-  const historyRawTemplateUrl = `${serviceBaseUrl}${HISTORY_RAW_TEMPLATE}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const serviceBaseUrls = toServiceUrls();
 
   try {
     const externallyReachableImageUrl =
@@ -484,45 +546,119 @@ export async function POST(request: Request) {
       );
     }
 
-    let servicePayload: Record<string, unknown> = {
-      imageUrl: externallyReachableImageUrl || undefined,
-      ...serviceOptions,
-    };
-    let serviceResponse: Response;
-    if (uploadedImageFile) {
-      const form = new FormData();
-      form.set("image", uploadedImageFile, uploadedImageFile.name || "image");
-      if (externallyReachableImageUrl) {
-        form.set("imageUrl", externallyReachableImageUrl);
-      }
-      Object.entries(serviceOptions).forEach(([key, value]) => {
-        if (value === undefined || value === null) return;
-        if (key === "options" && typeof value === "object") {
-          form.set("options", JSON.stringify(value));
-          return;
-        }
-        form.set(key, String(value));
-      });
-      servicePayload = {
+    const performServiceRequest = async (serviceBaseUrl: string) => {
+      const searchUrl = `${serviceBaseUrl}${SEARCH_ENDPOINT}`;
+      const historyUrl = `${serviceBaseUrl}${HISTORY_ENDPOINT}`;
+      const historyRawTemplateUrl = `${serviceBaseUrl}${HISTORY_RAW_TEMPLATE}`;
+      let servicePayload: Record<string, unknown> = {
+        imageUrl: externallyReachableImageUrl || undefined,
         ...serviceOptions,
-        imageUrl: externallyReachableImageUrl || null,
-        uploadedImageFileName: uploadedImageFile.name || null,
-        uploadedImageFileBytes: uploadedImageFile.size,
       };
-      serviceResponse = await fetch(searchUrl, {
-        method: "POST",
-        body: form,
-        signal: controller.signal,
-      });
-    } else {
-      serviceResponse = await fetch(searchUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(servicePayload),
-        signal: controller.signal,
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        let serviceResponse: Response;
+        if (uploadedImageFile) {
+          const form = new FormData();
+          form.set("image", uploadedImageFile, uploadedImageFile.name || "image");
+          if (externallyReachableImageUrl) {
+            form.set("imageUrl", externallyReachableImageUrl);
+          }
+          Object.entries(serviceOptions).forEach(([key, value]) => {
+            if (value === undefined || value === null) return;
+            if (key === "options" && typeof value === "object") {
+              form.set("options", JSON.stringify(value));
+              return;
+            }
+            form.set(key, String(value));
+          });
+          servicePayload = {
+            ...serviceOptions,
+            imageUrl: externallyReachableImageUrl || null,
+            uploadedImageFileName: uploadedImageFile.name || null,
+            uploadedImageFileBytes: uploadedImageFile.size,
+          };
+          serviceResponse = await fetch(searchUrl, {
+            method: "POST",
+            body: form,
+            signal: controller.signal,
+          });
+        } else {
+          serviceResponse = await fetch(searchUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(servicePayload),
+            signal: controller.signal,
+          });
+        }
+        const parsed = await parseServicePayload(serviceResponse);
+        return {
+          serviceBaseUrl,
+          searchUrl,
+          historyUrl,
+          historyRawTemplateUrl,
+          servicePayload,
+          serviceResponse,
+          parsed,
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    const serviceAttemptErrors: string[] = [];
+    const tryServiceCandidates = async () => {
+      for (const serviceBaseUrl of serviceBaseUrls) {
+        try {
+          const result = await performServiceRequest(serviceBaseUrl);
+          if (result.serviceResponse.status === 404) {
+            serviceAttemptErrors.push(
+              `${result.searchUrl}: endpoint not found (HTTP 404)`
+            );
+            continue;
+          }
+          return result;
+        } catch (error) {
+          const message =
+            error instanceof Error && error.name === "AbortError"
+              ? "request timed out"
+              : error instanceof Error
+                ? error.message
+                : "request failed";
+          serviceAttemptErrors.push(`${serviceBaseUrl}${SEARCH_ENDPOINT}: ${message}`);
+        }
+      }
+      return null;
+    };
+
+    let serviceResult = await tryServiceCandidates();
+    if (!serviceResult) {
+      await maybeBootLocalLensService(serviceBaseUrls);
+      serviceResult = await tryServiceCandidates();
     }
-    const parsed = await parseServicePayload(serviceResponse);
+    if (!serviceResult) {
+      return NextResponse.json(
+        {
+          error:
+            "Google Lens service is unavailable. The local Lens service is not reachable.",
+          details: serviceAttemptErrors.slice(0, 8),
+          debug: {
+            serviceUrlsChecked: serviceBaseUrls,
+            endpoint: SEARCH_ENDPOINT,
+          },
+        },
+        { status: 502 }
+      );
+    }
+
+    const {
+      servicePayload,
+      serviceResponse,
+      parsed,
+      searchUrl,
+      historyUrl,
+      historyRawTemplateUrl,
+    } = serviceResult;
 
     if (!serviceResponse.ok) {
       const defaultError =
@@ -660,7 +796,5 @@ export async function POST(request: Request) {
           ? error.message
           : "Google Lens search failed.";
     return NextResponse.json({ error: message }, { status: 500 });
-  } finally {
-    clearTimeout(timeout);
   }
 }

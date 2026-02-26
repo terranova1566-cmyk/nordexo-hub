@@ -86,7 +86,6 @@ export type ExternalProductData = {
   rawTitle: string | null;
   rawDescription: string | null;
   rawMainImageUrl: string | null;
-  rawGalleryImageUrls: string[];
   title: string | null;
   description: string | null;
   mainImageUrl: string | null;
@@ -118,6 +117,7 @@ export type ProductSuggestionRecord = {
   searchJob?: SuggestionSearchJob;
   sourceJob?: SuggestionSourceJob;
   googleTaxonomy?: SuggestionGoogleTaxonomy;
+  reviewStatus?: "new" | "unqualified";
 };
 
 export type MarketConfig = {
@@ -261,6 +261,75 @@ const scoreImageUrl = (urlText: string, ogImage: string) => {
   }
 
   return score;
+};
+
+const isAmazonProductHost = (urlText: string) => {
+  const raw = asText(urlText);
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return /(^|\.)amazon\.[a-z.]{2,}$/i.test(asText(parsed.hostname).toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
+const isAmazonImageHost = (hostText: string) =>
+  /(^|\.)((?:m|images-[a-z0-9-]+)\.media-amazon\.com|media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/i.test(
+    asText(hostText).toLowerCase()
+  );
+
+const normalizeAmazonImageUrl = (urlText: string) => {
+  const raw = asText(urlText);
+  if (!raw) return "";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return "";
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) return "";
+  if (!isAmazonImageHost(parsed.hostname)) return "";
+
+  const pathname = asText(parsed.pathname);
+  if (!/\/images\/I\//i.test(pathname)) return "";
+  if (!/\.(jpe?g|png|webp|avif)$/i.test(pathname)) return "";
+
+  const urlBlob = `${pathname} ${parsed.search}`.toLowerCase();
+  if (
+    /(sprite|icon|logo|pixel|spinner|loader|favicon|transparent|grey-pixel|sash)/i.test(
+      urlBlob
+    )
+  ) {
+    return "";
+  }
+  if (/[?&]aicid=community-reviews\b/i.test(parsed.search)) return "";
+  if (/_AC_(?:UL|UC|UF)\d{2,4}/i.test(raw)) return "";
+  if (/(?:_|\.)(?:UL|SS|SR)\d{2,4}(?:_|\.|,)/i.test(raw)) return "";
+
+  parsed.hash = "";
+  parsed.search = "";
+  parsed.pathname = parsed.pathname
+    .replace(/\._[^/]*?_\.(?=[a-z]{3,4}(?:$))/gi, ".")
+    .replace(/\._[A-Z0-9,]+_\.(?=[a-z]{3,4}(?:$))/gi, ".");
+
+  return parsed.toString();
+};
+
+const normalizeAmazonGalleryImageList = (values: string[], max = 32) => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of values) {
+    const normalized = normalizeAmazonImageUrl(entry);
+    if (!normalized) continue;
+    const key = normalized.split("?")[0].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= max) break;
+  }
+  return out;
 };
 
 const collectJsonLdBlocks = (html: string) => {
@@ -919,6 +988,27 @@ const toFiniteNumber = (value: unknown) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const normalizeImageIndex = (value: unknown, imageCount: number) => {
+  const idx = Math.trunc(Number(value));
+  if (!Number.isFinite(idx)) return null;
+  if (idx < 0 || idx >= imageCount) return null;
+  return idx;
+};
+
+const normalizeImageIndexList = (value: unknown, imageCount: number) => {
+  if (!Array.isArray(value)) return [] as number[];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const entry of value) {
+    const idx = normalizeImageIndex(entry, imageCount);
+    if (idx === null || seen.has(idx)) continue;
+    seen.add(idx);
+    out.push(idx);
+    if (out.length >= Math.min(40, imageCount)) break;
+  }
+  return out;
+};
+
 const normalizeGoogleTaxonomyForRecord = (
   record: ProductSuggestionRecord,
   fallbackTitle: string | null
@@ -1013,31 +1103,55 @@ const cleanExternalDataWithOpenAi = async (input: {
   );
   if (modelCandidates.length === 0) return null;
 
+  const galleryCandidates = normalizeImageList(input.galleryImageUrls || [], 80).slice(0, 80);
   const readablePageText = asText(input.readablePageText || "").slice(0, 120_000);
   const fallbackText = [input.rawTitle, input.rawDescription]
     .map((entry) => asText(entry))
     .filter(Boolean)
     .join("\n\n");
   const copiedPageText = readablePageText || fallbackText;
-  if (!copiedPageText) return null;
+  if (!copiedPageText && galleryCandidates.length === 0) return null;
+
+  const imageHints = galleryCandidates.map((url, index) => {
+    const lower = url.toLowerCase();
+    const flags: string[] = [];
+    if (/\.(jpe?g|webp|png|avif)(?:[?#]|$)/i.test(lower)) flags.push("direct_ext");
+    if (/main|hero|primary|zoom|gallery|product|detail|goods|item|sku/i.test(lower)) {
+      flags.push("product_like");
+    }
+    if (/thumb|icon|logo|sprite|banner|avatar|placeholder|small/i.test(lower)) {
+      flags.push("likely_noise");
+    }
+    return `${index}. ${url}${flags.length ? ` [${flags.join(", ")}]` : ""}`;
+  });
+  const imageListBlock =
+    imageHints.length > 0 ? imageHints.join("\n") : "- none -";
 
   const prompt = [
-    "This is a complete copy-paste from a product web page.",
+    "You are cleaning a product-page extraction with DOM text and candidate image URLs.",
     "Clean marketing language, recommended products/menus, and non-core noise.",
     "Identify the core product and write output in Swedish.",
     "Return JSON only with EXACTLY these keys:",
-    '{ "title": "...", "description": "..." }',
+    '{ "title": "...", "description": "...", "main_image_index": null, "kept_image_indexes": [], "confidence": 0.0, "verified_match": true, "notes": [] }',
     "Rules:",
     "1) title: short Swedish e-commerce title, product-noun focused.",
     "2) description: Swedish, merge core product description + key specifications.",
     "3) Keep as many concrete technical specifications as available (dimensions, materials, capacity, voltage/power, compatibility, package contents, model/version).",
     "4) Use only information present in the copied page text. Do not invent missing specs.",
     "5) Do not include external links, seller menus, campaign text, or unrelated recommendations.",
+    "6) For image selection, prefer direct product gallery/hero images. Avoid logos/icons/sprites/related/recommended images.",
+    "7) main_image_index must reference the candidate image list index. Use null if uncertain.",
+    "8) kept_image_indexes must contain unique integer indexes in priority order with the main image first when possible.",
+    "9) If no good images exist, return kept_image_indexes as [] and main_image_index as null.",
     "",
     `Input URL: ${asText(input.inputUrl) || "-"}`,
     `Final URL: ${asText(input.finalUrl) || "-"}`,
+    "",
+    "Candidate image URLs (indexed):",
+    imageListBlock,
+    "",
     "Copied page text:",
-    copiedPageText,
+    copiedPageText || "-",
   ].join("\n");
 
   for (const model of modelCandidates) {
@@ -1079,8 +1193,58 @@ const cleanExternalDataWithOpenAi = async (input: {
         ["1", "true", "yes", "ok"].includes(verifiedRaw.toLowerCase()) ||
         (cleanedTitle.length >= 3 && cleanedDescription.length >= 40);
       const confidence = normalizeConfidence(rec.confidence) ?? null;
+      const mainImageUrlRaw = asText(
+        rec.main_image_url ||
+          rec.mainImageUrl ||
+          rec.primary_image_url ||
+          rec.primaryImageUrl ||
+          rec.hero_image_url ||
+          rec.heroImageUrl
+      );
+      const mainImageUrlIndexByUrl =
+        mainImageUrlRaw && galleryCandidates.length > 0
+          ? galleryCandidates.findIndex(
+              (entry) => entry.split("#")[0].toLowerCase() === mainImageUrlRaw.split("#")[0].toLowerCase()
+            )
+          : -1;
+      const preferredMainImageIndex =
+        normalizeImageIndex(
+          rec.main_image_index ??
+            rec.mainImageIndex ??
+            rec.primary_image_index ??
+            rec.primaryImageIndex ??
+            rec.hero_image_index ??
+            rec.heroImageIndex,
+          galleryCandidates.length
+        ) ??
+        (mainImageUrlIndexByUrl >= 0 ? mainImageUrlIndexByUrl : null);
 
-      if (!cleanedTitle && !cleanedDescription) {
+      const keptImageIndexes = normalizeImageIndexList(
+        rec.kept_image_indexes ??
+          rec.keptImageIndexes ??
+          rec.gallery_image_indexes ??
+          rec.galleryImageIndexes ??
+          rec.image_indexes ??
+          rec.imageIndexes,
+        galleryCandidates.length
+      );
+
+      if (preferredMainImageIndex !== null) {
+        const existingPos = keptImageIndexes.indexOf(preferredMainImageIndex);
+        if (existingPos === -1) {
+          keptImageIndexes.unshift(preferredMainImageIndex);
+        } else if (existingPos > 0) {
+          keptImageIndexes.splice(existingPos, 1);
+          keptImageIndexes.unshift(preferredMainImageIndex);
+        }
+      }
+
+      if (
+        !cleanedTitle &&
+        !cleanedDescription &&
+        keptImageIndexes.length === 0 &&
+        preferredMainImageIndex === null
+      ) {
         continue;
       }
 
@@ -1088,7 +1252,8 @@ const cleanExternalDataWithOpenAi = async (input: {
         model,
         cleanedTitle: cleanedTitle || null,
         cleanedDescription: cleanedDescription || null,
-        keptImageIndexes: [] as number[],
+        keptImageIndexes,
+        preferredMainImageIndex,
         notes,
         verified,
         confidence,
@@ -1142,7 +1307,6 @@ export const buildExternalDataForImageSuggestion = (params: {
     rawTitle: null,
     rawDescription: null,
     rawMainImageUrl: mainImageUrl,
-    rawGalleryImageUrls: [...galleryImageUrls],
     title,
     description,
     mainImageUrl,
@@ -1169,24 +1333,37 @@ export const buildExternalDataForUrlSuggestion = async (params: {
   runAiCleanup?: boolean;
 }) => {
   const now = asText(params.createdAt) || new Date().toISOString();
+  const effectiveUrl = asText(params.finalUrl) || asText(params.inputUrl);
+  const isAmazonSource = isAmazonProductHost(effectiveUrl);
   const rawTitle = asText(params.title) || null;
   const rawDescription = normalizeDescription(asText(params.description)) || null;
-  const rawGalleryImageUrls = normalizeImageList(
+  const normalizedRawImages = normalizeImageList(
     [params.mainImageUrl, ...(Array.isArray(params.galleryImageUrls) ? params.galleryImageUrls : [])],
     80
   );
-  const rawMainImageUrl = asText(params.mainImageUrl) || asText(rawGalleryImageUrls[0]) || null;
+  const amazonGalleryImages = isAmazonSource
+    ? normalizeAmazonGalleryImageList(normalizedRawImages, 32)
+    : [];
+  const normalizedInputGalleryImageUrls =
+    isAmazonSource && amazonGalleryImages.length > 0
+      ? amazonGalleryImages
+      : normalizedRawImages;
+  const rawMainImageUrl =
+    (isAmazonSource ? asText(normalizedInputGalleryImageUrls[0]) : "") ||
+    asText(params.mainImageUrl) ||
+    asText(normalizedInputGalleryImageUrls[0]) ||
+    null;
 
   let title = rawTitle;
   let description = rawDescription;
-  let galleryImageUrls = [...rawGalleryImageUrls];
+  let galleryImageUrls = [...normalizedInputGalleryImageUrls];
   let mainImageUrl = rawMainImageUrl;
   let aiReview: ExternalDataAiReview | null = null;
 
   const aiResponse =
     params.runAiCleanup === false
       ? null
-      : !rawTitle && !rawDescription && rawGalleryImageUrls.length === 0
+      : !rawTitle && !rawDescription && normalizedInputGalleryImageUrls.length === 0
         ? null
       : await cleanExternalDataWithOpenAi({
           inputUrl: asText(params.inputUrl) || null,
@@ -1198,18 +1375,49 @@ export const buildExternalDataForUrlSuggestion = async (params: {
         });
 
   if (aiResponse) {
+    const galleryBeforeAi = [...galleryImageUrls];
     if (asText(aiResponse.cleanedTitle)) title = asText(aiResponse.cleanedTitle);
     if (asText(aiResponse.cleanedDescription)) {
       description = normalizeDescription(asText(aiResponse.cleanedDescription));
     }
     if (aiResponse.keptImageIndexes.length > 0) {
       galleryImageUrls = aiResponse.keptImageIndexes
-        .map((idx) => galleryImageUrls[idx])
+        .map((idx) => galleryBeforeAi[idx])
         .filter(Boolean);
     }
-    if (!asText(mainImageUrl) && galleryImageUrls.length > 0) {
-      mainImageUrl = asText(galleryImageUrls[0]) || null;
+
+    const preferredMainImageIndex =
+      typeof aiResponse.preferredMainImageIndex === "number"
+        ? aiResponse.preferredMainImageIndex
+        : null;
+    const preferredMainImageUrl =
+      preferredMainImageIndex !== null
+        ? asText(galleryBeforeAi[preferredMainImageIndex])
+        : "";
+    if (preferredMainImageUrl) {
+      mainImageUrl = preferredMainImageUrl;
+      galleryImageUrls = [
+        preferredMainImageUrl,
+        ...galleryImageUrls.filter(
+          (entry) =>
+            asText(entry).split("#")[0].toLowerCase() !==
+            preferredMainImageUrl.split("#")[0].toLowerCase()
+        ),
+      ];
     }
+
+    if (galleryImageUrls.length > 0) {
+      const currentMain = asText(mainImageUrl);
+      const hasCurrentMain = galleryImageUrls.some(
+        (entry) =>
+          asText(entry).split("#")[0].toLowerCase() ===
+          currentMain.split("#")[0].toLowerCase()
+      );
+      if (!currentMain || !hasCurrentMain) {
+        mainImageUrl = asText(galleryImageUrls[0]) || null;
+      }
+    }
+
     aiReview = {
       model: aiResponse.model,
       verifiedAt: now,
@@ -1241,7 +1449,6 @@ export const buildExternalDataForUrlSuggestion = async (params: {
     rawTitle,
     rawDescription,
     rawMainImageUrl,
-    rawGalleryImageUrls,
     title,
     description,
     mainImageUrl,
@@ -1271,10 +1478,15 @@ export const normalizeExternalDataForRecord = (
     record.externalData && typeof record.externalData === "object"
       ? (record.externalData as ExternalProductData)
       : null;
+  const legacyRawGalleryImageUrls = Array.isArray(
+    (existing as { rawGalleryImageUrls?: unknown } | null)?.rawGalleryImageUrls
+  )
+    ? ((existing as { rawGalleryImageUrls?: unknown }).rawGalleryImageUrls as unknown[])
+    : [];
   const galleryImageUrls = normalizeImageList(
     [
       ...(existing?.galleryImageUrls || []),
-      ...(existing?.rawGalleryImageUrls || []),
+      ...legacyRawGalleryImageUrls,
       ...baseGallery,
     ],
     80
@@ -1302,10 +1514,6 @@ export const normalizeExternalDataForRecord = (
       normalizeDescription(asText(existing?.rawDescription)) || baseDescription || null,
     rawMainImageUrl:
       asText(existing?.rawMainImageUrl) || baseMainImageUrl || asText(mainImageUrl) || null,
-    rawGalleryImageUrls: normalizeImageList(
-      [...(existing?.rawGalleryImageUrls || []), ...baseGallery],
-      80
-    ),
     title,
     description,
     mainImageUrl: asText(mainImageUrl) || null,

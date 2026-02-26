@@ -80,6 +80,18 @@ const useStyles = makeStyles({
   },
 });
 
+const extractFileName = (src: string) => {
+  const trimmed = String(src || "").trim();
+  if (!trimmed) return "";
+  const withoutHash = trimmed.split("#", 1)[0] ?? trimmed;
+  const withoutQuery = withoutHash.split("?", 1)[0] ?? withoutHash;
+  const parts = withoutQuery.split("/");
+  return parts[parts.length - 1] ?? "";
+};
+
+const imageStem = (src: string) =>
+  extractFileName(src).replace(/\.[^/.]+$/u, "").toLowerCase();
+
 export default function ProductGallery({
   images,
   thumbnails,
@@ -94,20 +106,45 @@ export default function ProductGallery({
   const [isOpen, setIsOpen] = useState(false);
   const selectedIndex = selected >= 0 && selected < images.length ? selected : 0;
 
+  const thumbnailByStem = useMemo(() => {
+    const map = new Map<string, ImageAsset>();
+    (thumbnails ?? []).forEach((image) => {
+      const stem = imageStem(image.src);
+      if (!stem || map.has(stem)) return;
+      map.set(stem, image);
+    });
+    return map;
+  }, [thumbnails]);
+
+  const originalByStem = useMemo(() => {
+    const map = new Map<string, ImageAsset>();
+    (originals ?? []).forEach((image) => {
+      const stem = imageStem(image.src);
+      if (!stem || map.has(stem)) return;
+      map.set(stem, image);
+    });
+    return map;
+  }, [originals]);
+
   const activeImage = useMemo(
     () => images[selectedIndex] ?? images[0],
     [images, selectedIndex]
   );
   const fullImage = useMemo(
-    () => originals?.[selectedIndex] ?? activeImage,
-    [activeImage, originals, selectedIndex]
+    () =>
+      originalByStem.get(imageStem(activeImage.src)) ??
+      activeImage,
+    [activeImage, originalByStem]
   );
   const thumbItems = useMemo(() => {
     if (thumbnails && thumbnails.length) {
-      return images.map((image, index) => thumbnails[index] ?? image);
+      return images.map((image) => {
+        const byStem = thumbnailByStem.get(imageStem(image.src));
+        return byStem ?? image;
+      });
     }
     return images;
-  }, [images, thumbnails]);
+  }, [images, thumbnailByStem, thumbnails]);
   const visibleThumbs = useMemo(() => thumbItems, [thumbItems]);
 
   if (!images.length) {

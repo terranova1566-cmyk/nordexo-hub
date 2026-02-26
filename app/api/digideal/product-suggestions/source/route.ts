@@ -20,6 +20,17 @@ const asText = (value: unknown) =>
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(asText(value));
 
+const isAmazonProductHost = (value: string) => {
+  const raw = asText(value);
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return /(^|\.)amazon\.[a-z.]{2,}$/i.test(asText(parsed.hostname).toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 const spawnTaxonomyWorker = (suggestionId: string) => {
   const id = asText(suggestionId);
   if (!id) return false;
@@ -57,6 +68,32 @@ const uniqueStrings = (items: unknown[], max = 50) => {
   return out;
 };
 
+const extractAmazonGalleryFromRecord = (record: ProductSuggestionRecord) => {
+  const recordObject =
+    record && typeof record === "object"
+      ? (record as unknown as Record<string, unknown>)
+      : {};
+  const attrs =
+    recordObject.platform_attributes &&
+    typeof recordObject.platform_attributes === "object"
+      ? (recordObject.platform_attributes as Record<string, unknown>)
+      : {};
+  const amazonAttrs =
+    attrs.amazon && typeof attrs.amazon === "object"
+      ? (attrs.amazon as Record<string, unknown>)
+      : {};
+
+  return uniqueStrings(
+    [
+      ...(Array.isArray(amazonAttrs.gallery_image_urls)
+        ? amazonAttrs.gallery_image_urls
+        : []),
+      ...(Array.isArray(record.galleryImageUrls) ? record.galleryImageUrls : []),
+    ].filter((entry) => isHttpUrl(asText(entry))),
+    80
+  );
+};
+
 const buildPendingExternalData = (
   sourceUrl: string,
   existing: ProductSuggestionRecord["externalData"] | null | undefined,
@@ -69,7 +106,6 @@ const buildPendingExternalData = (
   rawTitle: null,
   rawDescription: null,
   rawMainImageUrl: null,
-  rawGalleryImageUrls: [] as string[],
   title: null,
   description: null,
   mainImageUrl: null,
@@ -148,12 +184,26 @@ const runSourceCrawlJob = async (suggestionId: string, sourceUrl: string) => {
   try {
     const crawl = await crawlUrlForProduct(sourceUrl);
     const crawlErrors = [...(Array.isArray(crawl.errors) ? crawl.errors : [])];
+    const amazonGalleryFromRecord = extractAmazonGalleryFromRecord(record);
+    const shouldPreferStoredAmazonGallery =
+      amazonGalleryFromRecord.length > 0 &&
+      isAmazonProductHost(asText(crawl.finalUrl) || sourceUrl);
 
     let preferredImageUrl =
       asText(crawl.mainImageUrl) ||
       (Array.isArray(crawl.imageUrls) && crawl.imageUrls.length > 0
         ? asText(crawl.imageUrls[0])
         : "");
+
+    const sourceGalleryImageUrls = shouldPreferStoredAmazonGallery
+      ? amazonGalleryFromRecord
+      : Array.isArray(crawl.imageUrls)
+        ? crawl.imageUrls
+        : [];
+    const sourceMainImageUrl = shouldPreferStoredAmazonGallery
+      ? asText(amazonGalleryFromRecord[0]) || preferredImageUrl || asText(crawl.mainImageUrl)
+      : preferredImageUrl || asText(crawl.mainImageUrl);
+    preferredImageUrl = asText(sourceMainImageUrl) || preferredImageUrl;
 
     if (preferredImageUrl) {
       try {
@@ -177,8 +227,8 @@ const runSourceCrawlJob = async (suggestionId: string, sourceUrl: string) => {
       title: asText(crawl.title),
       description: asText(crawl.description),
       readablePageText: asText(crawl.readableText),
-      mainImageUrl: preferredImageUrl || crawl.mainImageUrl || null,
-      galleryImageUrls: Array.isArray(crawl.imageUrls) ? crawl.imageUrls : [],
+      mainImageUrl: sourceMainImageUrl || null,
+      galleryImageUrls: sourceGalleryImageUrls,
       errors: crawlErrors,
       createdAt: asText(record.externalData?.createdAt) || beforeAi,
       runAiCleanup: false,
@@ -209,8 +259,8 @@ const runSourceCrawlJob = async (suggestionId: string, sourceUrl: string) => {
       title: asText(crawl.title),
       description: asText(crawl.description),
       readablePageText: asText(crawl.readableText),
-      mainImageUrl: preferredImageUrl || crawl.mainImageUrl || null,
-      galleryImageUrls: Array.isArray(crawl.imageUrls) ? crawl.imageUrls : [],
+      mainImageUrl: sourceMainImageUrl || null,
+      galleryImageUrls: sourceGalleryImageUrls,
       errors: crawlErrors,
       createdAt: asText(record.externalData?.createdAt) || finishedAt,
       runAiCleanup: true,

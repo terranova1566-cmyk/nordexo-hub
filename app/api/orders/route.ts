@@ -42,6 +42,77 @@ async function hasOrdersStatusColumn(adminClient: AdminClient) {
   return (data?.length ?? 0) > 0;
 }
 
+type OrdersNotificationColumnFlags = {
+  latestNotificationName: boolean;
+  latestNotificationSentAt: boolean;
+};
+
+type OrdersCountryColumnFlags = {
+  customerCountryCode: boolean;
+  customerCountry: boolean;
+};
+
+async function getOrdersNotificationColumnFlags(
+  adminClient: AdminClient
+): Promise<OrdersNotificationColumnFlags> {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .in("column_name", [
+      "latest_notification_name",
+      "latest_notification_sent_at",
+    ]);
+
+  if (error) {
+    return {
+      latestNotificationName: false,
+      latestNotificationSentAt: false,
+    };
+  }
+
+  const columnNames = new Set(
+    ((data ?? []) as Array<{ column_name?: unknown }>)
+      .map((row) => String(row.column_name ?? "").trim())
+      .filter(Boolean)
+  );
+
+  return {
+    latestNotificationName: columnNames.has("latest_notification_name"),
+    latestNotificationSentAt: columnNames.has("latest_notification_sent_at"),
+  };
+}
+
+async function getOrdersCountryColumnFlags(
+  adminClient: AdminClient
+): Promise<OrdersCountryColumnFlags> {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .in("column_name", ["customer_country_code", "customer_country"]);
+
+  if (error) {
+    return {
+      customerCountryCode: false,
+      customerCountry: false,
+    };
+  }
+
+  const columnNames = new Set(
+    ((data ?? []) as Array<{ column_name?: unknown }>)
+      .map((row) => String(row.column_name ?? "").trim())
+      .filter(Boolean)
+  );
+
+  return {
+    customerCountryCode: columnNames.has("customer_country_code"),
+    customerCountry: columnNames.has("customer_country"),
+  };
+}
+
 function resolveDelayWarningDays() {
   const raw = Number(process.env.ORDER_DELAY_WARNING_DAYS);
   if (Number.isFinite(raw) && raw > 0) {
@@ -62,6 +133,64 @@ function chunkArray<T>(items: T[], size: number) {
 function normalizeBigintId(value: unknown) {
   const token = String(value ?? "").trim();
   return /^\d+$/.test(token) ? token : null;
+}
+
+function normalizeCountryCode(value: unknown) {
+  const token = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
+  return token.length === 2 ? token : null;
+}
+
+const COUNTRY_NAME_TO_CODE = new Map<string, string>([
+  ["SWEDEN", "SE"],
+  ["SVERIGE", "SE"],
+  ["NORWAY", "NO"],
+  ["NORGE", "NO"],
+  ["FINLAND", "FI"],
+  ["SUOMI", "FI"],
+  ["DENMARK", "DK"],
+  ["DANMARK", "DK"],
+]);
+
+function mapCountryNameToCode(value: unknown) {
+  const token = String(value ?? "").trim().toUpperCase();
+  if (!token) return null;
+  return COUNTRY_NAME_TO_CODE.get(token) ?? null;
+}
+
+function pickObject(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
+}
+
+function pickCountryFromRawRow(rawRow: unknown) {
+  const root = pickObject(rawRow);
+  if (!root) return { countryCode: null as string | null, countryName: null as string | null };
+
+  const orderRoot = pickObject(root.order) ?? root;
+  const shippingAddress = pickObject(orderRoot.shipping_address);
+  const billingAddress = pickObject(orderRoot.billing_address);
+  const customer = pickObject(orderRoot.customer);
+  const defaultAddress = pickObject(customer?.default_address);
+
+  const countryName =
+    String(
+      shippingAddress?.country ??
+        billingAddress?.country ??
+        defaultAddress?.country ??
+        ""
+    ).trim() || null;
+
+  const countryCode =
+    normalizeCountryCode(shippingAddress?.country_code) ||
+    normalizeCountryCode(billingAddress?.country_code) ||
+    normalizeCountryCode(defaultAddress?.country_code) ||
+    mapCountryNameToCode(countryName) ||
+    null;
+
+  return { countryCode, countryName };
 }
 
 function sortOrderRows(rows: Array<Record<string, unknown>>) {
@@ -205,6 +334,9 @@ export async function GET(request: Request) {
 
   const adminClient = adminCheck.adminClient as AdminClient;
   const includeStatus = await hasOrdersStatusColumn(adminClient);
+  const notificationColumns =
+    await getOrdersNotificationColumnFlags(adminClient);
+  const countryColumns = await getOrdersCountryColumnFlags(adminClient);
   const delayWarningDays = resolveDelayWarningDays();
 
   const { searchParams } = new URL(request.url);
@@ -257,9 +389,31 @@ export async function GET(request: Request) {
     return next;
   };
 
-  const selectColumns = includeStatus
-    ? "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_address,customer_city,customer_zip,transaction_date,date_shipped,status,created_at"
+  const notificationSelectColumns = [
+    notificationColumns.latestNotificationName
+      ? "latest_notification_name"
+      : null,
+    notificationColumns.latestNotificationSentAt
+      ? "latest_notification_sent_at"
+      : null,
+  ]
+    .filter(Boolean)
+    .join(",");
+
+  const countrySelectColumns = [
+    countryColumns.customerCountryCode ? "customer_country_code" : null,
+    countryColumns.customerCountry ? "customer_country" : null,
+  ]
+    .filter(Boolean)
+    .join(",");
+
+  const baseSelectColumns = includeStatus
+    ? "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_address,customer_city,customer_zip,transaction_date,date_shipped,status,raw_row,created_at"
     : "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_email,customer_address,customer_city,customer_zip,transaction_date,date_shipped,raw_row,created_at";
+
+  const selectColumns = [baseSelectColumns, notificationSelectColumns, countrySelectColumns]
+    .filter(Boolean)
+    .join(",");
 
   let data: Array<Record<string, unknown>> = [];
   let error: { message: string } | null = null;
@@ -282,7 +436,7 @@ export async function GET(request: Request) {
       (directRows ?? []).forEach((row) => {
         const id = String((row as { id?: unknown }).id ?? "").trim();
         if (!id) return;
-        merged.set(id, row as Record<string, unknown>);
+        merged.set(id, row as unknown as Record<string, unknown>);
       });
 
       if (itemMatchedOrderIds.length > 0) {
@@ -302,7 +456,7 @@ export async function GET(request: Request) {
           (itemRows ?? []).forEach((row) => {
             const id = String((row as { id?: unknown }).id ?? "").trim();
             if (!id) return;
-            merged.set(id, row as Record<string, unknown>);
+            merged.set(id, row as unknown as Record<string, unknown>);
           });
         }
       }
@@ -320,7 +474,7 @@ export async function GET(request: Request) {
         .order("transaction_date", { ascending: false })
         .order("order_number", { ascending: true })
     );
-    data = (rows ?? []) as Array<Record<string, unknown>>;
+    data = (rows ?? []) as unknown as Array<Record<string, unknown>>;
     error = rowsError;
     count = rowsCount;
   }
@@ -331,13 +485,22 @@ export async function GET(request: Request) {
 
   const items = (data ?? []).map((row) => {
     const safeRow = row as Record<string, unknown> & {
+      id?: unknown;
       transaction_date?: string | null;
       status?: unknown;
       date_shipped?: unknown;
       raw_row?: unknown;
       sales_channel_id?: unknown;
       sales_channel_name?: unknown;
+      customer_country_code?: unknown;
+      customer_country?: unknown;
     };
+    const rawCountry = pickCountryFromRawRow(safeRow.raw_row);
+    const customerCountryCode =
+      normalizeCountryCode(safeRow.customer_country_code) || rawCountry.countryCode;
+    const customerCountry =
+      String(safeRow.customer_country ?? "").trim() || rawCountry.countryName;
+    const normalizedId = String(safeRow.id ?? "").trim();
     const status = includeStatus
       ? normalizeOrderStatus(safeRow.status)
       : inferOrderStatusWithoutStatusColumn(safeRow);
@@ -354,7 +517,10 @@ export async function GET(request: Request) {
     });
     return {
       ...rest,
+      id: normalizedId,
       sales_channel_name: normalizedPlatformName || (safeRow.sales_channel_name ?? null),
+      customer_country_code: customerCountryCode,
+      customer_country: customerCountry || null,
       status,
       is_delayed: warning.isDelayed,
       delay_days: warning.delayDays,

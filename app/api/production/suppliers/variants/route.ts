@@ -18,8 +18,12 @@ import {
   pickFallbackWeightGrams,
   toWeightGrams as asWeightGrams,
 } from "@/shared/1688/core";
+import { getDealsProviderConfig, resolveDealsProvider } from "@/lib/deals/provider";
 
 export const runtime = "nodejs";
+const DIGIDEAL_PROVIDER = "digideal";
+const OFFERILLA_PROVIDER = "offerilla";
+const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
 
 type VariantCombo = {
   index: number;
@@ -775,7 +779,7 @@ const normalizeCombos = (
     const weightGrams =
       tableWeight ??
       asWeightGrams(weightRaw, { allowUnitless: true }) ??
-      fallbackWeightGrams;
+      (combos.length <= 1 ? fallbackWeightGrams : null);
     const effectiveWeightRaw =
       weightRaw || (tableWeight ? `${tableWeight}g` : "");
 
@@ -1363,7 +1367,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const provider = asText(request.nextUrl.searchParams.get("provider"));
+  const provider = asText(request.nextUrl.searchParams.get("provider")).toLowerCase();
   const productId = asText(request.nextUrl.searchParams.get("product_id"));
   const skipTranslation = asText(request.nextUrl.searchParams.get("skipTranslation")) === "1";
   if (!provider || !productId) {
@@ -1520,7 +1524,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  const provider = asText((body as any).provider);
+  const provider = asText((body as any).provider).toLowerCase();
   const productId = asText((body as any).product_id);
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
@@ -1656,17 +1660,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // DigiDeal: when a variant is chosen, store purchase_price + weight on the deal so we can
-    // compute the estimated rerun price immediately (without locking the supplier URL).
+    // Deals managers: when a variant is chosen, store purchase_price + weight on the deal so we
+    // can compute the estimated rerun price immediately (without locking the supplier URL).
     let digidealUpdateError: string | null = null;
     let digidealUpdated: { purchase_price: number | null; weight_grams: number | null } | null =
       null;
-    if (provider === "digideal") {
+    if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
+      const dealsProvider = resolveDealsProvider(provider);
+      const providerConfig = getDealsProviderConfig(dealsProvider);
+      const productsTable = providerConfig.productsTable;
       const productIdValue: string | number = /^\d+$/.test(productId)
         ? Number(productId)
         : productId;
       const { data: digidealRow, error: digidealRowError } = await adminClient
-        .from("digideal_products")
+        .from(productsTable)
         .select('product_id, "1688_URL", 1688_url')
         .eq("product_id", productIdValue)
         .maybeSingle();
@@ -1683,7 +1690,7 @@ export async function POST(request: NextRequest) {
         if (!isLocked) {
           if (selectedIndexes.length === 0) {
             const { data: updatedRow, error: updateRowError } = await adminClient
-              .from("digideal_products")
+              .from(productsTable)
               .update({ purchase_price: null, weight_grams: null, weight_kg: null })
               .eq("product_id", productIdValue)
               .select("product_id, purchase_price, weight_grams")
@@ -1751,7 +1758,7 @@ export async function POST(request: NextRequest) {
               const weightGrams = Math.round(scaledWeightGramsRaw);
               const weightKg = Number((weightGrams / 1000).toFixed(3));
               const { data: updatedRow, error: updateRowError } = await adminClient
-                .from("digideal_products")
+                .from(productsTable)
                 .update({
                   purchase_price: scaledPrice,
                   weight_grams: weightGrams,

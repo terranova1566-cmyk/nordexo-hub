@@ -244,12 +244,29 @@ const parseImageUrls = (value: unknown): string[] => {
           .map((entry) => toText(entry))
           .filter(Boolean);
       }
+      const parsedText = toText(parsed);
+      if (parsedText) return [parsedText];
     } catch {
-      return [raw];
+      // fall through to plain-text handling
+    }
+    if (raw.includes(",") && !/^https?:\/\//i.test(raw)) {
+      return raw
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
     }
     return [raw];
   }
   return [];
+};
+
+const normalizeDealImageUrl = (value: unknown) => {
+  const text = toText(value);
+  if (!text) return "";
+  if (text.startsWith("//")) return `https:${text}`;
+  if (/^https?:\/\//i.test(text)) return text;
+  if (text.startsWith("/")) return text;
+  return "";
 };
 
 const isLetsDealFavoriteIcon = (url: string) => {
@@ -262,11 +279,13 @@ const isLetsDealFavoriteIcon = (url: string) => {
 };
 
 const sanitizeDealImageFields = (product: Record<string, unknown>) => {
-  const primaryRaw = toText(product.primary_image_url);
-  const parsedImages = parseImageUrls(product.image_urls);
+  const primaryRaw = normalizeDealImageUrl(product.primary_image_url);
+  const parsedImages = parseImageUrls(product.image_urls).map((entry) =>
+    normalizeDealImageUrl(entry)
+  );
   const fallbackCandidates = [
-    toText(product.product_image_url),
-    toText(product.listing_image_url),
+    normalizeDealImageUrl(product.product_image_url),
+    normalizeDealImageUrl(product.listing_image_url),
   ].filter(Boolean);
 
   const allCandidates = [primaryRaw, ...parsedImages, ...fallbackCandidates].filter(Boolean);
