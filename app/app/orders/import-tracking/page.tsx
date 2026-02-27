@@ -47,11 +47,14 @@ const useStyles = makeStyles({
   },
   topRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "minmax(0, 1fr) 320px",
     gap: "16px",
     "@media (max-width: 960px)": {
       gridTemplateColumns: "1fr",
     },
+  },
+  sidePanel: {
+    alignSelf: "start",
   },
   fileInput: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -198,7 +201,7 @@ export default function OrdersImportTrackingPage() {
           {error ? <Text className={styles.errorText}>{error}</Text> : null}
         </Card>
 
-        <Card className={styles.card}>
+        <Card className={`${styles.card} ${styles.sidePanel}`}>
           <Text weight="semibold">{t("orders.importTracking.instructionsTitle")}</Text>
           <div className={styles.instructionsStack}>
             <Text className={styles.instructions}>
@@ -210,6 +213,7 @@ export default function OrdersImportTrackingPage() {
             <Text className={styles.instructions}>
               {t("orders.importTracking.instructions3")}
             </Text>
+            <Text weight="semibold">{t("orders.importTracking.templateTitle")}</Text>
             <Link href="/api/orders/import-tracking/template">
               {t("orders.importTracking.template")}
             </Link>

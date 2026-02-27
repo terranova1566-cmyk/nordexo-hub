@@ -95,6 +95,16 @@ function chunkList<T>(list: T[], size: number) {
   return result;
 }
 
+function buildTrackingUniquenessKey(
+  salesChannelId: string,
+  orderNumber: string,
+  trackingNumber: string
+) {
+  return `${salesChannelId.trim().toLowerCase()}::${orderNumber
+    .trim()
+    .toLowerCase()}::${trackingNumber.trim().toLowerCase()}`;
+}
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   const {
@@ -203,7 +213,11 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const uniqueRowKey = `${platformId}::${orderNumber}::${trackingNumber}`;
+    const uniqueRowKey = buildTrackingUniquenessKey(
+      platformId,
+      orderNumber,
+      trackingNumber
+    );
     if (seenRowKeys.has(uniqueRowKey)) {
       duplicateRows += 1;
       continue;
@@ -265,7 +279,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const trackingRows: Array<{
+  const matchedRows: Array<{
     sales_channel_id: string;
     order_number: string;
     tracking_number: string;
@@ -281,13 +295,69 @@ export async function POST(request: Request) {
       return;
     }
 
-    trackingRows.push({
+    matchedRows.push({
       sales_channel_id: row.sales_channel_id,
       order_number: row.order_number,
       tracking_number: row.tracking_number,
       order_id: orderId,
     });
   });
+
+  const existingTrackingKeys = new Set<string>();
+  const matchedOrderIds = Array.from(
+    new Set(matchedRows.map((row) => row.order_id).filter(Boolean))
+  );
+  for (const chunk of chunkList(matchedOrderIds, 300)) {
+    if (chunk.length === 0) continue;
+    const { data: existingRows, error: existingRowsError } = await adminClient
+      .from("order_tracking_numbers_global")
+      .select("sales_channel_id,order_number,tracking_number,order_id")
+      .in("order_id", chunk);
+
+    if (existingRowsError) {
+      return NextResponse.json(
+        buildDbErrorPayload(
+          existingRowsError,
+          "Unable to read existing tracking numbers."
+        ),
+        { status: 500 }
+      );
+    }
+
+    (existingRows ?? []).forEach((row) => {
+      const salesChannelId = String(row.sales_channel_id ?? "").trim();
+      const orderNumber = String(row.order_number ?? "").trim();
+      const trackingNumber = String(row.tracking_number ?? "").trim();
+      if (!salesChannelId || !orderNumber || !trackingNumber) {
+        return;
+      }
+      existingTrackingKeys.add(
+        buildTrackingUniquenessKey(salesChannelId, orderNumber, trackingNumber)
+      );
+    });
+  }
+
+  const trackingRows: Array<{
+    sales_channel_id: string;
+    order_number: string;
+    tracking_number: string;
+    order_id: string;
+  }> = [];
+  let existingDuplicateRows = 0;
+  matchedRows.forEach((row) => {
+    const key = buildTrackingUniquenessKey(
+      row.sales_channel_id,
+      row.order_number,
+      row.tracking_number
+    );
+    if (existingTrackingKeys.has(key)) {
+      existingDuplicateRows += 1;
+      return;
+    }
+    trackingRows.push(row);
+  });
+
+  const duplicatesSkipped = duplicateRows + existingDuplicateRows;
 
   if (trackingRows.length > 0) {
     const { error: trackingError } = await adminClient
@@ -311,7 +381,7 @@ export async function POST(request: Request) {
     stored_path: storedPath,
     row_count: parsedRows.length,
     imported_count: trackingRows.length,
-    duplicates_skipped: duplicateRows,
+    duplicates_skipped: duplicatesSkipped,
     invalid_rows: invalidRows,
     unmatched_rows: unmatchedCount,
     created_at: new Date().toISOString(),
@@ -331,7 +401,7 @@ export async function POST(request: Request) {
     ok: true,
     importedCount: trackingRows.length,
     validRows: parsedRows.length,
-    duplicatesSkipped: duplicateRows,
+    duplicatesSkipped,
     invalidRows,
     unmatchedCount,
   });

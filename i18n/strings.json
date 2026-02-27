@@ -1617,6 +1617,11 @@
       "context": "Orders tracking import template download"
     },
     {
+      "key": "orders.importTracking.templateTitle",
+      "text": "Template",
+      "context": "Orders tracking import template section title"
+    },
+    {
       "key": "orders.importTracking.historyTitle",
       "text": "Import history",
       "context": "Orders tracking import history title"
