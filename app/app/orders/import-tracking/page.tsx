@@ -47,7 +47,7 @@ const useStyles = makeStyles({
   },
   topRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 320px",
+    gridTemplateColumns: "1fr 1fr",
     gap: "16px",
     "@media (max-width: 960px)": {
       gridTemplateColumns: "1fr",
