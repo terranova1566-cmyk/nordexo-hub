@@ -1,0 +1,3 @@
+{
+  "/api/batch-image-editor/products/[productId]/images/route": "app/api/batch-image-editor/products/[productId]/images/route.js"
+}

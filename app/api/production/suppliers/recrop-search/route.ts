@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PARTNER_SUGGESTION_PROVIDER } from "@/lib/product-suggestions";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -18,18 +17,13 @@ import { getDealsProviderConfig, resolveDealsProvider } from "@/lib/deals/provid
 
 export const runtime = "nodejs";
 const DIGIDEAL_PROVIDER = "digideal";
+const LETSDEAL_PROVIDER = "letsdeal";
 const OFFERILLA_PROVIDER = "offerilla";
-const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
-  PARTNER_SUGGESTION_PROVIDER || ""
-).trim().toLowerCase();
-const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
-const isSupportedSupplierProvider = (provider: string) => {
-  const normalized = String(provider || "").trim().toLowerCase();
-  return (
-    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
-    normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
-  );
-};
+const DEALS_SUPPLIER_PROVIDERS = new Set([
+  DIGIDEAL_PROVIDER,
+  LETSDEAL_PROVIDER,
+  OFFERILLA_PROVIDER,
+]);
 
 const UPLOAD_DIR = "/srv/incoming-scripts/uploads/1688-image-search";
 const PUBLIC_TEMP_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
@@ -183,16 +177,6 @@ export async function POST(request: NextRequest) {
 
   if (!provider || !productId || !imageUrl || !isValidCrop(crop)) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
-  }
-
-  if (!isSupportedSupplierProvider(provider)) {
-    return NextResponse.json(
-      {
-        error:
-          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
-      },
-      { status: 409 }
-    );
   }
 
   const cropPx: CropPixels = {

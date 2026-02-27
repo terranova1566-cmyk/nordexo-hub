@@ -1,0 +1,18 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/email/layout,_N_T_/app/email/templates/layout,_N_T_/app/email/templates/new/layout,_N_T_/app/email/templates/new/page,_N_T_/app/email/templates/new"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/email/templates/new/__PAGE__",
+    "/app/email/templates/new",
+    "/app/email/templates",
+    "/app/email",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

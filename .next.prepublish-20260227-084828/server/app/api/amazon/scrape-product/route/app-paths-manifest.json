@@ -1,0 +1,3 @@
+{
+  "/api/amazon/scrape-product/route": "app/api/amazon/scrape-product/route.js"
+}

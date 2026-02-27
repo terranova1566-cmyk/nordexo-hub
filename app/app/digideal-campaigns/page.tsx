@@ -2758,6 +2758,7 @@ const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<
   letsdeal: "2026-02-20T00:00:00.000Z",
   offerilla: "2026-02-20T00:00:00.000Z",
 };
+const SUPPLIER_AUTOMATION_PROVIDERS = new Set(["digideal", "letsdeal", "offerilla"]);
 
 export default function DigidealCampaignsPage() {
   const styles = useStyles();
@@ -5353,7 +5354,7 @@ export default function DigidealCampaignsPage() {
   };
 
   const bulkFindSuppliers = useCallback(async () => {
-    if (provider !== "digideal") return;
+    if (!SUPPLIER_AUTOMATION_PROVIDERS.has(provider)) return;
     if (!isAdmin || bulkFindingSuppliers) return;
 
     const needsSupplier = items.filter((item) => {
@@ -7371,9 +7372,8 @@ export default function DigidealCampaignsPage() {
                 styles.estimatedPriceHintCritical
               )
             : styles.estimatedPriceHintText;
-        const isAutoSupplierProvider = provider === "digideal";
-        const canManageSupplier =
-          isAdmin && (provider === "digideal" || provider === "offerilla") && !isNordexo;
+        const isAutoSupplierProvider = SUPPLIER_AUTOMATION_PROVIDERS.has(provider);
+        const canManageSupplier = isAdmin && isAutoSupplierProvider && !isNordexo;
         const hasManualSupplierData =
           item.purchase_price !== null ||
           item.weight_grams !== null ||
@@ -7412,11 +7412,11 @@ export default function DigidealCampaignsPage() {
             ? "Supplier Selected"
             : hasManualSupplierData
               ? t("digideal.supplier.edit")
-              : supplierHasSuggestions && isAutoSupplierProvider
-                ? "Select Supplier"
-                : provider === "offerilla"
-                  ? "Find Supplier"
-                  : t("digideal.supplier.add");
+                : supplierHasSuggestions && isAutoSupplierProvider
+                  ? "Select Supplier"
+                  : isAutoSupplierProvider
+                    ? "Find Supplier"
+                    : t("digideal.supplier.add");
         const highlightAddSupplier =
           canManageSupplier &&
           !supplierPayloadReady &&
@@ -7424,7 +7424,7 @@ export default function DigidealCampaignsPage() {
           !supplierSelected &&
           (!isAutoSupplierProvider || !supplierHasSuggestions);
         const showDirectFindSupplierButton =
-          provider === "offerilla" &&
+          isAutoSupplierProvider &&
           !supplierPayloadReady &&
           !hasManualSupplierData &&
           !supplierSelected &&
@@ -7915,7 +7915,7 @@ export default function DigidealCampaignsPage() {
                                   </MenuList>
                                 </MenuPopover>
                               </Menu>
-		                    ) : showDirectFindSupplierButton ? (
+                    ) : showDirectFindSupplierButton && !supplierFinding ? (
 		                      <Button
 		                        appearance="outline"
 		                        size="small"
@@ -8786,29 +8786,20 @@ export default function DigidealCampaignsPage() {
 	            <Button appearance="outline" size="medium" onClick={resetAllFilters}>
 	              {t("digideal.filters.resetAll")}
 	            </Button>
-              {isAdmin && provider === "digideal" ? (
-                <Button
-                  appearance="outline"
-                  size="medium"
-                  onClick={() => void bulkFindSuppliers()}
-                  disabled={bulkFindingSuppliers || selectedCount === 0}
-                >
-                  {bulkFindingSuppliers
-                    ? bulkFindingSupplierProgress
-                      ? `Finding suppliers (${bulkFindingSupplierProgress.done}/${bulkFindingSupplierProgress.total})`
-                      : "Finding suppliers..."
-                    : "Find Supplier"}
-                </Button>
-              ) : null}
             <Menu>
               <MenuTrigger disableButtonEnhancement>
                 <Button
                   appearance="primary"
                   size="medium"
-                  disabled={selectedCount === 0 || bulkAdding || bulkExportingExcel}
+                  disabled={
+                    selectedCount === 0 ||
+                    bulkAdding ||
+                    bulkExportingExcel ||
+                    bulkFindingSuppliers
+                  }
                 >
                   <span className={styles.actionsButtonBusy}>
-                    {bulkExportingExcel ? <Spinner size="tiny" /> : null}
+                    {bulkExportingExcel || bulkFindingSuppliers ? <Spinner size="tiny" /> : null}
                     <span>Actions</span>
                   </span>
                 </Button>
@@ -8827,12 +8818,29 @@ export default function DigidealCampaignsPage() {
 	                  >
 	                    {t("digideal.rerun.addWithComment")}
 	                  </MenuItem>
-                  <MenuItem
-                    onClick={() => void exportSelectedAsExcel()}
-                    disabled={selectedCount === 0 || bulkAdding || bulkExportingExcel}
-                  >
-                    {bulkExportingExcel ? "Exporting Excel..." : "Export as Excel"}
-                  </MenuItem>
+	                  <MenuItem
+	                    onClick={() => void exportSelectedAsExcel()}
+	                    disabled={
+                        selectedCount === 0 ||
+                        bulkAdding ||
+                        bulkExportingExcel ||
+                        bulkFindingSuppliers
+                      }
+	                  >
+	                    {bulkExportingExcel ? "Exporting Excel..." : "Export as Excel"}
+	                  </MenuItem>
+	                  {isAdmin && SUPPLIER_AUTOMATION_PROVIDERS.has(provider) ? (
+	                    <MenuItem
+	                      onClick={() => void bulkFindSuppliers()}
+	                      disabled={selectedCount === 0 || bulkAdding || bulkFindingSuppliers}
+	                    >
+	                      {bulkFindingSuppliers
+	                        ? bulkFindingSupplierProgress
+	                          ? `Finding suppliers (${bulkFindingSupplierProgress.done}/${bulkFindingSupplierProgress.total})`
+	                          : "Finding suppliers..."
+	                        : "Find Suppliers"}
+	                    </MenuItem>
+	                  ) : null}
 	                  <Menu positioning={{ position: "before", align: "start" }}>
 	                    <MenuTrigger disableButtonEnhancement>
 	                      <MenuItem disabled={selectedCount === 0 || bulkAdding}>

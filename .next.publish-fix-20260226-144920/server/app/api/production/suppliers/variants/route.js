@@ -1,0 +1,13 @@
+var R=require("../../../../../chunks/[turbopack]_runtime.js")("server/app/api/production/suppliers/variants/route.js")
+R.c("server/chunks/[root-of-the-server]__4df12821._.js")
+R.c("server/chunks/[root-of-the-server]__0bc84f38._.js")
+R.c("server/chunks/node_modules_next_f5199d09._.js")
+R.c("server/chunks/_3577e4f1._.js")
+R.c("server/chunks/[root-of-the-server]__24f8fcd9._.js")
+R.c("server/chunks/node_modules_@supabase_supabase-js_dist_index_mjs_669a44bf._.js")
+R.c("server/chunks/lib_product-suggestions_ts_6f46b2a7._.js")
+R.c("server/chunks/node_modules_next_f2da0d3e._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_0982fdfc.js")
+R.c("server/chunks/ce889_server_app_api_production_suppliers_variants_route_actions_27637b98.js")
+R.m(92288)
+module.exports=R.m(92288).exports

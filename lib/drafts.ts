@@ -8,12 +8,15 @@ import { isDraftImageUpscaled } from "@/lib/draft-image-upscale";
 
 export const DRAFT_ROOT = "/srv/resources/media/images/draft_products";
 
+export type DraftRunType = "draft" | "re_edit" | "archive";
+
 export type DraftEntry = {
   name: string;
   path: string;
   type: "file" | "dir";
   size: number;
   modifiedAt: string;
+  runType?: DraftRunType;
   pixelQualityScore?: number | null;
   zimageUpscaled?: boolean;
   whiteSides?: number | null;
@@ -40,6 +43,25 @@ const isImageFileName = (name: string) =>
 const normalizeRelative = (value: string) => {
   const trimmed = value.replace(/^\/+/, "");
   return trimmed.replace(/\.\.+/g, "");
+};
+
+const normalizeRunTypeToken = (value: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+export const getDraftRunType = (value: string): DraftRunType => {
+  const normalized = normalizeRunTypeToken(value);
+  if (!normalized) return "draft";
+  if (normalized.includes("archive")) return "archive";
+  if (
+    /^re\s*edit(?:ing)?\b/.test(normalized) ||
+    /\bre\s*edit(?:ing)?\b/.test(normalized)
+  ) {
+    return "re_edit";
+  }
+  return "draft";
 };
 
 type ImageQualityIndex = {
@@ -859,6 +881,7 @@ export const listFolders = (): DraftEntry[] => {
         type: "dir" as const,
         size: 0,
         modifiedAt: stat.mtime.toISOString(),
+        runType: getDraftRunType(entry.name),
       };
     })
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));

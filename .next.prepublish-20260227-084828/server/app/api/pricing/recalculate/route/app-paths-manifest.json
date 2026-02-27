@@ -1,0 +1,3 @@
+{
+  "/api/pricing/recalculate/route": "app/api/pricing/recalculate/route.js"
+}

@@ -1,0 +1,11 @@
+var R=require("../../../../../../chunks/[turbopack]_runtime.js")("server/app/api/batch-image-editor/products/[productId]/images/route.js")
+R.c("server/chunks/[externals]__7749818b._.js")
+R.c("server/chunks/_3577e4f1._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_6072ca0a.js")
+R.c("server/chunks/node_modules_next_f5199d09._.js")
+R.c("server/chunks/node_modules_@supabase_supabase-js_dist_index_mjs_669a44bf._.js")
+R.c("server/chunks/[root-of-the-server]__24f8fcd9._.js")
+R.c("server/chunks/node_modules_next_f2da0d3e._.js")
+R.c("server/chunks/bec2d_app_api_batch-image-editor_products_[productId]_images_route_actions_3bccb0c4.js")
+R.m(687099)
+module.exports=R.m(687099).exports

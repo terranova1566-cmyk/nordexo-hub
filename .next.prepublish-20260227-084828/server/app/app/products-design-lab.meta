@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/products-design-lab/layout,_N_T_/app/products-design-lab/page,_N_T_/app/products-design-lab"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/products-design-lab/__PAGE__",
+    "/app/products-design-lab",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

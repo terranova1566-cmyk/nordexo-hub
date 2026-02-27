@@ -1,0 +1,3 @@
+{
+  "/api/email/macros/[macroKey]/route": "app/api/email/macros/[macroKey]/route.js"
+}

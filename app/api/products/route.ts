@@ -29,11 +29,19 @@ type ProductRow = {
   google_taxonomy_l3: string | null;
   image_folder: string | null;
   images: unknown;
+  supplier_1688_url: string | null;
   updated_at: string | null;
   created_at: string | null;
   brand: string | null;
   vendor: string | null;
   nordic_partner_enabled: boolean | null;
+};
+
+type DraftWorkflowRow = {
+  draft_spu: string | null;
+  draft_source: string | null;
+  draft_image_folder: string | null;
+  draft_updated_at: string | null;
 };
 
 const normalizeHtml = (value: string) =>
@@ -78,6 +86,41 @@ const toTimestamp = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.getTime();
+};
+
+const extractRunFromDraftFolder = (value: string | null) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/\\/g, "/");
+  const marker = "images/draft_products/";
+  const markerIndex = normalized.toLowerCase().indexOf(marker);
+  if (markerIndex >= 0) {
+    const rest = normalized.slice(markerIndex + marker.length);
+    return rest.split("/").filter(Boolean)[0] ?? null;
+  }
+  const parts = normalized.replace(/^\/+/, "").split("/").filter(Boolean);
+  if (parts.length >= 2 && parts[0] === "draft_products") {
+    return parts[1] ?? null;
+  }
+  return parts[0] ?? null;
+};
+
+const isReEditWorkflowRow = (row: DraftWorkflowRow) => {
+  const source = String(row.draft_source ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (source === "reedit" || source === "reediting") return true;
+  const run = extractRunFromDraftFolder(row.draft_image_folder);
+  if (!run) return false;
+  const normalizedRun = run
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+  return (
+    /^re\s*edit(?:ing)?\b/.test(normalizedRun) ||
+    /\bre\s*edit(?:ing)?\b/.test(normalizedRun)
+  );
 };
 
 export async function GET(request: NextRequest) {
@@ -149,9 +192,9 @@ export async function GET(request: NextRequest) {
   let products: ProductRow[] = [];
   let totalCount = 0;
 
-  const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
-    ? "id, spu, title, subtitle, description_html, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled"
-    : "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, updated_at, created_at, brand, vendor, nordic_partner_enabled";
+const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
+    ? "id, spu, title, subtitle, description_html, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled"
+    : "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled";
 
   if (useMeili) {
     const filters: string[] = [];
@@ -617,6 +660,36 @@ export async function GET(request: NextRequest) {
 
   const productIds = products?.map((product) => product.id) ?? [];
 
+  const workflowBySpu = new Map<
+    string,
+    { status: "re_editing"; run: string | null; updatedAt: string | null }
+  >();
+  if (spus.length > 0) {
+    const { data: workflowRows, error: workflowError } = await supabase
+      .from("draft_products")
+      .select("draft_spu,draft_source,draft_image_folder,draft_updated_at")
+      .eq("draft_status", "draft")
+      .in("draft_spu", spus);
+    if (workflowError) {
+      return NextResponse.json({ error: workflowError.message }, { status: 500 });
+    }
+    (workflowRows ?? []).forEach((row) => {
+      const typed = row as DraftWorkflowRow;
+      const spu = String(typed.draft_spu ?? "").trim();
+      if (!spu || !isReEditWorkflowRow(typed)) return;
+      const current = workflowBySpu.get(spu);
+      const currentTs = current?.updatedAt ? Date.parse(current.updatedAt) : 0;
+      const nextTs = typed.draft_updated_at ? Date.parse(typed.draft_updated_at) : 0;
+      if (!current || nextTs >= currentTs) {
+        workflowBySpu.set(spu, {
+          status: "re_editing",
+          run: extractRunFromDraftFolder(typed.draft_image_folder),
+          updatedAt: typed.draft_updated_at ?? null,
+        });
+      }
+    });
+  }
+
   const legacyTextByProductId = new Map<string, boolean>();
   if (includeLegacyText && productIds.length > 0) {
     const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
@@ -912,6 +985,10 @@ export async function GET(request: NextRequest) {
       return {
         ...product,
         title: resolvedTitle,
+        workflow_status: product.spu
+          ? (workflowBySpu.get(product.spu)?.status ?? "active")
+          : "active",
+        workflow_run: product.spu ? (workflowBySpu.get(product.spu)?.run ?? null) : null,
         variant_count: variantCount,
         legacy_text: includeLegacyText
           ? legacyTextByProductId.get(product.id) ?? false

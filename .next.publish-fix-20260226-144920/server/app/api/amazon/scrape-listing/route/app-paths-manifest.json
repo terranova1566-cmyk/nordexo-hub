@@ -1,0 +1,3 @@
+{
+  "/api/amazon/scrape-listing/route": "app/api/amazon/scrape-listing/route.js"
+}

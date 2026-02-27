@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/b2b/layout,_N_T_/app/b2b/lookbooks/layout,_N_T_/app/b2b/lookbooks/page,_N_T_/app/b2b/lookbooks"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/b2b/lookbooks/__PAGE__",
+    "/app/b2b/lookbooks",
+    "/app/b2b",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

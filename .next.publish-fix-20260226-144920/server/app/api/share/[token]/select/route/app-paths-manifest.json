@@ -1,0 +1,3 @@
+{
+  "/api/share/[token]/select/route": "app/api/share/[token]/select/route.js"
+}

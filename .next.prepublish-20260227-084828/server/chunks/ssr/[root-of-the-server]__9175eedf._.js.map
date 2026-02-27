@@ -1,0 +1,1 @@
+{"version":3,"sources":["../../../../app/app/digideal/page.tsx"],"sourcesContent":["import { redirect } from \"next/navigation\";\n\nexport default function DigiDealIndexPage() {\n  redirect(\"/app/digideal/deals-manager\");\n}\n\n"],"names":[],"mappings":"2WAAA,EAAA,CAAA,CAAA,QAAA,IAAA,EAAA,EAAA,CAAA,CAAA,QAEe,SAAS,IACtB,CAAA,EAAA,EAAA,QAAA,AAAQ,EAAC,8BACX"}

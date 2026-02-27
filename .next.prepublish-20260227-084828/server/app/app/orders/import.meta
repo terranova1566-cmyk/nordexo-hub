@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/orders/layout,_N_T_/app/orders/import/layout,_N_T_/app/orders/import/page,_N_T_/app/orders/import"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/orders/import/__PAGE__",
+    "/app/orders/import",
+    "/app/orders",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

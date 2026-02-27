@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,209606,e=>{"use strict";let l=(0,e.i(739806).createFluentIcon)("CircleFilled","1em",["M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"]);e.s(["CircleFilled",0,l])}]);

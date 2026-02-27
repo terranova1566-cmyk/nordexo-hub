@@ -641,6 +641,20 @@ const useStyles = makeStyles({
   emptyState: {
     padding: "24px 0",
   },
+  loadingState: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "20px 0",
+    color: tokens.colorBrandForeground1,
+  },
+  loadingSpinner: {
+    color: tokens.colorBrandForeground1,
+  },
+  loadingText: {
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
+  },
   salesButton: {
     borderRadius: "999px",
     border: `1px solid ${tokens.colorBrandStroke1}`,
@@ -1129,6 +1143,7 @@ function DiscoveryPageInner() {
   const [pageSize, setPageSize] = useState(100);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -1768,9 +1783,11 @@ function DiscoveryPageInner() {
         const payload = await response.json();
         setItems(payload.items ?? []);
         setTotal(payload.total ?? 0);
+        setHasLoadedOnce(true);
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           setError((err as Error).message);
+          setHasLoadedOnce(true);
         }
       } finally {
         setIsLoading(false);
@@ -3157,8 +3174,11 @@ function DiscoveryPageInner() {
       </Dialog>
 
       {error ? <MessageBar intent="error">{error}</MessageBar> : null}
-      {isLoading ? (
-        <Spinner label={t("discovery.loading")} />
+      {isLoading || !hasLoadedOnce ? (
+        <div className={styles.loadingState}>
+          <Spinner className={styles.loadingSpinner} size="medium" />
+          <Text className={styles.loadingText}>Loading products</Text>
+        </div>
       ) : items.length === 0 ? (
         <Text className={styles.emptyState}>
           {t("discovery.empty")}

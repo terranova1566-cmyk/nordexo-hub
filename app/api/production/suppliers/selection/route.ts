@@ -1,8 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { spawn } from "node:child_process";
 
 export const runtime = "nodejs";
+
+const SUPPLIER_PAYLOAD_WORKER_PATH =
+  "/srv/nordexo-hub/scripts/production-supplier-fetch-worker.mjs";
+const STALE_FETCH_RETRY_AFTER_MS = 6 * 60 * 1000;
+const STALE_FETCH_MAX_AUTO_RETRIES = 2;
 
 const getAdminClient = () => {
   const supabaseUrl =
@@ -17,6 +23,30 @@ const getAdminClient = () => {
   return createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+};
+
+const spawnSupplierPayloadWorkerBestEffort = (provider: string, productId: string) => {
+  try {
+    const child = spawn(
+      process.execPath,
+      [
+        SUPPLIER_PAYLOAD_WORKER_PATH,
+        "--provider",
+        provider,
+        "--product-id",
+        productId,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env },
+      }
+    );
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 async function requireAdmin() {
@@ -96,10 +126,89 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const offer =
+  let offer =
     data?.selected_offer && typeof data.selected_offer === "object"
       ? (data.selected_offer as Record<string, unknown>)
       : null;
+
+  const payloadStatus = toText((offer as any)?._production_payload_status).toLowerCase();
+  if (payloadStatus === "fetching" && data) {
+    const nowIso = new Date().toISOString();
+    const referenceUpdatedAtText =
+      toText((offer as any)?._production_payload_updated_at) ||
+      toText(data.updated_at);
+    const referenceUpdatedAtMs = Date.parse(referenceUpdatedAtText);
+    const isStale =
+      Number.isFinite(referenceUpdatedAtMs) &&
+      Date.now() - referenceUpdatedAtMs >= STALE_FETCH_RETRY_AFTER_MS;
+
+    if (isStale) {
+      const retryCountRaw = Number((offer as any)?._production_payload_retry_count);
+      const retryCount = Number.isFinite(retryCountRaw) ? Math.max(0, retryCountRaw) : 0;
+
+      if (retryCount < STALE_FETCH_MAX_AUTO_RETRIES) {
+        const retryOffer: Record<string, unknown> = {
+          ...(offer ?? {}),
+          _production_payload_status: "fetching",
+          _production_payload_source: "auto_retry",
+          _production_payload_error: null,
+          _production_payload_updated_at: nowIso,
+          _production_payload_retry_count: retryCount + 1,
+          _production_payload_last_retry_at: nowIso,
+        };
+
+        const { error: retryUpdateError } = await adminClient
+          .from("discovery_production_supplier_selection")
+          .update({
+            selected_offer: retryOffer,
+            updated_at: nowIso,
+          })
+          .eq("provider", provider)
+          .eq("product_id", productId);
+
+        if (!retryUpdateError) {
+          const started = spawnSupplierPayloadWorkerBestEffort(provider, productId);
+          if (!started) {
+            const failedOffer: Record<string, unknown> = {
+              ...retryOffer,
+              _production_payload_status: "failed",
+              _production_payload_error:
+                "Unable to restart stale 1688 fetch worker. Please retry manually.",
+              _production_payload_updated_at: nowIso,
+            };
+            await adminClient
+              .from("discovery_production_supplier_selection")
+              .update({
+                selected_offer: failedOffer,
+                updated_at: nowIso,
+              })
+              .eq("provider", provider)
+              .eq("product_id", productId);
+            offer = failedOffer;
+          } else {
+            offer = retryOffer;
+          }
+        }
+      } else {
+        const failedOffer: Record<string, unknown> = {
+          ...(offer ?? {}),
+          _production_payload_status: "failed",
+          _production_payload_error:
+            "1688 data fetch timed out. Please retry this supplier.",
+          _production_payload_updated_at: nowIso,
+        };
+        await adminClient
+          .from("discovery_production_supplier_selection")
+          .update({
+            selected_offer: failedOffer,
+            updated_at: nowIso,
+          })
+          .eq("provider", provider)
+          .eq("product_id", productId);
+        offer = failedOffer;
+      }
+    }
+  }
 
   const meta = offer
     ? {
@@ -133,4 +242,3 @@ export async function GET(request: NextRequest) {
     meta,
   });
 }
-

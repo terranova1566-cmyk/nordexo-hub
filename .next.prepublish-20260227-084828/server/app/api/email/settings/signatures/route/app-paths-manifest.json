@@ -1,0 +1,3 @@
+{
+  "/api/email/settings/signatures/route": "app/api/email/settings/signatures/route.js"
+}

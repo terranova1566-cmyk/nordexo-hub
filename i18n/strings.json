@@ -912,6 +912,21 @@
       "context": "Orders filter option"
     },
     {
+      "key": "orders.filters.dateSort",
+      "text": "Date sort",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.dateSortAscending",
+      "text": "Transaction date (oldest first)",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.dateSortDescending",
+      "text": "Transaction date (newest first)",
+      "context": "Orders filter option"
+    },
+    {
       "key": "orders.actions.button",
       "text": "Actions",
       "context": "Orders actions menu button"
@@ -1444,6 +1459,16 @@
     {
       "key": "orders.details.tracking",
       "text": "Tracking numbers:",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.emailHistory",
+      "text": "Email history:",
+      "context": "Orders details label"
+    },
+    {
+      "key": "orders.details.emailHistoryNone",
+      "text": "No email history yet.",
       "context": "Orders details label"
     },
     {
@@ -3727,6 +3752,16 @@
       "context": "Products table header"
     },
     {
+      "key": "products.table.supplier",
+      "text": "Supplier",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.supplierLink",
+      "text": "Supplier link",
+      "context": "Products table supplier link button"
+    },
+    {
       "key": "products.table.createdUpdated",
       "text": "Created / Updated",
       "context": "Products table header"
@@ -3770,6 +3805,126 @@
       "key": "products.selection.label",
       "text": "Selection",
       "context": "Products selection label"
+    },
+    {
+      "key": "products.actions.label",
+      "text": "Action",
+      "context": "Products bulk action button label"
+    },
+    {
+      "key": "products.actions.deleteSelected",
+      "text": "Delete selected",
+      "context": "Products bulk delete action"
+    },
+    {
+      "key": "products.actions.deleteConfirmTitle",
+      "text": "Delete selected products?",
+      "context": "Products bulk delete confirmation title"
+    },
+    {
+      "key": "products.actions.deleteConfirmBody",
+      "text": "Delete {count} selected product(s). This turns them off in connected sales channels and removes them from Product Manager.",
+      "context": "Products bulk delete confirmation body"
+    },
+    {
+      "key": "products.actions.deleting",
+      "text": "Deleting...",
+      "context": "Products bulk delete in-progress label"
+    },
+    {
+      "key": "products.actions.deleteError",
+      "text": "Unable to delete selected products.",
+      "context": "Products bulk delete error"
+    },
+    {
+      "key": "products.actions.deletePartialError",
+      "text": "{count} product(s) could not be deleted: {details}",
+      "context": "Products bulk delete partial failure error"
+    },
+    {
+      "key": "products.actions.deliver",
+      "text": "Deliver",
+      "context": "Products bulk deliver action label"
+    },
+    {
+      "key": "products.actions.deliverTo",
+      "text": "Deliver to",
+      "context": "Products bulk deliver submenu label"
+    },
+    {
+      "key": "products.actions.deliverDigiDeal",
+      "text": "DigiDeal",
+      "context": "Products deliver target option"
+    },
+    {
+      "key": "products.delivery.dialogTitle",
+      "text": "Deliver to DigiDeal",
+      "context": "Products deliver dialog title"
+    },
+    {
+      "key": "products.delivery.dialogBody",
+      "text": "Select a delivery list for {count} product(s), or create a new list.",
+      "context": "Products deliver dialog helper text"
+    },
+    {
+      "key": "products.delivery.table.name",
+      "text": "List name",
+      "context": "Products deliver dialog table header"
+    },
+    {
+      "key": "products.delivery.table.items",
+      "text": "Items",
+      "context": "Products deliver dialog table header"
+    },
+    {
+      "key": "products.delivery.table.created",
+      "text": "Created",
+      "context": "Products deliver dialog table header"
+    },
+    {
+      "key": "products.delivery.table.action",
+      "text": "Action",
+      "context": "Products deliver dialog table header"
+    },
+    {
+      "key": "products.delivery.table.empty",
+      "text": "No delivery lists yet.",
+      "context": "Products deliver dialog table empty state"
+    },
+    {
+      "key": "products.delivery.loading",
+      "text": "Loading delivery lists...",
+      "context": "Products deliver dialog loading state"
+    },
+    {
+      "key": "products.delivery.add",
+      "text": "Add",
+      "context": "Products deliver dialog add button"
+    },
+    {
+      "key": "products.delivery.createLabel",
+      "text": "Create new list",
+      "context": "Products deliver dialog create section label"
+    },
+    {
+      "key": "products.delivery.createPlaceholder",
+      "text": "Enter delivery list name",
+      "context": "Products deliver dialog create input placeholder"
+    },
+    {
+      "key": "products.delivery.errorLoad",
+      "text": "Unable to load delivery lists.",
+      "context": "Products deliver dialog load error"
+    },
+    {
+      "key": "products.delivery.errorCreate",
+      "text": "Unable to create delivery list.",
+      "context": "Products deliver dialog create error"
+    },
+    {
+      "key": "products.delivery.errorAdd",
+      "text": "Unable to add products to delivery list.",
+      "context": "Products deliver dialog add error"
     },
     {
       "key": "products.lists.loading",
@@ -4070,6 +4225,11 @@
       "key": "products.removeItem",
       "text": "Remove {title}",
       "context": "Remove item aria label"
+    },
+    {
+      "key": "products.removeFromListsHint",
+      "text": "Remove from all saved lists (does not delete the product)",
+      "context": "Tooltip for row remove button"
     },
     {
       "key": "productDetail.loading",
@@ -6108,7 +6268,17 @@
     },
     {
       "key": "digidealDelivery.table.createdAt",
-      "text": "Created",
+      "text": "Date and Time",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.imageExplorer",
+      "text": "Image Explorer",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.title",
+      "text": "Title",
       "context": "DigiDeal product delivery table header"
     },
     {
@@ -6117,9 +6287,79 @@
       "context": "DigiDeal product delivery table header"
     },
     {
+      "key": "digidealDelivery.table.preview",
+      "text": "Preview",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
       "key": "digidealDelivery.table.downloads",
       "text": "Downloads",
       "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.listName",
+      "text": "Delivery List Name",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
+      "key": "digidealDelivery.table.empty",
+      "text": "No DigiDeal delivery lists yet.",
+      "context": "DigiDeal product delivery table empty state"
+    },
+    {
+      "key": "digidealDelivery.partner.digideal",
+      "text": "DigiDeal",
+      "context": "DigiDeal partner section title"
+    },
+    {
+      "key": "digidealDelivery.download.completeExcel",
+      "text": "Complete Excel",
+      "context": "DigiDeal delivery complete excel download button"
+    },
+    {
+      "key": "digidealDelivery.download.imagesZip",
+      "text": "Images ZIP",
+      "context": "DigiDeal delivery images zip download button"
+    },
+    {
+      "key": "digidealDelivery.preview.button",
+      "text": "Preview",
+      "context": "DigiDeal delivery preview button"
+    },
+    {
+      "key": "digidealDelivery.preview.title",
+      "text": "Delivery List Preview",
+      "context": "DigiDeal delivery preview dialog title"
+    },
+    {
+      "key": "digidealDelivery.preview.productCount",
+      "text": "{count} products",
+      "context": "DigiDeal delivery preview dialog product count"
+    },
+    {
+      "key": "digidealDelivery.preview.loading",
+      "text": "Loading products...",
+      "context": "DigiDeal delivery preview loading state"
+    },
+    {
+      "key": "digidealDelivery.preview.empty",
+      "text": "No products in this delivery list.",
+      "context": "DigiDeal delivery preview empty state"
+    },
+    {
+      "key": "digidealDelivery.preview.table.title",
+      "text": "Product",
+      "context": "DigiDeal delivery preview table header"
+    },
+    {
+      "key": "digidealDelivery.preview.table.priceRange",
+      "text": "Price Range",
+      "context": "DigiDeal delivery preview table header"
+    },
+    {
+      "key": "digidealDelivery.preview.table.actions",
+      "text": "Actions",
+      "context": "DigiDeal delivery preview table header"
     },
     {
       "key": "digidealSuggestions.title",

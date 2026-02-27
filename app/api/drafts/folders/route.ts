@@ -24,6 +24,10 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  return NextResponse.json({ items: listFolders() });
-}
+  const items = listFolders().map((item) => ({
+    ...item,
+    run_type: item.runType ?? "draft",
+  }));
 
+  return NextResponse.json({ items });
+}

@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PARTNER_SUGGESTION_PROVIDER } from "@/lib/product-suggestions";
 import {
   canonical1688OfferUrl,
   canonical1688OfferUrlText,
@@ -9,9 +8,6 @@ import {
 } from "@/shared/1688/core";
 
 export const runtime = "nodejs";
-
-const DIGIDEAL_PROVIDER = "digideal";
-const OFFERILLA_PROVIDER = "offerilla";
 
 type Offer = {
   rank?: number;
@@ -181,15 +177,6 @@ const getAdminClient = () => {
   });
 };
 
-const isSupportedSupplierProvider = (provider: string) => {
-  const normalized = asText(provider).toLowerCase();
-  return (
-    normalized === DIGIDEAL_PROVIDER ||
-    normalized === OFFERILLA_PROVIDER ||
-    normalized === asText(PARTNER_SUGGESTION_PROVIDER).toLowerCase()
-  );
-};
-
 async function requireAdmin() {
   const supabase = await createServerSupabase();
   const {
@@ -251,16 +238,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Provide provider, product_id, and a valid 1688 offer URL." },
       { status: 400 }
-    );
-  }
-
-  if (!isSupportedSupplierProvider(provider)) {
-    return NextResponse.json(
-      {
-        error:
-          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
-      },
-      { status: 409 }
     );
   }
 

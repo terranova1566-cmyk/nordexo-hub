@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/letsdeal/layout,_N_T_/app/letsdeal/deals-manager/layout,_N_T_/app/letsdeal/deals-manager/page,_N_T_/app/letsdeal/deals-manager"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/letsdeal/deals-manager/__PAGE__",
+    "/app/letsdeal/deals-manager",
+    "/app/letsdeal",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

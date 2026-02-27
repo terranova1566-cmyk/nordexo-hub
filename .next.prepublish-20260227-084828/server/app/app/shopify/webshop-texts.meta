@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/shopify/layout,_N_T_/app/shopify/webshop-texts/layout,_N_T_/app/shopify/webshop-texts/page,_N_T_/app/shopify/webshop-texts"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/shopify/webshop-texts/__PAGE__",
+    "/app/shopify/webshop-texts",
+    "/app/shopify",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

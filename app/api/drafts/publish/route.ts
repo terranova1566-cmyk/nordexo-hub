@@ -228,6 +228,144 @@ const normalizeText = (value: unknown) => {
   return cleaned === "" ? null : cleaned;
 };
 
+const CJK_TEXT_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
+const SIZE_TEXT_REGEX =
+  /(?:\d+(?:[.,]\d+)?\s*(?:mm|cm|m|ml|cl|l|g|kg|inch|in|oz)\b|(?:^|\b)(?:höjd|bredd|längd|diameter|storlek|size)(?:\b|\s))/i;
+
+const hasCjkText = (value: string | null) =>
+  Boolean(value && CJK_TEXT_REGEX.test(value));
+
+const isLikelySizeText = (value: string | null) =>
+  Boolean(value && SIZE_TEXT_REGEX.test(value));
+
+const pickFirstNonCjkText = (...values: Array<string | null>) => {
+  for (const candidate of values) {
+    const normalized = normalizeText(candidate);
+    if (!normalized || hasCjkText(normalized)) continue;
+    return normalized;
+  }
+  return null;
+};
+
+const normalizeSwedishOptionAndZh = (
+  optionValue: string | null,
+  zhValue: string | null,
+  fallbackValues: Array<string | null>
+) => {
+  let option = normalizeText(optionValue);
+  let optionZh = normalizeText(zhValue);
+
+  if (hasCjkText(option)) {
+    optionZh = optionZh ?? option;
+    option = pickFirstNonCjkText(...fallbackValues);
+  }
+
+  return { option, optionZh };
+};
+
+const normalizeVariantOptionLocalization = (input: {
+  option1: string | null;
+  option2: string | null;
+  option3: string | null;
+  option4: string | null;
+  option1_zh: string | null;
+  option2_zh: string | null;
+  option3_zh: string | null;
+  option4_zh: string | null;
+  variation_color_se: string | null;
+  variation_size_se: string | null;
+  variation_other_se: string | null;
+  variation_amount_se: string | null;
+}) => {
+  let option1 = normalizeText(input.option1);
+  let option2 = normalizeText(input.option2);
+  let option3 = normalizeText(input.option3);
+  let option4 = normalizeText(input.option4);
+  let option1Zh = normalizeText(input.option1_zh);
+  let option2Zh = normalizeText(input.option2_zh);
+  let option3Zh = normalizeText(input.option3_zh);
+  let option4Zh = normalizeText(input.option4_zh);
+
+  let variationColorSe = normalizeText(input.variation_color_se);
+  let variationSizeSe = normalizeText(input.variation_size_se);
+  let variationOtherSe = normalizeText(input.variation_other_se);
+  let variationAmountSe = normalizeText(input.variation_amount_se);
+
+  if (!variationColorSe || hasCjkText(variationColorSe) || isLikelySizeText(variationColorSe)) {
+    const nextColor = pickFirstNonCjkText(
+      !isLikelySizeText(option2) ? option2 : null,
+      !isLikelySizeText(option1) ? option1 : null
+    );
+    if (nextColor) {
+      variationColorSe = nextColor;
+    } else if (hasCjkText(variationColorSe)) {
+      variationColorSe = null;
+    }
+  }
+  if (!variationSizeSe || hasCjkText(variationSizeSe) || !isLikelySizeText(variationSizeSe)) {
+    const nextSize = pickFirstNonCjkText(
+      isLikelySizeText(option3) ? option3 : null,
+      isLikelySizeText(option2) ? option2 : null,
+      isLikelySizeText(option4) ? option4 : null
+    );
+    if (nextSize) {
+      variationSizeSe = nextSize;
+    } else if (hasCjkText(variationSizeSe) || !isLikelySizeText(variationSizeSe)) {
+      variationSizeSe = null;
+    }
+  }
+  if (hasCjkText(variationOtherSe)) {
+    variationOtherSe = pickFirstNonCjkText(option4, option3, option2, option1);
+  }
+  if (hasCjkText(variationAmountSe)) {
+    variationAmountSe = pickFirstNonCjkText(option4, option3, option2, option1);
+  }
+
+  const normalizedOption1 = normalizeSwedishOptionAndZh(option1, option1Zh, [
+    variationColorSe,
+    option2,
+    option3,
+  ]);
+  option1 = normalizedOption1.option;
+  option1Zh = normalizedOption1.optionZh;
+
+  const normalizedOption2 = normalizeSwedishOptionAndZh(option2, option2Zh, [
+    variationSizeSe,
+    option3,
+    option4,
+  ]);
+  option2 = normalizedOption2.option;
+  option2Zh = normalizedOption2.optionZh;
+
+  const normalizedOption3 = normalizeSwedishOptionAndZh(option3, option3Zh, [
+    variationOtherSe,
+    option4,
+  ]);
+  option3 = normalizedOption3.option;
+  option3Zh = normalizedOption3.optionZh;
+
+  const normalizedOption4 = normalizeSwedishOptionAndZh(option4, option4Zh, [
+    variationAmountSe,
+  ]);
+  option4 = normalizedOption4.option;
+  option4Zh = normalizedOption4.optionZh;
+
+  return {
+    option1,
+    option2,
+    option3,
+    option4,
+    option1_zh: option1Zh,
+    option2_zh: option2Zh,
+    option3_zh: option3Zh,
+    option4_zh: option4Zh,
+    variation_color_se: variationColorSe,
+    variation_size_se: variationSizeSe,
+    variation_other_se: variationOtherSe,
+    variation_amount_se: variationAmountSe,
+  };
+};
+
 const getSpuPrefix = (spu: string | null) => {
   const normalized = normalizeText(spu);
   if (!normalized) return null;
@@ -494,7 +632,7 @@ type AutoVariantImageAssignment = {
   assigned_file_name: string;
   source_file_name: string;
   source_folder: string;
-  match_mode: "sku" | "option1" | "combined";
+  match_mode: "sku" | "option1" | "combined" | "explicit_reference";
 };
 
 const autoAttachVariantImagesForPublish = async (input: {
@@ -502,16 +640,6 @@ const autoAttachVariantImagesForPublish = async (input: {
   spu: string;
   variants: DraftVariantRow[];
 }) => {
-  const variantsMissingImage = input.variants.filter(
-    (row) => !normalizeText(row.draft_variant_image_url)
-  );
-  if (variantsMissingImage.length === 0) {
-    return {
-      variantDirName: null as string | null,
-      assignments: [] as AutoVariantImageAssignment[],
-    };
-  }
-
   const variantDir = await listVariantImageCandidates(input.folderAbsPath);
   if (!variantDir.variantDirName || variantDir.files.length === 0) {
     return {
@@ -519,6 +647,10 @@ const autoAttachVariantImagesForPublish = async (input: {
       assignments: [] as AutoVariantImageAssignment[],
     };
   }
+
+  const variantsMissingImage = input.variants.filter(
+    (row) => !normalizeText(row.draft_variant_image_url)
+  );
 
   const variantKeys = variantsMissingImage.map((row) => {
     const raw =
@@ -616,6 +748,50 @@ const autoAttachVariantImagesForPublish = async (input: {
       source_file_name: match.file.fileName,
       source_folder: variantDir.variantDirName,
       match_mode: match.matchMode,
+    });
+  }
+
+  const variantFileByLower = new Map<string, VariantImageCandidate>();
+  for (const file of variantDir.files) {
+    variantFileByLower.set(file.fileName.toLowerCase(), file);
+  }
+
+  const topLevelEntries = await fs.readdir(input.folderAbsPath, { withFileTypes: true });
+  const topLevelFileByLower = new Map<string, string>();
+  for (const entry of topLevelEntries) {
+    if (!entry.isFile()) continue;
+    if (!isPublishableImageName(entry.name)) continue;
+    topLevelFileByLower.set(entry.name.toLowerCase(), entry.name);
+  }
+
+  for (const row of input.variants) {
+    const value = normalizeText(row.draft_variant_image_url);
+    if (!value) continue;
+    if (isHttpUrl(value) || isSrvPath(value)) continue;
+    const fileName = toImageFileName(value);
+    if (!fileName) continue;
+    const lower = fileName.toLowerCase();
+
+    const alreadyTopLevel = topLevelFileByLower.get(lower);
+    if (alreadyTopLevel) {
+      row.draft_variant_image_url = alreadyTopLevel;
+      continue;
+    }
+
+    const source = variantFileByLower.get(lower);
+    if (!source) continue;
+
+    const assignedFileName = await ensureUniqueImageName(input.folderAbsPath, fileName);
+    await fs.copyFile(source.absolutePath, path.join(input.folderAbsPath, assignedFileName));
+    topLevelFileByLower.set(assignedFileName.toLowerCase(), assignedFileName);
+    row.draft_variant_image_url = assignedFileName;
+    assignments.push({
+      variant_id: String(row.id || "").trim(),
+      sku: normalizeText(row.draft_sku),
+      assigned_file_name: assignedFileName,
+      source_file_name: source.fileName,
+      source_folder: String(variantDir.variantDirName || ""),
+      match_mode: "explicit_reference",
     });
   }
 
@@ -2462,6 +2638,20 @@ export async function POST(request: Request) {
     const variationAmountSe = hasRawVariationAmount
       ? getRawText(rawRow, "variation_amount_se")
       : normalizeText(row.draft_option4);
+    const normalizedLocalizedVariantValues = normalizeVariantOptionLocalization({
+      option1: normalizeText(row.draft_option1),
+      option2: normalizeText(row.draft_option2),
+      option3: normalizeText(row.draft_option3),
+      option4: normalizeText(row.draft_option4),
+      option1_zh: normalizeText(row.draft_option1_zh),
+      option2_zh: normalizeText(row.draft_option2_zh),
+      option3_zh: normalizeText(row.draft_option3_zh),
+      option4_zh: normalizeText(row.draft_option4_zh),
+      variation_color_se: variationColorSe,
+      variation_size_se: variationSizeSe,
+      variation_other_se: variationOtherSe,
+      variation_amount_se: variationAmountSe,
+    });
     const sku = normalizeText(row.draft_sku);
     const resolvedVariantImage = resolveVariantImageForPublish({
       spu: row.draft_spu,
@@ -2480,23 +2670,23 @@ export async function POST(request: Request) {
     return {
       spu: row.draft_spu,
       sku,
-      option1: normalizeText(row.draft_option1),
-      option2: normalizeText(row.draft_option2),
-      option3: normalizeText(row.draft_option3),
-      option4: normalizeText(row.draft_option4),
+      option1: normalizedLocalizedVariantValues.option1,
+      option2: normalizedLocalizedVariantValues.option2,
+      option3: normalizedLocalizedVariantValues.option3,
+      option4: normalizedLocalizedVariantValues.option4,
       option1_name: normalizeText(parent?.draft_option1_name),
       option2_name: normalizeText(parent?.draft_option2_name),
       option3_name: normalizeText(parent?.draft_option3_name),
       option4_name: normalizeText(parent?.draft_option4_name),
       option_combined_zh: normalizeText(row.draft_option_combined_zh),
-      option1_zh: normalizeText(row.draft_option1_zh),
-      option2_zh: normalizeText(row.draft_option2_zh),
-      option3_zh: normalizeText(row.draft_option3_zh),
-      option4_zh: normalizeText(row.draft_option4_zh),
-      variation_color_se: variationColorSe,
-      variation_size_se: variationSizeSe,
-      variation_other_se: variationOtherSe,
-      variation_amount_se: variationAmountSe,
+      option1_zh: normalizedLocalizedVariantValues.option1_zh,
+      option2_zh: normalizedLocalizedVariantValues.option2_zh,
+      option3_zh: normalizedLocalizedVariantValues.option3_zh,
+      option4_zh: normalizedLocalizedVariantValues.option4_zh,
+      variation_color_se: normalizedLocalizedVariantValues.variation_color_se,
+      variation_size_se: normalizedLocalizedVariantValues.variation_size_se,
+      variation_other_se: normalizedLocalizedVariantValues.variation_other_se,
+      variation_amount_se: normalizedLocalizedVariantValues.variation_amount_se,
       price: normalizeText(row.draft_price),
       compare_at_price: normalizeText(row.draft_compare_at_price),
       cost: normalizeText(row.draft_cost),

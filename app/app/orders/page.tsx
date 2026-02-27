@@ -82,6 +82,17 @@ type TrackingNumberEntry = {
   sent_date: string | null;
 };
 
+type OrderEmailHistoryEntry = {
+  id: string;
+  created_at: string | null;
+  send_date: string | null;
+  sender_email: string | null;
+  recipient_email: string | null;
+  subject: string | null;
+  status: string | null;
+  notification_name: string | null;
+};
+
 type OrderDetails = {
   order?: {
     sales_channel_id: string | null;
@@ -99,6 +110,7 @@ type OrderDetails = {
   } | null;
   items: OrderItem[];
   tracking_numbers: TrackingNumberEntry[];
+  email_history: OrderEmailHistoryEntry[];
   loading: boolean;
   error?: string;
 };
@@ -162,14 +174,11 @@ const useStyles = makeStyles({
     flex: 1,
     minHeight: 0,
   },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
   filtersCard: {
     padding: "16px",
     borderRadius: "16px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
     display: "flex",
     flexDirection: "column",
     gap: "12px",
@@ -250,6 +259,53 @@ const useStyles = makeStyles({
     textAlign: "center",
     paddingLeft: "4px",
     paddingRight: "4px",
+  },
+  colSalesChannelId: {
+    width: "132px",
+    minWidth: "132px",
+    whiteSpace: "nowrap",
+  },
+  colOrderNumber: {
+    width: "170px",
+    minWidth: "170px",
+    whiteSpace: "nowrap",
+  },
+  colSalesChannel: {
+    width: "160px",
+    minWidth: "160px",
+  },
+  colCustomer: {
+    width: "250px",
+    minWidth: "250px",
+  },
+  colCountry: {
+    width: "120px",
+    minWidth: "120px",
+    whiteSpace: "nowrap",
+  },
+  colTransactionDate: {
+    width: "126px",
+    minWidth: "126px",
+    whiteSpace: "nowrap",
+  },
+  colStatus: {
+    width: "150px",
+    minWidth: "150px",
+    whiteSpace: "nowrap",
+  },
+  colWarnings: {
+    width: "130px",
+    minWidth: "130px",
+    whiteSpace: "nowrap",
+  },
+  colNotifications: {
+    width: "260px",
+    minWidth: "260px",
+  },
+  colDateShipped: {
+    width: "126px",
+    minWidth: "126px",
+    whiteSpace: "nowrap",
   },
   detailsCard: {
     display: "flex",
@@ -634,6 +690,22 @@ const useStyles = makeStyles({
   emailInfoText: {
     color: tokens.colorStatusSuccessForeground1,
   },
+  emailHistoryList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  emailHistoryItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap",
+  },
+  emailHistoryDate: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
   emailDialogActions: {
     width: "100%",
     display: "flex",
@@ -704,11 +776,41 @@ const normalizeTrackingEntries = (value: unknown): TrackingNumberEntry[] => {
   return entries;
 };
 
+const normalizeEmailHistoryEntries = (
+  value: unknown
+): OrderEmailHistoryEntry[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const row = entry as Record<string, unknown>;
+      const id = String(row.id ?? "").trim();
+      if (!id) return null;
+      const toText = (input: unknown) => {
+        const token = String(input ?? "").trim();
+        return token || null;
+      };
+      return {
+        id,
+        created_at: toText(row.created_at),
+        send_date: toText(row.send_date),
+        sender_email: toText(row.sender_email),
+        recipient_email: toText(row.recipient_email),
+        subject: toText(row.subject),
+        status: toText(row.status),
+        notification_name: toText(row.notification_name),
+      };
+    })
+    .filter((entry): entry is OrderEmailHistoryEntry => Boolean(entry));
+};
+
 type DisplayOrderStatus =
   | "pending"
   | "purchased"
   | "being_packed_and_shipped"
   | "shipped";
+
+type TransactionSortDirection = "asc" | "desc";
 
 type CountryCode = "NO" | "SE" | "FI";
 
@@ -775,6 +877,8 @@ export default function OrdersPage() {
   const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [warningFilter, setWarningFilter] = useState<string>("all");
+  const [transactionSortDirection, setTransactionSortDirection] =
+    useState<TransactionSortDirection>("asc");
   const [isExporting, setIsExporting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isAddingResend, setIsAddingResend] = useState(false);
@@ -874,13 +978,24 @@ export default function OrdersPage() {
       const bTime = Date.parse(b.transaction_date ?? "");
       const normalizedATime = Number.isFinite(aTime) ? aTime : Number.POSITIVE_INFINITY;
       const normalizedBTime = Number.isFinite(bTime) ? bTime : Number.POSITIVE_INFINITY;
+      const sortDirectionFactor = transactionSortDirection === "asc" ? 1 : -1;
       if (normalizedATime !== normalizedBTime) {
-        return normalizedATime - normalizedBTime;
+        return (normalizedATime - normalizedBTime) * sortDirectionFactor;
       }
-      return (a.order_number ?? "").localeCompare(b.order_number ?? "");
+      return (
+        (a.order_number ?? "").localeCompare(b.order_number ?? "") *
+        sortDirectionFactor
+      );
     });
     return next;
-  }, [countryFilter, rows, salesChannelFilter, statusFilter, warningFilter]);
+  }, [
+    countryFilter,
+    rows,
+    salesChannelFilter,
+    statusFilter,
+    transactionSortDirection,
+    warningFilter,
+  ]);
 
   useEffect(() => {
     if (salesChannelFilter === "all") return;
@@ -1258,6 +1373,9 @@ export default function OrdersPage() {
                   tracking_numbers: normalizeTrackingEntries(
                     detailsPayload?.tracking_numbers
                   ),
+                  email_history: normalizeEmailHistoryEntries(
+                    detailsPayload?.email_history
+                  ),
                   loading: false,
                   error: undefined,
                 },
@@ -1393,14 +1511,15 @@ export default function OrdersPage() {
   const loadDetails = async (orderId: string) => {
     setDetailsById((prev) => ({
       ...prev,
-      [orderId]: {
-        order: prev[orderId]?.order ?? null,
-        items: prev[orderId]?.items ?? [],
-        tracking_numbers: prev[orderId]?.tracking_numbers ?? [],
-        loading: true,
-        error: undefined,
-      },
-    }));
+        [orderId]: {
+          order: prev[orderId]?.order ?? null,
+          items: prev[orderId]?.items ?? [],
+          tracking_numbers: prev[orderId]?.tracking_numbers ?? [],
+          email_history: prev[orderId]?.email_history ?? [],
+          loading: true,
+          error: undefined,
+        },
+      }));
     try {
       const response = await fetch(`/api/orders/${orderId}`);
       if (!response.ok) {
@@ -1414,6 +1533,7 @@ export default function OrdersPage() {
           order: payload.order ?? null,
           items: payload.items ?? [],
           tracking_numbers: normalizeTrackingEntries(payload.tracking_numbers),
+          email_history: normalizeEmailHistoryEntries(payload.email_history),
           loading: false,
           error: undefined,
         },
@@ -1425,6 +1545,7 @@ export default function OrdersPage() {
           order: null,
           items: [],
           tracking_numbers: [],
+          email_history: [],
           loading: false,
           error: (err as Error).message,
         },
@@ -1586,6 +1707,7 @@ export default function OrdersPage() {
         order: payload.order ?? null,
         items: payload.items ?? [],
         tracking_numbers: normalizeTrackingEntries(payload.tracking_numbers),
+        email_history: normalizeEmailHistoryEntries(payload.email_history),
         loading: false,
         error: undefined,
       };
@@ -1747,15 +1869,6 @@ export default function OrdersPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <Text size={700} weight="semibold">
-          {t("orders.view.title")}
-        </Text>
-        <Text size={300} color="neutral">
-          {t("orders.view.subtitle")}
-        </Text>
-      </div>
-
       <Card className={styles.filtersCard}>
         <div className={styles.filterRow}>
           <Field label={t("orders.filters.search")}>
@@ -1793,6 +1906,28 @@ export default function OrdersPage() {
               value={shippedTo}
               onChange={(_, data) => setShippedTo(data.value)}
             />
+          </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>{t("orders.filters.dateSort")}</span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[transactionSortDirection]}
+              value={
+                transactionSortDirection === "desc"
+                  ? t("orders.filters.dateSortDescending")
+                  : t("orders.filters.dateSortAscending")
+              }
+              onOptionSelect={(_, data) => {
+                const nextValue = String(data.optionValue ?? "asc");
+                setTransactionSortDirection(nextValue === "desc" ? "desc" : "asc");
+              }}
+            >
+              <Option value="asc">{t("orders.filters.dateSortAscending")}</Option>
+              <Option value="desc">{t("orders.filters.dateSortDescending")}</Option>
+            </Dropdown>
           </Field>
           <Field
             label={
@@ -2067,22 +2202,56 @@ export default function OrdersPage() {
                       }}
                     />
                   </TableHeaderCell>
-                  {[
-                    t("orders.columns.salesChannelId"),
-                    t("orders.columns.orderNumber"),
-                    t("orders.columns.salesChannel"),
-                    t("orders.columns.customer"),
-                    t("orders.columns.country"),
-                    t("orders.columns.transactionDate"),
-                    t("orders.columns.status"),
-                    t("orders.columns.warnings"),
-                    t("orders.columns.notifications"),
-                    t("orders.columns.dateShipped"),
-                  ].map((label) => (
-                    <TableHeaderCell key={label} className={styles.stickyHeader}>
-                      {label}
-                    </TableHeaderCell>
-                  ))}
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colSalesChannelId)}
+                  >
+                    {t("orders.columns.salesChannelId")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colOrderNumber)}
+                  >
+                    {t("orders.columns.orderNumber")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colSalesChannel)}
+                  >
+                    {t("orders.columns.salesChannel")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colCustomer)}
+                  >
+                    {t("orders.columns.customer")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colCountry)}
+                  >
+                    {t("orders.columns.country")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colTransactionDate)}
+                  >
+                    {t("orders.columns.transactionDate")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colStatus)}
+                  >
+                    {t("orders.columns.status")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colWarnings)}
+                  >
+                    {t("orders.columns.warnings")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colNotifications)}
+                  >
+                    {t("orders.columns.notifications")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colDateShipped)}
+                  >
+                    {t("orders.columns.dateShipped")}
+                  </TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2147,11 +2316,19 @@ export default function OrdersPage() {
                               }}
                             />
                           </TableCell>
-                          <TableCell>{row.sales_channel_id ?? ""}</TableCell>
-                          <TableCell>{row.order_number ?? ""}</TableCell>
-                          <TableCell>{platformDisplayName}</TableCell>
-                          <TableCell>{row.customer_name ?? ""}</TableCell>
-                          <TableCell>
+                          <TableCell className={styles.colSalesChannelId}>
+                            {row.sales_channel_id ?? ""}
+                          </TableCell>
+                          <TableCell className={styles.colOrderNumber}>
+                            {row.order_number ?? ""}
+                          </TableCell>
+                          <TableCell className={styles.colSalesChannel}>
+                            {platformDisplayName}
+                          </TableCell>
+                          <TableCell className={styles.colCustomer}>
+                            {row.customer_name ?? ""}
+                          </TableCell>
+                          <TableCell className={styles.colCountry}>
                             <span className={styles.countryCell}>
                               {countryCode ? (
                                 <Image
@@ -2165,10 +2342,10 @@ export default function OrdersPage() {
                               <span>{countryName}</span>
                             </span>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className={styles.colTransactionDate}>
                             {formatDate(row.transaction_date)}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className={styles.colStatus}>
                             <span
                               className={mergeClasses(
                                 styles.statusPill,
@@ -2178,7 +2355,7 @@ export default function OrdersPage() {
                               {getStatusText(row.status)}
                             </span>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className={styles.colWarnings}>
                             {row.is_delayed ? (
                               <span className={styles.warningPill}>
                                 {getDelayWarningText(row)}
@@ -2187,7 +2364,7 @@ export default function OrdersPage() {
                               "-"
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className={styles.colNotifications}>
                             <span
                               className={styles.notificationField}
                               title={latestNotificationText}
@@ -2195,7 +2372,9 @@ export default function OrdersPage() {
                               {latestNotificationText}
                             </span>
                           </TableCell>
-                          <TableCell>{formatDate(row.date_shipped)}</TableCell>
+                          <TableCell className={styles.colDateShipped}>
+                            {formatDate(row.date_shipped)}
+                          </TableCell>
                         </TableRow>
                         {isExpanded ? (
                           <TableRow>
@@ -2508,6 +2687,43 @@ export default function OrdersPage() {
                                                 </div>
                                               ) : (
                                                 <Text className={styles.detailValue}>-</Text>
+                                              )}
+                                              <Text className={styles.detailLabel}>
+                                                {t("orders.details.emailHistory")}
+                                              </Text>
+                                              {details?.email_history?.length ? (
+                                                <div className={styles.emailHistoryList}>
+                                                  {details.email_history.map((entry) => {
+                                                    const historyLabel =
+                                                      entry.notification_name ||
+                                                      entry.subject ||
+                                                      t("orders.notifications.none");
+                                                    const historyDate =
+                                                      entry.send_date ||
+                                                      entry.created_at;
+                                                    return (
+                                                      <div
+                                                        key={entry.id}
+                                                        className={styles.emailHistoryItem}
+                                                      >
+                                                        <Text className={styles.detailValue}>
+                                                          {historyLabel}
+                                                        </Text>
+                                                        {historyDate ? (
+                                                          <Text
+                                                            className={styles.emailHistoryDate}
+                                                          >
+                                                            ({formatDate(historyDate)})
+                                                          </Text>
+                                                        ) : null}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              ) : (
+                                                <Text className={styles.detailValue}>
+                                                  {t("orders.details.emailHistoryNone")}
+                                                </Text>
                                               )}
                                               <Text className={styles.detailLabel}>
                                                 {t("orders.details.customerNote")}

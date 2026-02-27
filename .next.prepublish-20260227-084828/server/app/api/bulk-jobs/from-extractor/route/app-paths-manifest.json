@@ -1,0 +1,3 @@
+{
+  "/api/bulk-jobs/from-extractor/route": "app/api/bulk-jobs/from-extractor/route.js"
+}

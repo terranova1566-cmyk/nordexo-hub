@@ -93,6 +93,19 @@ const normalizeSkuKey = (value: unknown) =>
 
 const normalizeOrderIdKey = (value: unknown) => String(value ?? "").trim();
 
+const extractProviderMessageId = (value: unknown): string | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const directId = String(record.id ?? "").trim();
+  if (directId) return directId;
+  const resultValue = record.result;
+  if (resultValue && typeof resultValue === "object") {
+    const nestedId = String((resultValue as Record<string, unknown>).id ?? "").trim();
+    if (nestedId) return nestedId;
+  }
+  return null;
+};
+
 type OrdersNotificationColumnFlags = {
   latestNotificationName: boolean;
   latestNotificationSentAt: boolean;
@@ -538,18 +551,24 @@ export async function POST(request: Request) {
       sendError = (error as Error).message || "Unable to send email via SendPulse.";
     }
 
+    const providerMessageId = extractProviderMessageId(sendResponse);
     const logEntry = {
       user_id: auth.userId,
+      order_id: order.id,
       sender_email: senderEmail,
       sender_name: senderName,
       template_id: templateId,
       subject: renderedSubject,
       to_emails: [recipientEmail],
+      recipient_email: recipientEmail,
       variables: {
         ...renderVariables,
         bcc_emails: bccEmails,
       },
       status: sendStatus,
+      provider_message_id: providerMessageId,
+      send_date: sendStatus === "sent" ? notificationSentAt : null,
+      notification_name: sendStatus === "sent" ? notificationName : null,
       response: sendResponse,
       error: sendError,
     };

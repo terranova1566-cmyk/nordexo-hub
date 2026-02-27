@@ -1,0 +1,3 @@
+{
+  "/api/sendpulse/send/route": "app/api/sendpulse/send/route.js"
+}

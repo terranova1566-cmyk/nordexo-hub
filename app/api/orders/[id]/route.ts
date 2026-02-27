@@ -118,6 +118,51 @@ async function hasOrdersStatusColumn(
   return (data?.length ?? 0) > 0;
 }
 
+type SendpulseHistoryColumnFlags = {
+  orderId: boolean;
+  sendDate: boolean;
+  recipientEmail: boolean;
+  notificationName: boolean;
+};
+
+async function getSendpulseHistoryColumnFlags(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+): Promise<SendpulseHistoryColumnFlags> {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "sendpulse_email_logs")
+    .in("column_name", [
+      "order_id",
+      "send_date",
+      "recipient_email",
+      "notification_name",
+    ]);
+
+  if (error) {
+    return {
+      orderId: false,
+      sendDate: false,
+      recipientEmail: false,
+      notificationName: false,
+    };
+  }
+
+  const names = new Set(
+    ((data ?? []) as Array<{ column_name?: unknown }>)
+      .map((row) => String(row.column_name ?? "").trim())
+      .filter(Boolean)
+  );
+
+  return {
+    orderId: names.has("order_id"),
+    sendDate: names.has("send_date"),
+    recipientEmail: names.has("recipient_email"),
+    notificationName: names.has("notification_name"),
+  };
+}
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -213,6 +258,9 @@ export async function GET(
   }
 
   const includeOrderStatus = await hasOrdersStatusColumn(adminClient);
+  const sendpulseHistoryColumns = await getSendpulseHistoryColumnFlags(
+    adminClient
+  );
   let order: Record<string, unknown> | null = null;
   let orderError: DbError | null = null;
   if (includeOrderStatus) {
@@ -362,6 +410,91 @@ export async function GET(
       }
       return a.tracking_number.localeCompare(b.tracking_number);
     });
+
+  let emailHistory: Array<{
+    id: string;
+    created_at: string | null;
+    send_date: string | null;
+    sender_email: string | null;
+    recipient_email: string | null;
+    subject: string | null;
+    status: string | null;
+    notification_name: string | null;
+  }> = [];
+
+  if (sendpulseHistoryColumns.orderId) {
+    const historySelectColumns = [
+      "id",
+      "created_at",
+      sendpulseHistoryColumns.sendDate ? "send_date" : null,
+      "sender_email",
+      sendpulseHistoryColumns.recipientEmail ? "recipient_email" : null,
+      "subject",
+      "status",
+      sendpulseHistoryColumns.notificationName ? "notification_name" : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+    const { data: historyRows, error: historyError } = await adminClient
+      .from("sendpulse_email_logs")
+      .select(historySelectColumns)
+      .eq("order_id", id)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    if (historyError) {
+      return NextResponse.json(
+        {
+          error: resolveDbErrorMessage(
+            historyError,
+            "Unable to load order email history."
+          ),
+        },
+        { status: 500 }
+      );
+    }
+
+    emailHistory = ((historyRows ?? []) as unknown as Array<Record<string, unknown>>)
+      .map((entry) => {
+        const getText = (value: unknown) => {
+          const token = String(value ?? "").trim();
+          return token || null;
+        };
+        const idValue = getText(entry.id);
+        if (!idValue) return null;
+        return {
+          id: idValue,
+          created_at: getText(entry.created_at),
+          send_date: getText(entry.send_date),
+          sender_email: getText(entry.sender_email),
+          recipient_email: getText(entry.recipient_email),
+          subject: getText(entry.subject),
+          status: getText(entry.status),
+          notification_name: getText(entry.notification_name),
+        };
+      })
+      .filter(
+        (
+          entry
+        ): entry is {
+          id: string;
+          created_at: string | null;
+          send_date: string | null;
+          sender_email: string | null;
+          recipient_email: string | null;
+          subject: string | null;
+          status: string | null;
+          notification_name: string | null;
+        } => Boolean(entry)
+      )
+      .sort((left, right) => {
+        const leftStamp = String(left.send_date ?? left.created_at ?? "");
+        const rightStamp = String(right.send_date ?? right.created_at ?? "");
+        if (leftStamp < rightStamp) return 1;
+        if (leftStamp > rightStamp) return -1;
+        return left.id.localeCompare(right.id);
+      });
+  }
 
   const skus = Array.from(
     new Set((items ?? []).map((item) => item.sku).filter(Boolean))
@@ -528,5 +661,6 @@ export async function GET(
     order: normalizedOrder,
     items: enrichedItems,
     tracking_numbers: trackingNumbers,
+    email_history: emailHistory,
   });
 }

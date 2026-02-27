@@ -1,0 +1,3 @@
+{
+  "/api/settings/ai-image-edit/prompts/[promptId]/route": "app/api/settings/ai-image-edit/prompts/[promptId]/route.js"
+}

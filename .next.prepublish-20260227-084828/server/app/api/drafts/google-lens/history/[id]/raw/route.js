@@ -1,0 +1,10 @@
+var R=require("../../../../../../../chunks/[turbopack]_runtime.js")("server/app/api/drafts/google-lens/history/[id]/raw/route.js")
+R.c("server/chunks/[root-of-the-server]__d1b84ca8._.js")
+R.c("server/chunks/node_modules_next_f5199d09._.js")
+R.c("server/chunks/_3577e4f1._.js")
+R.c("server/chunks/node_modules_@supabase_supabase-js_dist_index_mjs_669a44bf._.js")
+R.c("server/chunks/[root-of-the-server]__24f8fcd9._.js")
+R.c("server/chunks/node_modules_next_f2da0d3e._.js")
+R.c("server/chunks/ce889_server_app_api_drafts_google-lens_history_[id]_raw_route_actions_17e10fb1.js")
+R.m(112758)
+module.exports=R.m(112758).exports

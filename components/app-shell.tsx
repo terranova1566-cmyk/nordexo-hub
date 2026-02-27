@@ -150,6 +150,7 @@ const productMenuItems = [
   { label: "nav.allProducts", href: "/app/products?view=all" },
   { label: "nav.saved", href: "/app/saved" },
   { label: "nav.exports", href: "/app/exports" },
+  { label: "nav.digidealProductDelivery", href: "/app/products/product-delivery" },
   {
     label: "nav.batchImageEditor",
     href: "/app/products/batch-image-editor",
@@ -168,7 +169,6 @@ const digidealMenuItems = [
   { label: "nav.digidealDealsManager", href: "/app/digideal/deals-manager" },
   { label: "nav.letsdealDealsManager", href: "/app/letsdeal/deals-manager" },
   { label: "nav.offerillaDealsManager", href: "/app/offerilla/deals-manager" },
-  { label: "nav.digidealProductDelivery", href: "/app/digideal/product-delivery" },
   {
     label: "nav.digidealProductSuggestions",
     href: "/app/digideal/product-suggestions",

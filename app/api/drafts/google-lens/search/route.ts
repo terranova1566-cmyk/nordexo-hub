@@ -456,6 +456,278 @@ const parseServicePayload = async (response: Response) => {
   };
 };
 
+const SHARED_SERP_CONFIG_DIR = "/srv/SerpApi/config";
+const SERPAPI_SEARCH_ENDPOINT = "https://serpapi.com/search.json";
+const RESERVED_SERP_API_OPTION_KEYS = new Set([
+  "engine",
+  "url",
+  "api_key",
+  "imageUrl",
+  "image_url",
+  "locale",
+  "location",
+  "location_profile",
+  "locationProfile",
+  "locale_preset",
+  "localePreset",
+]);
+
+const toRecord = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const readJsonFileSafe = async (targetPath: string) => {
+  try {
+    const raw = await fs.readFile(targetPath, "utf8");
+    const parsed = safeJsonParse(raw);
+    return toRecord(parsed);
+  } catch {
+    return null;
+  }
+};
+
+const resolveLensLocaleDefaults = async (locale: "sweden" | "us_global") => {
+  const defaultsPath = path.join(SHARED_SERP_CONFIG_DIR, "defaults.json");
+  const defaults = await readJsonFileSafe(defaultsPath);
+  const googleLensDefaults = toRecord(defaults?.google_lens) || {};
+  const localePresets = toRecord(googleLensDefaults.locale_presets) || {};
+  const localePreset = toRecord(localePresets[locale]) || {};
+  const country =
+    toStringOrNull(localePreset.country) || toStringOrNull(googleLensDefaults.country);
+  const hl = toStringOrNull(localePreset.hl) || toStringOrNull(googleLensDefaults.hl);
+  return {
+    country,
+    hl,
+  };
+};
+
+const pickSerpApiKey = async () => {
+  const envKey = String(process.env.SERPAPI_API_KEY || "").trim();
+  if (envKey) return envKey;
+
+  const keyPoolPath = path.join(SHARED_SERP_CONFIG_DIR, "key-pool.json");
+  const keyPool = await readJsonFileSafe(keyPoolPath);
+  const keysRaw = Array.isArray(keyPool?.keys) ? keyPool.keys : [];
+  const candidates = keysRaw
+    .map((entry) => toRecord(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => ({
+      key: toStringOrNull(entry.api_key),
+      enabled:
+        typeof entry.enabled === "boolean"
+          ? entry.enabled
+          : parseBoolean(entry.enabled) ?? true,
+      priority:
+        Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : Number.MAX_SAFE_INTEGER,
+      remaining:
+        Number.isFinite(Number(entry.remaining)) ? Number(entry.remaining) : Number.MAX_SAFE_INTEGER,
+    }))
+    .filter((entry) => Boolean(entry.key) && entry.enabled)
+    .sort((left, right) => {
+      if (left.priority !== right.priority) return left.priority - right.priority;
+      return right.remaining - left.remaining;
+    });
+
+  const best = candidates[0];
+  return best?.key || "";
+};
+
+const mapSerpApiVisualMatches = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as Record<string, unknown>[];
+  return value
+    .map((entry, index) => {
+      const item = toRecord(entry) || {};
+      const link = toStringOrNull(item.link);
+      return {
+        rank: toNumberOrNull(item.position) ?? index + 1,
+        source: toStringOrNull(item.source),
+        websiteName: toStringOrNull(item.source) || parseDomain(link),
+        title: toStringOrNull(item.title),
+        link,
+        thumbnail: toStringOrNull(item.thumbnail),
+        image: toStringOrNull(item.image),
+        sourceIcon: toStringOrNull(item.source_icon),
+        sourceDomain: parseDomain(link),
+        exactMatches: Array.isArray(item.exact_matches)
+          ? (item.exact_matches as unknown[])
+          : null,
+        serpapiExactMatchesLink: toStringOrNull(item.serpapi_exact_matches_link),
+        metadata: item,
+        imageWidth: toNumberOrNull(item.image_width),
+        imageHeight: toNumberOrNull(item.image_height),
+      } satisfies Record<string, unknown>;
+    })
+    .filter((item) => Boolean(item.thumbnail || item.image));
+};
+
+const mapSerpApiGenericList = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as Record<string, unknown>[];
+  return value.map((entry, index) => {
+    const item = toRecord(entry) || {};
+    return {
+      rank: toNumberOrNull(item.position) ?? index + 1,
+      title: toStringOrNull(item.title),
+      link: toStringOrNull(item.link),
+      source: toStringOrNull(item.source),
+      thumbnail: toStringOrNull(item.thumbnail),
+      metadata: item,
+    } satisfies Record<string, unknown>;
+  });
+};
+
+const mapSerpApiRelatedContent = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as Record<string, unknown>[];
+  return value.map((entry) => {
+    const item = toRecord(entry) || {};
+    const link = toStringOrNull(item.link);
+    return {
+      query: toStringOrNull(item.query),
+      link,
+      thumbnail: toStringOrNull(item.thumbnail),
+      serpapiLink: toStringOrNull(item.serpapi_link),
+      sourceDomain: parseDomain(link),
+      metadata: item,
+    } satisfies Record<string, unknown>;
+  });
+};
+
+const buildDirectEngineOptions = (
+  serviceOptions: Record<string, unknown>,
+  localeDefaults: { country: string | null; hl: string | null }
+) => {
+  const options: Record<string, unknown> = {};
+  const locale = normalizeLocale(serviceOptions.locale);
+  if (locale) {
+    options.locale = locale;
+  }
+  const type = normalizeLensType(serviceOptions.type);
+  if (type) {
+    options.type = type;
+  }
+  ["q", "safe", "hl", "country"].forEach((key) => {
+    const value = toStringOrNull(serviceOptions[key]);
+    if (value) options[key] = value;
+  });
+  if (!options.country && localeDefaults.country) {
+    options.country = localeDefaults.country;
+  }
+  if (!options.hl && localeDefaults.hl) {
+    options.hl = localeDefaults.hl;
+  }
+
+  const noCache =
+    parseBoolean(serviceOptions.noCache) ??
+    parseBoolean(serviceOptions.no_cache);
+  if (noCache !== undefined) {
+    options.no_cache = noCache;
+  }
+
+  const asyncMode =
+    parseBoolean(serviceOptions.asyncMode) ??
+    parseBoolean(serviceOptions.async);
+  if (asyncMode !== undefined) {
+    options.async = asyncMode;
+  }
+
+  const nestedOptions = parseOptionsPayload(serviceOptions.options);
+  if (nestedOptions) {
+    Object.entries(nestedOptions).forEach(([key, value]) => {
+      if (value === undefined) return;
+      if (RESERVED_SERP_API_OPTION_KEYS.has(key)) return;
+      options[key] = value;
+    });
+  }
+
+  if (!options.type) {
+    options.type = "visual_matches";
+  }
+  if (!options.locale) {
+    options.locale = "sweden";
+  }
+  return options;
+};
+
+const runSerpApiDirectLensSearch = async (input: {
+  imageUrl: string;
+  serviceOptions: Record<string, unknown>;
+}) => {
+  const { imageUrl, serviceOptions } = input;
+  const locale = normalizeLocale(serviceOptions.locale) || "sweden";
+  const localeDefaults = await resolveLensLocaleDefaults(locale);
+  const apiKey = await pickSerpApiKey();
+  if (!apiKey) {
+    throw new Error("Missing SerpApi API key for Google Lens fallback.");
+  }
+  const directOptions = buildDirectEngineOptions(serviceOptions, localeDefaults);
+
+  const params = new URLSearchParams({
+    engine: "google_lens",
+    url: imageUrl,
+    api_key: apiKey,
+  });
+  Object.entries(directOptions).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    params.set(key, String(value));
+  });
+
+  const response = await fetch(`${SERPAPI_SEARCH_ENDPOINT}?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  const rawText = await response.text();
+  const rawJson = safeJsonParse(rawText);
+  const raw = toRecord(rawJson);
+  if (!raw) {
+    throw new Error(
+      `SerpApi fallback returned non-JSON response (HTTP ${response.status}).`
+    );
+  }
+  const upstreamError = toStringOrNull(raw.error);
+  if (!response.ok || upstreamError) {
+    throw new Error(
+      upstreamError || `SerpApi fallback failed (HTTP ${response.status}).`
+    );
+  }
+
+  const rawSearchMetadata = toRecord(raw.search_metadata);
+  const normalizedResponse = {
+    searchMetadata: rawSearchMetadata,
+    searchParameters: toRecord(raw.search_parameters),
+    searchInformation: toRecord(raw.search_information),
+    lensUrl: toStringOrNull(rawSearchMetadata?.google_lens_url),
+    knowledgeGraph: toRecord(raw.knowledge_graph),
+    visualMatches: mapSerpApiVisualMatches(raw.visual_matches),
+    exactMatches: mapSerpApiGenericList(raw.exact_matches),
+    products: mapSerpApiGenericList(raw.products),
+    relatedContent: mapSerpApiRelatedContent(raw.related_content),
+    aiOverview: raw.ai_overview ?? null,
+    textResults: raw.text ?? raw.text_results ?? null,
+    totalVisualMatches: Array.isArray(raw.visual_matches) ? raw.visual_matches.length : 0,
+    totalExactMatches: Array.isArray(raw.exact_matches) ? raw.exact_matches.length : 0,
+    totalProducts: Array.isArray(raw.products) ? raw.products.length : 0,
+    totalRelatedContent: Array.isArray(raw.related_content) ? raw.related_content.length : 0,
+  };
+
+  const parsedJson: Record<string, unknown> = {
+    id: toStringOrNull(rawSearchMetadata?.id) || crypto.randomUUID(),
+    serpApiSearchId: toStringOrNull(rawSearchMetadata?.id),
+    createdAt: new Date().toISOString(),
+    imageUrl,
+    normalizedResponse,
+    rawResponse: raw,
+  };
+  return {
+    parsedJson,
+    requestPayload: {
+      imageUrl,
+      ...directOptions,
+    },
+  };
+};
+
 const requireAdmin = async () => {
   const supabase = await createServerSupabase();
   const {
@@ -636,65 +908,117 @@ export async function POST(request: Request) {
       await maybeBootLocalLensService(serviceBaseUrls);
       serviceResult = await tryServiceCandidates();
     }
-    if (!serviceResult) {
-      return NextResponse.json(
-        {
-          error:
-            "Google Lens service is unavailable. The local Lens service is not reachable.",
-          details: serviceAttemptErrors.slice(0, 8),
-          debug: {
-            serviceUrlsChecked: serviceBaseUrls,
-            endpoint: SEARCH_ENDPOINT,
-          },
-        },
-        { status: 502 }
-      );
-    }
 
-    const {
-      servicePayload,
-      serviceResponse,
-      parsed,
-      searchUrl,
-      historyUrl,
-      historyRawTemplateUrl,
-    } = serviceResult;
+    let parsedJson: Record<string, unknown> = {};
+    let servicePayloadForDebug: Record<string, unknown> = {};
+    let searchUrl = "";
+    let historyUrl = "";
+    let historyRawTemplateUrl = "";
+    let responseStatus: number | null = null;
+    let usedDirectEngineFallback = false;
+    let directFallbackError: string | null = null;
 
-    if (!serviceResponse.ok) {
-      const defaultError =
-        serviceResponse.status === 404
-          ? `Google Lens service endpoint not found at ${searchUrl}.`
-          : `Google Lens lookup failed (HTTP ${serviceResponse.status}).`;
-      return NextResponse.json(
-        {
-          error: toStringOrNull(parsed.json.error) || defaultError,
-          details: parsed.json,
-          debug: {
-            mode: "google_lens",
-            input: {
-              targetImagePath: targetImagePath ?? null,
-              sourceImagePath: imagePath ?? null,
-              sourceImageUrl: externallyReachableImageUrl || null,
-              serviceOptions,
-              requestedLimit,
+    if (serviceResult) {
+      const {
+        servicePayload,
+        serviceResponse,
+        parsed,
+        searchUrl: selectedSearchUrl,
+        historyUrl: selectedHistoryUrl,
+        historyRawTemplateUrl: selectedHistoryRawTemplateUrl,
+      } = serviceResult;
+      servicePayloadForDebug = servicePayload;
+      parsedJson = parsed.json;
+      searchUrl = selectedSearchUrl;
+      historyUrl = selectedHistoryUrl;
+      historyRawTemplateUrl = selectedHistoryRawTemplateUrl;
+      responseStatus = serviceResponse.status;
+
+      if (!serviceResponse.ok) {
+        const defaultError =
+          serviceResponse.status === 404
+            ? `Google Lens service endpoint not found at ${selectedSearchUrl}.`
+            : `Google Lens lookup failed (HTTP ${serviceResponse.status}).`;
+        return NextResponse.json(
+          {
+            error: toStringOrNull(parsed.json.error) || defaultError,
+            details: parsed.json,
+            debug: {
+              mode: "google_lens",
+              transport: "http_service",
+              input: {
+                targetImagePath: targetImagePath ?? null,
+                sourceImagePath: imagePath ?? null,
+                sourceImageUrl: externallyReachableImageUrl || null,
+                serviceOptions,
+                requestedLimit,
+              },
+              requestPayload: servicePayload,
+              responseStatus: serviceResponse.status,
+              serviceUrl: selectedSearchUrl,
+              historyUrl: selectedHistoryUrl,
+              historyRawUrlTemplate: selectedHistoryRawTemplateUrl,
             },
-            requestPayload: servicePayload,
-            responseStatus: serviceResponse.status,
-            serviceUrl: searchUrl,
-            historyUrl,
-            historyRawUrlTemplate: historyRawTemplateUrl,
           },
-        },
-        { status: serviceResponse.status }
-      );
+          { status: serviceResponse.status }
+        );
+      }
+    } else {
+      if (!externallyReachableImageUrl) {
+        return NextResponse.json(
+          {
+            error:
+              "Google Lens service is unavailable and direct fallback requires a public image URL.",
+            details: serviceAttemptErrors.slice(0, 8),
+            debug: {
+              serviceUrlsChecked: serviceBaseUrls,
+              endpoint: SEARCH_ENDPOINT,
+            },
+          },
+          { status: 502 }
+        );
+      }
+
+      try {
+        const directFallbackResult = await runSerpApiDirectLensSearch({
+          imageUrl: externallyReachableImageUrl,
+          serviceOptions,
+        });
+        parsedJson = directFallbackResult.parsedJson;
+        servicePayloadForDebug = directFallbackResult.requestPayload;
+        searchUrl = "direct://google-lens-engine";
+        historyUrl = "";
+        historyRawTemplateUrl = "";
+        responseStatus = 200;
+        usedDirectEngineFallback = true;
+      } catch (error) {
+        directFallbackError =
+          error instanceof Error ? error.message : "Direct Lens fallback failed.";
+      }
+
+      if (!usedDirectEngineFallback) {
+        return NextResponse.json(
+          {
+            error:
+              "Google Lens service is unavailable. The local Lens service is not reachable.",
+            details: serviceAttemptErrors.slice(0, 8),
+            debug: {
+              serviceUrlsChecked: serviceBaseUrls,
+              endpoint: SEARCH_ENDPOINT,
+              fallback: directFallbackError,
+            },
+          },
+          { status: 502 }
+        );
+      }
     }
 
     const normalizedResponse =
-      parsed.json &&
-      typeof parsed.json === "object" &&
-      parsed.json.normalizedResponse &&
-      typeof parsed.json.normalizedResponse === "object"
-        ? (parsed.json.normalizedResponse as Record<string, unknown>)
+      parsedJson &&
+      typeof parsedJson === "object" &&
+      parsedJson.normalizedResponse &&
+      typeof parsedJson.normalizedResponse === "object"
+        ? (parsedJson.normalizedResponse as Record<string, unknown>)
         : {};
 
     const visualMatches = normalizeVisualMatches(normalizedResponse.visualMatches);
@@ -705,6 +1029,7 @@ export async function POST(request: Request) {
 
     const debugPayload = {
       mode: "google_lens",
+      transport: usedDirectEngineFallback ? "direct_engine" : "http_service",
       input: {
         targetImagePath: targetImagePath ?? null,
         sourceImagePath: imagePath ?? null,
@@ -712,7 +1037,7 @@ export async function POST(request: Request) {
         serviceOptions,
         requestedLimit,
       },
-      requestPayload: servicePayload,
+      requestPayload: servicePayloadForDebug,
       output: {
         totalVisualMatches: visualMatches.length,
         itemsReturned: items.length,
@@ -732,17 +1057,17 @@ export async function POST(request: Request) {
           imagePath: targetImagePath,
           sourceImagePath: imagePath,
           sourceImageUrl:
-            toStringOrNull(parsed.json.imageUrl) || externallyReachableImageUrl || null,
-          searchId: toStringOrNull(parsed.json.id),
-          serpApiSearchId: toStringOrNull(parsed.json.serpApiSearchId),
-          providerCreatedAt: toStringOrNull(parsed.json.createdAt),
+            toStringOrNull(parsedJson.imageUrl) || externallyReachableImageUrl || null,
+          searchId: toStringOrNull(parsedJson.id),
+          serpApiSearchId: toStringOrNull(parsedJson.serpApiSearchId),
+          providerCreatedAt: toStringOrNull(parsedJson.createdAt),
           requestedLimit,
           serviceOptions,
           inputPayload: {
             targetImagePath: targetImagePath ?? null,
             imagePath: imagePath ?? null,
             imageUrl:
-              toStringOrNull(parsed.json.imageUrl) || externallyReachableImageUrl || null,
+              toStringOrNull(parsedJson.imageUrl) || externallyReachableImageUrl || null,
             serviceOptions,
             requestedLimit,
           },
@@ -772,13 +1097,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      id: toStringOrNull(parsed.json.id),
-      serpApiSearchId: toStringOrNull(parsed.json.serpApiSearchId),
-      createdAt: toStringOrNull(parsed.json.createdAt),
+      id: toStringOrNull(parsedJson.id),
+      serpApiSearchId: toStringOrNull(parsedJson.serpApiSearchId),
+      createdAt: toStringOrNull(parsedJson.createdAt),
       targetImagePath: targetImagePath ?? null,
       imagePath: imagePath ?? null,
       imageUrl:
-        toStringOrNull(parsed.json.imageUrl) || externallyReachableImageUrl || null,
+        toStringOrNull(parsedJson.imageUrl) || externallyReachableImageUrl || null,
       total: items.length,
       amazonCount: amazonLinks.length,
       items,
@@ -787,6 +1112,7 @@ export async function POST(request: Request) {
       exactMatches,
       persisted,
       debug: debugPayload,
+      responseStatus,
     });
   } catch (error) {
     const message =

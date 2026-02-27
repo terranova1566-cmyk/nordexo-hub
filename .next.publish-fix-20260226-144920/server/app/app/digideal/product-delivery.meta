@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/app/layout,_N_T_/app/digideal/layout,_N_T_/app/digideal/product-delivery/layout,_N_T_/app/digideal/product-delivery/page,_N_T_/app/digideal/product-delivery"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/app/digideal/product-delivery/__PAGE__",
+    "/app/digideal/product-delivery",
+    "/app/digideal",
+    "/app",
+    "/_index",
+    "/_head"
+  ]
+}

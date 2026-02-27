@@ -66,6 +66,7 @@ type DraftFolder = {
   name: string;
   path: string;
   modifiedAt: string;
+  run_type?: "draft" | "re_edit" | "archive";
 };
 
 type DraftRunPreviewItem = {
@@ -256,6 +257,8 @@ type DraftVariantEditorRow = {
 type SpuJsonViewerState = {
   spu: string;
   content: string;
+  sourceLabel: string;
+  loading: boolean;
 };
 
 type DraftVariantEditorEditableField =
@@ -590,6 +593,17 @@ const useStyles = makeStyles({
   },
   batchPickerRowActive: {
     backgroundColor: tokens.colorBrandBackground2,
+  },
+  batchPickerRowReEdit: {
+    backgroundColor: "#fff8d8",
+    border: "1px solid #f2dc98",
+    ":hover": {
+      backgroundColor: "#fff2bf",
+    },
+  },
+  batchPickerRowReEditActive: {
+    backgroundColor: "#ffefb3",
+    border: "1px solid #e7c769",
   },
   batchPickerRowName: {
     overflow: "hidden",
@@ -1067,6 +1081,10 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "10px",
   },
+  filePaneReEdit: {
+    backgroundColor: "#fffbe8",
+    border: "1px solid #f2dc98",
+  },
   entriesContentArea: {
     position: "relative",
     minHeight: "44px",
@@ -1518,6 +1536,9 @@ const useStyles = makeStyles({
     gap: "10px",
     height: "100%",
     minHeight: 0,
+  },
+  jsonViewerSource: {
+    color: tokens.colorNeutralForeground3,
   },
   jsonViewerArea: {
     flex: 1,
@@ -5832,18 +5853,61 @@ export default function DraftExplorerPage() {
     fetchDetailImages(detailTarget);
   }, [detailOpen, detailTarget, fetchDetailImages]);
 
-  const handleOpenSpuJsonViewer = useCallback((row: DraftSpuRow) => {
-    const raw = row.draft_raw_row ?? {};
-    let content = "{}";
-    try {
-      content = JSON.stringify(raw, null, 2) || "{}";
-    } catch {
-      content = "{}";
-    }
+  const handleOpenSpuJsonViewer = useCallback(async (row: DraftSpuRow) => {
+    const spu = String(row.draft_spu || "").trim();
+    const folder = tryExtractDraftRelativePath(row.draft_image_folder) ?? "";
+
     setSpuJsonViewer({
-      spu: String(row.draft_spu || "").trim(),
-      content,
+      spu,
+      content: "Loading original input JSON...",
+      sourceLabel: "Source: resolving original input payload...",
+      loading: true,
     });
+
+    try {
+      const url = new URL("/api/drafts/source-json", window.location.origin);
+      url.searchParams.set("spu", spu);
+      if (folder) {
+        url.searchParams.set("folder", folder);
+      }
+
+      const response = await fetch(url.toString(), { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const errorMessage =
+          payload && typeof payload.error === "string"
+            ? payload.error
+            : `HTTP ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const payload = (await response.json()) as {
+        sourcePath?: string;
+        content?: unknown;
+      };
+      const raw = payload.content && typeof payload.content === "object" ? payload.content : {};
+      const sourcePath =
+        typeof payload.sourcePath === "string" && payload.sourcePath.trim()
+          ? payload.sourcePath.trim()
+          : "";
+
+      setSpuJsonViewer({
+        spu,
+        content: JSON.stringify(raw, null, 2) || "{}",
+        sourceLabel: sourcePath
+          ? `Source: ${sourcePath}`
+          : "Source: original input JSON",
+        loading: false,
+      });
+    } catch {
+      const fallback = row.draft_raw_row ?? {};
+      setSpuJsonViewer({
+        spu,
+        content: JSON.stringify(fallback, null, 2) || "{}",
+        sourceLabel: "Source: current draft row (fallback)",
+        loading: false,
+      });
+    }
   }, []);
 
   const normalizeSupplierExternalUrl = useCallback((value: string | null | undefined) => {
@@ -6805,10 +6869,56 @@ export default function DraftExplorerPage() {
     }
   }, []);
 
-  const isArchiveFolder = useCallback((value: string) => {
-    const normalized = value.toLowerCase().replace(/[_-]+/g, " ");
-    return normalized.includes("archive");
+  const detectRunType = useCallback((value: string) => {
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ");
+    if (!normalized) return "draft" as const;
+    if (normalized.includes("archive")) return "archive" as const;
+    if (
+      /^re\s*edit(?:ing)?\b/.test(normalized) ||
+      /\bre\s*edit(?:ing)?\b/.test(normalized)
+    ) {
+      return "re_edit" as const;
+    }
+    return "draft" as const;
   }, []);
+
+  const runTypeByPath = useMemo(() => {
+    const map = new Map<string, "draft" | "re_edit" | "archive">();
+    folders.forEach((folder) => {
+      const runType = folder.run_type ?? detectRunType(`${folder.name} ${folder.path}`);
+      map.set(folder.path, runType);
+    });
+    return map;
+  }, [detectRunType, folders]);
+
+  const getRunTypeForPath = useCallback(
+    (value: string) => {
+      if (runTypeByPath.has(value)) {
+        return runTypeByPath.get(value) ?? "draft";
+      }
+      const matchedFolder = folders.find((folder) => folder.path === value);
+      if (matchedFolder) {
+        return (
+          matchedFolder.run_type ??
+          detectRunType(`${matchedFolder.name} ${matchedFolder.path}`)
+        );
+      }
+      return detectRunType(value);
+    },
+    [detectRunType, folders, runTypeByPath]
+  );
+
+  const isArchiveFolder = useCallback(
+    (value: string) => getRunTypeForPath(value) === "archive",
+    [getRunTypeForPath]
+  );
+  const isReEditFolder = useCallback(
+    (value: string) => getRunTypeForPath(value) === "re_edit",
+    [getRunTypeForPath]
+  );
 
   const isChunksDirectory = useCallback((value: string) => {
     const normalized = value.toLowerCase().replace(/[\s_-]+/g, "");
@@ -6819,7 +6929,7 @@ export default function DraftExplorerPage() {
     (items: DraftFolder[]) => {
       if (items.length === 0) return null;
       const nonArchive = items.filter(
-        (item) => !isArchiveFolder(`${item.name} ${item.path}`)
+        (item) => !isArchiveFolder(item.path)
       );
       const pool = nonArchive.length > 0 ? nonArchive : items;
       const draftedProducts = pool.filter((item) =>
@@ -7341,21 +7451,55 @@ export default function DraftExplorerPage() {
       setPendingAiEditsByOriginal({});
       return;
     }
+    const normalizedPath = String(pathValue || "").trim();
+    const currentMainPath = String(currentMainPathRef.current || "").trim();
+    const currentVariantsPath = String(currentVariantsPathRef.current || "").trim();
+    const folders = new Set<string>();
+    if (normalizedPath) folders.add(normalizedPath);
+    if (
+      normalizedPath &&
+      currentMainPath &&
+      currentVariantsPath &&
+      (normalizedPath === currentMainPath || normalizedPath === currentVariantsPath)
+    ) {
+      folders.add(currentMainPath);
+      folders.add(currentVariantsPath);
+    }
+    const folderList = Array.from(folders).filter(Boolean);
+    if (folderList.length === 0) {
+      setPendingAiEditsByOriginal({});
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `/api/drafts/ai-edits?folder=${encodeURIComponent(pathValue)}`
+      const settled = await Promise.allSettled(
+        folderList.map(async (folderPath) => {
+          const response = await fetch(
+            `/api/drafts/ai-edits?folder=${encodeURIComponent(folderPath)}`
+          );
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Unable to load AI edit state.");
+          }
+          return Array.isArray(payload?.items)
+            ? (payload.items as PendingAiEditRecord[])
+            : [];
+        })
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error || "Unable to load AI edit state.");
-      }
-      const items = Array.isArray(payload?.items)
-        ? (payload.items as PendingAiEditRecord[])
-        : [];
+
       const next: Record<string, PendingAiEditRecord> = {};
-      for (const item of items) {
-        if (!item?.originalPath) continue;
-        next[item.originalPath] = item;
+      let successCount = 0;
+      settled.forEach((result) => {
+        if (result.status !== "fulfilled") return;
+        successCount += 1;
+        result.value.forEach((item) => {
+          if (!item?.originalPath) return;
+          next[item.originalPath] = item;
+        });
+      });
+
+      if (successCount === 0) {
+        throw new Error("Unable to load AI edit state.");
       }
       setPendingAiEditsByOriginal(next);
     } catch {
@@ -7915,14 +8059,25 @@ export default function DraftExplorerPage() {
   }, [currentBatchSpuCount, selectedFolder, fetchFolders, isArchiveFolder, t]);
 
   const handleSelectAllRunsForMerge = useCallback(() => {
-    setSelectedRunsForMerge(
-      new Set(
-        folders
-          .filter((folder) => !isArchiveFolder(`${folder.name} ${folder.path}`))
+    setSelectedRunsForMerge(() => {
+      const nonArchive = folders.filter(
+        (folder) => !isArchiveFolder(folder.path)
+      );
+      if (nonArchive.length === 0) return new Set<string>();
+
+      const baseRunPath =
+        selectedFolder && !isArchiveFolder(selectedFolder)
+          ? selectedFolder
+          : nonArchive[0]?.path ?? "";
+      const baseType = getRunTypeForPath(baseRunPath);
+
+      return new Set(
+        nonArchive
+          .filter((folder) => getRunTypeForPath(folder.path) === baseType)
           .map((folder) => folder.path)
-      )
-    );
-  }, [folders, isArchiveFolder]);
+      );
+    });
+  }, [folders, getRunTypeForPath, isArchiveFolder, selectedFolder]);
 
   const handleUnselectRunsForMerge = useCallback(() => {
     setSelectedRunsForMerge(new Set());
@@ -7931,12 +8086,15 @@ export default function DraftExplorerPage() {
   useEffect(() => {
     setSelectedRunsForMerge((prev) => {
       if (prev.size === 0) return prev;
+      const filteredRuns = Array.from(prev).filter((run) => !isArchiveFolder(run));
+      const baseType =
+        filteredRuns.length > 0 ? getRunTypeForPath(filteredRuns[0]) : null;
       const next = new Set(
-        Array.from(prev).filter((run) => !isArchiveFolder(run))
+        filteredRuns.filter((run) => !baseType || getRunTypeForPath(run) === baseType)
       );
       return next.size === prev.size ? prev : next;
     });
-  }, [isArchiveFolder, folders]);
+  }, [getRunTypeForPath, isArchiveFolder, folders]);
 
   const setRunMergeSelection = useCallback(
     (run: string, checked: boolean) => {
@@ -7945,12 +8103,32 @@ export default function DraftExplorerPage() {
         const hasRun = prev.has(run);
         if (checked === hasRun) return prev;
         const next = new Set(prev);
-        if (checked) next.add(run);
+        if (checked) {
+          if (next.size > 0) {
+            const selectedTypes = new Set(
+              Array.from(next)
+                .map((entry) => getRunTypeForPath(entry))
+                .filter((entry) => entry !== "archive")
+            );
+            const runType = getRunTypeForPath(run);
+            if (
+              selectedTypes.size > 0 &&
+              runType !== "archive" &&
+              !selectedTypes.has(runType)
+            ) {
+              setError(
+                "Cannot merge mixed folder types. Re-edit folders can only merge with re-edit folders."
+              );
+              return prev;
+            }
+          }
+          next.add(run);
+        }
         else next.delete(run);
         return next;
       });
     },
-    [isArchiveFolder]
+    [getRunTypeForPath, isArchiveFolder]
   );
 
   const handleDeleteRuns = useCallback(async () => {
@@ -8178,6 +8356,15 @@ export default function DraftExplorerPage() {
       (run) => !isArchiveFolder(run)
     );
     if (runs.length < 2 || mergeRunsPending) return;
+    const runTypes = Array.from(
+      new Set(runs.map((run) => getRunTypeForPath(run)))
+    ).filter((runType) => runType !== "archive");
+    if (runTypes.length > 1) {
+      setError(
+        "Cannot merge mixed folder types. Re-edit folders can only merge with re-edit folders."
+      );
+      return;
+    }
     const confirmed = window.confirm(
       `Merge ${runs.length} batches into one? This will copy folders and update draft pointers.`
     );
@@ -8212,6 +8399,7 @@ export default function DraftExplorerPage() {
     selectedRunsForMerge,
     mergeRunsPending,
     fetchFolders,
+    getRunTypeForPath,
     handleSelectFolder,
     isArchiveFolder,
   ]);
@@ -9877,7 +10065,11 @@ export default function DraftExplorerPage() {
           const response = await fetch("/api/drafts/move", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourcePath, targetPath }),
+            body: JSON.stringify({
+              sourcePath,
+              targetPath,
+              allowRenameOnConflict: targetIsDeletedImages,
+            }),
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
@@ -10299,6 +10491,21 @@ export default function DraftExplorerPage() {
               };
             })
           );
+          setMainViewVariantImageEntries((prev) =>
+            prev.map((item) => {
+              const update = updates[item.path];
+              if (!update) return item;
+              return {
+                ...item,
+                path: update.path,
+                name: update.name,
+                size: update.size,
+                modifiedAt: update.modifiedAt,
+                pixelQualityScore: update.pixelQualityScore,
+                zimageUpscaled: update.zimageUpscaled,
+              };
+            })
+          );
           setSelectedFiles((prev) => {
             if (prev.size === 0) return prev;
             const next = new Set(prev);
@@ -10324,6 +10531,11 @@ export default function DraftExplorerPage() {
             });
             return next;
           });
+          const activePath = String(currentPathRef.current || "").trim();
+          if (activePath) {
+            await refreshEntries(activePath);
+            await fetchPendingAiEdits(activePath);
+          }
         }
 
         if (selectedFolder) {
@@ -10347,8 +10559,10 @@ export default function DraftExplorerPage() {
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
       fetchFolderTree,
+      fetchPendingAiEdits,
       isImage,
       pendingAiEditsByOriginal,
+      refreshEntries,
       selectedFolder,
     ]
   );
@@ -11691,6 +11905,9 @@ export default function DraftExplorerPage() {
             candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
         );
       setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
+      setMainViewVariantImageEntries((prev) =>
+        prev.filter((entry) => !isDeletedPath(entry.path))
+      );
       setSelectedTreeFolders(new Set());
       setLastDeletedImageUndoItems([]);
       setPendingAiEditsByOriginal((prev) => {
@@ -11728,6 +11945,11 @@ export default function DraftExplorerPage() {
       }
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
+      }
+      const activePath = String(currentPathRef.current || "").trim();
+      if (activePath) {
+        await refreshEntries(activePath);
+        await fetchPendingAiEdits(activePath);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -11797,6 +12019,9 @@ export default function DraftExplorerPage() {
             candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
         );
       setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
+      setMainViewVariantImageEntries((prev) =>
+        prev.filter((entry) => !isDeletedPath(entry.path))
+      );
       setSelectedFiles(new Set());
       setSelectedTreeFolders(new Set());
       setLastDeletedImageUndoItems([]);
@@ -11827,6 +12052,11 @@ export default function DraftExplorerPage() {
       setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
+      }
+      const activePath = String(currentPathRef.current || "").trim();
+      if (activePath) {
+        await refreshEntries(activePath);
+        await fetchPendingAiEdits(activePath);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -12539,15 +12769,49 @@ export default function DraftExplorerPage() {
             return_scraped: true,
           }),
         });
-        const payload = await response.json().catch(() => ({}));
+        const responseText = await response.text();
+        const payload = responseText
+          ? (() => {
+              try {
+                return JSON.parse(responseText) as Record<string, unknown>;
+              } catch {
+                return {};
+              }
+            })()
+          : {};
         if (!response.ok) {
-          throw new Error(payload?.error || "Unable to fetch Amazon data.");
+          const responsePayload =
+            payload && typeof payload === "object"
+              ? (payload as Record<string, unknown>)
+              : {};
+          const errorMessage =
+            (typeof responsePayload.error === "string" && responsePayload.error.trim()) ||
+            (responseText ? responseText.slice(0, 300).trim() : "") ||
+            `Unable to fetch Amazon data (HTTP ${response.status}).`;
+          throw new Error(errorMessage);
         }
 
         const imageUrls = new Set<string>();
-        const results = Array.isArray(payload?.results)
-          ? (payload.results as unknown[])
+        const responsePayload =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {};
+        const results = Array.isArray(responsePayload.results)
+          ? (responsePayload.results as unknown[])
           : [];
+        const apiErrors = Array.isArray(responsePayload.errors)
+          ? (responsePayload.errors as unknown[])
+          : [];
+        if (results.length === 0 && apiErrors.length > 0) {
+          const firstError =
+            apiErrors[0] && typeof apiErrors[0] === "object"
+              ? (apiErrors[0] as Record<string, unknown>)
+              : null;
+          const firstMessage =
+            (firstError && typeof firstError.error === "string" && firstError.error.trim()) ||
+            "Amazon scrape did not return any usable products.";
+          throw new Error(firstMessage);
+        }
         results.forEach((row: unknown) => {
           const scraped =
             row && typeof row === "object"
@@ -12604,10 +12868,18 @@ export default function DraftExplorerPage() {
           setReverseSearchAddingDownloaded(false);
         }
 
-        const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-        if (errors.length > 0) {
+        if (apiErrors.length > 0) {
+          const firstIssue =
+            apiErrors[0] && typeof apiErrors[0] === "object"
+              ? (apiErrors[0] as Record<string, unknown>)
+              : null;
+          const firstIssueMessage =
+            (firstIssue && typeof firstIssue.error === "string" && firstIssue.error.trim()) ||
+            null;
           setReverseSearchError(
-            `Amazon data fetched with ${errors.length} issue(s). Imported available images to Downloaded.`
+            firstIssueMessage
+              ? `Amazon data fetched with ${apiErrors.length} issue(s). First: ${firstIssueMessage}`
+              : `Amazon data fetched with ${apiErrors.length} issue(s). Imported available images to Downloaded.`
           );
         }
       } catch (err) {
@@ -15485,6 +15757,20 @@ export default function DraftExplorerPage() {
     }
     return { run: parts[0], spu: parts[1] };
   }, [currentSpuMainPath]);
+  const currentPathProductContext = useMemo(() => {
+    const spuRoot = getSpuRootFromDraftPath(String(currentPath || ""));
+    const parts = String(spuRoot || "").split("/").filter(Boolean);
+    if (parts.length < 2) {
+      return { run: "", spu: "" };
+    }
+    return { run: parts[0], spu: parts[1] };
+  }, [currentPath]);
+  const activeProductContext = useMemo(() => {
+    if (currentMainProductContext.run && currentMainProductContext.spu) {
+      return currentMainProductContext;
+    }
+    return currentPathProductContext;
+  }, [currentMainProductContext, currentPathProductContext]);
   const currentSpuMarkedCompleted = currentSpuMainPath
     ? completedSpuFolders.has(currentSpuMainPath)
     : false;
@@ -15514,10 +15800,9 @@ export default function DraftExplorerPage() {
 
   const handleDeleteCurrentProduct = useCallback(async () => {
     if (deleteProductPending) return;
-    if (!mainViewShowsMergedImages) return;
 
-    const run = String(currentMainProductContext.run || "").trim();
-    const spu = String(currentMainProductContext.spu || "").trim();
+    const run = String(activeProductContext.run || "").trim();
+    const spu = String(activeProductContext.spu || "").trim();
     const spuMainPath = run && spu ? `${run}/${spu}` : "";
     if (!run || !spu || !spuMainPath) return;
     const currentSpuIndex = runSpuOptions.findIndex(
@@ -15613,13 +15898,12 @@ export default function DraftExplorerPage() {
       setDeleteProductPending(false);
     }
   }, [
-    currentMainProductContext.run,
-    currentMainProductContext.spu,
+    activeProductContext.run,
+    activeProductContext.spu,
     deleteProductPending,
     fetchFolderTree,
     fetchSkuRows,
     fetchSpuRows,
-    mainViewShowsMergedImages,
     runSpuOptions,
   ]);
 
@@ -15866,25 +16150,27 @@ export default function DraftExplorerPage() {
     0
   );
   const regularBatchFolders = useMemo(
-    () =>
-      folders.filter(
-        (folder) => !isArchiveFolder(`${folder.name} ${folder.path}`)
-      ),
+    () => folders.filter((folder) => !isArchiveFolder(folder.path)),
     [folders, isArchiveFolder]
   );
   const archiveBatchFolders = useMemo(
-    () =>
-      folders.filter((folder) => isArchiveFolder(`${folder.name} ${folder.path}`)),
+    () => folders.filter((folder) => isArchiveFolder(folder.path)),
     [folders, isArchiveFolder]
   );
   const selectedMergeableRunsCount = useMemo(
-    () =>
-      Array.from(selectedRunsForMerge).filter(
+    () => {
+      const runs = Array.from(selectedRunsForMerge).filter(
         (run) => !isArchiveFolder(run)
-      ).length,
-    [selectedRunsForMerge, isArchiveFolder]
+      );
+      if (runs.length === 0) return 0;
+      const runTypes = new Set(runs.map((run) => getRunTypeForPath(run)));
+      if (runTypes.size > 1) return 0;
+      return runs.length;
+    },
+    [getRunTypeForPath, selectedRunsForMerge, isArchiveFolder]
   );
   const isSelectedFolderArchive = isArchiveFolder(selectedFolder);
+  const isSelectedFolderReEdit = isReEditFolder(selectedFolder);
   const isBatchPickerActionTarget = useCallback((target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest("[data-batch-picker-action='true']"));
@@ -17086,7 +17372,9 @@ export default function DraftExplorerPage() {
                               size="small"
                               appearance="outline"
                               className={styles.tableActionButton}
-                              onClick={() => handleOpenSpuJsonViewer(row)}
+                              onClick={() => {
+                                void handleOpenSpuJsonViewer(row);
+                              }}
                             >
                               JSON File
                             </Button>
@@ -18300,12 +18588,15 @@ export default function DraftExplorerPage() {
                 {regularBatchFolders.map((folder) => {
                   const active = folder.path === selectedFolder;
                   const checked = selectedRunsForMerge.has(folder.path);
+                  const reEdit = isReEditFolder(folder.path);
                   return (
                     <div
                       key={folder.path}
                       className={mergeClasses(
                         styles.batchPickerRow,
-                        active ? styles.batchPickerRowActive : undefined
+                        active && !reEdit ? styles.batchPickerRowActive : undefined,
+                        reEdit ? styles.batchPickerRowReEdit : undefined,
+                        reEdit && active ? styles.batchPickerRowReEditActive : undefined
                       )}
                       onClick={(event) => {
                         if (isBatchPickerActionTarget(event.target)) return;
@@ -19080,7 +19371,12 @@ export default function DraftExplorerPage() {
             ) : null}
 
             <div className={styles.contentColumn}>
-            <div className={styles.filePane}>
+            <div
+              className={mergeClasses(
+                styles.filePane,
+                isSelectedFolderReEdit ? styles.filePaneReEdit : undefined
+              )}
+            >
               <div className={styles.imageToolbar}>
                 <div className={styles.imageToolbarTabs}>
                   <TabList
@@ -19291,8 +19587,7 @@ export default function DraftExplorerPage() {
                         </MenuItem>
                         <MenuItem
                           disabled={
-                            !mainViewShowsMergedImages ||
-                            !currentMainProductContext.spu ||
+                            !activeProductContext.spu ||
                             confirmAiEditsPending ||
                             deleteProductPending ||
                             aiReviewSubmitting ||
@@ -23042,9 +23337,20 @@ export default function DraftExplorerPage() {
             <DialogBody className={styles.jsonViewerBody}>
               <DialogTitle>
                 {spuJsonViewer?.spu
-                  ? `${spuJsonViewer.spu} - JSON File`
-                  : "JSON File"}
+                  ? `${spuJsonViewer.spu} - Original Input JSON`
+                  : "Original Input JSON"}
               </DialogTitle>
+              <Text size={200} className={styles.jsonViewerSource}>
+                {spuJsonViewer?.sourceLabel ?? ""}
+              </Text>
+              {spuJsonViewer?.loading ? (
+                <Spinner
+                  size="tiny"
+                  style={{ color: tokens.colorNeutralForeground3 }}
+                  labelPosition="after"
+                  label="Loading..."
+                />
+              ) : null}
               <Textarea
                 value={spuJsonViewer?.content ?? ""}
                 readOnly

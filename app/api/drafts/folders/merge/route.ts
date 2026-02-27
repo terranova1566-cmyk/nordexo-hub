@@ -3,7 +3,13 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { DRAFT_ROOT, resolveDraftPath, safeRemoveDraftPath } from "@/lib/drafts";
+import {
+  DRAFT_ROOT,
+  getDraftRunType,
+  resolveDraftPath,
+  safeRemoveDraftPath,
+  type DraftRunType,
+} from "@/lib/drafts";
 
 export const runtime = "nodejs";
 
@@ -170,6 +176,28 @@ export async function POST(request: Request) {
     }
   }
 
+  const runTypeByRun = new Map<string, DraftRunType>();
+  for (const run of runs) {
+    runTypeByRun.set(run, getDraftRunType(run));
+  }
+  const selectedRunTypes = Array.from(new Set(runTypeByRun.values()));
+  if (selectedRunTypes.includes("archive")) {
+    return NextResponse.json(
+      { error: "Archive folders cannot be merged." },
+      { status: 400 }
+    );
+  }
+  if (selectedRunTypes.length > 1) {
+    return NextResponse.json(
+      {
+        error:
+          "Cannot merge mixed folder types. Re-edit folders can only merge with re-edit folders.",
+      },
+      { status: 400 }
+    );
+  }
+  const mergeRunType: DraftRunType = selectedRunTypes[0] ?? "draft";
+
   const spuFoldersByRun = new Map<string, string[]>();
   const allSpus = new Set<string>();
   const collisions: string[] = [];
@@ -198,9 +226,10 @@ export async function POST(request: Request) {
   }
 
   const totalSpus = Array.from(allSpus).length;
-  const mergedRunName = `Draft Products-${totalSpus}-SPU-merged-${formatTimestamp(
-    new Date()
-  )}`;
+  const mergedRunName =
+    mergeRunType === "re_edit"
+      ? `Re-Editing-${totalSpus}-SPU-merged-${formatTimestamp(new Date())}`
+      : `Draft Products-${totalSpus}-SPU-merged-${formatTimestamp(new Date())}`;
 
   const mergedAbs = resolveDraftPath(mergedRunName);
   if (!mergedAbs) {
@@ -346,6 +375,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    run_type: mergeRunType,
     merged_run: mergedRunName,
     total_spus: totalSpus,
     total_sbus: totalSpus,

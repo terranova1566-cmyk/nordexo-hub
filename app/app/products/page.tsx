@@ -36,10 +36,10 @@ import {
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getThumbnailUrl } from "@/lib/product-media";
 import { useDebouncedValue } from "@/hooks/use-debounced";
 import { useI18n } from "@/components/i18n-provider";
@@ -302,6 +302,8 @@ const useStyles = makeStyles({
   },
   bottomRight: {
     marginLeft: "auto",
+    display: "flex",
+    alignItems: "flex-end",
   },
   filterField: {
     minWidth: "180px",
@@ -356,6 +358,45 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
   },
+  tableLoadingContent: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+  },
+  tableLoadingLabel: {
+    color: tokens.colorNeutralForeground3,
+  },
+  tableRowReEditing: {
+    backgroundColor: "#fff8d8",
+    ":hover": {
+      backgroundColor: "#fff2bf",
+    },
+  },
+  statusBadge: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    padding: "2px 8px",
+    borderRadius: "999px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: tokens.fontWeightSemibold,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground2,
+  },
+  statusBadgeReEditing: {
+    backgroundColor: "#fff4ce",
+    border: "1px solid #f2c94c",
+    color: "#8a6d00",
+  },
+  statusBadgeActive: {
+    backgroundColor: "#f3f2f1",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground2,
+  },
   imageCol: {
     width: "83px",
     paddingLeft: "8px",
@@ -364,10 +405,23 @@ const useStyles = makeStyles({
     overflow: "visible",
   },
   productCol: {
-    minWidth: "350px",
-    width: "350px",
+    minWidth: "455px",
+    width: "455px",
     paddingLeft: "15px",
     paddingRight: "20px",
+  },
+  spuCol: {
+    minWidth: "96px",
+    width: "96px",
+    maxWidth: "96px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  supplierCol: {
+    minWidth: "160px",
+    width: "160px",
+    maxWidth: "180px",
   },
   productStack: {
     display: "flex",
@@ -387,6 +441,11 @@ const useStyles = makeStyles({
   productTitleText: {
     fontWeight: 600,
     lineHeight: "1.2",
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   dateStack: {
     display: "flex",
@@ -409,8 +468,17 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground1,
     lineHeight: "1.1",
   },
+  dateValueRecent: {
+    color: "#107c10",
+    fontWeight: tokens.fontWeightBold,
+  },
   selectCol: {
-    minWidth: "130px",
+    width: "56px",
+    minWidth: "56px",
+    maxWidth: "56px",
+    paddingLeft: "6px",
+    paddingRight: "6px",
+    textAlign: "right",
   },
   actionCol: {
     width: "auto",
@@ -437,21 +505,21 @@ const useStyles = makeStyles({
     overflow: "visible",
     "&:hover .previewLayer": {
       opacity: 1,
-      transform: "translateY(0)",
+      transform: "translateY(-50%)",
     },
     "&:focus-within .previewLayer": {
       opacity: 1,
-      transform: "translateY(0)",
+      transform: "translateY(-50%)",
     },
   },
   previewLayer: {
     position: "absolute",
     left: "calc(100% + 12px)",
-    top: 0,
+    top: "50%",
     // Keep the preview above table/card chrome.
     zIndex: 1000,
     opacity: 0,
-    transform: "translateY(-4px)",
+    transform: "translateY(-50%)",
     transition: "opacity 120ms ease, transform 120ms ease",
     pointerEvents: "none",
   },
@@ -466,10 +534,10 @@ const useStyles = makeStyles({
     boxShadow: tokens.shadow16,
   },
   previewImage: {
-    width: "500px",
-    height: "500px",
-    maxWidth: "70vw",
-    maxHeight: "70vh",
+    width: "350px",
+    height: "350px",
+    maxWidth: "56vw",
+    maxHeight: "56vh",
     objectFit: "contain",
     backgroundColor: tokens.colorNeutralBackground3,
     borderRadius: "10px",
@@ -489,11 +557,13 @@ const useStyles = makeStyles({
     background: "transparent",
     padding: 0,
     margin: 0,
-    color: tokens.colorNeutralForeground3,
+    color: tokens.colorBrandForeground1,
     cursor: "pointer",
     fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
       textDecorationLine: "underline",
+      color: tokens.colorBrandForeground2,
     },
   },
   breadcrumbDivider: {
@@ -543,7 +613,7 @@ const useStyles = makeStyles({
     lineHeight: "1.1",
   },
   variantPopover: {
-    padding: "12px",
+    padding: "8px",
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     boxShadow: tokens.shadow16,
@@ -556,17 +626,19 @@ const useStyles = makeStyles({
     minWidth: "unset",
     tableLayout: "auto",
     fontSize: tokens.fontSizeBase100,
-    lineHeight: "1.2",
+    lineHeight: "1.1",
     "& .fui-TableCell": {
-      paddingTop: "2px",
-      paddingBottom: "2px",
+      paddingTop: "1px",
+      paddingBottom: "1px",
       fontSize: tokens.fontSizeBase100,
+      lineHeight: "1.1",
     },
     "& .fui-TableHeaderCell": {
-      paddingTop: "2px",
-      paddingBottom: "2px",
+      paddingTop: "1px",
+      paddingBottom: "1px",
       fontSize: tokens.fontSizeBase100,
       color: tokens.colorNeutralForeground3,
+      lineHeight: "1.05",
     },
   },
   variantValueCell: {
@@ -579,21 +651,58 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
   },
-  listSaveButton: {
+  supplierCell: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "6px",
+  },
+  supplierName: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  tableActionButton: {
     borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    opacity: 1,
+    minHeight: "28px",
+    paddingInline: "10px",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
     fontWeight: tokens.fontWeightSemibold,
-    paddingInline: "16px",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
+    },
+    "&:disabled": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
+    },
+  },
+  listSaveButton: {
+    paddingInline: "10px",
   },
   removeButton: {
-    minWidth: "24px",
-    height: "24px",
+    minWidth: "28px",
+    width: "28px",
+    height: "28px",
     padding: 0,
-    borderRadius: "4px",
-    border: "none",
-    backgroundColor: "transparent",
+    borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1,
     color: tokens.colorNeutralForeground2,
     "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
       color: tokens.colorStatusDangerBorder1,
+    },
+    "&:disabled": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
     },
   },
   selectCheckbox: {
@@ -606,6 +715,12 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
     },
   },
+  selectCheckboxWrap: {
+    display: "flex",
+    width: "100%",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
   viewButton: {
     fontWeight: tokens.fontWeightSemibold,
     border: `1px solid ${tokens.colorNeutralStroke1}`,
@@ -615,11 +730,60 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground1,
     },
   },
+  viewLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "28px",
+    paddingInline: "10px",
+    borderRadius: "6px",
+    fontWeight: tokens.fontWeightSemibold,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    color: tokens.colorNeutralForeground1,
+    backgroundColor: tokens.colorNeutralBackground1,
+    opacity: 1,
+    textDecorationLine: "none",
+    "&:hover": {
+      textDecorationLine: "none",
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
+    },
+  },
+  supplierLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "28px",
+    paddingInline: "10px",
+    borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    color: tokens.colorNeutralForeground1,
+    backgroundColor: tokens.colorNeutralBackground1,
+    fontWeight: tokens.fontWeightSemibold,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    textDecorationLine: "none",
+    opacity: 1,
+    "&:hover": {
+      textDecorationLine: "none",
+      backgroundColor: tokens.colorNeutralBackground1,
+      opacity: 1,
+    },
+  },
+  supplierLinkDisabled: {
+    color: tokens.colorNeutralForegroundDisabled,
+    border: `1px solid ${tokens.colorNeutralStrokeDisabled}`,
+    cursor: "not-allowed",
+    pointerEvents: "none",
+  },
   selectionActions: {
     display: "flex",
     alignItems: "center",
     flexWrap: "wrap",
     gap: "8px",
+    justifyContent: "flex-end",
   },
   unselectButton: {
     selectors: {
@@ -638,11 +802,35 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
     paddingTop: "12px",
   },
+  deliveryDialog: {
+    width: "min(720px, 96vw)",
+  },
+  deliveryDialogBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  deliveryListTableWrap: {
+    maxHeight: "360px",
+    overflowY: "auto",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+  },
+  deliveryCreateRow: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "flex-end",
+  },
+  deliveryCreateInput: {
+    flex: 1,
+  },
 });
 
 type ProductListItem = {
   id: string;
   spu: string;
+  workflow_status?: string | null;
+  workflow_run?: string | null;
   title: string | null;
   subtitle: string | null;
   tags: string | null;
@@ -653,6 +841,8 @@ type ProductListItem = {
   google_taxonomy_l3?: string | null;
   images: unknown;
   image_folder: string | null;
+  vendor?: string | null;
+  supplier_1688_url?: string | null;
   created_at: string | null;
   updated_at: string | null;
   variant_count: number;
@@ -682,6 +872,13 @@ type ProductListItem = {
 };
 
 type Wishlist = {
+  id: string;
+  name: string;
+  created_at: string | null;
+  item_count?: number;
+};
+
+type DigiDealDeliveryList = {
   id: string;
   name: string;
   created_at: string | null;
@@ -728,6 +925,26 @@ const formatShortDate = (value?: string | null) => {
   }).format(date);
 };
 
+const RECENT_DAYS_WINDOW = 7;
+
+const isDateWithinDays = (value: string | null | undefined, days: number) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = Date.now();
+  const maxAgeMs = days * 24 * 60 * 60 * 1000;
+  const ageMs = now - date.getTime();
+  return ageMs >= 0 && ageMs <= maxAgeMs;
+};
+
+const toExternalUrl = (value: string | null | undefined) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^\/\//.test(raw)) return `https:${raw}`;
+  return `https://${raw.replace(/^\/+/, "")}`;
+};
+
 const formatRangeSummary = (
   from: string,
   to: string,
@@ -741,6 +958,24 @@ const formatRangeSummary = (
     return `${formatShortDate(from)} →`;
   }
   return `→ ${formatShortDate(to)}`;
+};
+
+const readResponseError = async (response: Response, fallback: string) => {
+  try {
+    const payload = await response.json();
+    if (typeof payload?.error === "string" && payload.error.trim()) {
+      return payload.error;
+    }
+  } catch {
+    // ignore parse failures
+  }
+  try {
+    const text = await response.text();
+    if (text.trim()) return text.trim();
+  } catch {
+    // ignore parse failures
+  }
+  return fallback;
 };
 
 const sanitizeSwedishVariantPart = (value: string | null) => {
@@ -851,11 +1086,22 @@ function ProductsPageInner() {
   const [wishlistsError, setWishlistsError] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
   const [newListDialogOpen, setNewListDialogOpen] = useState(false);
+  const [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false);
+  const [deliveryTargetProductIds, setDeliveryTargetProductIds] = useState<string[]>([]);
+  const [deliveryLists, setDeliveryLists] = useState<DigiDealDeliveryList[]>([]);
+  const [deliveryListsLoading, setDeliveryListsLoading] = useState(false);
+  const [deliveryListsError, setDeliveryListsError] = useState<string | null>(null);
+  const [deliveryNewListName, setDeliveryNewListName] = useState("");
+  const [isCreatingDeliveryList, setIsCreatingDeliveryList] = useState(false);
+  const [addingDeliveryListId, setAddingDeliveryListId] = useState<string | null>(null);
+  const [deleteSelectionDialogOpen, setDeleteSelectionDialogOpen] = useState(false);
   const [pendingSaveProductIds, setPendingSaveProductIds] = useState<string[] | null>(
     null
   );
   const [isSavingSelection, setIsSavingSelection] = useState(false);
+  const [isApplyingAction, setIsApplyingAction] = useState(false);
   const isRestoringRef = useRef(false);
+  const loadRequestRef = useRef(0);
   const searchParams = useSearchParams();
   const urlSearch = searchParams.toString();
 
@@ -1102,30 +1348,125 @@ function ProductsPageInner() {
     return () => controller.abort();
   }, []);
 
-  const fetchWishlists = async (signal?: AbortSignal) => {
-    setWishlistsLoading(true);
-    setWishlistsError(null);
-    try {
-      const response = await fetch("/api/products/wishlists", { signal });
-      if (!response.ok) {
-        throw new Error(t("products.lists.error"));
+  const fetchWishlists = useCallback(
+    async (signal?: AbortSignal) => {
+      setWishlistsLoading(true);
+      setWishlistsError(null);
+      try {
+        const response = await fetch("/api/products/wishlists", { signal });
+        if (!response.ok) {
+          throw new Error(t("products.lists.error"));
+        }
+        const payload = await response.json();
+        setWishlists(Array.isArray(payload.items) ? payload.items : []);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setWishlistsError((err as Error).message);
+        }
+      } finally {
+        setWishlistsLoading(false);
       }
-      const payload = await response.json();
-      setWishlists(Array.isArray(payload.items) ? payload.items : []);
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        setWishlistsError((err as Error).message);
+    },
+    [t]
+  );
+
+  const fetchDeliveryLists = useCallback(
+    async (signal?: AbortSignal) => {
+      setDeliveryListsLoading(true);
+      setDeliveryListsError(null);
+      try {
+        const response = await fetch("/api/product-delivery/digideal/lists", {
+          signal,
+        });
+        if (!response.ok) {
+          throw new Error(await readResponseError(response, t("products.delivery.errorLoad")));
+        }
+        const payload = await response.json();
+        setDeliveryLists(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setDeliveryListsError((err as Error).message);
+        }
+      } finally {
+        setDeliveryListsLoading(false);
       }
-    } finally {
-      setWishlistsLoading(false);
-    }
-  };
+    },
+    [t]
+  );
+
+  const openDeliveryDialog = useCallback(
+    (productIds: string[]) => {
+      const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
+      if (uniqueProductIds.length === 0) return;
+      setDeliveryTargetProductIds(uniqueProductIds);
+      setDeliveryNewListName("");
+      setDeliveryDialogOpen(true);
+      void fetchDeliveryLists();
+    },
+    [fetchDeliveryLists]
+  );
+
+  const addItemsToDeliveryList = useCallback(
+    async (listId: string) => {
+      if (deliveryTargetProductIds.length === 0) return;
+      setAddingDeliveryListId(listId);
+      setError(null);
+      try {
+        const response = await fetch("/api/product-delivery/digideal/lists/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listId,
+            productIds: deliveryTargetProductIds,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await readResponseError(response, t("products.delivery.errorAdd")));
+        }
+        await fetchDeliveryLists();
+        setDeliveryDialogOpen(false);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setAddingDeliveryListId(null);
+      }
+    },
+    [deliveryTargetProductIds, fetchDeliveryLists, t]
+  );
+
+  const createDeliveryList = useCallback(
+    async () => {
+      const trimmed = deliveryNewListName.trim();
+      if (!trimmed) return;
+      setIsCreatingDeliveryList(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/product-delivery/digideal/lists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            await readResponseError(response, t("products.delivery.errorCreate"))
+          );
+        }
+        await fetchDeliveryLists();
+        setDeliveryNewListName("");
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setIsCreatingDeliveryList(false);
+      }
+    },
+    [deliveryNewListName, fetchDeliveryLists, t]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     fetchWishlists(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [fetchWishlists]);
 
   useEffect(() => {
     if (wishlistsLoading || wishlistsError) return;
@@ -1249,6 +1590,7 @@ function ProductsPageInner() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = ++loadRequestRef.current;
 
     const load = async () => {
       setIsLoading(true);
@@ -1282,6 +1624,7 @@ function ProductsPageInner() {
         }
 
         const payload = await response.json();
+        if (requestId !== loadRequestRef.current) return;
         setProducts(payload.items ?? []);
         setTotal(payload.total ?? 0);
         setActiveMarkets(
@@ -1290,11 +1633,16 @@ function ProductsPageInner() {
             : ["SE"]
         );
       } catch (err) {
-        if ((err as Error).name !== "AbortError") {
+        if (
+          requestId === loadRequestRef.current &&
+          (err as Error).name !== "AbortError"
+        ) {
           setError((err as Error).message);
         }
       } finally {
-        setIsLoading(false);
+        if (requestId === loadRequestRef.current) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -1411,6 +1759,12 @@ function ProductsPageInner() {
   );
   const hasSelection = selectedItems.length > 0;
 
+  useEffect(() => {
+    if (!hasSelection) {
+      setDeleteSelectionDialogOpen(false);
+    }
+  }, [hasSelection]);
+
   const saveItemsToWishlist = async (
     wishlistId: string,
     productIds: string[],
@@ -1461,6 +1815,158 @@ function ProductsPageInner() {
 
   const saveProductToWishlist = async (productId: string, wishlistId: string) => {
     await saveItemsToWishlist(wishlistId, [productId]);
+  };
+
+  const handleDeleteSelectedProducts = async () => {
+    const productIds = selectedItems.map((item) => item.id);
+    if (productIds.length === 0 || isApplyingAction) return;
+
+    setIsApplyingAction(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/products/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete",
+          productIds,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === "string" && payload.error
+            ? payload.error
+            : t("products.actions.deleteError");
+        throw new Error(message);
+      }
+
+      const failed: Array<{ spu?: unknown; id?: unknown }> = Array.isArray(
+        payload?.failed
+      )
+        ? payload.failed
+        : [];
+      const deleted: Array<{ id?: unknown }> = Array.isArray(payload?.deleted)
+        ? payload.deleted
+        : [];
+      const deletedIds = new Set(
+        deleted
+          .map((entry: { id?: unknown }) => String(entry.id ?? "").trim())
+          .filter(Boolean)
+      );
+
+      if (deletedIds.size > 0) {
+        setProducts((prev) => prev.filter((product) => !deletedIds.has(product.id)));
+        setTotal((prev) => Math.max(0, prev - deletedIds.size));
+      }
+
+      setSelectedRows(new Set());
+      setDeleteSelectionDialogOpen(false);
+
+      if (failed.length > 0) {
+        const preview = failed
+          .slice(0, 3)
+          .map((entry: { spu?: unknown; id?: unknown }) =>
+            String(entry.spu ?? entry.id ?? "").trim()
+          )
+          .filter(Boolean)
+          .join(", ");
+
+        setError(
+          t("products.actions.deletePartialError", {
+            count: failed.length,
+            details: preview || t("common.notAvailable"),
+          })
+        );
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsApplyingAction(false);
+    }
+  };
+
+  const handleSendSelectedToReEdit = async () => {
+    const productIds = selectedItems.map((item) => item.id);
+    if (productIds.length === 0 || isApplyingAction) return;
+
+    setIsApplyingAction(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/products/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "re_edit",
+          productIds,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === "string" && payload.error
+            ? payload.error
+            : "Unable to queue products for re-edit.";
+        throw new Error(message);
+      }
+
+      const queuedRows: Array<{ id?: unknown; spu?: unknown }> = Array.isArray(payload?.queued)
+        ? payload.queued
+        : [];
+      const failedRows: Array<{ id?: unknown; spu?: unknown; error?: unknown }> = Array.isArray(
+        payload?.failed
+      )
+        ? payload.failed
+        : [];
+      const queuedIds = new Set(
+        queuedRows
+          .map((entry) => String(entry.id ?? "").trim())
+          .filter(Boolean)
+      );
+      const queuedSpus = new Set(
+        queuedRows
+          .map((entry) => String(entry.spu ?? "").trim())
+          .filter(Boolean)
+      );
+
+      if (queuedIds.size > 0 || queuedSpus.size > 0) {
+        setProducts((prev) =>
+          prev.map((product) => {
+            if (!queuedIds.has(product.id) && !queuedSpus.has(product.spu)) {
+              return product;
+            }
+            return {
+              ...product,
+              workflow_status: "re_editing",
+              workflow_run:
+                typeof payload?.run === "string" && payload.run.trim()
+                  ? payload.run.trim()
+                  : product.workflow_run ?? null,
+            };
+          })
+        );
+      }
+
+      setSelectedRows(new Set());
+
+      if (failedRows.length > 0) {
+        const preview = failedRows
+          .slice(0, 3)
+          .map((entry) => String(entry.spu ?? entry.id ?? "").trim())
+          .filter(Boolean)
+          .join(", ");
+        setError(
+          `Queued ${queuedRows.length}/${productIds.length} for re-edit. Failed: ${
+            failedRows.length
+          } (${preview || t("common.notAvailable")}).`
+        );
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsApplyingAction(false);
+    }
   };
 
   const removeFromAllWishlists = async (productId: string) => {
@@ -1551,9 +2057,34 @@ function ProductsPageInner() {
         const previewVariants = product.variant_preview ?? [];
         const hasPreview =
           product.variant_count > 1 && previewVariants.length > 1;
+        const workflowStatus =
+          String(product.workflow_status ?? "")
+            .trim()
+            .toLowerCase() || "active";
+        const isReEditing = workflowStatus === "re_editing";
+        const workflowStatusLabel = isReEditing ? "Re-editing" : "Active";
+        const supplierName =
+          String(product.vendor ?? "").trim() || t("common.notAvailable");
+        const supplierUrl = toExternalUrl(product.supplier_1688_url);
+        const isCreatedRecent = isDateWithinDays(
+          product.created_at,
+          RECENT_DAYS_WINDOW
+        );
+        const isUpdatedRecent = isDateWithinDays(
+          product.updated_at,
+          RECENT_DAYS_WINDOW
+        );
+        const hasRecentDate = isCreatedRecent || isUpdatedRecent;
+        const dateValueClassName = mergeClasses(
+          styles.dateValue,
+          hasRecentDate ? styles.dateValueRecent : undefined
+        );
 
         return (
-          <TableRow key={product.id}>
+          <TableRow
+            key={product.id}
+            className={isReEditing ? styles.tableRowReEditing : undefined}
+          >
             <TableCell className={styles.imageCol}>
               {thumb ? (
                 <span className={styles.thumbnailWrap}>
@@ -1622,24 +2153,60 @@ function ProductsPageInner() {
                 )}
               </div>
             </TableCell>
-            <TableCell>
+            <TableCell className={styles.spuCol}>
               <Text size={200}>{product.spu}</Text>
+            </TableCell>
+            <TableCell className={styles.supplierCol}>
+              <div className={styles.supplierCell}>
+                <Text size={200} className={styles.supplierName}>
+                  {supplierName}
+                </Text>
+                {supplierUrl ? (
+                  <a
+                    href={supplierUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.supplierLink}
+                  >
+                    {t("products.table.supplierLink")}
+                  </a>
+                ) : (
+                  <span
+                    className={mergeClasses(
+                      styles.supplierLink,
+                      styles.supplierLinkDisabled
+                    )}
+                  >
+                    {t("products.table.supplierLink")}
+                  </span>
+                )}
+              </div>
+            </TableCell>
+            <TableCell>
+              <span
+                className={mergeClasses(
+                  styles.statusBadge,
+                  isReEditing ? styles.statusBadgeReEditing : styles.statusBadgeActive
+                )}
+              >
+                {workflowStatusLabel}
+              </span>
             </TableCell>
             <TableCell>
               <div className={styles.dateStack}>
                 <div className={styles.dateRow}>
                   <Text className={styles.dateLabel}>
-                    {t("products.table.createdLabel")}
+                    {t("products.table.createdLabel")}:
                   </Text>
-                  <Text className={styles.dateValue}>
+                  <Text className={dateValueClassName}>
                     {formatShortDate(product.created_at)}
                   </Text>
                 </div>
                 <div className={styles.dateRow}>
                   <Text className={styles.dateLabel}>
-                    {t("products.table.updated")}
+                    {t("products.table.updated")}:
                   </Text>
-                  <Text className={styles.dateValue}>
+                  <Text className={dateValueClassName}>
                     {formatShortDate(product.updated_at)}
                   </Text>
                 </div>
@@ -1740,7 +2307,14 @@ function ProductsPageInner() {
               <div className={styles.saveCell}>
                 <Menu>
                   <MenuTrigger disableButtonEnhancement>
-                    <Button appearance="outline" className={styles.listSaveButton}>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      className={mergeClasses(
+                        styles.tableActionButton,
+                        styles.listSaveButton
+                      )}
+                    >
                       {t("common.save")}
                     </Button>
                   </MenuTrigger>
@@ -1770,44 +2344,50 @@ function ProductsPageInner() {
                       >
                         {t("products.lists.new")}
                       </MenuItem>
+                      <MenuItem onClick={() => openDeliveryDialog([product.id])}>
+                        {t("products.actions.deliverDigiDeal")}
+                      </MenuItem>
                     </MenuList>
                   </MenuPopover>
                 </Menu>
                 <Button
-                  appearance="subtle"
-                  className={styles.removeButton}
+                  appearance="outline"
+                  size="small"
+                  className={mergeClasses(
+                    styles.tableActionButton,
+                    styles.removeButton
+                  )}
                   icon={<TrashIcon />}
                   aria-label={t("products.removeItem", { title })}
+                  title={t("products.removeFromListsHint")}
                   onClick={() => removeFromAllWishlists(product.id)}
                 />
               </div>
             </TableCell>
             <TableCell>
-              <Button
-                appearance="outline"
-                className={styles.viewButton}
-                onClick={() => router.push(`/app/products/${product.id}`)}
-              >
+              <Link href={`/app/products/${product.id}`} className={styles.viewLink}>
                 {t("common.view")}
-              </Button>
+              </Link>
             </TableCell>
             <TableCell>
-              <Checkbox
-                checked={isSelected}
-                aria-label={t("common.selectItem", { item: title })}
-                className={styles.selectCheckbox}
-                onChange={(_, data) => {
-                  setSelectedRows((prev) => {
-                    const next = new Set(prev);
-                    if (data.checked === true) {
-                      next.add(product.id);
-                    } else {
-                      next.delete(product.id);
-                    }
-                    return next;
-                  });
-                }}
-              />
+              <div className={styles.selectCheckboxWrap}>
+                <Checkbox
+                  checked={isSelected}
+                  aria-label={t("common.selectItem", { item: title })}
+                  className={styles.selectCheckbox}
+                  onChange={(_, data) => {
+                    setSelectedRows((prev) => {
+                      const next = new Set(prev);
+                      if (data.checked === true) {
+                        next.add(product.id);
+                      } else {
+                        next.delete(product.id);
+                      }
+                      return next;
+                    });
+                  }}
+                />
+              </div>
             </TableCell>
           </TableRow>
         );
@@ -1815,7 +2395,6 @@ function ProductsPageInner() {
     [
       products,
       marketColumns,
-      router,
       selectedRows,
       styles,
       t,
@@ -1824,6 +2403,7 @@ function ProductsPageInner() {
       wishlistsError,
       saveProductToWishlist,
       removeFromAllWishlists,
+      openDeliveryDialog,
     ]
   );
 
@@ -2294,6 +2874,8 @@ function ProductsPageInner() {
                 </PopoverSurface>
               </Popover>
             </Field>
+          </div>
+          <div className={styles.bottomRight}>
             <Field
               label={
                 <span className={styles.filterLabel}>
@@ -2307,7 +2889,7 @@ function ProductsPageInner() {
                   <MenuTrigger disableButtonEnhancement>
                     <Button
                       appearance={hasSelection ? "primary" : "outline"}
-                      disabled={!hasSelection || isSavingSelection}
+                      disabled={!hasSelection || isSavingSelection || isApplyingAction}
                     >
                       {t("common.save")}
                     </Button>
@@ -2343,10 +2925,68 @@ function ProductsPageInner() {
                     </MenuList>
                   </MenuPopover>
                 </Menu>
+                <Menu>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance="outline"
+                      disabled={!hasSelection || isSavingSelection || isApplyingAction}
+                    >
+                      {t("products.actions.label")}
+                    </Button>
+                  </MenuTrigger>
+                    <MenuPopover>
+                      <MenuList>
+                        <MenuItem
+                          disabled={!hasSelection || isApplyingAction}
+                          onClick={() => void handleSendSelectedToReEdit()}
+                        >
+                          Edit Products
+                        </MenuItem>
+                        <Menu positioning="after-top">
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem disabled={!hasSelection || isApplyingAction} hasSubmenu>
+                              {t("products.actions.deliver")}
+                            </MenuItem>
+                        </MenuTrigger>
+                        <MenuPopover>
+                          <MenuList>
+                            <Menu positioning="after-top">
+                              <MenuTrigger disableButtonEnhancement>
+                                <MenuItem
+                                  disabled={!hasSelection || isApplyingAction}
+                                  hasSubmenu
+                                >
+                                  {t("products.actions.deliverTo")}
+                                </MenuItem>
+                              </MenuTrigger>
+                              <MenuPopover>
+                                <MenuList>
+                                  <MenuItem
+                                    disabled={!hasSelection || isApplyingAction}
+                                    onClick={() =>
+                                      openDeliveryDialog(
+                                        selectedItems.map((item) => item.id)
+                                      )
+                                    }
+                                  >
+                                    {t("products.actions.deliverDigiDeal")}
+                                  </MenuItem>
+                                </MenuList>
+                              </MenuPopover>
+                            </Menu>
+                          </MenuList>
+                        </MenuPopover>
+                      </Menu>
+                      <MenuItem onClick={() => setDeleteSelectionDialogOpen(true)}>
+                        {t("products.actions.deleteSelected")}
+                      </MenuItem>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
                 <Button
                   appearance="outline"
                   onClick={() => setSelectedRows(new Set())}
-                  disabled={!hasSelection}
+                  disabled={!hasSelection || isApplyingAction}
                   className={styles.unselectButton}
                 >
                   {t("common.unselect")}
@@ -2377,7 +3017,13 @@ function ProductsPageInner() {
               <TableHeaderCell className={styles.productCol}>
                 {t("products.table.product")}
               </TableHeaderCell>
-              <TableHeaderCell>{t("products.table.spu")}</TableHeaderCell>
+              <TableHeaderCell className={styles.spuCol}>
+                {t("products.table.spu")}
+              </TableHeaderCell>
+              <TableHeaderCell className={styles.supplierCol}>
+                {t("products.table.supplier")}
+              </TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
               <TableHeaderCell>
                 {t("products.table.createdUpdated")}
               </TableHeaderCell>
@@ -2385,34 +3031,39 @@ function ProductsPageInner() {
               <TableHeaderCell>{t("products.table.save")}</TableHeaderCell>
               <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
               <TableHeaderCell className={styles.selectCol}>
-                <Checkbox
-                  label={t("common.selectAll")}
-                  checked={isLoading ? false : selectAllState}
-                  disabled={isLoading || products.length === 0}
-                  className={styles.selectCheckbox}
-                  onChange={(_, data) => {
-                    if (data.checked === true) {
-                      setSelectedRows(new Set(products.map((product) => product.id)));
-                    } else {
-                      setSelectedRows(new Set());
-                    }
-                  }}
-                />
+                <div className={styles.selectCheckboxWrap}>
+                  <Checkbox
+                    aria-label={t("common.selectAll")}
+                    checked={isLoading ? false : selectAllState}
+                    disabled={isLoading || products.length === 0}
+                    className={styles.selectCheckbox}
+                    onChange={(_, data) => {
+                      if (data.checked === true) {
+                        setSelectedRows(new Set(products.map((product) => product.id)));
+                      } else {
+                        setSelectedRows(new Set());
+                      }
+                    }}
+                  />
+                </div>
               </TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className={styles.tableStatusCell}>
-                  <div className={styles.tableStatusContent}>
+                <TableCell colSpan={10} className={styles.tableStatusCell}>
+                  <div className={styles.tableLoadingContent}>
                     <Spinner appearance="primary" />
+                    <Text size={200} className={styles.tableLoadingLabel}>
+                      {t("products.loading")}
+                    </Text>
                   </div>
                 </TableCell>
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className={styles.tableStatusCell}>
+                <TableCell colSpan={10} className={styles.tableStatusCell}>
                   <div className={styles.tableStatusContent}>
                     <Text>{t("products.empty")}</Text>
                   </div>
@@ -2479,6 +3130,141 @@ function ProductsPageInner() {
                 disabled={!newListName.trim() || isSavingSelection}
               >
                 {t("common.ok")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={deliveryDialogOpen}
+        onOpenChange={(_, data) => {
+          setDeliveryDialogOpen(data.open);
+          if (!data.open) {
+            setDeliveryTargetProductIds([]);
+            setDeliveryNewListName("");
+            setDeliveryListsError(null);
+          }
+        }}
+      >
+        <DialogSurface className={styles.deliveryDialog}>
+          <DialogBody className={styles.deliveryDialogBody}>
+            <DialogTitle>{t("products.delivery.dialogTitle")}</DialogTitle>
+            <Text size={200}>
+              {t("products.delivery.dialogBody", {
+                count: deliveryTargetProductIds.length,
+              })}
+            </Text>
+            {deliveryListsError ? (
+              <MessageBar intent="error">{deliveryListsError}</MessageBar>
+            ) : null}
+            <div className={styles.deliveryListTableWrap}>
+              <Table size="small">
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>{t("products.delivery.table.name")}</TableHeaderCell>
+                    <TableHeaderCell>{t("products.delivery.table.items")}</TableHeaderCell>
+                    <TableHeaderCell>{t("products.delivery.table.created")}</TableHeaderCell>
+                    <TableHeaderCell>{t("products.delivery.table.action")}</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {deliveryListsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <Spinner size="tiny" label={t("products.delivery.loading")} />
+                      </TableCell>
+                    </TableRow>
+                  ) : deliveryLists.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>{t("products.delivery.table.empty")}</TableCell>
+                    </TableRow>
+                  ) : (
+                    deliveryLists.map((list) => (
+                      <TableRow key={list.id}>
+                        <TableCell>{list.name}</TableCell>
+                        <TableCell>{list.item_count ?? 0}</TableCell>
+                        <TableCell>
+                          {formatDateTime(list.created_at) || t("common.notAvailable")}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            disabled={
+                              addingDeliveryListId === list.id ||
+                              isCreatingDeliveryList ||
+                              deliveryTargetProductIds.length === 0
+                            }
+                            onClick={() => {
+                              void addItemsToDeliveryList(list.id);
+                            }}
+                          >
+                            {t("products.delivery.add")}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <Field label={t("products.delivery.createLabel")}>
+              <div className={styles.deliveryCreateRow}>
+                <Input
+                  className={styles.deliveryCreateInput}
+                  value={deliveryNewListName}
+                  onChange={(_, data) => setDeliveryNewListName(data.value)}
+                  placeholder={t("products.delivery.createPlaceholder")}
+                />
+                <Button
+                  appearance="primary"
+                  onClick={() => {
+                    void createDeliveryList();
+                  }}
+                  disabled={!deliveryNewListName.trim() || isCreatingDeliveryList}
+                >
+                  {t("common.ok")}
+                </Button>
+              </div>
+            </Field>
+            <DialogActions>
+              <Button appearance="subtle" onClick={() => setDeliveryDialogOpen(false)}>
+                {t("common.close")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={deleteSelectionDialogOpen}
+        onOpenChange={(_, data) => setDeleteSelectionDialogOpen(data.open)}
+      >
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>{t("products.actions.deleteConfirmTitle")}</DialogTitle>
+            <Text>
+              {t("products.actions.deleteConfirmBody", {
+                count: selectedItems.length,
+              })}
+            </Text>
+            <DialogActions>
+              <Button
+                appearance="subtle"
+                onClick={() => setDeleteSelectionDialogOpen(false)}
+                disabled={isApplyingAction}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={handleDeleteSelectedProducts}
+                disabled={!hasSelection || isApplyingAction}
+              >
+                {isApplyingAction
+                  ? t("products.actions.deleting")
+                  : t("common.delete")}
               </Button>
             </DialogActions>
           </DialogBody>

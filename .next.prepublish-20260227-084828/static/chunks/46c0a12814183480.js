@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,372462,e=>{"use strict";let t=/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;function o(e){let o,r=new Set;for(;o=t.exec(e);){let e=o[1]?.trim();e&&r.add(e)}return Array.from(r.values()).sort((e,t)=>e.localeCompare(t))}e.s(["collectMacros",()=>o])}]);

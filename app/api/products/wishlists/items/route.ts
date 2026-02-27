@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  DIGIDEAL_DELIVERY_LIST_PREFIX,
+  isDigiDealDeliveryListName,
+} from "@/lib/product-delivery/digideal";
 
 type WishlistItemPayload = {
   wishlistId?: string;
@@ -31,7 +35,7 @@ export async function POST(request: Request) {
 
   const { data: wishlist, error: wishlistError } = await supabase
     .from("product_manager_wishlists")
-    .select("id")
+    .select("id, name")
     .eq("id", wishlistId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -42,6 +46,12 @@ export async function POST(request: Request) {
 
   if (!wishlist) {
     return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
+  }
+  if (isDigiDealDeliveryListName(wishlist.name)) {
+    return NextResponse.json(
+      { error: "Use the delivery list endpoint for this list." },
+      { status: 400 }
+    );
   }
 
   const rows = items.map((item) => ({
@@ -90,7 +100,8 @@ export async function DELETE(request: Request) {
     const { data: lists, error: listsError } = await supabase
       .from("product_manager_wishlists")
       .select("id")
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .not("name", "like", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`);
 
     if (listsError) {
       return NextResponse.json({ error: listsError.message }, { status: 500 });
@@ -116,7 +127,7 @@ export async function DELETE(request: Request) {
 
   const { data: wishlist, error: wishlistError } = await supabase
     .from("product_manager_wishlists")
-    .select("id")
+    .select("id, name")
     .eq("id", wishlistId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -127,6 +138,12 @@ export async function DELETE(request: Request) {
 
   if (!wishlist) {
     return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
+  }
+  if (isDigiDealDeliveryListName(wishlist.name)) {
+    return NextResponse.json(
+      { error: "Use the delivery list endpoint for this list." },
+      { status: 400 }
+    );
   }
 
   const { error: deleteError } = await supabase

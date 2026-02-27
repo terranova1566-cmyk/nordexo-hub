@@ -133,9 +133,7 @@ const isQueueStatusAllowedForSend = (
   ) {
     return true;
   }
-  if (status === "queued_for_production" || status === "queued") {
-    return true;
-  }
+  if (status === "queued_for_production" || status === "queued") return false;
   if (status.startsWith("new")) return true;
   return false;
 };
@@ -295,7 +293,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Selected products are already in production or already sent. Only blank, '-', 'not in production', 'queued_for_production/queued', or 'new*' statuses can be sent.",
+          "Selected products are already in production or already sent. Only blank, '-', 'not in production', or 'new*' statuses can be sent.",
         blocked_count: blockedItems.length,
         blocked: blockedItems,
       },

@@ -1,0 +1,3 @@
+{
+  "/api/suppliers/scrape-ingest/route": "app/api/suppliers/scrape-ingest/route.js"
+}

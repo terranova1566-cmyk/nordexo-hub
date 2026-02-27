@@ -1,0 +1,3 @@
+{
+  "/api/orders/import/template/route": "app/api/orders/import/template/route.js"
+}

@@ -1,22 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PARTNER_SUGGESTION_PROVIDER } from "@/lib/product-suggestions";
 
 export const runtime = "nodejs";
-const DIGIDEAL_PROVIDER = "digideal";
-const OFFERILLA_PROVIDER = "offerilla";
-const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
-  PARTNER_SUGGESTION_PROVIDER || ""
-).trim().toLowerCase();
-const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
-const isSupportedSupplierProvider = (provider: string) => {
-  const normalized = String(provider || "").trim().toLowerCase();
-  return (
-    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
-    normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
-  );
-};
 
 type Offer = {
   offerId?: string | number | null;
@@ -167,16 +153,6 @@ export async function POST(request: NextRequest) {
   const productId = String(payload?.product_id ?? "").trim();
   if (!provider || !productId) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
-  }
-
-  if (!isSupportedSupplierProvider(provider)) {
-    return NextResponse.json(
-      {
-        error:
-          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
-      },
-      { status: 409 }
-    );
   }
 
   const { data: searchRow, error: searchError } = await adminClient

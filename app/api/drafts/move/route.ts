@@ -17,6 +17,19 @@ const isSafeRelativePath = (value: string) => {
   return true;
 };
 
+const ensureUniqueFileDestination = (initialPath: string) => {
+  if (!fs.existsSync(initialPath)) return initialPath;
+  const dir = path.dirname(initialPath);
+  const ext = path.extname(initialPath);
+  const base = ext ? path.basename(initialPath, ext) : path.basename(initialPath);
+  let index = 2;
+  while (true) {
+    const candidate = path.join(dir, `${base}-${index}${ext}`);
+    if (!fs.existsSync(candidate)) return candidate;
+    index += 1;
+  }
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   const {
@@ -40,6 +53,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const sourcePath = normalizeRelativePath(String(body?.sourcePath || "").trim());
   const targetPath = normalizeRelativePath(String(body?.targetPath || "").trim());
+  const allowRenameOnConflict = Boolean(body?.allowRenameOnConflict);
 
   if (!isSafeRelativePath(sourcePath) || !isSafeRelativePath(targetPath)) {
     return NextResponse.json({ error: "Invalid source or target path." }, { status: 400 });
@@ -89,18 +103,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, path: sourcePath });
   }
 
-  if (fs.existsSync(destinationAbsolutePath)) {
-    return NextResponse.json({ error: "Destination already exists." }, { status: 409 });
+  let finalDestinationAbsolutePath = destinationAbsolutePath;
+  if (fs.existsSync(finalDestinationAbsolutePath)) {
+    if (allowRenameOnConflict && sourceStat.isFile()) {
+      finalDestinationAbsolutePath = ensureUniqueFileDestination(finalDestinationAbsolutePath);
+    } else {
+      return NextResponse.json({ error: "Destination already exists." }, { status: 409 });
+    }
   }
 
-  fs.renameSync(sourceAbsolutePath, destinationAbsolutePath);
+  fs.renameSync(sourceAbsolutePath, finalDestinationAbsolutePath);
   if (sourceStat.isFile()) {
-    moveDraftImageUpscaleMarkers(sourceAbsolutePath, destinationAbsolutePath);
+    moveDraftImageUpscaleMarkers(sourceAbsolutePath, finalDestinationAbsolutePath);
   }
 
   return NextResponse.json({
     ok: true,
-    path: toRelativePath(destinationAbsolutePath),
-    name: path.basename(destinationAbsolutePath),
+    path: toRelativePath(finalDestinationAbsolutePath),
+    name: path.basename(finalDestinationAbsolutePath),
   });
 }

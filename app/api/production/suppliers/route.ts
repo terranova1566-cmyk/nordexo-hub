@@ -35,19 +35,13 @@ const PUBLIC_TEMP_DIR = "/srv/incoming-scripts/uploads/public-temp-images";
 const PUBLIC_TEMP_PERSIST_DAYS = 180;
 const TEMP_IMAGE_ID_RE = /\/api\/public\/temp-images\/([a-f0-9]{32})/i;
 const DIGIDEAL_PROVIDER = "digideal";
+const LETSDEAL_PROVIDER = "letsdeal";
 const OFFERILLA_PROVIDER = "offerilla";
-const PARTNER_SUGGESTION_PROVIDER_NORMALIZED = String(
-  PARTNER_SUGGESTION_PROVIDER || ""
-).trim().toLowerCase();
-const DEALS_SUPPLIER_PROVIDERS = new Set([DIGIDEAL_PROVIDER, OFFERILLA_PROVIDER]);
-
-const isSupportedSupplierProvider = (provider: string) => {
-  const normalized = String(provider || "").trim().toLowerCase();
-  return (
-    DEALS_SUPPLIER_PROVIDERS.has(normalized) ||
-    normalized === PARTNER_SUGGESTION_PROVIDER_NORMALIZED
-  );
-};
+const DEALS_SUPPLIER_PROVIDERS = new Set([
+  DIGIDEAL_PROVIDER,
+  LETSDEAL_PROVIDER,
+  OFFERILLA_PROVIDER,
+]);
 
 type Offer = {
   rank?: number;
@@ -632,16 +626,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
   }
 
-  if (!isSupportedSupplierProvider(provider)) {
-    return NextResponse.json(
-      {
-        error:
-          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
-      },
-      { status: 409 }
-    );
-  }
-
   let lockedSupplierUrl: string | null = null;
   if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {
     try {
@@ -917,16 +901,6 @@ export async function POST(request: NextRequest) {
 
   if (!provider || !productId || (!offerId && !detailUrl)) {
     return NextResponse.json({ error: "Missing identifiers." }, { status: 400 });
-  }
-
-  if (!isSupportedSupplierProvider(provider)) {
-    return NextResponse.json(
-      {
-        error:
-          "Supplier fetching is available only for DigiDeal, Offerilla, and Product Suggestions.",
-      },
-      { status: 409 }
-    );
   }
 
   if (DEALS_SUPPLIER_PROVIDERS.has(provider)) {

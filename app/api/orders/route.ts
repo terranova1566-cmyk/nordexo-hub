@@ -52,6 +52,12 @@ type OrdersCountryColumnFlags = {
   customerCountry: boolean;
 };
 
+type SendpulseHistoryColumnFlags = {
+  orderId: boolean;
+  sendDate: boolean;
+  notificationName: boolean;
+};
+
 async function getOrdersNotificationColumnFlags(
   adminClient: AdminClient
 ): Promise<OrdersNotificationColumnFlags> {
@@ -110,6 +116,37 @@ async function getOrdersCountryColumnFlags(
   return {
     customerCountryCode: columnNames.has("customer_country_code"),
     customerCountry: columnNames.has("customer_country"),
+  };
+}
+
+async function getSendpulseHistoryColumnFlags(
+  adminClient: AdminClient
+): Promise<SendpulseHistoryColumnFlags> {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "sendpulse_email_logs")
+    .in("column_name", ["order_id", "send_date", "notification_name"]);
+
+  if (error) {
+    return {
+      orderId: false,
+      sendDate: false,
+      notificationName: false,
+    };
+  }
+
+  const columnNames = new Set(
+    ((data ?? []) as Array<{ column_name?: unknown }>)
+      .map((row) => String(row.column_name ?? "").trim())
+      .filter(Boolean)
+  );
+
+  return {
+    orderId: columnNames.has("order_id"),
+    sendDate: columnNames.has("send_date"),
+    notificationName: columnNames.has("notification_name"),
   };
 }
 
@@ -337,6 +374,9 @@ export async function GET(request: Request) {
   const notificationColumns =
     await getOrdersNotificationColumnFlags(adminClient);
   const countryColumns = await getOrdersCountryColumnFlags(adminClient);
+  const sendpulseHistoryColumns = await getSendpulseHistoryColumnFlags(
+    adminClient
+  );
   const delayWarningDays = resolveDelayWarningDays();
 
   const { searchParams } = new URL(request.url);
@@ -527,7 +567,104 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ items, count, delayWarningDays });
+  let itemsWithNotificationFallback = items;
+
+  if (sendpulseHistoryColumns.orderId) {
+    const unresolvedOrderIds = Array.from(
+      new Set(
+        items
+          .map((item) => {
+            const row = item as Record<string, unknown>;
+            const id = normalizeBigintId(row.id);
+            if (!id) return null;
+            const latestName = String(row.latest_notification_name ?? "").trim();
+            const latestSentAt = String(row.latest_notification_sent_at ?? "").trim();
+            if (latestName || latestSentAt) return null;
+            return id;
+          })
+          .filter((entry): entry is string => Boolean(entry))
+      )
+    );
+
+    if (unresolvedOrderIds.length > 0) {
+      const notificationByOrderId = new Map<
+        string,
+        { name: string | null; sentAt: string | null }
+      >();
+      const sendpulseHistorySelectColumns = [
+        "order_id",
+        "status",
+        "subject",
+        "created_at",
+        sendpulseHistoryColumns.sendDate ? "send_date" : null,
+        sendpulseHistoryColumns.notificationName ? "notification_name" : null,
+      ]
+        .filter(Boolean)
+        .join(",");
+
+      for (const orderIdChunk of chunkArray(unresolvedOrderIds, 500)) {
+        const { data: historyRows, error: historyError } = await adminClient
+          .from("sendpulse_email_logs")
+          .select(sendpulseHistorySelectColumns)
+          .in("order_id", orderIdChunk)
+          .order("created_at", { ascending: false });
+
+        if (historyError) {
+          return NextResponse.json(
+            { error: historyError.message },
+            { status: 500 }
+          );
+        }
+
+        ((historyRows ?? []) as unknown as Array<Record<string, unknown>>).forEach((entry) => {
+          const orderId = normalizeBigintId(entry.order_id);
+          if (!orderId) return;
+          const statusToken = String(entry.status ?? "").trim().toLowerCase();
+          if (statusToken && statusToken !== "sent" && statusToken !== "success") {
+            return;
+          }
+          const sentAt = String(entry.send_date ?? entry.created_at ?? "").trim() || null;
+          if (!sentAt) return;
+          const nextName =
+            String(entry.notification_name ?? "").trim() ||
+            String(entry.subject ?? "").trim() ||
+            "Notification sent";
+
+          const current = notificationByOrderId.get(orderId);
+          const currentStamp = String(current?.sentAt ?? "");
+          if (current && currentStamp >= sentAt) return;
+          notificationByOrderId.set(orderId, {
+            name: nextName || null,
+            sentAt,
+          });
+        });
+      }
+
+      if (notificationByOrderId.size > 0) {
+        itemsWithNotificationFallback = items.map((item) => {
+          const row = item as Record<string, unknown>;
+          const orderId = normalizeBigintId(row.id);
+          if (!orderId) return item;
+          const latestName = String(row.latest_notification_name ?? "").trim();
+          const latestSentAt = String(row.latest_notification_sent_at ?? "").trim();
+          if (latestName || latestSentAt) return item;
+          const fallback = notificationByOrderId.get(orderId);
+          if (!fallback) return item;
+          return {
+            ...row,
+            latest_notification_name: fallback.name,
+            latest_notification_sent_at: fallback.sentAt,
+          };
+        }) as typeof items;
+      }
+    }
+  }
+
+  return NextResponse.json({
+    items: itemsWithNotificationFallback,
+    count,
+    delayWarningDays,
+  });
 }
 
 export async function DELETE(request: Request) {
