@@ -30,5 +30,11 @@ export const ORDER_IMPORT_SHIPPED_HEADERS = [
   "Tracking number",
 ] as const;
 
+export const ORDER_TRACKING_IMPORT_HEADERS = [
+  "Platform ID",
+  "Order number",
+  "Tracking number",
+] as const;
+
 // Backward compatibility for code paths still importing the previous symbol.
 export const ORDER_IMPORT_HEADERS = ORDER_IMPORT_SHIPPED_HEADERS;

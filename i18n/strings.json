@@ -287,6 +287,11 @@
       "context": "Orders menu item"
     },
     {
+      "key": "nav.ordersImportTracking",
+      "text": "Import Tracking",
+      "context": "Orders menu item"
+    },
+    {
       "key": "nav.ordersResend",
       "text": "Resend Queue",
       "context": "Orders menu item"
@@ -1560,6 +1565,81 @@
       "key": "orders.import.history.empty",
       "text": "No imports yet.",
       "context": "Orders import history empty state"
+    },
+    {
+      "key": "orders.importTracking.title",
+      "text": "Import Tracking",
+      "context": "Orders tracking import page title"
+    },
+    {
+      "key": "orders.importTracking.subtitle",
+      "text": "Upload tracking rows with Platform ID, Order number and Tracking number.",
+      "context": "Orders tracking import page subtitle"
+    },
+    {
+      "key": "orders.importTracking.uploadLabel",
+      "text": "Upload Excel file",
+      "context": "Orders tracking import upload label"
+    },
+    {
+      "key": "orders.importTracking.button",
+      "text": "Import tracking",
+      "context": "Orders tracking import button"
+    },
+    {
+      "key": "orders.importTracking.done",
+      "text": "Import done: {imported} tracking rows, {duplicates} duplicate rows skipped, {invalid} invalid rows, {unmatched} unmatched orders.",
+      "context": "Orders tracking import success message"
+    },
+    {
+      "key": "orders.importTracking.instructionsTitle",
+      "text": "How it works",
+      "context": "Orders tracking import instructions title"
+    },
+    {
+      "key": "orders.importTracking.instructions1",
+      "text": "Required columns are Platform ID, Order number, and Tracking number.",
+      "context": "Orders tracking import instructions"
+    },
+    {
+      "key": "orders.importTracking.instructions2",
+      "text": "Platform ID must use the format AA-BB (for example LD-NO).",
+      "context": "Orders tracking import instructions"
+    },
+    {
+      "key": "orders.importTracking.instructions3",
+      "text": "Duplicate order numbers are allowed when the tracking number is different.",
+      "context": "Orders tracking import instructions"
+    },
+    {
+      "key": "orders.importTracking.template",
+      "text": "Download tracking import template here.",
+      "context": "Orders tracking import template download"
+    },
+    {
+      "key": "orders.importTracking.historyTitle",
+      "text": "Import history",
+      "context": "Orders tracking import history title"
+    },
+    {
+      "key": "orders.importTracking.history.columns.date",
+      "text": "Date / Time",
+      "context": "Orders tracking import history column"
+    },
+    {
+      "key": "orders.importTracking.history.columns.file",
+      "text": "File",
+      "context": "Orders tracking import history column"
+    },
+    {
+      "key": "orders.importTracking.history.columns.rows",
+      "text": "Rows",
+      "context": "Orders tracking import history column"
+    },
+    {
+      "key": "orders.importTracking.history.empty",
+      "text": "No imports yet.",
+      "context": "Orders tracking import history empty state"
     },
     {
       "key": "email.title",
@@ -3760,6 +3840,16 @@
       "key": "products.table.supplierLink",
       "text": "Supplier link",
       "context": "Products table supplier link button"
+    },
+    {
+      "key": "products.table.delivery",
+      "text": "Delivery",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.delivery.partner.digideal",
+      "text": "DigiDeal",
+      "context": "Products table delivery partner badge"
     },
     {
       "key": "products.table.createdUpdated",

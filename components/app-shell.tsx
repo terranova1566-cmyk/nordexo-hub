@@ -179,6 +179,7 @@ const ordersMenuItems = [
   { label: "nav.ordersView", href: "/app/orders" },
   { label: "nav.ordersResend", href: "/app/orders/resend" },
   { label: "nav.ordersImport", href: "/app/orders/import" },
+  { label: "nav.ordersImportTracking", href: "/app/orders/import-tracking" },
 ];
 
 const emailMenuItems = [
