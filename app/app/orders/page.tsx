@@ -810,7 +810,12 @@ type DisplayOrderStatus =
   | "being_packed_and_shipped"
   | "shipped";
 
-type TransactionSortDirection = "asc" | "desc";
+type DateSortOption =
+  | "transaction_asc"
+  | "transaction_desc"
+  | "shipped_asc"
+  | "shipped_desc";
+type NotificationFilterOption = "all" | "have" | "none";
 
 type CountryCode = "NO" | "SE" | "FI";
 
@@ -877,8 +882,10 @@ export default function OrdersPage() {
   const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [warningFilter, setWarningFilter] = useState<string>("all");
-  const [transactionSortDirection, setTransactionSortDirection] =
-    useState<TransactionSortDirection>("asc");
+  const [dateSortOption, setDateSortOption] =
+    useState<DateSortOption>("transaction_asc");
+  const [notificationFilter, setNotificationFilter] =
+    useState<NotificationFilterOption>("all");
   const [isExporting, setIsExporting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isAddingResend, setIsAddingResend] = useState(false);
@@ -971,15 +978,42 @@ export default function OrdersPage() {
       if (warningFilter === "on_time" && row.is_delayed) {
         return false;
       }
+      const hasNotification = Boolean(
+        String(row.latest_notification_name ?? "").trim() ||
+          String(row.latest_notification_sent_at ?? "").trim()
+      );
+      if (notificationFilter === "have" && !hasNotification) {
+        return false;
+      }
+      if (notificationFilter === "none" && hasNotification) {
+        return false;
+      }
       return true;
     });
     next.sort((a, b) => {
-      const aTime = Date.parse(a.transaction_date ?? "");
-      const bTime = Date.parse(b.transaction_date ?? "");
-      const normalizedATime = Number.isFinite(aTime) ? aTime : Number.POSITIVE_INFINITY;
-      const normalizedBTime = Number.isFinite(bTime) ? bTime : Number.POSITIVE_INFINITY;
-      const sortDirectionFactor = transactionSortDirection === "asc" ? 1 : -1;
-      if (normalizedATime !== normalizedBTime) {
+      const sortByShippedDate =
+        dateSortOption === "shipped_asc" || dateSortOption === "shipped_desc";
+      const sortDirectionFactor =
+        dateSortOption === "transaction_asc" || dateSortOption === "shipped_asc"
+          ? 1
+          : -1;
+      const aRawDate = sortByShippedDate ? a.date_shipped : a.transaction_date;
+      const bRawDate = sortByShippedDate ? b.date_shipped : b.transaction_date;
+      const aTime = Date.parse(aRawDate ?? "");
+      const bTime = Date.parse(bRawDate ?? "");
+      const normalizedATime = Number.isFinite(aTime) ? aTime : null;
+      const normalizedBTime = Number.isFinite(bTime) ? bTime : null;
+      if (normalizedATime === null && normalizedBTime !== null) {
+        return 1;
+      }
+      if (normalizedATime !== null && normalizedBTime === null) {
+        return -1;
+      }
+      if (
+        normalizedATime !== null &&
+        normalizedBTime !== null &&
+        normalizedATime !== normalizedBTime
+      ) {
         return (normalizedATime - normalizedBTime) * sortDirectionFactor;
       }
       return (
@@ -993,7 +1027,8 @@ export default function OrdersPage() {
     rows,
     salesChannelFilter,
     statusFilter,
-    transactionSortDirection,
+    dateSortOption,
+    notificationFilter,
     warningFilter,
   ]);
 
@@ -1914,19 +1949,38 @@ export default function OrdersPage() {
             className={styles.filterField}
           >
             <Dropdown
-              selectedOptions={[transactionSortDirection]}
-              value={
-                transactionSortDirection === "desc"
-                  ? t("orders.filters.dateSortDescending")
-                  : t("orders.filters.dateSortAscending")
-              }
+              selectedOptions={[dateSortOption]}
+              value={(() => {
+                if (dateSortOption === "transaction_desc") {
+                  return t("orders.filters.dateSortDescending");
+                }
+                if (dateSortOption === "shipped_asc") {
+                  return t("orders.filters.dateSortShippedAscending");
+                }
+                if (dateSortOption === "shipped_desc") {
+                  return t("orders.filters.dateSortShippedDescending");
+                }
+                return t("orders.filters.dateSortAscending");
+              })()}
               onOptionSelect={(_, data) => {
-                const nextValue = String(data.optionValue ?? "asc");
-                setTransactionSortDirection(nextValue === "desc" ? "desc" : "asc");
+                const nextValue = String(
+                  data.optionValue ?? "transaction_asc"
+                ) as DateSortOption;
+                setDateSortOption(nextValue);
               }}
             >
-              <Option value="asc">{t("orders.filters.dateSortAscending")}</Option>
-              <Option value="desc">{t("orders.filters.dateSortDescending")}</Option>
+              <Option value="transaction_asc">
+                {t("orders.filters.dateSortAscending")}
+              </Option>
+              <Option value="transaction_desc">
+                {t("orders.filters.dateSortDescending")}
+              </Option>
+              <Option value="shipped_asc">
+                {t("orders.filters.dateSortShippedAscending")}
+              </Option>
+              <Option value="shipped_desc">
+                {t("orders.filters.dateSortShippedDescending")}
+              </Option>
             </Dropdown>
           </Field>
           <Field
@@ -2033,6 +2087,35 @@ export default function OrdersPage() {
               <Option value="all">{t("orders.filters.warningsAll")}</Option>
               <Option value="delayed">{t("orders.filters.warningsDelayed")}</Option>
               <Option value="on_time">{t("orders.filters.warningsOnTime")}</Option>
+            </Dropdown>
+          </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>
+                {t("orders.filters.notifications")}
+              </span>
+            }
+            className={styles.filterField}
+          >
+            <Dropdown
+              selectedOptions={[notificationFilter]}
+              value={
+                notificationFilter === "have"
+                  ? t("orders.filters.notificationsHave")
+                  : notificationFilter === "none"
+                    ? t("orders.filters.notificationsNone")
+                    : t("orders.filters.notificationsAll")
+              }
+              onOptionSelect={(_, data) => {
+                const nextValue = String(
+                  data.optionValue ?? "all"
+                ) as NotificationFilterOption;
+                setNotificationFilter(nextValue);
+              }}
+            >
+              <Option value="all">{t("orders.filters.notificationsAll")}</Option>
+              <Option value="have">{t("orders.filters.notificationsHave")}</Option>
+              <Option value="none">{t("orders.filters.notificationsNone")}</Option>
             </Dropdown>
           </Field>
           <div className={styles.actionRow}>

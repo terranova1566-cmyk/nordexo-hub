@@ -917,6 +917,26 @@
       "context": "Orders filter option"
     },
     {
+      "key": "orders.filters.notifications",
+      "text": "Notifications",
+      "context": "Orders filter label"
+    },
+    {
+      "key": "orders.filters.notificationsAll",
+      "text": "All orders",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.notificationsHave",
+      "text": "Have notification",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.notificationsNone",
+      "text": "No notification",
+      "context": "Orders filter option"
+    },
+    {
       "key": "orders.filters.dateSort",
       "text": "Date sort",
       "context": "Orders filter label"
@@ -929,6 +949,16 @@
     {
       "key": "orders.filters.dateSortDescending",
       "text": "Transaction date (newest first)",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.dateSortShippedAscending",
+      "text": "Shipping date (oldest first)",
+      "context": "Orders filter option"
+    },
+    {
+      "key": "orders.filters.dateSortShippedDescending",
+      "text": "Shipping date (newest first)",
       "context": "Orders filter option"
     },
     {
@@ -3852,9 +3882,29 @@
       "context": "Products table header"
     },
     {
+      "key": "products.table.published",
+      "text": "Published",
+      "context": "Products table header"
+    },
+    {
       "key": "products.delivery.partner.digideal",
       "text": "DigiDeal",
       "context": "Products table delivery partner badge"
+    },
+    {
+      "key": "products.published.channel.tingelo",
+      "text": "Tingelo",
+      "context": "Products published store badge label"
+    },
+    {
+      "key": "products.published.channel.sparkler",
+      "text": "Sparkler",
+      "context": "Products published store badge label"
+    },
+    {
+      "key": "products.published.channel.wellando",
+      "text": "Wellando",
+      "context": "Products published store badge label"
     },
     {
       "key": "products.table.createdUpdated",
