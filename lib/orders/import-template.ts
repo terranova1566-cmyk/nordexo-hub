@@ -33,6 +33,7 @@ export const ORDER_IMPORT_SHIPPED_HEADERS = [
 export const ORDER_TRACKING_IMPORT_HEADERS = [
   "Platform ID",
   "Order number",
+  "Shipping date",
   "Tracking number",
 ] as const;
 

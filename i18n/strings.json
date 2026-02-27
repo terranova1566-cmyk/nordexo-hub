@@ -1603,7 +1603,7 @@
     },
     {
       "key": "orders.importTracking.subtitle",
-      "text": "Upload tracking rows with Platform ID, Order number and Tracking number.",
+      "text": "Upload tracking rows with Platform ID, Order number, Shipping date and Tracking number.",
       "context": "Orders tracking import page subtitle"
     },
     {
@@ -1628,17 +1628,17 @@
     },
     {
       "key": "orders.importTracking.instructions1",
-      "text": "Required columns are Platform ID, Order number, and Tracking number.",
+      "text": "Required columns are Platform ID, Order number, Shipping date, and Tracking number.",
       "context": "Orders tracking import instructions"
     },
     {
       "key": "orders.importTracking.instructions2",
-      "text": "Platform ID must use the format AA-BB (for example LD-NO).",
+      "text": "Platform ID must use the format AA-BB (for example LD-NO), and both Platform ID + Order number must match an existing order.",
       "context": "Orders tracking import instructions"
     },
     {
       "key": "orders.importTracking.instructions3",
-      "text": "Duplicate order numbers are allowed when the tracking number is different.",
+      "text": "Rows are upserted by Platform ID + Order number + Tracking number, so existing records can be patched with missed shipping dates.",
       "context": "Orders tracking import instructions"
     },
     {

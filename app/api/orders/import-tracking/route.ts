@@ -16,6 +16,7 @@ const HISTORY_PATH =
 type ParsedTrackingRow = {
   sales_channel_id: string;
   order_number: string;
+  sent_date: string;
   tracking_number: string;
 };
 
@@ -87,6 +88,48 @@ function normalizePlatformId(value: string) {
   return normalized;
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatYmdUTC(date: Date) {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(
+    date.getUTCDate()
+  )}`;
+}
+
+function excelSerialToYmd(value: number) {
+  const safe = Math.floor(value);
+  if (!Number.isFinite(safe) || safe <= 0) return null;
+  const baseUtcMs = Date.UTC(1899, 11, 30);
+  const utcMs = baseUtcMs + safe * 24 * 60 * 60 * 1000;
+  return formatYmdUTC(new Date(utcMs));
+}
+
+function normalizeDateForDb(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const isoSlash = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (isoSlash) return `${isoSlash[1]}-${isoSlash[2]}-${isoSlash[3]}`;
+
+  const isoTimestamp = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s].*$/);
+  if (isoTimestamp) return isoTimestamp[1];
+
+  const serialLike = raw.match(/^-?\d+(?:[.,]\d+)?$/);
+  if (serialLike) {
+    const numeric = Number(raw.replace(",", "."));
+    if (Number.isFinite(numeric) && numeric >= 1 && numeric < 100000) {
+      return excelSerialToYmd(numeric);
+    }
+  }
+
+  return null;
+}
+
 function chunkList<T>(list: T[], size: number) {
   const result: T[][] = [];
   for (let index = 0; index < list.length; index += size) {
@@ -103,6 +146,21 @@ function buildTrackingUniquenessKey(
   return `${salesChannelId.trim().toLowerCase()}::${orderNumber
     .trim()
     .toLowerCase()}::${trackingNumber.trim().toLowerCase()}`;
+}
+
+async function hasTrackingSentDateColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "order_tracking_numbers_global")
+    .eq("column_name", "sent_date")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function POST(request: Request) {
@@ -130,6 +188,16 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Server is missing Supabase credentials." },
       { status: 500 }
+    );
+  }
+  const canWriteTrackingSentDate = await hasTrackingSentDateColumn(adminClient);
+  if (!canWriteTrackingSentDate) {
+    return NextResponse.json(
+      {
+        error:
+          "Tracking sent_date column is missing. Run migration `0053_orders_tracking_sent_date.sql` first.",
+      },
+      { status: 400 }
     );
   }
 
@@ -188,6 +256,7 @@ export async function POST(request: Request) {
 
   const platformColumn = headerMap.get(normalizeHeader("Platform ID")) ?? 0;
   const orderColumn = headerMap.get(normalizeHeader("Order number")) ?? 0;
+  const shippingDateColumn = headerMap.get(normalizeHeader("Shipping date")) ?? 0;
   const trackingColumn = headerMap.get(normalizeHeader("Tracking number")) ?? 0;
 
   for (let rowIndex = 2; rowIndex <= sheet.rowCount; rowIndex += 1) {
@@ -196,19 +265,21 @@ export async function POST(request: Request) {
 
     const rawPlatformId = readCellText(row.getCell(platformColumn));
     const rawOrderNumber = readCellText(row.getCell(orderColumn));
+    const rawShippingDate = readCellText(row.getCell(shippingDateColumn));
     const rawTrackingNumber = readCellText(row.getCell(trackingColumn));
 
     const orderNumber = rawOrderNumber.trim();
+    const sentDate = normalizeDateForDb(rawShippingDate);
     const trackingNumber = rawTrackingNumber.trim();
 
-    if (!rawPlatformId.trim() && !orderNumber && !trackingNumber) {
+    if (!rawPlatformId.trim() && !orderNumber && !rawShippingDate.trim() && !trackingNumber) {
       continue;
     }
 
     sourceRows += 1;
 
     const platformId = normalizePlatformId(rawPlatformId);
-    if (!platformId || !orderNumber || !trackingNumber) {
+    if (!platformId || !orderNumber || !sentDate || !trackingNumber) {
       invalidRows += 1;
       continue;
     }
@@ -227,6 +298,7 @@ export async function POST(request: Request) {
     parsedRows.push({
       sales_channel_id: platformId,
       order_number: orderNumber,
+      sent_date: sentDate,
       tracking_number: trackingNumber,
     });
   }
@@ -236,7 +308,7 @@ export async function POST(request: Request) {
       {
         error:
           sourceRows > 0
-            ? "No valid tracking rows found. Check Platform ID format and required values."
+            ? "No valid tracking rows found. Check Platform ID format, Shipping date format, and required values."
             : "No rows found in file.",
       },
       { status: 400 }
@@ -282,6 +354,7 @@ export async function POST(request: Request) {
   const matchedRows: Array<{
     sales_channel_id: string;
     order_number: string;
+    sent_date: string;
     tracking_number: string;
     order_id: string;
   }> = [];
@@ -298,66 +371,27 @@ export async function POST(request: Request) {
     matchedRows.push({
       sales_channel_id: row.sales_channel_id,
       order_number: row.order_number,
+      sent_date: row.sent_date,
       tracking_number: row.tracking_number,
       order_id: orderId,
     });
   });
 
-  const existingTrackingKeys = new Set<string>();
-  const matchedOrderIds = Array.from(
-    new Set(matchedRows.map((row) => row.order_id).filter(Boolean))
-  );
-  for (const chunk of chunkList(matchedOrderIds, 300)) {
-    if (chunk.length === 0) continue;
-    const { data: existingRows, error: existingRowsError } = await adminClient
-      .from("order_tracking_numbers_global")
-      .select("sales_channel_id,order_number,tracking_number,order_id")
-      .in("order_id", chunk);
-
-    if (existingRowsError) {
-      return NextResponse.json(
-        buildDbErrorPayload(
-          existingRowsError,
-          "Unable to read existing tracking numbers."
-        ),
-        { status: 500 }
-      );
-    }
-
-    (existingRows ?? []).forEach((row) => {
-      const salesChannelId = String(row.sales_channel_id ?? "").trim();
-      const orderNumber = String(row.order_number ?? "").trim();
-      const trackingNumber = String(row.tracking_number ?? "").trim();
-      if (!salesChannelId || !orderNumber || !trackingNumber) {
-        return;
-      }
-      existingTrackingKeys.add(
-        buildTrackingUniquenessKey(salesChannelId, orderNumber, trackingNumber)
-      );
-    });
-  }
-
   const trackingRows: Array<{
     sales_channel_id: string;
     order_number: string;
+    sent_date: string;
     tracking_number: string;
     order_id: string;
-  }> = [];
-  let existingDuplicateRows = 0;
-  matchedRows.forEach((row) => {
-    const key = buildTrackingUniquenessKey(
-      row.sales_channel_id,
-      row.order_number,
-      row.tracking_number
-    );
-    if (existingTrackingKeys.has(key)) {
-      existingDuplicateRows += 1;
-      return;
-    }
-    trackingRows.push(row);
-  });
+  }> = matchedRows.map((row) => ({
+    sales_channel_id: row.sales_channel_id,
+    order_number: row.order_number,
+    sent_date: row.sent_date,
+    tracking_number: row.tracking_number,
+    order_id: row.order_id,
+  }));
 
-  const duplicatesSkipped = duplicateRows + existingDuplicateRows;
+  const duplicatesSkipped = duplicateRows;
 
   if (trackingRows.length > 0) {
     const { error: trackingError } = await adminClient
