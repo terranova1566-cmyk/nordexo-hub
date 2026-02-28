@@ -114,12 +114,27 @@ type OrderDetails = {
     transaction_date: string | null;
     date_shipped: string | null;
     status: string | null;
+    manual_email_history?: string | null;
+    customer_note?: string | null;
   } | null;
   items: OrderItem[];
   tracking_numbers: TrackingNumberEntry[];
   email_history: OrderEmailHistoryEntry[];
   loading: boolean;
   error?: string;
+};
+
+type OrderDetailsEditDraft = {
+  customer_name: string;
+  customer_address: string;
+  customer_zip: string;
+  customer_city: string;
+  customer_phone: string;
+  customer_email: string;
+  shipping: string;
+  tracking_number: string;
+  email_history: string;
+  notes: string;
 };
 
 type ResendItemDraft = {
@@ -761,6 +776,19 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
     lineHeight: tokens.lineHeightBase200,
   },
+  detailsEditField: {
+    width: "100%",
+  },
+  detailsEditTextarea: {
+    width: "100%",
+    minHeight: "64px",
+  },
+  detailsEditActions: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
+    marginTop: "8px",
+  },
   emailDialogActions: {
     width: "100%",
     display: "flex",
@@ -1013,6 +1041,16 @@ export default function OrdersPage() {
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [hoverImagePreview, setHoverImagePreview] =
     useState<HoverImagePreview | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [detailsEditDrafts, setDetailsEditDrafts] = useState<
+    Record<string, OrderDetailsEditDraft>
+  >({});
+  const [detailsEditSavingOrderId, setDetailsEditSavingOrderId] = useState<
+    string | null
+  >(null);
+  const [detailsEditErrorByOrderId, setDetailsEditErrorByOrderId] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
@@ -1745,15 +1783,20 @@ export default function OrdersPage() {
   };
 
   const toggleExpanded = (orderId: string) => {
+    let didCollapse = false;
     setExpandedOrders((prev) => {
       const next = new Set(prev);
       if (next.has(orderId)) {
         next.delete(orderId);
+        didCollapse = true;
       } else {
         next.add(orderId);
       }
       return next;
     });
+    if (didCollapse && editingOrderId === orderId) {
+      setEditingOrderId(null);
+    }
     if (!detailsById[orderId]) {
       loadDetails(orderId);
     }
@@ -1773,6 +1816,154 @@ export default function OrdersPage() {
       return truncateTitle(item.product_title);
     }
     return item.sku ? "-" : "";
+  };
+
+  const buildOrderDetailsEditDraft = (
+    details: OrderDetails | undefined
+  ): OrderDetailsEditDraft => {
+    const manualEmailHistory = String(
+      details?.order?.manual_email_history ?? ""
+    ).trim();
+    const emailHistoryText = manualEmailHistory
+      ? manualEmailHistory
+      : (details?.email_history ?? [])
+          .map((entry) => {
+            const historyLabel =
+              entry.notification_name ||
+              entry.subject ||
+              t("orders.notifications.none");
+            const historyDate = entry.send_date || entry.created_at;
+            if (!historyLabel) return "";
+            return historyDate
+              ? `${historyLabel} (${formatDate(historyDate)})`
+              : historyLabel;
+          })
+          .filter(Boolean)
+          .join("\n");
+
+    const trackingText = (details?.tracking_numbers ?? [])
+      .map((entry) => String(entry.tracking_number ?? "").trim())
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      customer_name: String(details?.order?.customer_name ?? ""),
+      customer_address: String(details?.order?.customer_address ?? ""),
+      customer_zip: String(details?.order?.customer_zip ?? ""),
+      customer_city: String(details?.order?.customer_city ?? ""),
+      customer_phone: String(details?.order?.customer_phone ?? ""),
+      customer_email: String(details?.order?.customer_email ?? ""),
+      shipping: String(details?.order?.date_shipped ?? ""),
+      tracking_number: trackingText,
+      email_history: emailHistoryText,
+      notes: String(details?.order?.customer_note ?? ""),
+    };
+  };
+
+  const startEditingOrderDetails = (orderId: string) => {
+    const details = detailsById[orderId];
+    setDetailsEditDrafts((prev) => ({
+      ...prev,
+      [orderId]: buildOrderDetailsEditDraft(details),
+    }));
+    setDetailsEditErrorByOrderId((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+    setEditingOrderId(orderId);
+  };
+
+  const cancelEditingOrderDetails = (orderId: string) => {
+    if (editingOrderId === orderId) {
+      setEditingOrderId(null);
+    }
+    setDetailsEditErrorByOrderId((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  };
+
+  const updateOrderDetailsDraftField = (
+    orderId: string,
+    field: keyof OrderDetailsEditDraft,
+    value: string
+  ) => {
+    setDetailsEditDrafts((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...(prev[orderId] ?? buildOrderDetailsEditDraft(detailsById[orderId])),
+        [field]: value,
+      },
+    }));
+  };
+
+  const saveOrderDetailsEdits = async (orderId: string) => {
+    const draft = detailsEditDrafts[orderId];
+    if (!draft) return;
+    setDetailsEditSavingOrderId(orderId);
+    setDetailsEditErrorByOrderId((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save order details.");
+      }
+
+      const orderPayload =
+        payload?.order && typeof payload.order === "object"
+          ? (payload.order as OrderDetails["order"])
+          : null;
+      const trackingPayload = Array.isArray(payload?.tracking_numbers)
+        ? normalizeTrackingEntries(payload.tracking_numbers)
+        : null;
+
+      setDetailsById((prev) => {
+        const current = prev[orderId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [orderId]: {
+            ...current,
+            order: orderPayload ?? current.order,
+            tracking_numbers: trackingPayload ?? current.tracking_numbers,
+          },
+        };
+      });
+
+      if (orderPayload) {
+        setRows((prev) =>
+          prev.map((row) =>
+            row.id === orderId
+              ? {
+                  ...row,
+                  customer_name: orderPayload.customer_name ?? row.customer_name,
+                  customer_email: orderPayload.customer_email ?? row.customer_email,
+                  date_shipped: orderPayload.date_shipped ?? row.date_shipped,
+                }
+              : row
+          )
+        );
+      }
+
+      setEditingOrderId((prev) => (prev === orderId ? null : prev));
+    } catch (err) {
+      setDetailsEditErrorByOrderId((prev) => ({
+        ...prev,
+        [orderId]: (err as Error).message,
+      }));
+    } finally {
+      setDetailsEditSavingOrderId((prev) => (prev === orderId ? null : prev));
+    }
   };
 
   const resolveHoverPreviewPosition = (
@@ -2642,6 +2833,15 @@ export default function OrdersPage() {
                     const platformDisplayName = getNormalizedSalesChannelName(row);
                     const latestNotificationText = getLatestNotificationText(row);
                     const hasNotification = hasLatestNotification(row);
+                    const isEditingDetails = editingOrderId === row.id;
+                    const detailsEditDraft =
+                      detailsEditDrafts[row.id] ??
+                      buildOrderDetailsEditDraft(details);
+                    const detailsEditSaving = detailsEditSavingOrderId === row.id;
+                    const detailsEditError = detailsEditErrorByOrderId[row.id] ?? null;
+                    const manualEmailHistoryText = String(
+                      details?.order?.manual_email_history ?? ""
+                    ).trim();
                     return (
                       <Fragment key={row.id}>
                         <TableRow
@@ -2936,7 +3136,7 @@ export default function OrdersPage() {
                                         <Text weight="semibold">
                                           {t("orders.details.customerTitle")}
                                         </Text>
-                                          <div className={styles.detailsPanel}>
+                                        <div className={styles.detailsPanel}>
                                           <div className={styles.detailsPanelGrid}>
                                             <div className={styles.detailsInfoGrid}>
                                               <div className={styles.detailsRow}>
@@ -2948,9 +3148,24 @@ export default function OrdersPage() {
                                                 >
                                                   {t("orders.details.customerName")}
                                                 </Text>
-                                                <Text className={styles.detailValue}>
-                                                  {details?.order?.customer_name ?? "-"}
-                                                </Text>
+                                                {isEditingDetails ? (
+                                                  <Input
+                                                    className={styles.detailsEditField}
+                                                    size="small"
+                                                    value={detailsEditDraft.customer_name}
+                                                    onChange={(_, data) =>
+                                                      updateOrderDetailsDraftField(
+                                                        row.id,
+                                                        "customer_name",
+                                                        data.value
+                                                      )
+                                                    }
+                                                  />
+                                                ) : (
+                                                  <Text className={styles.detailValue}>
+                                                    {details?.order?.customer_name ?? "-"}
+                                                  </Text>
+                                                )}
                                               </div>
                                               <div className={styles.detailsRow}>
                                                 <Text
@@ -2961,17 +3176,80 @@ export default function OrdersPage() {
                                                 >
                                                   {t("orders.details.customerAddress")}
                                                 </Text>
-                                                <Text className={styles.detailValue}>
-                                                  {[
-                                                    details?.order?.customer_address ?? "",
-                                                    details?.order?.customer_zip ?? "",
-                                                    details?.order?.customer_city ?? "",
-                                                  ]
-                                                    .map((value) => value.trim())
-                                                    .filter(Boolean)
-                                                    .join(", ")}
-                                                </Text>
+                                                {isEditingDetails ? (
+                                                  <Input
+                                                    className={styles.detailsEditField}
+                                                    size="small"
+                                                    value={detailsEditDraft.customer_address}
+                                                    onChange={(_, data) =>
+                                                      updateOrderDetailsDraftField(
+                                                        row.id,
+                                                        "customer_address",
+                                                        data.value
+                                                      )
+                                                    }
+                                                  />
+                                                ) : (
+                                                  <Text className={styles.detailValue}>
+                                                    {[
+                                                      details?.order?.customer_address ?? "",
+                                                      details?.order?.customer_zip ?? "",
+                                                      details?.order?.customer_city ?? "",
+                                                    ]
+                                                      .map((value) => value.trim())
+                                                      .filter(Boolean)
+                                                      .join(", ")}
+                                                  </Text>
+                                                )}
                                               </div>
+                                              {isEditingDetails ? (
+                                                <>
+                                                  <div className={styles.detailsRow}>
+                                                    <Text
+                                                      className={mergeClasses(
+                                                        styles.detailLabel,
+                                                        styles.detailsInfoKey
+                                                      )}
+                                                    >
+                                                      ZIP
+                                                    </Text>
+                                                    <Input
+                                                      className={styles.detailsEditField}
+                                                      size="small"
+                                                      value={detailsEditDraft.customer_zip}
+                                                      onChange={(_, data) =>
+                                                        updateOrderDetailsDraftField(
+                                                          row.id,
+                                                          "customer_zip",
+                                                          data.value
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className={styles.detailsRow}>
+                                                    <Text
+                                                      className={mergeClasses(
+                                                        styles.detailLabel,
+                                                        styles.detailsInfoKey
+                                                      )}
+                                                    >
+                                                      City
+                                                    </Text>
+                                                    <Input
+                                                      className={styles.detailsEditField}
+                                                      size="small"
+                                                      value={detailsEditDraft.customer_city}
+                                                      onChange={(_, data) =>
+                                                        updateOrderDetailsDraftField(
+                                                          row.id,
+                                                          "customer_city",
+                                                          data.value
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                </>
+                                              ) : null}
                                               <div className={styles.detailsRow}>
                                                 <Text
                                                   className={mergeClasses(
@@ -2981,15 +3259,30 @@ export default function OrdersPage() {
                                                 >
                                                   {t("orders.details.customerEmail")}
                                                 </Text>
-                                                <Text className={styles.detailValue}>
-                                                  {(() => {
-                                                    const email =
-                                                      details?.order?.customer_email ?? "";
-                                                    return email && isValidEmail(email)
-                                                      ? email
-                                                      : "-";
-                                                  })()}
-                                                </Text>
+                                                {isEditingDetails ? (
+                                                  <Input
+                                                    className={styles.detailsEditField}
+                                                    size="small"
+                                                    value={detailsEditDraft.customer_email}
+                                                    onChange={(_, data) =>
+                                                      updateOrderDetailsDraftField(
+                                                        row.id,
+                                                        "customer_email",
+                                                        data.value
+                                                      )
+                                                    }
+                                                  />
+                                                ) : (
+                                                  <Text className={styles.detailValue}>
+                                                    {(() => {
+                                                      const email =
+                                                        details?.order?.customer_email ?? "";
+                                                      return email && isValidEmail(email)
+                                                        ? email
+                                                        : "-";
+                                                    })()}
+                                                  </Text>
+                                                )}
                                               </div>
                                               <div className={styles.detailsRow}>
                                                 <Text
@@ -3000,9 +3293,24 @@ export default function OrdersPage() {
                                                 >
                                                   {t("orders.details.customerPhone")}
                                                 </Text>
-                                                <Text className={styles.detailValue}>
-                                                  {details?.order?.customer_phone ?? "-"}
-                                                </Text>
+                                                {isEditingDetails ? (
+                                                  <Input
+                                                    className={styles.detailsEditField}
+                                                    size="small"
+                                                    value={detailsEditDraft.customer_phone}
+                                                    onChange={(_, data) =>
+                                                      updateOrderDetailsDraftField(
+                                                        row.id,
+                                                        "customer_phone",
+                                                        data.value
+                                                      )
+                                                    }
+                                                  />
+                                                ) : (
+                                                  <Text className={styles.detailValue}>
+                                                    {details?.order?.customer_phone ?? "-"}
+                                                  </Text>
+                                                )}
                                               </div>
                                             </div>
                                             <div className={styles.detailsColumn}>
@@ -3023,80 +3331,199 @@ export default function OrdersPage() {
                                                 </span>
                                               ) : null}
                                               <Text className={styles.detailLabel}>
-                                                {t("orders.details.tracking")}
+                                                Shipping
                                               </Text>
-                                              {details?.tracking_numbers?.length ? (
-                                                <div className={styles.trackingList}>
-                                                  {details.tracking_numbers.map((tracking) => (
-                                                    <div
-                                                      key={tracking.tracking_number}
-                                                      className={styles.trackingItem}
-                                                    >
-                                                      <a
-                                                        className={styles.trackingLink}
-                                                        href={`https://t.17track.net/en#nums=${encodeURIComponent(
-                                                          tracking.tracking_number
-                                                        )}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        aria-label={t(
-                                                          "orders.details.trackExternal"
-                                                        )}
-                                                      >
-                                                        {tracking.tracking_number}
-                                                      </a>
-                                                      {tracking.sent_date ? (
-                                                        <span className={styles.trackingDate}>
-                                                          {formatDate(tracking.sent_date)}
-                                                        </span>
-                                                      ) : null}
-                                                    </div>
-                                                  ))}
-                                                </div>
+                                              {isEditingDetails ? (
+                                                <Input
+                                                  className={styles.detailsEditField}
+                                                  size="small"
+                                                  value={detailsEditDraft.shipping}
+                                                  onChange={(_, data) =>
+                                                    updateOrderDetailsDraftField(
+                                                      row.id,
+                                                      "shipping",
+                                                      data.value
+                                                    )
+                                                  }
+                                                  placeholder="YYYY-MM-DD"
+                                                />
                                               ) : (
-                                                <Text className={styles.detailValue}>-</Text>
+                                                <Text className={styles.detailValue}>
+                                                  {formatDate(details?.order?.date_shipped)}
+                                                </Text>
+                                              )}
+                                              <Text className={styles.detailLabel}>
+                                                TRACKING_NUMBER
+                                              </Text>
+                                              {isEditingDetails ? (
+                                                <Textarea
+                                                  className={styles.detailsEditTextarea}
+                                                  value={detailsEditDraft.tracking_number}
+                                                  onChange={(_, data) =>
+                                                    updateOrderDetailsDraftField(
+                                                      row.id,
+                                                      "tracking_number",
+                                                      data.value
+                                                    )
+                                                  }
+                                                />
+                                              ) : (
+                                                <>
+                                                  {details?.tracking_numbers?.length ? (
+                                                    <div className={styles.trackingList}>
+                                                      {details.tracking_numbers.map((tracking) => (
+                                                        <div
+                                                          key={tracking.tracking_number}
+                                                          className={styles.trackingItem}
+                                                        >
+                                                          <a
+                                                            className={styles.trackingLink}
+                                                            href={`https://t.17track.net/en#nums=${encodeURIComponent(
+                                                              tracking.tracking_number
+                                                            )}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            aria-label={t(
+                                                              "orders.details.trackExternal"
+                                                            )}
+                                                          >
+                                                            {tracking.tracking_number}
+                                                          </a>
+                                                          {tracking.sent_date ? (
+                                                            <span className={styles.trackingDate}>
+                                                              {formatDate(tracking.sent_date)}
+                                                            </span>
+                                                          ) : null}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <Text className={styles.detailValue}>-</Text>
+                                                  )}
+                                                </>
                                               )}
                                               <Text className={styles.detailLabel}>
                                                 {t("orders.details.emailHistory")}
                                               </Text>
-                                              {details?.email_history?.length ? (
-                                                <div className={styles.emailHistoryList}>
-                                                  {details.email_history.map((entry) => {
-                                                    const historyLabel =
-                                                      entry.notification_name ||
-                                                      entry.subject ||
-                                                      t("orders.notifications.none");
-                                                    const historyDate =
-                                                      entry.send_date ||
-                                                      entry.created_at;
-                                                    return (
-                                                      <div
-                                                        key={entry.id}
-                                                        className={styles.emailHistoryItem}
-                                                      >
-                                                        <Text className={styles.detailValue}>
-                                                          {historyLabel}
-                                                        </Text>
-                                                        {historyDate ? (
-                                                          <Text
-                                                            className={styles.emailHistoryDate}
-                                                          >
-                                                            ({formatDate(historyDate)})
-                                                          </Text>
-                                                        ) : null}
-                                                      </div>
-                                                    );
-                                                  })}
-                                                </div>
+                                              {isEditingDetails ? (
+                                                <Textarea
+                                                  className={styles.detailsEditTextarea}
+                                                  value={detailsEditDraft.email_history}
+                                                  onChange={(_, data) =>
+                                                    updateOrderDetailsDraftField(
+                                                      row.id,
+                                                      "email_history",
+                                                      data.value
+                                                    )
+                                                  }
+                                                />
                                               ) : (
-                                                <Text className={styles.detailValue}>
-                                                  {t("orders.details.emailHistoryNone")}
-                                                </Text>
+                                                <>
+                                                  {manualEmailHistoryText ? (
+                                                    <Text className={styles.detailValue}>
+                                                      {manualEmailHistoryText}
+                                                    </Text>
+                                                  ) : details?.email_history?.length ? (
+                                                    <div className={styles.emailHistoryList}>
+                                                      {details.email_history.map((entry) => {
+                                                        const historyLabel =
+                                                          entry.notification_name ||
+                                                          entry.subject ||
+                                                          t("orders.notifications.none");
+                                                        const historyDate =
+                                                          entry.send_date ||
+                                                          entry.created_at;
+                                                        return (
+                                                          <div
+                                                            key={entry.id}
+                                                            className={styles.emailHistoryItem}
+                                                          >
+                                                            <Text className={styles.detailValue}>
+                                                              {historyLabel}
+                                                            </Text>
+                                                            {historyDate ? (
+                                                              <Text
+                                                                className={styles.emailHistoryDate}
+                                                              >
+                                                                ({formatDate(historyDate)})
+                                                              </Text>
+                                                            ) : null}
+                                                          </div>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                  ) : (
+                                                    <Text className={styles.detailValue}>
+                                                      {t("orders.details.emailHistoryNone")}
+                                                    </Text>
+                                                  )}
+                                                </>
                                               )}
                                               <Text className={styles.detailLabel}>
                                                 {t("orders.details.customerNote")}
                                               </Text>
-                                              <Text className={styles.detailValue}>-</Text>
+                                              {isEditingDetails ? (
+                                                <Textarea
+                                                  className={styles.detailsEditTextarea}
+                                                  value={detailsEditDraft.notes}
+                                                  onChange={(_, data) =>
+                                                    updateOrderDetailsDraftField(
+                                                      row.id,
+                                                      "notes",
+                                                      data.value
+                                                    )
+                                                  }
+                                                />
+                                              ) : (
+                                                <Text className={styles.detailValue}>
+                                                  {details?.order?.customer_note ?? "-"}
+                                                </Text>
+                                              )}
+                                              <div className={styles.detailsEditActions}>
+                                                {isEditingDetails ? (
+                                                  <>
+                                                    <Button
+                                                      size="small"
+                                                      appearance="secondary"
+                                                      onClick={() =>
+                                                        cancelEditingOrderDetails(row.id)
+                                                      }
+                                                      disabled={detailsEditSaving}
+                                                    >
+                                                      Close
+                                                    </Button>
+                                                    <Button
+                                                      size="small"
+                                                      appearance="primary"
+                                                      onClick={() => {
+                                                        void saveOrderDetailsEdits(row.id);
+                                                      }}
+                                                      disabled={detailsEditSaving}
+                                                    >
+                                                      {detailsEditSaving ? (
+                                                        <Spinner size="tiny" />
+                                                      ) : (
+                                                        "Save"
+                                                      )}
+                                                    </Button>
+                                                  </>
+                                                ) : (
+                                                  <Button
+                                                    size="small"
+                                                    appearance="secondary"
+                                                    onClick={() =>
+                                                      startEditingOrderDetails(row.id)
+                                                    }
+                                                  >
+                                                    Edit
+                                                  </Button>
+                                                )}
+                                              </div>
+                                              {detailsEditError ? (
+                                                <Text className={styles.errorText}>
+                                                  {detailsEditError}
+                                                </Text>
+                                              ) : null}
                                             </div>
                                           </div>
                                         </div>

@@ -88,6 +88,22 @@ function resolveDbErrorMessage(error: unknown, fallback: string) {
   );
 }
 
+function normalizeText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function parseTrackingNumbersFromText(value: unknown) {
+  const raw = String(value ?? "");
+  return Array.from(
+    new Set(
+      raw
+        .split(/[\n,;]+/g)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 async function hasTrackingSentDateColumn(
   adminClient: NonNullable<ReturnType<typeof getAdminClient>>
 ) {
@@ -267,7 +283,7 @@ export async function GET(
     const { data, error } = await adminClient
       .from("orders_global")
       .select(
-        "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,status"
+        "sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,status,raw_row"
       )
       .eq("id", id)
       .maybeSingle();
@@ -640,6 +656,10 @@ export async function GET(
           date_shipped?: unknown;
           raw_row?: unknown;
         };
+        const rawRow =
+          typeof base.raw_row === "object" && base.raw_row !== null
+            ? (base.raw_row as Record<string, unknown>)
+            : {};
         const resolvedStatus = includeOrderStatus
           ? normalizeOrderStatus(base.status)
           : inferOrderStatusWithoutStatusColumn(base);
@@ -647,12 +667,19 @@ export async function GET(
           salesChannelName: base.sales_channel_name,
           salesChannelId: base.sales_channel_id,
         });
+        const manualEmailHistory = normalizeText(rawRow.manual_email_history) || null;
+        const customerNote =
+          normalizeText(rawRow.manual_order_notes) ||
+          normalizeText(rawRow.customer_note) ||
+          null;
         const rest = { ...base };
         delete rest.raw_row;
         return {
           ...rest,
           sales_channel_name: normalizedPlatformName || (base.sales_channel_name ?? null),
           status: resolvedStatus,
+          manual_email_history: manualEmailHistory,
+          customer_note: customerNote,
         };
       })()
     : null;
@@ -662,5 +689,295 @@ export async function GET(
     items: enrichedItems,
     tracking_numbers: trackingNumbers,
     email_history: emailHistory,
+  });
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: settings } = await supabase
+    .from("partner_user_settings")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!settings?.is_admin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const adminClient = getAdminClient();
+  if (!adminClient) {
+    return NextResponse.json(
+      { error: "Server is missing Supabase credentials." },
+      { status: 500 }
+    );
+  }
+
+  const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: "Missing order id." }, { status: 400 });
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  const includeOrderStatus = await hasOrdersStatusColumn(adminClient);
+  const orderSelectColumns = includeOrderStatus
+    ? "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,status,raw_row"
+    : "id,sales_channel_id,order_number,sales_channel_name,customer_name,customer_address,customer_zip,customer_city,customer_phone,customer_email,transaction_date,date_shipped,raw_row";
+  const { data: existingOrder, error: existingOrderError } = await adminClient
+    .from("orders_global")
+    .select(orderSelectColumns)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingOrderError) {
+    return NextResponse.json(
+      {
+        error: resolveDbErrorMessage(
+          existingOrderError,
+          "Unable to load order for update."
+        ),
+      },
+      { status: 500 }
+    );
+  }
+  const existingOrderRecord = (existingOrder ?? null) as
+    | Record<string, unknown>
+    | null;
+
+  if (!existingOrderRecord) {
+    return NextResponse.json({ error: "Order not found." }, { status: 404 });
+  }
+
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+  const hasShippingUpdate = has("shipping") || has("date_shipped");
+  const hasTrackingUpdate = has("tracking_number") || has("tracking_numbers");
+  const hasEmailHistoryUpdate = has("email_history");
+  const hasNotesUpdate = has("notes");
+
+  const updates: Record<string, unknown> = {};
+
+  if (has("customer_name")) {
+    updates.customer_name = normalizeText(payload.customer_name) || null;
+  }
+  if (has("customer_address")) {
+    updates.customer_address = normalizeText(payload.customer_address) || null;
+  }
+  if (has("customer_zip")) {
+    updates.customer_zip = normalizeText(payload.customer_zip) || null;
+  }
+  if (has("customer_city")) {
+    updates.customer_city = normalizeText(payload.customer_city) || null;
+  }
+  if (has("customer_phone")) {
+    updates.customer_phone = normalizeText(payload.customer_phone) || null;
+  }
+  if (has("customer_email")) {
+    updates.customer_email = normalizeText(payload.customer_email) || null;
+  }
+  if (hasShippingUpdate) {
+    const shippingRaw =
+      payload.shipping ?? payload.date_shipped ?? payload.dateShipped ?? "";
+    const shippingText = normalizeText(shippingRaw);
+    const normalizedShippingDate = shippingText
+      ? normalizeDateForDb(shippingText)
+      : null;
+    if (shippingText && !normalizedShippingDate) {
+      return NextResponse.json(
+        {
+          error:
+            "Shipping date must be a valid date (YYYY-MM-DD, YYYY/MM/DD, ISO date, or Excel serial).",
+        },
+        { status: 400 }
+      );
+    }
+    updates.date_shipped = normalizedShippingDate;
+  }
+
+  if (hasEmailHistoryUpdate || hasNotesUpdate) {
+    const existingRawRow =
+      typeof existingOrderRecord.raw_row === "object" &&
+      existingOrderRecord.raw_row !== null
+        ? { ...(existingOrderRecord.raw_row as Record<string, unknown>) }
+        : {};
+    const nextRawRow = { ...existingRawRow };
+
+    if (hasEmailHistoryUpdate) {
+      const manualEmailHistory = normalizeText(payload.email_history);
+      if (manualEmailHistory) {
+        nextRawRow.manual_email_history = manualEmailHistory;
+      } else {
+        delete nextRawRow.manual_email_history;
+      }
+    }
+    if (hasNotesUpdate) {
+      const manualOrderNotes = normalizeText(payload.notes);
+      if (manualOrderNotes) {
+        nextRawRow.manual_order_notes = manualOrderNotes;
+      } else {
+        delete nextRawRow.manual_order_notes;
+        delete nextRawRow.customer_note;
+      }
+    }
+
+    updates.raw_row = nextRawRow;
+  }
+
+  if (
+    Object.keys(updates).length === 0 &&
+    !hasTrackingUpdate &&
+    !hasEmailHistoryUpdate &&
+    !hasNotesUpdate
+  ) {
+    return NextResponse.json(
+      { error: "No editable fields provided." },
+      { status: 400 }
+    );
+  }
+
+  let updatedOrder = existingOrderRecord;
+  if (Object.keys(updates).length > 0) {
+    const { data, error } = await adminClient
+      .from("orders_global")
+      .update(updates)
+      .eq("id", id)
+      .select(orderSelectColumns)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json(
+        { error: resolveDbErrorMessage(error, "Unable to update order.") },
+        { status: 500 }
+      );
+    }
+    if (data) {
+      updatedOrder = data as unknown as Record<string, unknown>;
+    }
+  }
+
+  let trackingNumbers: Array<{
+    tracking_number: string;
+    sent_date: string | null;
+  }> | null = null;
+  if (hasTrackingUpdate) {
+    const trackingText =
+      payload.tracking_number ?? payload.tracking_numbers ?? "";
+    const parsedTrackingNumbers = parseTrackingNumbersFromText(trackingText);
+    const { error: deleteTrackingError } = await adminClient
+      .from("order_tracking_numbers_global")
+      .delete()
+      .eq("order_id", id);
+
+    if (deleteTrackingError) {
+      return NextResponse.json(
+        {
+          error: resolveDbErrorMessage(
+            deleteTrackingError,
+            "Unable to update tracking numbers."
+          ),
+        },
+        { status: 500 }
+      );
+    }
+
+    const salesChannelId = normalizeText(updatedOrder.sales_channel_id);
+    const orderNumber = normalizeText(updatedOrder.order_number);
+    const orderShipDate =
+      normalizeDateForDb(updatedOrder.date_shipped) ??
+      normalizeDateForDb(existingOrderRecord.date_shipped);
+    const canWriteTrackingSentDate = await hasTrackingSentDateColumn(adminClient);
+
+    if (parsedTrackingNumbers.length > 0) {
+      if (!salesChannelId || !orderNumber) {
+        return NextResponse.json(
+          {
+            error:
+              "Unable to save tracking numbers because sales channel ID or order number is missing.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const baseRows = parsedTrackingNumbers.map((trackingNumber) => ({
+        sales_channel_id: salesChannelId,
+        order_number: orderNumber,
+        tracking_number: trackingNumber,
+        order_id: id,
+      }));
+
+      const rowsToInsert = canWriteTrackingSentDate
+        ? baseRows.map((row) => ({
+            ...row,
+            sent_date: orderShipDate,
+          }))
+        : baseRows;
+
+      const { error: insertTrackingError } = await adminClient
+        .from("order_tracking_numbers_global")
+        .upsert(rowsToInsert, {
+          onConflict: "sales_channel_id,order_number,tracking_number",
+        });
+
+      if (insertTrackingError) {
+        return NextResponse.json(
+          {
+            error: resolveDbErrorMessage(
+              insertTrackingError,
+              "Unable to save tracking numbers."
+            ),
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    trackingNumbers = parsedTrackingNumbers.map((trackingNumber) => ({
+      tracking_number: trackingNumber,
+      sent_date: normalizeDateForDb(updatedOrder.date_shipped),
+    }));
+  }
+
+  const normalizedPlatformName = normalizeOrderPlatformName({
+    salesChannelName: updatedOrder.sales_channel_name,
+    salesChannelId: updatedOrder.sales_channel_id,
+  });
+  const updatedRawRow =
+    typeof updatedOrder.raw_row === "object" && updatedOrder.raw_row !== null
+      ? (updatedOrder.raw_row as Record<string, unknown>)
+      : {};
+  const normalizedStatus = includeOrderStatus
+    ? normalizeOrderStatus(updatedOrder.status)
+    : inferOrderStatusWithoutStatusColumn(updatedOrder);
+
+  const normalizedOrder = {
+    ...updatedOrder,
+    sales_channel_name: normalizedPlatformName || (updatedOrder.sales_channel_name ?? null),
+    status: normalizedStatus,
+    manual_email_history: normalizeText(updatedRawRow.manual_email_history) || null,
+    customer_note:
+      normalizeText(updatedRawRow.manual_order_notes) ||
+      normalizeText(updatedRawRow.customer_note) ||
+      null,
+  };
+  delete (normalizedOrder as { raw_row?: unknown }).raw_row;
+
+  return NextResponse.json({
+    order: normalizedOrder,
+    tracking_numbers: trackingNumbers,
   });
 }
