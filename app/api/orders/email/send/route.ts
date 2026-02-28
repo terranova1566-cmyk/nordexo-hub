@@ -64,6 +64,13 @@ type OrderEmailItemRow = {
   raw_row?: unknown;
 };
 
+type OrderTrackingRow = {
+  order_id: string | null;
+  tracking_number: string | null;
+  sent_date?: string | null;
+  created_at?: string | null;
+};
+
 const parseEmailList = (value: unknown) => {
   const values: string[] = Array.isArray(value)
     ? value.map((entry) => String(entry ?? ""))
@@ -92,6 +99,19 @@ const normalizeSkuKey = (value: unknown) =>
     .toUpperCase();
 
 const normalizeOrderIdKey = (value: unknown) => String(value ?? "").trim();
+
+const compareIsoDateTimeDesc = (leftRaw: unknown, rightRaw: unknown) => {
+  const left = String(leftRaw ?? "").trim();
+  const right = String(rightRaw ?? "").trim();
+  if (left && right) {
+    if (left > right) return -1;
+    if (left < right) return 1;
+    return 0;
+  }
+  if (left) return -1;
+  if (right) return 1;
+  return 0;
+};
 
 const extractProviderMessageId = (value: unknown): string | null => {
   if (!value || typeof value !== "object") return null;
@@ -141,6 +161,19 @@ async function getOrdersNotificationColumnFlags(
     latestNotificationName: columnNames.has("latest_notification_name"),
     latestNotificationSentAt: columnNames.has("latest_notification_sent_at"),
   };
+}
+
+async function hasTrackingSentDateColumn(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "order_tracking_numbers_global")
+    .eq("column_name", "sent_date")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
 }
 
 const extractTextValue = (row: Record<string, unknown>) => {
@@ -380,6 +413,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: orderItemsError.message }, { status: 500 });
   }
 
+  const includeTrackingSentDate = await hasTrackingSentDateColumn(adminClient);
+  let trackingRows: OrderTrackingRow[] = [];
+  if (includeTrackingSentDate) {
+    const { data, error } = await adminClient
+      .from("order_tracking_numbers_global")
+      .select("order_id,tracking_number,sent_date,created_at")
+      .in("order_id", ids);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    trackingRows = (data ?? []) as OrderTrackingRow[];
+  } else {
+    const { data, error } = await adminClient
+      .from("order_tracking_numbers_global")
+      .select("order_id,tracking_number,created_at")
+      .in("order_id", ids);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    trackingRows = (data ?? []) as OrderTrackingRow[];
+  }
+
   const skuToProductTitle = await buildSkuToProductTitleMap(
     adminClient,
     (itemRows ?? []).map((row) => String((row as { sku?: unknown }).sku ?? ""))
@@ -401,6 +456,43 @@ export async function POST(request: Request) {
     const entries = orderItemMap.get(orderId) ?? [];
     entries.push({ ...typed, order_id: orderId });
     orderItemMap.set(orderId, entries);
+  });
+
+  const groupedTrackingRows = new Map<string, OrderTrackingRow[]>();
+  (trackingRows ?? []).forEach((row) => {
+    const orderId = normalizeOrderIdKey(row.order_id);
+    const trackingNumber = String(row.tracking_number ?? "").trim();
+    if (!orderId || !trackingNumber) return;
+    const entries = groupedTrackingRows.get(orderId) ?? [];
+    entries.push({
+      ...row,
+      order_id: orderId,
+      tracking_number: trackingNumber,
+    });
+    groupedTrackingRows.set(orderId, entries);
+  });
+
+  const trackingNumberByOrderId = new Map<string, string>();
+  groupedTrackingRows.forEach((entries, orderId) => {
+    if (entries.length === 0) return;
+    const sorted = [...entries].sort((left, right) => {
+      const sentDateCompare = compareIsoDateTimeDesc(
+        left.sent_date,
+        right.sent_date
+      );
+      if (sentDateCompare !== 0) return sentDateCompare;
+      const createdAtCompare = compareIsoDateTimeDesc(
+        left.created_at,
+        right.created_at
+      );
+      if (createdAtCompare !== 0) return createdAtCompare;
+      return String(left.tracking_number ?? "").localeCompare(
+        String(right.tracking_number ?? "")
+      );
+    });
+    const primary = String(sorted[0]?.tracking_number ?? "").trim();
+    if (!primary) return;
+    trackingNumberByOrderId.set(orderId, primary);
   });
 
   const { macros: macroDefinitions } = await listEmailMacroDefinitions(adminClient, {
@@ -462,6 +554,7 @@ export async function POST(request: Request) {
 
     const orderItems = orderItemMap.get(order.id) ?? [];
     const preferredOrderId = resolvePreferredOrderIdFromItems(orderItems);
+    const trackingNumber = trackingNumberByOrderId.get(order.id) ?? "";
     const orderContentList = formatOrderContentList(
       orderItems.map((item) => ({
         quantity: item.quantity,
@@ -477,6 +570,7 @@ export async function POST(request: Request) {
       ...order,
       preferred_order_id: preferredOrderId,
       order_content_list: orderContentList,
+      tracking_number: trackingNumber,
     });
     const macroResolution = resolveTemplateMacros({
       subjectTemplate,

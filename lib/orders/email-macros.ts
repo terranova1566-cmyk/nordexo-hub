@@ -6,6 +6,7 @@ type OrderEmailMacroInput = {
   preferred_order_id?: unknown;
   transaction_date?: unknown;
   date_shipped?: unknown;
+  tracking_number?: unknown;
   customer_name?: unknown;
   customer_email?: unknown;
   sales_channel_id?: unknown;
@@ -76,6 +77,7 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
 
   const transactionDate = normalizeDateText(input.transaction_date);
   const dateShipped = normalizeDateText(input.date_shipped);
+  const trackingNumber = normalizeText(input.tracking_number);
   const originalOrderNumber = normalizeText(input.order_number);
   const preferredOrderId = normalizeText(input.preferred_order_id);
   const salesChannelOrderNumber = normalizeText(input.sales_channel_order_number);
@@ -100,6 +102,7 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
     orders_transaction_date: transactionDate,
     orders_ship_date: dateShipped,
     orders_date_shipped: dateShipped,
+    orders_tracking_number: trackingNumber,
     orders_customer_name: ordersCustomerName,
     orders_customer_email: ordersCustomerEmail,
     orders_status: ordersStatus,
@@ -111,6 +114,8 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
     platform_id: platformId,
     platform_name: platformName,
     platform_seller_name: platformName,
+    tracking_number: trackingNumber,
+    TRACKING_NUMBER: trackingNumber,
 
     // Legacy aliases retained for backward compatibility.
     orders_id: ordersNumber,

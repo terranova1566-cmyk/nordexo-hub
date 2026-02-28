@@ -831,6 +831,27 @@ const normalizeTrackingEntries = (value: unknown): TrackingNumberEntry[] => {
   return entries;
 };
 
+const resolvePrimaryTrackingNumber = (entries: TrackingNumberEntry[]) => {
+  const candidates = entries
+    .map((entry) => ({
+      tracking: String(entry.tracking_number ?? "").trim(),
+      sentDate: String(entry.sent_date ?? "").trim(),
+    }))
+    .filter((entry) => Boolean(entry.tracking));
+  if (candidates.length === 0) return "";
+  candidates.sort((left, right) => {
+    if (left.sentDate && right.sentDate) {
+      if (left.sentDate > right.sentDate) return -1;
+      if (left.sentDate < right.sentDate) return 1;
+      return left.tracking.localeCompare(right.tracking);
+    }
+    if (left.sentDate) return -1;
+    if (right.sentDate) return 1;
+    return left.tracking.localeCompare(right.tracking);
+  });
+  return candidates[0]?.tracking ?? "";
+};
+
 const normalizeEmailHistoryEntries = (
   value: unknown
 ): OrderEmailHistoryEntry[] => {
@@ -1468,9 +1489,13 @@ export default function OrdersPage() {
       setEmailPreviewLoading(true);
       try {
         let orderItemsForPreview: OrderItem[] = [];
+        let trackingEntriesForPreview: TrackingNumberEntry[] = [];
         const cachedDetails = detailsById[previewOrderRow.id];
         if (cachedDetails?.items?.length) {
           orderItemsForPreview = cachedDetails.items;
+          trackingEntriesForPreview = Array.isArray(cachedDetails.tracking_numbers)
+            ? cachedDetails.tracking_numbers
+            : [];
         } else {
           const detailsResponse = await fetch(`/api/orders/${previewOrderRow.id}`);
           if (detailsResponse.ok) {
@@ -1478,7 +1503,11 @@ export default function OrdersPage() {
             const loadedItems = Array.isArray(detailsPayload?.items)
               ? (detailsPayload.items as OrderItem[])
               : [];
+            const loadedTracking = normalizeTrackingEntries(
+              detailsPayload?.tracking_numbers
+            );
             orderItemsForPreview = loadedItems;
+            trackingEntriesForPreview = loadedTracking;
             setDetailsById((prev) => {
               if (prev[previewOrderRow.id]) return prev;
               return {
@@ -1489,9 +1518,7 @@ export default function OrdersPage() {
                       ? (detailsPayload.order as OrderDetails["order"])
                       : null,
                   items: loadedItems,
-                  tracking_numbers: normalizeTrackingEntries(
-                    detailsPayload?.tracking_numbers
-                  ),
+                  tracking_numbers: loadedTracking,
                   email_history: normalizeEmailHistoryEntries(
                     detailsPayload?.email_history
                   ),
@@ -1512,12 +1539,16 @@ export default function OrdersPage() {
         const preferredOrderId = resolvePreferredOrderIdFromItems(
           orderItemsForPreview
         );
+        const primaryTrackingNumber = resolvePrimaryTrackingNumber(
+          trackingEntriesForPreview
+        );
         const orderVariables = buildOrderEmailMacroVariables({
           id: previewOrderRow.id,
           order_number: previewOrderRow.order_number,
           preferred_order_id: preferredOrderId,
           transaction_date: previewOrderRow.transaction_date,
           date_shipped: previewOrderRow.date_shipped,
+          tracking_number: primaryTrackingNumber,
           customer_name: previewOrderRow.customer_name,
           customer_email: previewOrderRow.customer_email,
           sales_channel_id: previewOrderRow.sales_channel_id,
