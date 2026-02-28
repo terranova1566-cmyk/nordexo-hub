@@ -611,6 +611,10 @@ const useStyles = makeStyles({
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
+  notificationFieldHas: {
+    backgroundColor: tokens.colorStatusWarningBackground1,
+    border: `1px solid ${tokens.colorStatusWarningBorder1}`,
+  },
   statusDialog: {
     width: "420px",
     maxWidth: "95vw",
@@ -920,14 +924,6 @@ const getCountryCodeForOrder = (row: Pick<OrderRow, "sales_channel_id" | "custom
   return null;
 };
 
-const getOrderCurrency = (
-  row: Pick<OrderRow, "sales_channel_id" | "customer_country_code">
-) => {
-  const countryCode = getCountryCodeForOrder(row);
-  if (countryCode === "NO" || countryCode === "SE") return "SEK";
-  return "EUR";
-};
-
 const ORDER_EMAIL_BCC_OPTIONS = [
   "support@letsdeal.se",
   "support@letsdeal.no",
@@ -1206,6 +1202,11 @@ export default function OrdersPage() {
     if (name) return name;
     if (sentAt) return formatDate(sentAt);
     return t("orders.notifications.none");
+  };
+  const hasLatestNotification = (row: OrderRow) => {
+    const name = String(row.latest_notification_name ?? "").trim();
+    const sentAt = String(row.latest_notification_sent_at ?? "").trim();
+    return Boolean(name || sentAt);
   };
   const openEmailDialog = async () => {
     if (selectedRows.length === 0) return;
@@ -2609,7 +2610,7 @@ export default function OrdersPage() {
                     const countryName = getCountryName(row, countryCode);
                     const platformDisplayName = getNormalizedSalesChannelName(row);
                     const latestNotificationText = getLatestNotificationText(row);
-                    const orderCurrency = getOrderCurrency(row);
+                    const hasNotification = hasLatestNotification(row);
                     return (
                       <Fragment key={row.id}>
                         <TableRow
@@ -2668,7 +2669,7 @@ export default function OrdersPage() {
                             </span>
                           </TableCell>
                           <TableCell className={styles.colOrderValue}>
-                            {formatCurrency(row.order_total_value, orderCurrency) || "-"}
+                            {formatCurrency(row.order_total_value, "EUR") || "-"}
                           </TableCell>
                           <TableCell className={styles.colTransactionDate}>
                             {formatDate(row.transaction_date)}
@@ -2694,7 +2695,10 @@ export default function OrdersPage() {
                           </TableCell>
                           <TableCell className={styles.colNotifications}>
                             <span
-                              className={styles.notificationField}
+                              className={mergeClasses(
+                                styles.notificationField,
+                                hasNotification ? styles.notificationFieldHas : undefined
+                              )}
                               title={latestNotificationText}
                             >
                               {latestNotificationText}
@@ -2876,10 +2880,7 @@ export default function OrdersPage() {
                                                         : item.quantity}
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColSalesValue}>
-                                                      {formatCurrency(
-                                                        item.sales_value_eur,
-                                                        orderCurrency
-                                                      )}
+                                                      {formatCurrency(item.sales_value_eur, "EUR")}
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColMarketplace}>
                                                       {item.marketplace_order_number ?? "-"}
