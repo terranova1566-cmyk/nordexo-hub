@@ -10,6 +10,7 @@ import {
   ORDER_STATUS,
   pickHigherPriorityOrderStatus,
 } from "@/lib/orders/status";
+import { normalizeOrderPlatformName } from "@/lib/orders/platform";
 import { promises as fs } from "fs";
 import path from "path";
 
@@ -331,6 +332,10 @@ export async function POST(request: Request) {
       order_number: orderNumber,
       status: importedOrderStatus,
     };
+    const normalizedSalesChannelName = normalizeOrderPlatformName({
+      salesChannelName: rowData["Sales Channel Readable name"],
+      salesChannelId,
+    });
 
     const mergeField = (field: string, value: string) => {
       if (!value) return;
@@ -339,7 +344,10 @@ export async function POST(request: Request) {
       }
     };
 
-    mergeField("sales_channel_name", rowData["Sales Channel Readable name"]);
+    mergeField(
+      "sales_channel_name",
+      normalizedSalesChannelName || rowData["Sales Channel Readable name"]
+    );
     mergeField("customer_name", rowData["Customer Name"]);
     mergeField("customer_address", rowData["Customer address"]);
     mergeField("customer_zip", rowData["Customer zip code"]);

@@ -34,20 +34,24 @@ export type RecalculateB2CResult = {
   updatedVariantPrices: number;
 };
 
-const B2C_MARGIN_RATE = 0.3;
+type B2CPriceRow = {
+  catalog_variant_id: string;
+  price_type: string;
+  market: string;
+  currency: string;
+  price: number;
+  shop_id: null;
+  deleted_at: null;
+  updated_at: string;
+};
+
+const B2C_MARGIN_RATE = 0.35;
 const B2C_VAT_RATE = 0.25;
-const B2C_FIXED_PROFIT_BY_MARKET: Record<string, number> = {
-  SE: 10,
-  NO: 10,
-  DK: 10,
-  FI: 1,
-};
-const B2C_FIXED_PROFIT_BY_CURRENCY: Record<string, number> = {
-  SEK: 10,
-  NOK: 10,
-  DKK: 10,
-  EUR: 1,
-};
+const SHOPIFY_B2C_CHANNELS = [
+  { shopCode: "shopify_tingelo", priceType: "shopify_tingelo" },
+  { shopCode: "shopify_wellando", priceType: "shopify_wellando" },
+  { shopCode: "shopify_sparklar", priceType: "shopify_sparklar" },
+] as const;
 
 const chunk = <T,>(items: T[], size: number) => {
   const out: T[][] = [];
@@ -75,35 +79,21 @@ const resolveClassConfig = (
   return marketMap.get("NOR") ?? null;
 };
 
-const resolveFixedProfit = (market: string, currency: string) => {
-  const byMarket = B2C_FIXED_PROFIT_BY_MARKET[market.toUpperCase()];
-  if (Number.isFinite(byMarket)) return byMarket;
-  const byCurrency = B2C_FIXED_PROFIT_BY_CURRENCY[currency.toUpperCase()];
-  if (Number.isFinite(byCurrency)) return byCurrency;
-  return null;
+const roundToNearestNine = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const rounded = Math.round((value - 9) / 10) * 10 + 9;
+  if (!Number.isFinite(rounded)) return null;
+  return Math.max(9, rounded);
 };
 
-const roundMarketPrice = (currency: string, value: number) => {
-  if (!Number.isFinite(value)) return null;
-  if (currency.toUpperCase() === "EUR") return Number(value.toFixed(2));
-  return Math.round(value);
-};
-
-const computeB2CPrice = (
-  totalCostLocal: number,
-  market: string,
-  currency: string
-) => {
+const computeB2CPrice = (totalCostLocal: number) => {
   if (!Number.isFinite(totalCostLocal)) return null;
-  const fixedProfit = resolveFixedProfit(market, currency);
-  if (fixedProfit === null) return null;
-  const subtotal = totalCostLocal + fixedProfit;
-  if (!Number.isFinite(subtotal) || subtotal <= 0) return null;
+  if (totalCostLocal <= 0) return null;
   const marginDivisor = 1 - B2C_MARGIN_RATE;
   if (marginDivisor <= 0) return null;
-  const salesExVat = subtotal / marginDivisor;
+  const salesExVat = totalCostLocal / marginDivisor;
   const salesIncVat = salesExVat * (1 + B2C_VAT_RATE);
-  return roundMarketPrice(currency, salesIncVat);
+  return roundToNearestNine(salesIncVat);
 };
 
 const loadMarketConfigs = async (adminClient: SupabaseClient) => {
@@ -217,6 +207,218 @@ const loadVariantsForSpus = async (
   return variants;
 };
 
+const collectSeStandardPriceByVariant = (rows: B2CPriceRow[]) => {
+  const out = new Map<string, number>();
+  rows.forEach((row) => {
+    if (row.market !== "SE" || row.currency !== "SEK") return;
+    out.set(row.catalog_variant_id, row.price);
+  });
+  return out;
+};
+
+const syncCatalogVariantBasePrices = async (
+  adminClient: SupabaseClient,
+  sePriceByVariant: Map<string, number>,
+  now: string
+) => {
+  if (sePriceByVariant.size === 0) return 0;
+  let updated = 0;
+  const variantIds = Array.from(sePriceByVariant.keys());
+  for (const batch of chunk(variantIds, 500)) {
+    const { data: existingRows, error: existingError } = await adminClient
+      .from("catalog_variants")
+      .select("id, price")
+      .in("id", batch);
+    if (existingError) {
+      throw new Error(
+        `Unable to load catalog_variants for B2C sync: ${existingError.message}`
+      );
+    }
+
+    const upsertRows = (existingRows ?? [])
+      .map((row) => {
+        const nextPrice = sePriceByVariant.get(String(row.id));
+        if (nextPrice === undefined) return null;
+        const currentPrice = toNumber(row.price);
+        if (currentPrice === nextPrice) return null;
+        return {
+          id: String(row.id),
+          price: nextPrice,
+          updated_at: now,
+        };
+      })
+      .filter(
+        (row): row is { id: string; price: number; updated_at: string } =>
+          Boolean(row)
+      );
+
+    if (upsertRows.length === 0) continue;
+    const { data, error } = await adminClient
+      .from("catalog_variants")
+      .upsert(upsertRows, { onConflict: "id" })
+      .select("id");
+    if (error) {
+      throw new Error(
+        `Unable to sync catalog_variants.price from B2C: ${error.message}`
+      );
+    }
+    updated += data?.length ?? upsertRows.length;
+  }
+  return updated;
+};
+
+const syncShopifyScPrices = async (
+  adminClient: SupabaseClient,
+  sePriceByVariant: Map<string, number>,
+  now: string
+) => {
+  if (sePriceByVariant.size === 0) return 0;
+
+  const targetShopCodes = SHOPIFY_B2C_CHANNELS.map((entry) => entry.shopCode);
+  const { data: shopRows, error: shopError } = await adminClient
+    .from("shops")
+    .select("id, code")
+    .in("code", targetShopCodes);
+  if (shopError) {
+    throw new Error(`Unable to load Shopify shops: ${shopError.message}`);
+  }
+  if (!shopRows?.length) return 0;
+
+  const channelTargets: Array<{ shopId: string; priceType: string }> = [];
+  for (const channel of SHOPIFY_B2C_CHANNELS) {
+    const shop = (shopRows ?? []).find(
+      (row) => String(row.code || "") === channel.shopCode
+    );
+    if (!shop?.id) continue;
+    channelTargets.push({
+      shopId: String(shop.id),
+      priceType: channel.priceType,
+    });
+  }
+  if (channelTargets.length === 0) return 0;
+
+  let updated = 0;
+  const variantIds = Array.from(sePriceByVariant.keys());
+  for (const batch of chunk(variantIds, 500)) {
+    const targetShopIds = channelTargets.map((entry) => entry.shopId);
+    const targetPriceTypes = channelTargets.map((entry) => entry.priceType);
+    const { data: existingRows, error: existingError } = await adminClient
+      .from("catalog_variant_prices")
+      .select("id, catalog_variant_id, shop_id, price_type, price, compare_at_price")
+      .in("catalog_variant_id", batch)
+      .in("shop_id", targetShopIds)
+      .in("price_type", targetPriceTypes)
+      .eq("market", "SE")
+      .eq("currency", "SEK")
+      .is("deleted_at", null);
+    if (existingError) {
+      throw new Error(
+        `Unable to load existing Shopify channel prices: ${existingError.message}`
+      );
+    }
+
+    const existingMap = new Map<
+      string,
+      { id: string; price: number | null; compare_at_price: number | null }
+    >();
+    (existingRows ?? []).forEach((row) => {
+      if (!row.catalog_variant_id || !row.id || !row.shop_id || !row.price_type) return;
+      const key = `${String(row.catalog_variant_id)}|${String(row.shop_id)}|${String(
+        row.price_type
+      )}`;
+      existingMap.set(key, {
+        id: String(row.id),
+        price: toNumber(row.price),
+        compare_at_price: toNumber(row.compare_at_price),
+      });
+    });
+
+    const updateRows: Array<{
+      id: string;
+      catalog_variant_id: string;
+      shop_id: string;
+      price_type: string;
+      market: string;
+      currency: string;
+      price: number;
+      compare_at_price: number | null;
+      deleted_at: null;
+      updated_at: string;
+    }> = [];
+    const insertRows: Array<{
+      catalog_variant_id: string;
+      shop_id: string;
+      price_type: string;
+      market: string;
+      currency: string;
+      price: number;
+      compare_at_price: number | null;
+      deleted_at: null;
+      updated_at: string;
+    }> = [];
+
+    batch.forEach((variantId) => {
+      const nextPrice = sePriceByVariant.get(variantId);
+      if (nextPrice === undefined) return;
+      channelTargets.forEach((target) => {
+        const existing = existingMap.get(
+          `${variantId}|${target.shopId}|${target.priceType}`
+        );
+        const payload = {
+          catalog_variant_id: variantId,
+          shop_id: target.shopId,
+          price_type: target.priceType,
+          market: "SE",
+          currency: "SEK",
+          price: nextPrice,
+          compare_at_price: existing?.compare_at_price ?? null,
+          deleted_at: null as null,
+          updated_at: now,
+        };
+        if (existing?.id) {
+          if (existing.price === nextPrice) return;
+          updateRows.push({
+            id: existing.id,
+            ...payload,
+          });
+          return;
+        }
+        insertRows.push(payload);
+      });
+    });
+
+    for (const updateBatch of chunk(updateRows, 200)) {
+      if (updateBatch.length === 0) continue;
+      const { data, error } = await adminClient
+        .from("catalog_variant_prices")
+        .upsert(updateBatch, { onConflict: "id" })
+        .select("id");
+      if (error) {
+        throw new Error(
+          `Unable to update Shopify channel prices: ${error.message}`
+        );
+      }
+      updated += data?.length ?? updateBatch.length;
+    }
+
+    for (const insertBatch of chunk(insertRows, 200)) {
+      if (insertBatch.length === 0) continue;
+      const { data, error } = await adminClient
+        .from("catalog_variant_prices")
+        .insert(insertBatch)
+        .select("id");
+      if (error) {
+        throw new Error(
+          `Unable to insert Shopify channel prices: ${error.message}`
+        );
+      }
+      updated += data?.length ?? insertBatch.length;
+    }
+  }
+
+  return updated;
+};
+
 export async function recalculateB2CPricesForSpus(
   adminClient: SupabaseClient,
   spus: string[]
@@ -236,16 +438,7 @@ export async function recalculateB2CPricesForSpus(
   }
 
   const now = new Date().toISOString();
-  const priceRows: Array<{
-    catalog_variant_id: string;
-    price_type: string;
-    market: string;
-    currency: string;
-    price: number;
-    shop_id: null;
-    deleted_at: null;
-    updated_at: string;
-  }> = [];
+  const priceRows: B2CPriceRow[] = [];
 
   let processed = 0;
   let skipped = 0;
@@ -253,7 +446,12 @@ export async function recalculateB2CPricesForSpus(
   for (const variant of variants) {
     const purchaseCny = toNumber(variant.purchase_price_cny);
     const weightKg = toNumber(variant.weight);
-    if (purchaseCny === null || weightKg === null) {
+    if (
+      purchaseCny === null ||
+      purchaseCny <= 0 ||
+      weightKg === null ||
+      weightKg <= 0
+    ) {
       skipped += 1;
       continue;
     }
@@ -280,11 +478,7 @@ export async function recalculateB2CPricesForSpus(
       const shippingLocal = shippingCny * market.fx_rate_cny + market.packing_fee;
       const stockLocal = purchaseCny * market.fx_rate_cny;
       const totalCost = stockLocal + shippingLocal;
-      const b2cPrice = computeB2CPrice(
-        totalCost,
-        market.market,
-        market.currency
-      );
+      const b2cPrice = computeB2CPrice(totalCost);
 
       if (b2cPrice === null) {
         skipped += 1;
@@ -333,11 +527,23 @@ export async function recalculateB2CPricesForSpus(
     }
   }
 
+  const sePriceByVariant = collectSeStandardPriceByVariant(priceRows);
+  const updatedCatalogVariantPrices = await syncCatalogVariantBasePrices(
+    adminClient,
+    sePriceByVariant,
+    now
+  );
+  const updatedShopifyScRows = await syncShopifyScPrices(
+    adminClient,
+    sePriceByVariant,
+    now
+  );
+
   return {
     consideredVariants: variants.length,
     processedVariants: processed,
     skippedVariants: skipped,
     updatedRows: priceRows.length,
-    updatedVariantPrices: 0,
+    updatedVariantPrices: updatedCatalogVariantPrices + updatedShopifyScRows,
   };
 }

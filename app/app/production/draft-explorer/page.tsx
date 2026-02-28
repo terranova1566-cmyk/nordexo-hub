@@ -104,6 +104,8 @@ type DraftExplorerUrlState = {
   path: string;
   tab: "spu" | "sku" | "";
   showAll: boolean;
+  imageTab: ImageFolderTabValue | "";
+  imagePath: string;
 };
 
 type DraftProductFlagNote = {
@@ -3529,6 +3531,36 @@ const normalizeDraftSpuCode = (value: string) =>
     .replace(/[^a-zA-Z0-9_-]/g, "")
     .toUpperCase();
 
+const parseImageFolderTabValue = (value: string): ImageFolderTabValue | "" => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === "main" ||
+    normalized === "variants" ||
+    normalized === "others" ||
+    normalized === "ocr" ||
+    normalized === "downloaded"
+  ) {
+    return normalized;
+  }
+  return "";
+};
+
+const parseExplorerStateParam = (
+  searchParams: URLSearchParams,
+  hashParams: URLSearchParams,
+  keys: string[]
+) => {
+  for (const key of keys) {
+    const value = String(searchParams.get(key) || "").trim();
+    if (value) return value;
+  }
+  for (const key of keys) {
+    const value = String(hashParams.get(key) || "").trim();
+    if (value) return value;
+  }
+  return "";
+};
+
 const tryExtractDraftRelativePath = (value: string | null | undefined) => {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -4567,7 +4599,17 @@ export default function DraftExplorerPage() {
   const initialUrlStateRef = useRef<DraftExplorerUrlState | null>(null);
   const initialUrlStateParsedRef = useRef(false);
   const initialUrlShowAllPendingRef = useRef(false);
+  const initialUrlImageTabPendingRef = useRef<ImageFolderTabValue | "">("");
+  const initialUrlImagePathPendingRef = useRef("");
+  const hasSyncedUrlStateRef = useRef(false);
+  const lastUrlLocationStateRef = useRef<{ run: string; spu: string; path: string }>({
+    run: "",
+    spu: "",
+    path: "",
+  });
   const initialOpenSpuHandledRef = useRef(false);
+  const selectedFolderRef = useRef("");
+  const foldersRequestSeqRef = useRef(0);
   const folderSelectRequestSeqRef = useRef(0);
   const selectionAnchorImagePathRef = useRef<string | null>(null);
   const currentPathRef = useRef("");
@@ -5045,19 +5087,39 @@ export default function DraftExplorerPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedTabRaw = String(params.get("tab") || "").trim().toLowerCase();
+    const hashParams = new URLSearchParams(
+      String(window.location.hash || "").replace(/^#/, "")
+    );
+    const requestedTabRaw = parseExplorerStateParam(params, hashParams, ["tab"])
+      .trim()
+      .toLowerCase();
     const requestedTab =
       requestedTabRaw === "spu" || requestedTabRaw === "sku" ? requestedTabRaw : "";
-    const requestedRun = normalizeExplorerLocationPath(params.get("run") || "");
-    const requestedPath = normalizeExplorerLocationPath(params.get("path") || "");
-    const requestedSpu = normalizeDraftSpuCode(params.get("spu") || "");
-    const requestedOpenSpu = normalizeDraftSpuCode(params.get("open_spu") || "");
+    const requestedRun = normalizeExplorerLocationPath(
+      parseExplorerStateParam(params, hashParams, ["run"])
+    );
+    const requestedPath = normalizeExplorerLocationPath(
+      parseExplorerStateParam(params, hashParams, ["path"])
+    );
+    const requestedSpu = normalizeDraftSpuCode(
+      parseExplorerStateParam(params, hashParams, ["spu"])
+    );
+    const requestedOpenSpu = normalizeDraftSpuCode(
+      parseExplorerStateParam(params, hashParams, ["open_spu"])
+    );
     const requestedSpuCode = requestedSpu || requestedOpenSpu;
+    const requestedImageTab = parseImageFolderTabValue(
+      parseExplorerStateParam(params, hashParams, ["imgTab", "imageTab"])
+    );
+    const requestedImagePath = normalizeExplorerLocationPath(
+      parseExplorerStateParam(params, hashParams, ["img", "image"])
+    );
     const runFromPath = parseRunFromExplorerPath(requestedPath);
     const resolvedRun = requestedRun || runFromPath;
-    const showAllRaw = String(
-      params.get("showAll") || params.get("show_all") || ""
-    )
+    const showAllRaw = parseExplorerStateParam(params, hashParams, [
+      "showAll",
+      "show_all",
+    ])
       .trim()
       .toLowerCase();
     const requestedShowAll =
@@ -5069,12 +5131,26 @@ export default function DraftExplorerPage() {
       path: requestedPath,
       tab: requestedTab,
       showAll: requestedShowAll,
+      imageTab: requestedImageTab,
+      imagePath: requestedImagePath,
     };
+    initialUrlImageTabPendingRef.current = requestedImageTab;
+    initialUrlImagePathPendingRef.current = requestedImagePath;
+    lastUrlLocationStateRef.current = {
+      run: resolvedRun,
+      spu: requestedSpuCode,
+      path: requestedPath,
+    };
+    hasSyncedUrlStateRef.current = false;
     initialUrlStateParsedRef.current = true;
     initialUrlShowAllPendingRef.current = requestedShowAll;
 
     if (requestedTab) {
       setDraftTab(requestedTab);
+    }
+    setMainImageViewFilter(requestedImageTab === "variants" ? "var_only" : "all");
+    if (!requestedImagePath) {
+      setPreviewPath(null);
     }
 
     const shouldResolveSpuByRowLookup = Boolean(requestedSpuCode && !resolvedRun && !requestedPath);
@@ -5084,6 +5160,102 @@ export default function DraftExplorerPage() {
       }
       setInitialOpenSpu(requestedSpuCode);
     }
+  }, []);
+
+  useEffect(() => {
+    const applyUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(
+        String(window.location.hash || "").replace(/^#/, "")
+      );
+      const requestedTabRaw = parseExplorerStateParam(params, hashParams, ["tab"])
+        .trim()
+        .toLowerCase();
+      const requestedTab =
+        requestedTabRaw === "spu" || requestedTabRaw === "sku" ? requestedTabRaw : "spu";
+      const requestedRun = normalizeExplorerLocationPath(
+        parseExplorerStateParam(params, hashParams, ["run"])
+      );
+      const requestedPath = normalizeExplorerLocationPath(
+        parseExplorerStateParam(params, hashParams, ["path"])
+      );
+      const requestedSpu = normalizeDraftSpuCode(
+        parseExplorerStateParam(params, hashParams, ["spu"])
+      );
+      const requestedOpenSpu = normalizeDraftSpuCode(
+        parseExplorerStateParam(params, hashParams, ["open_spu"])
+      );
+      const requestedSpuCode = requestedSpu || requestedOpenSpu;
+      const requestedImageTab = parseImageFolderTabValue(
+        parseExplorerStateParam(params, hashParams, ["imgTab", "imageTab"])
+      );
+      const requestedImagePath = normalizeExplorerLocationPath(
+        parseExplorerStateParam(params, hashParams, ["img", "image"])
+      );
+      const runFromPath = parseRunFromExplorerPath(requestedPath);
+      const resolvedRun = requestedRun || runFromPath;
+      const showAllRaw = parseExplorerStateParam(params, hashParams, [
+        "showAll",
+        "show_all",
+      ])
+        .trim()
+        .toLowerCase();
+      const requestedShowAll =
+        showAllRaw === "1" || showAllRaw === "true" || showAllRaw === "yes";
+
+      initialUrlStateRef.current = {
+        run: resolvedRun,
+        spu: requestedSpuCode,
+        path: requestedPath,
+        tab: requestedTab,
+        showAll: requestedShowAll,
+        imageTab: requestedImageTab,
+        imagePath: requestedImagePath,
+      };
+      initialUrlStateParsedRef.current = true;
+      initialUrlShowAllPendingRef.current = requestedShowAll;
+      initialUrlImageTabPendingRef.current = requestedImageTab;
+      initialUrlImagePathPendingRef.current = requestedImagePath;
+      hasSyncedUrlStateRef.current = false;
+      lastUrlLocationStateRef.current = {
+        run: resolvedRun,
+        spu: requestedSpuCode,
+        path: requestedPath,
+      };
+      initialOpenSpuHandledRef.current = false;
+
+      setDraftTab(requestedTab);
+      setMainImageViewFilter(requestedImageTab === "variants" ? "var_only" : "all");
+      if (!requestedImagePath) {
+        setPreviewPath(null);
+      }
+      if (resolvedRun) {
+        const normalizedRun = normalizeExplorerLocationPath(resolvedRun);
+        const normalizedPath = normalizeExplorerLocationPath(requestedPath);
+        const nextPath =
+          normalizedPath &&
+          (normalizedPath === normalizedRun ||
+            normalizedPath.startsWith(`${normalizedRun}/`))
+            ? normalizedPath
+            : normalizedRun;
+        pendingFolderOpenPathRef.current = nextPath;
+        setSelectedFolder(normalizedRun);
+        setCurrentPath(nextPath);
+        setInitialOpenSpu("");
+      } else if (requestedSpuCode) {
+        setInitialOpenSpu(requestedSpuCode);
+      }
+      setDraftTableShowAll(requestedShowAll);
+    };
+
+    const handlePopState = () => {
+      applyUrlState();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, []);
 
   useEffect(() => {
@@ -7014,10 +7186,15 @@ export default function DraftExplorerPage() {
   );
 
   const fetchFolders = useCallback(async () => {
+    const requestSeq = foldersRequestSeqRef.current + 1;
+    foldersRequestSeqRef.current = requestSeq;
     try {
       const response = await fetch("/api/drafts/folders");
       if (!response.ok) return null;
       const payload = await response.json();
+      if (requestSeq !== foldersRequestSeqRef.current) {
+        return null;
+      }
       const items = (payload.items ?? []) as DraftFolder[];
       setFolders(items);
       if (items.length === 0) {
@@ -7026,8 +7203,9 @@ export default function DraftExplorerPage() {
         setFolderTree(null);
         return items;
       }
-      const selectedStillExists = items.some((item) => item.path === selectedFolder);
-      if (selectedFolder && selectedStillExists) {
+      const currentSelectedFolder = String(selectedFolderRef.current || "").trim();
+      const selectedStillExists = items.some((item) => item.path === currentSelectedFolder);
+      if (currentSelectedFolder && selectedStillExists) {
         return items;
       }
 
@@ -7055,6 +7233,9 @@ export default function DraftExplorerPage() {
       }
       if (!nextRunPath) return items;
       const nextPath = await resolveRequestedExplorerPathForRun(nextRunPath);
+      if (requestSeq !== foldersRequestSeqRef.current) {
+        return null;
+      }
       pendingFolderOpenPathRef.current = nextPath;
       setSelectedFolder(nextRunPath);
       setCurrentPath(nextPath);
@@ -7063,11 +7244,7 @@ export default function DraftExplorerPage() {
     } catch {
       return null;
     }
-  }, [
-    pickPreferredRunFolder,
-    resolveRequestedExplorerPathForRun,
-    selectedFolder,
-  ]);
+  }, [pickPreferredRunFolder, resolveRequestedExplorerPathForRun]);
 
   const fetchEntries = useCallback(
     async (pathValue: string, options?: { variantsPath?: string | null }) => {
@@ -7742,16 +7919,88 @@ export default function DraftExplorerPage() {
     } else {
       params.delete("showAll");
     }
+    if (mainImageViewFilter === "var_only") {
+      params.set("imgTab", "variants");
+    } else {
+      params.delete("imgTab");
+    }
+    const imagePathValue = normalizeExplorerLocationPath(previewPath || "");
+    if (imagePathValue) {
+      params.set("img", imagePathValue);
+    } else {
+      params.delete("img");
+    }
     params.delete("open_spu");
     params.delete("show_all");
+    params.delete("imageTab");
+    params.delete("image");
+
+    const hashParams = new URLSearchParams();
+    if (runValue) {
+      hashParams.set("run", runValue);
+    }
+    if (spuValue) {
+      hashParams.set("spu", spuValue);
+    }
+    if (pathValue) {
+      hashParams.set("path", pathValue);
+    }
+    if (draftTab !== "spu") {
+      hashParams.set("tab", draftTab);
+    }
+    if (draftTableShowAll) {
+      hashParams.set("showAll", "1");
+    }
+    if (mainImageViewFilter === "var_only") {
+      hashParams.set("imgTab", "variants");
+    }
+    if (imagePathValue) {
+      hashParams.set("img", imagePathValue);
+    }
 
     const nextSearch = params.toString();
-    const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
+    const nextHash = hashParams.toString();
+    const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${
+      nextHash ? `#${nextHash}` : ""
+    }`;
     const currentUrl = `${url.pathname}${url.search}${url.hash}`;
+    const previousLocationState = lastUrlLocationStateRef.current;
+    const locationChanged =
+      previousLocationState.run !== runValue ||
+      previousLocationState.spu !== spuValue ||
+      previousLocationState.path !== pathValue;
+    const shouldPushNavigationEntry =
+      hasSyncedUrlStateRef.current && locationChanged;
+
     if (nextUrl !== currentUrl) {
-      window.history.replaceState(window.history.state, "", nextUrl);
+      const method = shouldPushNavigationEntry ? "pushState" : "replaceState";
+      try {
+        // Keep state payload clone-safe across browsers; Next router can store
+        // non-trivial state values that sometimes fail to clone.
+        window.history[method](null, "", nextUrl);
+      } catch {
+        try {
+          window.history[method]({}, "", nextUrl);
+        } catch {
+          // Last-resort hard navigation if history API update is blocked.
+          window.location.assign(nextUrl);
+        }
+      }
     }
-  }, [currentPath, draftTab, draftTableShowAll, selectedFolder]);
+    lastUrlLocationStateRef.current = {
+      run: runValue,
+      spu: spuValue,
+      path: pathValue,
+    };
+    hasSyncedUrlStateRef.current = true;
+  }, [
+    currentPath,
+    draftTab,
+    draftTableShowAll,
+    mainImageViewFilter,
+    previewPath,
+    selectedFolder,
+  ]);
 
   useEffect(() => {
     const previousSpuPath = previousSelectedSpuPathForDraftTableRef.current;
@@ -8426,6 +8675,10 @@ export default function DraftExplorerPage() {
   }, [selectedFolder, fetchFolderTree]);
 
   useEffect(() => {
+    selectedFolderRef.current = String(selectedFolder || "").trim();
+  }, [selectedFolder]);
+
+  useEffect(() => {
     currentPathRef.current = String(currentPath || "");
   }, [currentPath]);
 
@@ -8721,6 +8974,73 @@ export default function DraftExplorerPage() {
     },
     [isImage]
   );
+
+  const handleSelectImageCard = useCallback(
+    (
+      pathValue: string,
+      options?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }
+    ) => {
+      const shiftRangeRequested = Boolean(options?.shiftKey);
+      const additiveSelectionRequested = Boolean(options?.ctrlKey || options?.metaKey);
+      setSelectedFiles((prev) => {
+        const next = new Set(prev);
+        const imagePaths = displayImageEntriesRef.current
+          .filter((entry) => entry.type === "file" && isImage(entry.name))
+          .map((entry) => entry.path);
+
+        if (shiftRangeRequested) {
+          const anchorPath = selectionAnchorImagePathRef.current;
+          const anchorIndex = anchorPath ? imagePaths.indexOf(anchorPath) : -1;
+          const targetIndex = imagePaths.indexOf(pathValue);
+          if (anchorIndex >= 0 && targetIndex >= 0) {
+            if (!additiveSelectionRequested) {
+              next.clear();
+            }
+            const [start, end] =
+              anchorIndex <= targetIndex
+                ? [anchorIndex, targetIndex]
+                : [targetIndex, anchorIndex];
+            for (let index = start; index <= end; index += 1) {
+              next.add(imagePaths[index]);
+            }
+            selectionAnchorImagePathRef.current = pathValue;
+            return next;
+          }
+        }
+
+        if (additiveSelectionRequested) {
+          if (next.has(pathValue)) {
+            next.delete(pathValue);
+          } else {
+            next.add(pathValue);
+          }
+          selectionAnchorImagePathRef.current = pathValue;
+          return next;
+        }
+
+        if (next.size === 1 && next.has(pathValue)) {
+          selectionAnchorImagePathRef.current = pathValue;
+          return next;
+        }
+
+        next.clear();
+        next.add(pathValue);
+        selectionAnchorImagePathRef.current = pathValue;
+        return next;
+      });
+    },
+    [isImage]
+  );
+
+  const syncSelectionForContextMenuEntry = useCallback((entry: DraftEntry) => {
+    if (entry.type !== "file") return;
+    setSelectedTreeFolders(new Set());
+    setSelectedFiles((prev) => {
+      if (prev.has(entry.path)) return prev;
+      selectionAnchorImagePathRef.current = entry.path;
+      return new Set([entry.path]);
+    });
+  }, []);
 
   const handleToggleAllNonImageFiles = useCallback(() => {
     setSelectedFiles((prev) => {
@@ -11044,6 +11364,24 @@ export default function DraftExplorerPage() {
                     : item
                 )
               );
+              setMainViewVariantImageEntries((prev) =>
+                prev.map((item) =>
+                  item.path === originalPath
+                    ? {
+                        ...item,
+                        modifiedAt: now,
+                        pixelQualityScore:
+                          nextPixelQualityScore !== null
+                            ? nextPixelQualityScore
+                            : item.pixelQualityScore ?? null,
+                        zimageUpscaled:
+                          provider === "zimage" && mode === "upscale"
+                            ? true
+                            : item.zimageUpscaled,
+                      }
+                    : item
+                )
+              );
               // Safety timeout to avoid stuck spinners if the browser never fires onLoad.
               setTimeout(() => {
                 setReloadingImagePaths((prev) => {
@@ -11669,6 +12007,16 @@ export default function DraftExplorerPage() {
               };
             })
           );
+          setMainViewVariantImageEntries((prev) =>
+            prev.map((item) => {
+              if (!refreshedScoreByPath.has(item.path)) return item;
+              return {
+                ...item,
+                modifiedAt: now,
+                pixelQualityScore: refreshedScoreByPath.get(item.path) ?? null,
+              };
+            })
+          );
         }
         const latestPath = String(currentPathRef.current || "");
         const canRefreshActiveFolder = Boolean(pathAtStart && latestPath === pathAtStart);
@@ -11679,6 +12027,11 @@ export default function DraftExplorerPage() {
           if (!canRefreshActiveFolder) {
             const now = new Date().toISOString();
             setEntries((prev) =>
+              prev.map((item) =>
+                item.path === originalPath ? { ...item, modifiedAt: now } : item
+              )
+            );
+            setMainViewVariantImageEntries((prev) =>
               prev.map((item) =>
                 item.path === originalPath ? { ...item, modifiedAt: now } : item
               )
@@ -13159,7 +13512,9 @@ export default function DraftExplorerPage() {
       const selected = selectedSource.filter(
         (candidate) => candidate.type === "file" && selectedFiles.has(candidate.path)
       );
-      if (entry.type === "file" && selected.length > 1) {
+      const entryIsSelected =
+        entry.type === "file" && selectedFiles.has(entry.path);
+      if (entryIsSelected && selected.length > 1) {
         const filtered = options?.imageOnly
           ? selected.filter((candidate) => isImage(candidate.name))
           : selected;
@@ -15513,6 +15868,72 @@ export default function DraftExplorerPage() {
   }, [currentPath, imageTabTargets.mainPath, imageTabTargets.variantsPath]);
 
   useEffect(() => {
+    const requestedImageTab = initialUrlImageTabPendingRef.current;
+    if (!requestedImageTab) return;
+
+    if (requestedImageTab === "variants") {
+      const mainPath = String(imageTabTargets.mainPath || "").trim();
+      if (!mainPath) return;
+      setMainImageViewFilter("var_only");
+      if (String(currentPath || "").trim() !== mainPath) {
+        setCurrentPath(mainPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+
+    if (requestedImageTab === "main") {
+      const mainPath = String(imageTabTargets.mainPath || "").trim();
+      if (!mainPath) return;
+      setMainImageViewFilter("all");
+      if (String(currentPath || "").trim() !== mainPath) {
+        setCurrentPath(mainPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+
+    if (requestedImageTab === "others") {
+      const othersPath = String(imageTabTargets.othersPaths[0] || "").trim();
+      if (!othersPath) return;
+      setMainImageViewFilter("all");
+      if (String(currentPath || "").trim() !== othersPath) {
+        setCurrentPath(othersPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+
+    if (requestedImageTab === "ocr") {
+      const ocrPath = String(imageTabTargets.ocrPath || "").trim();
+      if (!ocrPath) return;
+      setMainImageViewFilter("all");
+      if (String(currentPath || "").trim() !== ocrPath) {
+        setCurrentPath(ocrPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+
+    if (requestedImageTab === "downloaded") {
+      const downloadedPath = String(imageTabTargets.downloadedPath || "").trim();
+      if (!downloadedPath) return;
+      setMainImageViewFilter("all");
+      if (String(currentPath || "").trim() !== downloadedPath) {
+        setCurrentPath(downloadedPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+  }, [
+    currentPath,
+    imageTabTargets.downloadedPath,
+    imageTabTargets.mainPath,
+    imageTabTargets.ocrPath,
+    imageTabTargets.othersPaths,
+  ]);
+
+  useEffect(() => {
     const pathValue = String(currentPath || "").trim();
     if (!pathValue) return;
     if (entriesLoading || movingEntry) return;
@@ -15556,12 +15977,6 @@ export default function DraftExplorerPage() {
     movingEntry,
     persistImageOrderForFolder,
   ]);
-
-  useEffect(() => {
-    const variantsPath = String(imageTabTargets.variantsPath || "").trim();
-    if (!variantsPath) return;
-    variantEntriesCacheRef.current.set(variantsPath, mainViewVariantImageEntries);
-  }, [imageTabTargets.variantsPath, mainViewVariantImageEntries]);
 
   const variantAssignedImageFileNameKeysForCurrentSpu = useMemo(() => {
     const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
@@ -15678,6 +16093,26 @@ export default function DraftExplorerPage() {
     mainViewShowsMergedImages,
     mainViewVariantImageEntries,
   ]);
+
+  useEffect(() => {
+    const requestedImagePath = normalizeExplorerLocationPath(
+      initialUrlImagePathPendingRef.current
+    );
+    if (!requestedImagePath) return;
+    const existsInCurrentView = displayImageEntries.some(
+      (entry) => String(entry.path || "").trim() === requestedImagePath
+    );
+    if (!existsInCurrentView) {
+      if (!entriesLoading) {
+        initialUrlImagePathPendingRef.current = "";
+      }
+      return;
+    }
+    if (previewPath !== requestedImagePath) {
+      setPreviewPath(requestedImagePath);
+    }
+    initialUrlImagePathPendingRef.current = "";
+  }, [displayImageEntries, entriesLoading, previewPath]);
 
   useEffect(() => {
     displayImageEntriesRef.current = displayImageEntries;
@@ -19944,6 +20379,7 @@ export default function DraftExplorerPage() {
                             }}
                             onContextMenu={(event) => {
                               event.preventDefault();
+                              syncSelectionForContextMenuEntry(entry);
                               setContextMenuSubmenu(null);
                               setContextMenu({
                                 entry,
@@ -19956,9 +20392,10 @@ export default function DraftExplorerPage() {
                             <div
                               className={styles.mediaSquare}
                               onClick={(event) => {
-                                handleToggleFile(entry.path, {
+                                handleSelectImageCard(entry.path, {
                                   shiftKey: event.shiftKey,
-                                  imageRange: true,
+                                  ctrlKey: event.ctrlKey,
+                                  metaKey: event.metaKey,
                                 });
                               }}
                               role="button"
@@ -19966,9 +20403,10 @@ export default function DraftExplorerPage() {
                               onKeyDown={(event) => {
                                 if (event.key !== "Enter" && event.key !== " ") return;
                                 event.preventDefault();
-                                handleToggleFile(entry.path, {
+                                handleSelectImageCard(entry.path, {
                                   shiftKey: event.shiftKey,
-                                  imageRange: true,
+                                  ctrlKey: event.ctrlKey,
+                                  metaKey: event.metaKey,
                                 });
                               }}
                             >
@@ -20315,6 +20753,7 @@ export default function DraftExplorerPage() {
                                 }}
                                 onContextMenu={(event) => {
                                   event.preventDefault();
+                                  syncSelectionForContextMenuEntry(entry);
                                   setContextMenuSubmenu(null);
                                   setContextMenu({
                                     entry,
@@ -23050,6 +23489,7 @@ export default function DraftExplorerPage() {
                 onContextMenu={(event) => {
                   event.preventDefault();
                   if (!previewEntry) return;
+                  syncSelectionForContextMenuEntry(previewEntry);
                   setContextMenuSubmenu(null);
                   setContextMenuNestedSubmenu(null);
                   setContextMenu({

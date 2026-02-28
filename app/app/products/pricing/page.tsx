@@ -339,6 +339,7 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [recalcRunning, setRecalcRunning] = useState(false);
+  const [b2cRecalcRunning, setB2cRecalcRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -612,27 +613,46 @@ export default function PricingPage() {
     }
   };
 
-  const handleRecalc = async () => {
-    setRecalcRunning(true);
+  const runRecalc = async (scope: "all" | "b2c") => {
+    const setRunning = scope === "all" ? setRecalcRunning : setB2cRecalcRunning;
+    setRunning(true);
     setMessage(null);
     setSummary(null);
     try {
       const response = await fetch("/api/pricing/recalculate", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
       });
       if (!response.ok) throw new Error(await response.text());
       const payload = await response.json();
       const b2bRows = Number(payload?.b2b?.updatedRows ?? payload.updatedRows ?? 0);
       const b2cRows = Number(payload?.b2c?.updatedRows ?? 0);
-      const b2cVariants = Number(payload?.updatedVariantPrices ?? 0);
-      setSummary(
-        `${t("pricing.recalcSummary")} B2B=${b2bRows}, B2C=${b2cRows}, B2C variants=${b2cVariants}`
+      const b2cVariants = Number(
+        payload?.b2c?.processedVariants ?? payload?.updatedVariantPrices ?? 0
       );
+      if (scope === "b2c") {
+        setSummary(
+          `${t("pricing.recalcB2cSummary")} B2C=${b2cRows}, B2C variants=${b2cVariants}`
+        );
+      } else {
+        setSummary(
+          `${t("pricing.recalcSummary")} B2B=${b2bRows}, B2C=${b2cRows}, B2C variants=${b2cVariants}`
+        );
+      }
     } catch (error) {
       setMessage((error as Error).message || "Recalculate failed.");
     } finally {
-      setRecalcRunning(false);
+      setRunning(false);
     }
+  };
+
+  const handleRecalc = async () => {
+    await runRecalc("all");
+  };
+
+  const handleRecalcB2C = async () => {
+    await runRecalc("b2c");
   };
 
   const handleExportShipping = async () => {
@@ -681,6 +701,11 @@ export default function PricingPage() {
     if (recalcRunning) return t("pricing.recalculating");
     return t("pricing.recalculate");
   }, [recalcRunning, t]);
+
+  const b2cActionLabel = useMemo(() => {
+    if (b2cRecalcRunning) return t("pricing.recalculatingB2c");
+    return t("pricing.recalculateB2c");
+  }, [b2cRecalcRunning, t]);
 
   const formatRangeSummary = (
     fromValue: string,
@@ -1044,9 +1069,16 @@ export default function PricingPage() {
           <Button
             appearance="outline"
             onClick={handleRecalc}
-            disabled={recalcRunning || loading || !hasData}
+            disabled={recalcRunning || b2cRecalcRunning || loading || !hasData}
           >
             {actionLabel}
+          </Button>
+          <Button
+            appearance="outline"
+            onClick={handleRecalcB2C}
+            disabled={recalcRunning || b2cRecalcRunning || loading || !hasData}
+          >
+            {b2cActionLabel}
           </Button>
         </div>
       </Card>

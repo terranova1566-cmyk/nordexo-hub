@@ -606,6 +606,11 @@ const useStyles = makeStyles({
       backgroundColor: "#edf9ee",
     },
   },
+  tableStateCell: {
+    textAlign: "center",
+    paddingTop: "20px",
+    paddingBottom: "20px",
+  },
   selectCol: {
     width: "52px",
     minWidth: "52px",
@@ -2548,7 +2553,7 @@ export default function DigiDealProductSuggestionsPage() {
   const allowCnyPriceEditing = isAdminViewer;
 
   const [items, setItems] = useState<SuggestionItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [messageClosing, setMessageClosing] = useState(false);
@@ -5100,19 +5105,19 @@ export default function DigiDealProductSuggestionsPage() {
           </TableHeader>
           <TableBody>
             {filteredItems.length === 0 ? (
-              <TableRow>
-                <TableCell>No suggestions match the current filters.</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-                <TableCell>-</TableCell>
-              </TableRow>
+              isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={11} className={styles.tableStateCell}>
+                    <Spinner label="Loading products" />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={11} className={styles.tableStateCell}>
+                    No suggestions match the current filters.
+                  </TableCell>
+                </TableRow>
+              )
             ) : (
               filteredItems.map((item) => {
                 const searching = Boolean(activeSearchIds[item.id]);

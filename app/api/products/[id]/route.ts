@@ -150,6 +150,123 @@ const normalizeList = (value: unknown) => {
   return parts.length ? parts : null;
 };
 
+const SHOPIFY_TINGELO_PRICE_TYPE = "shopify_tingelo";
+const SHOPIFY_TINGELO_MARKET = "SE";
+const SHOPIFY_TINGELO_CURRENCY = "SEK";
+const B2B_FIXED_PRICE_TYPE = "b2b_fixed";
+const PURCHASE_PRICE_TYPE = "purchase";
+const B2B_MARKET_CURRENCY: Record<"SE" | "NO" | "DK" | "FI", string> = {
+  SE: "SEK",
+  NO: "NOK",
+  DK: "DKK",
+  FI: "EUR",
+};
+
+const loadTingeloShopId = async (adminClient: AdminClient) => {
+  const { data, error } = await adminClient
+    .from("shops")
+    .select("id, code, shop_domain")
+    .or("code.eq.shopify_tingelo,shop_domain.eq.tingelo.myshopify.com")
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Unable to load shopify_tingelo shop id: ${error.message}`);
+  }
+  return data?.id ? String(data.id) : null;
+};
+
+const upsertCatalogVariantPrice = async (input: {
+  adminClient: AdminClient;
+  variantId: string;
+  priceType: string;
+  currency: string;
+  market: string | null;
+  shopId: string | null;
+  nowIso: string;
+  source: string;
+  price?: number | null;
+  compareAtPrice?: number | null;
+  cost?: number | null;
+}) => {
+  const {
+    adminClient,
+    variantId,
+    priceType,
+    currency,
+    market,
+    shopId,
+    nowIso,
+    source,
+  } = input;
+
+  const hasPrice = Object.prototype.hasOwnProperty.call(input, "price");
+  const hasCompare = Object.prototype.hasOwnProperty.call(input, "compareAtPrice");
+  const hasCost = Object.prototype.hasOwnProperty.call(input, "cost");
+  if (!hasPrice && !hasCompare && !hasCost) return;
+
+  let query = adminClient
+    .from("catalog_variant_prices")
+    .select("id")
+    .eq("catalog_variant_id", variantId)
+    .eq("price_type", priceType)
+    .eq("currency", currency)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (shopId) {
+    query = query.eq("shop_id", shopId);
+  } else {
+    query = query.is("shop_id", null).eq("market", market);
+  }
+
+  const { data: existingRow, error: existingError } = await query.maybeSingle();
+  if (existingError) {
+    throw new Error(`Unable to read catalog_variant_prices row: ${existingError.message}`);
+  }
+
+  const patch: Record<string, unknown> = {
+    updated_at: nowIso,
+    deleted_at: null,
+    source,
+  };
+  if (hasPrice) patch.price = input.price ?? null;
+  if (hasCompare) patch.compare_at_price = input.compareAtPrice ?? null;
+  if (hasCost) patch.cost = input.cost ?? null;
+
+  if (existingRow?.id) {
+    const { error } = await adminClient
+      .from("catalog_variant_prices")
+      .update(patch)
+      .eq("id", existingRow.id);
+    if (error) {
+      throw new Error(`Unable to update catalog_variant_prices row: ${error.message}`);
+    }
+    return;
+  }
+
+  const insertPayload: Record<string, unknown> = {
+    catalog_variant_id: variantId,
+    price_type: priceType,
+    shop_id: shopId,
+    market,
+    currency,
+    source,
+    created_at: nowIso,
+    updated_at: nowIso,
+    deleted_at: null,
+    price: hasPrice ? input.price ?? null : null,
+    compare_at_price: hasCompare ? input.compareAtPrice ?? null : null,
+    cost: hasCost ? input.cost ?? null : null,
+  };
+
+  const { error: insertError } = await adminClient
+    .from("catalog_variant_prices")
+    .insert(insertPayload);
+  if (insertError) {
+    throw new Error(`Unable to insert catalog_variant_prices row: ${insertError.message}`);
+  }
+};
+
 const IMAGE_EXTENSION_FALLBACKS = [".jpg", ".jpeg", ".png", ".webp"] as const;
 
 const urlFilename = (value: string) => {
@@ -678,6 +795,26 @@ export async function PATCH(
   }
 
   if (variantsPayload.length > 0) {
+    const nowIso = new Date().toISOString();
+    let tingeloShopId: string | null = null;
+    const needsTingeloShopId = variantsPayload.some(
+      (entry: any) =>
+        entry &&
+        (Object.prototype.hasOwnProperty.call(entry, "price") ||
+          Object.prototype.hasOwnProperty.call(entry, "compare_at_price") ||
+          Object.prototype.hasOwnProperty.call(entry, "cost"))
+    );
+    if (needsTingeloShopId) {
+      try {
+        tingeloShopId = await loadTingeloShopId(adminClient);
+      } catch (error) {
+        return NextResponse.json(
+          { error: (error as Error).message },
+          { status: 500 }
+        );
+      }
+    }
+
     for (const entry of variantsPayload) {
       if (!entry?.id) continue;
       const variantUpdates: Record<string, unknown> = {};
@@ -745,6 +882,88 @@ export async function PATCH(
       if (variantError) {
         return NextResponse.json(
           { error: variantError.message },
+          { status: 500 }
+        );
+      }
+
+      try {
+        const priceProvided = Object.prototype.hasOwnProperty.call(
+          variantUpdates,
+          "price"
+        );
+        const compareProvided = Object.prototype.hasOwnProperty.call(
+          variantUpdates,
+          "compare_at_price"
+        );
+        const costProvided = Object.prototype.hasOwnProperty.call(
+          variantUpdates,
+          "cost"
+        );
+
+        if ((priceProvided || compareProvided || costProvided) && tingeloShopId) {
+          await upsertCatalogVariantPrice({
+            adminClient,
+            variantId: String(entry.id),
+            priceType: SHOPIFY_TINGELO_PRICE_TYPE,
+            market: SHOPIFY_TINGELO_MARKET,
+            shopId: tingeloShopId,
+            currency: SHOPIFY_TINGELO_CURRENCY,
+            nowIso,
+            source: "app.products.patch",
+            ...(priceProvided
+              ? { price: (variantUpdates.price as number | null) ?? null }
+              : {}),
+            ...(compareProvided
+              ? {
+                  compareAtPrice:
+                    (variantUpdates.compare_at_price as number | null) ?? null,
+                }
+              : {}),
+            ...(costProvided
+              ? { cost: (variantUpdates.cost as number | null) ?? null }
+              : {}),
+          });
+        }
+
+        for (const market of ["SE", "NO", "DK", "FI"] as const) {
+          const fieldName = `b2b_dropship_price_${market.toLowerCase()}`;
+          if (!Object.prototype.hasOwnProperty.call(variantUpdates, fieldName)) {
+            continue;
+          }
+          await upsertCatalogVariantPrice({
+            adminClient,
+            variantId: String(entry.id),
+            priceType: B2B_FIXED_PRICE_TYPE,
+            market,
+            shopId: null,
+            currency: B2B_MARKET_CURRENCY[market],
+            nowIso,
+            source: "app.products.patch",
+            price: (variantUpdates[fieldName] as number | null) ?? null,
+          });
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            variantUpdates,
+            "purchase_price_cny"
+          )
+        ) {
+          await upsertCatalogVariantPrice({
+            adminClient,
+            variantId: String(entry.id),
+            priceType: PURCHASE_PRICE_TYPE,
+            market: "CN",
+            shopId: null,
+            currency: "CNY",
+            nowIso,
+            source: "app.products.patch",
+            price: (variantUpdates.purchase_price_cny as number | null) ?? null,
+          });
+        }
+      } catch (error) {
+        return NextResponse.json(
+          { error: (error as Error).message },
           { status: 500 }
         );
       }

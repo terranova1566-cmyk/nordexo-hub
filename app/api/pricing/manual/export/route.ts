@@ -295,6 +295,7 @@ export async function POST(request: Request) {
         "b2b_fixed",
         "b2b_calc",
         "b2b_dropship",
+        "b2c_calc",
         ...SHOPIFY_PRICE_TYPES,
       ])
       .is("deleted_at", null);
@@ -354,6 +355,14 @@ export async function POST(request: Request) {
     const calc = readPrice("b2b_calc");
     if (calc !== undefined && calc !== null) return calc;
     return fallback ?? null;
+  };
+
+  const resolveB2CPrice = (
+    entry: Map<string, Map<string, number | null>> | undefined
+  ) => {
+    if (!entry) return null;
+    const value = entry.get("b2c_calc")?.get("SE");
+    return value !== undefined && value !== null ? value : null;
   };
 
   const workbook = new ExcelJS.Workbook();
@@ -437,7 +446,7 @@ export async function POST(request: Request) {
         b2bNo,
         b2bDk,
         b2bFi,
-        b2c: rawVariant.price ?? "",
+        b2c: resolveB2CPrice(priceEntry) ?? "",
         shopifyTingeloPrice: shopifyPrices["shopify_tingelo"]?.price ?? null,
         shopifyTingeloCompare: shopifyPrices["shopify_tingelo"]?.compare ?? null,
         shopifyWellandoPrice: shopifyPrices["shopify_wellando"]?.price ?? null,

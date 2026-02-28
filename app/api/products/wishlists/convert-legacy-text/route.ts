@@ -645,6 +645,7 @@ const publishDraftSpusTextOnly = async (adminClient: AdminClient, spus: string[]
       stgSkuRows.push({
         spu,
         sku,
+        inventory_quantity: "1000",
         shipping_class: shippingClass,
         hs_code: hsCode,
         shipping_name_en: shippingNameEn,

@@ -397,6 +397,11 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     color: tokens.colorNeutralForeground2,
   },
+  deliveryBadgeDigiDeal: {
+    backgroundColor: "#deecff",
+    border: "1px solid #98c4ff",
+    color: "#0b4d8c",
+  },
   imageCol: {
     width: "83px",
     paddingLeft: "8px",
@@ -422,6 +427,16 @@ const useStyles = makeStyles({
     minWidth: "160px",
     width: "160px",
     maxWidth: "180px",
+  },
+  deliveryCol: {
+    minWidth: "120px",
+    width: "120px",
+    maxWidth: "140px",
+  },
+  publishedCol: {
+    minWidth: "180px",
+    width: "180px",
+    maxWidth: "220px",
   },
   productStack: {
     display: "flex",
@@ -657,6 +672,23 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     gap: "6px",
   },
+  deliveryCell: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "6px",
+  },
+  publishedCell: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "6px",
+  },
+  publishedBadge: {
+    backgroundColor: "#edf5ff",
+    border: "1px solid #b5d0ff",
+    color: "#0b4d8c",
+  },
   supplierName: {
     maxWidth: "100%",
     overflow: "hidden",
@@ -848,6 +880,8 @@ type ProductListItem = {
   variant_count: number;
   is_exported: boolean;
   latest_exported_at: string | null;
+  published_channels?: string[];
+  delivery_partners?: string[];
   thumbnail_url?: string | null;
   small_image_url?: string | null;
   price_min?: number | null;
@@ -891,6 +925,11 @@ const pageSizeOptions = [25, 50, 100, 200];
 const priceFormatter = new Intl.NumberFormat("sv-SE", {
   maximumFractionDigits: 0,
 });
+const PUBLISHED_CHANNEL_RANK: Record<string, number> = {
+  tingelo: 0,
+  sparkler: 1,
+  wellando: 2,
+};
 const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
 
 const formatPriceValue = (value: number) => priceFormatter.format(value);
@@ -944,6 +983,14 @@ const toExternalUrl = (value: string | null | undefined) => {
   if (/^\/\//.test(raw)) return `https:${raw}`;
   return `https://${raw.replace(/^\/+/, "")}`;
 };
+
+const sortPublishedChannels = (channels: string[]) =>
+  channels
+    .slice()
+    .sort(
+      (left, right) =>
+        (PUBLISHED_CHANNEL_RANK[left] ?? 99) - (PUBLISHED_CHANNEL_RANK[right] ?? 99)
+    );
 
 const formatRangeSummary = (
   from: string,
@@ -2063,9 +2110,40 @@ function ProductsPageInner() {
             .toLowerCase() || "active";
         const isReEditing = workflowStatus === "re_editing";
         const workflowStatusLabel = isReEditing ? "Re-editing" : "Active";
-        const supplierName =
-          String(product.vendor ?? "").trim() || t("common.notAvailable");
+        const reEditParams = new URLSearchParams();
+        reEditParams.set("tab", "spu");
+        if (product.workflow_run) {
+          reEditParams.set("run", product.workflow_run);
+        }
+        if (product.spu) {
+          reEditParams.set("spu", product.spu);
+        }
+        const reEditHref = `/app/production/draft-explorer?${reEditParams.toString()}`;
+        const canOpenReEdit = isReEditing && reEditParams.toString().length > 0;
         const supplierUrl = toExternalUrl(product.supplier_1688_url);
+        const deliveryPartners = Array.isArray(product.delivery_partners)
+          ? product.delivery_partners
+          : [];
+        const hasDigiDealDelivery = deliveryPartners.includes("digideal");
+        const publishedChannels = sortPublishedChannels(
+          Array.isArray(product.published_channels)
+            ? product.published_channels.filter((value) => Boolean(value))
+            : []
+        );
+        const publishedChannelLabels = publishedChannels
+          .map((channel) => {
+            if (channel === "tingelo") {
+              return t("products.published.channel.tingelo");
+            }
+            if (channel === "sparkler") {
+              return t("products.published.channel.sparkler");
+            }
+            if (channel === "wellando") {
+              return t("products.published.channel.wellando");
+            }
+            return null;
+          })
+          .filter((value): value is string => Boolean(value));
         const isCreatedRecent = isDateWithinDays(
           product.created_at,
           RECENT_DAYS_WINDOW
@@ -2158,9 +2236,6 @@ function ProductsPageInner() {
             </TableCell>
             <TableCell className={styles.supplierCol}>
               <div className={styles.supplierCell}>
-                <Text size={200} className={styles.supplierName}>
-                  {supplierName}
-                </Text>
                 {supplierUrl ? (
                   <a
                     href={supplierUrl}
@@ -2181,16 +2256,6 @@ function ProductsPageInner() {
                   </span>
                 )}
               </div>
-            </TableCell>
-            <TableCell>
-              <span
-                className={mergeClasses(
-                  styles.statusBadge,
-                  isReEditing ? styles.statusBadgeReEditing : styles.statusBadgeActive
-                )}
-              >
-                {workflowStatusLabel}
-              </span>
             </TableCell>
             <TableCell>
               <div className={styles.dateStack}>
@@ -2368,6 +2433,52 @@ function ProductsPageInner() {
               <Link href={`/app/products/${product.id}`} className={styles.viewLink}>
                 {t("common.view")}
               </Link>
+            </TableCell>
+            <TableCell className={styles.publishedCol}>
+              <div className={styles.publishedCell}>
+                {publishedChannelLabels.map((label) => (
+                  <span
+                    key={`${product.id}-${label}`}
+                    className={mergeClasses(styles.statusBadge, styles.publishedBadge)}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </TableCell>
+            <TableCell>
+              {canOpenReEdit ? (
+                <Link
+                  href={reEditHref}
+                  className={styles.viewLink}
+                  title="Open in Draft Explorer"
+                >
+                  editing
+                </Link>
+              ) : (
+                <span
+                  className={mergeClasses(
+                    styles.statusBadge,
+                    isReEditing ? styles.statusBadgeReEditing : styles.statusBadgeActive
+                  )}
+                >
+                  {workflowStatusLabel}
+                </span>
+              )}
+            </TableCell>
+            <TableCell className={styles.deliveryCol}>
+              <div className={styles.deliveryCell}>
+                {hasDigiDealDelivery ? (
+                  <span
+                    className={mergeClasses(
+                      styles.statusBadge,
+                      styles.deliveryBadgeDigiDeal
+                    )}
+                  >
+                    {t("products.delivery.partner.digideal")}
+                  </span>
+                ) : null}
+              </div>
             </TableCell>
             <TableCell>
               <div className={styles.selectCheckboxWrap}>
@@ -3023,13 +3134,19 @@ function ProductsPageInner() {
               <TableHeaderCell className={styles.supplierCol}>
                 {t("products.table.supplier")}
               </TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
               <TableHeaderCell>
                 {t("products.table.createdUpdated")}
               </TableHeaderCell>
               <TableHeaderCell>{t("products.table.variants")}</TableHeaderCell>
               <TableHeaderCell>{t("products.table.save")}</TableHeaderCell>
               <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
+              <TableHeaderCell className={styles.publishedCol}>
+                {t("products.table.published")}
+              </TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell className={styles.deliveryCol}>
+                {t("products.table.delivery")}
+              </TableHeaderCell>
               <TableHeaderCell className={styles.selectCol}>
                 <div className={styles.selectCheckboxWrap}>
                   <Checkbox
@@ -3052,7 +3169,7 @@ function ProductsPageInner() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className={styles.tableStatusCell}>
+                <TableCell colSpan={12} className={styles.tableStatusCell}>
                   <div className={styles.tableLoadingContent}>
                     <Spinner appearance="primary" />
                     <Text size={200} className={styles.tableLoadingLabel}>
@@ -3063,7 +3180,7 @@ function ProductsPageInner() {
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className={styles.tableStatusCell}>
+                <TableCell colSpan={12} className={styles.tableStatusCell}>
                   <div className={styles.tableStatusContent}>
                     <Text>{t("products.empty")}</Text>
                   </div>

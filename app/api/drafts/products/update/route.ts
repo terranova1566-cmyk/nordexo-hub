@@ -8,6 +8,12 @@ const ALLOWED_FIELDS = new Set([
   "draft_source",
   "draft_supplier_1688_url",
 ]);
+const BIGINT_ID_RE = /^\d+$/;
+
+const normalizeDraftId = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
 
 function getAdminClient() {
   const supabaseUrl =
@@ -45,8 +51,9 @@ export async function POST(request: Request) {
     field?: string;
     value?: string | number | null;
   };
+  const draftId = normalizeDraftId(id);
 
-  if (!id || !field || !ALLOWED_FIELDS.has(field)) {
+  if (!draftId || !field || !ALLOWED_FIELDS.has(field)) {
     return NextResponse.json({ error: "Invalid update." }, { status: 400 });
   }
 
@@ -59,7 +66,7 @@ export async function POST(request: Request) {
   const { error } = await adminClient
     .from("draft_products")
     .update({ [field]: normalizedUpdateValue })
-    .eq("id", id);
+    .eq("id", draftId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

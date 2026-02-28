@@ -14,7 +14,7 @@ import {
   normalizeImageNamesInFolder,
   validateImageFolder,
 } from "@/lib/image-names";
-import { DRAFT_ROOT } from "@/lib/drafts";
+import { DRAFT_ROOT, getDraftRunType } from "@/lib/drafts";
 import { archiveDraftImageVersion } from "@/lib/draft-image-versions";
 import {
   listPendingAiEdits,
@@ -44,6 +44,7 @@ const PUBLISH_IMAGE_MAX_DIMENSION_PX = 1000;
 const PUBLISH_IMAGE_QUALITY = 90;
 const DEFAULT_TAX_CODE = "HST20";
 const DEFAULT_COUNTRY_OF_ORIGIN = "CN";
+const DEFAULT_VARIANT_INVENTORY_QUANTITY = "1000";
 const DIGI_TAG_IN_FILE_NAME = /(?:\(\s*DIGI?\s*\)|(?:^|[-_ ])DIGI?(?:[-_ .)]|$))/i;
 const PRODUCT_CATEGORIZER_SCRIPT =
   process.env.PRODUCT_CATEGORIZER_SCRIPT ||
@@ -231,6 +232,26 @@ const normalizeText = (value: unknown) => {
 const CJK_TEXT_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
 const SIZE_TEXT_REGEX =
   /(?:\d+(?:[.,]\d+)?\s*(?:mm|cm|m|ml|cl|l|g|kg|inch|in|oz)\b|(?:^|\b)(?:höjd|bredd|längd|diameter|storlek|size)(?:\b|\s))/i;
+const DEFAULT_OPTION_NAME_BY_INDEX = {
+  1: "Antal",
+  2: "Färg",
+  3: "Storlek",
+  4: "Alternativ",
+} as const;
+
+type OptionNamePresence = {
+  option1: boolean;
+  option2: boolean;
+  option3: boolean;
+  option4: boolean;
+};
+
+type OptionNameSet = {
+  option1_name: string | null;
+  option2_name: string | null;
+  option3_name: string | null;
+  option4_name: string | null;
+};
 
 const hasCjkText = (value: string | null) =>
   Boolean(value && CJK_TEXT_REGEX.test(value));
@@ -365,6 +386,45 @@ const normalizeVariantOptionLocalization = (input: {
     variation_amount_se: variationAmountSe,
   };
 };
+
+const createEmptyOptionNamePresence = (): OptionNamePresence => ({
+  option1: false,
+  option2: false,
+  option3: false,
+  option4: false,
+});
+
+const resolveOptionNameForPublish = (
+  value: string | null,
+  fallback: string | null
+) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return fallback;
+  if (hasCjkText(normalized)) return fallback;
+  return normalized;
+};
+
+const resolveOptionNamesForPublish = (input: {
+  explicit: OptionNameSet;
+  presence: OptionNamePresence;
+}): OptionNameSet => ({
+  option1_name: resolveOptionNameForPublish(
+    input.explicit.option1_name,
+    input.presence.option1 ? DEFAULT_OPTION_NAME_BY_INDEX[1] : null
+  ),
+  option2_name: resolveOptionNameForPublish(
+    input.explicit.option2_name,
+    input.presence.option2 ? DEFAULT_OPTION_NAME_BY_INDEX[2] : null
+  ),
+  option3_name: resolveOptionNameForPublish(
+    input.explicit.option3_name,
+    input.presence.option3 ? DEFAULT_OPTION_NAME_BY_INDEX[3] : null
+  ),
+  option4_name: resolveOptionNameForPublish(
+    input.explicit.option4_name,
+    input.presence.option4 ? DEFAULT_OPTION_NAME_BY_INDEX[4] : null
+  ),
+});
 
 const getSpuPrefix = (spu: string | null) => {
   const normalized = normalizeText(spu);
@@ -2597,6 +2657,7 @@ export async function POST(request: Request) {
     variant_image_url: string;
     issue: string;
   }> = [];
+  const optionNamePresenceBySpu = new Map<string, OptionNamePresence>();
 
   const stgSkuRows: PublishStgSkuRow[] = allVariants.map((row) => {
     const parent = row.draft_spu ? productBySpu.get(row.draft_spu) : null;
@@ -2652,6 +2713,36 @@ export async function POST(request: Request) {
       variation_other_se: variationOtherSe,
       variation_amount_se: variationAmountSe,
     });
+    const normalizedSpu = normalizeText(row.draft_spu);
+    if (normalizedSpu) {
+      const presence =
+        optionNamePresenceBySpu.get(normalizedSpu) ?? createEmptyOptionNamePresence();
+      presence.option1 =
+        presence.option1 ||
+        Boolean(
+          normalizeText(normalizedLocalizedVariantValues.option1) ||
+            normalizeText(normalizedLocalizedVariantValues.variation_amount_se)
+        );
+      presence.option2 =
+        presence.option2 ||
+        Boolean(
+          normalizeText(normalizedLocalizedVariantValues.option2) ||
+            normalizeText(normalizedLocalizedVariantValues.variation_color_se)
+        );
+      presence.option3 =
+        presence.option3 ||
+        Boolean(
+          normalizeText(normalizedLocalizedVariantValues.option3) ||
+            normalizeText(normalizedLocalizedVariantValues.variation_size_se)
+        );
+      presence.option4 =
+        presence.option4 ||
+        Boolean(
+          normalizeText(normalizedLocalizedVariantValues.option4) ||
+            normalizeText(normalizedLocalizedVariantValues.variation_other_se)
+        );
+      optionNamePresenceBySpu.set(normalizedSpu, presence);
+    }
     const sku = normalizeText(row.draft_sku);
     const resolvedVariantImage = resolveVariantImageForPublish({
       spu: row.draft_spu,
@@ -2713,11 +2804,44 @@ export async function POST(request: Request) {
       b2b_dropship_price_dk: normalizeText(row.draft_b2b_dropship_price_dk),
       b2b_dropship_price_fi: normalizeText(row.draft_b2b_dropship_price_fi),
       purchase_price_cny: purchasePrice,
+      inventory_quantity: DEFAULT_VARIANT_INVENTORY_QUANTITY,
       raw_row: row.draft_raw_row ?? null,
       imported_at: now,
       processed: false,
     };
   });
+
+  const resolvedOptionNamesBySpu = new Map<string, OptionNameSet>();
+  for (const row of stgSpuRows) {
+    const normalizedSpu = normalizeText(row.spu);
+    if (!normalizedSpu) continue;
+    const resolved = resolveOptionNamesForPublish({
+      explicit: {
+        option1_name: normalizeText(row.option1_name),
+        option2_name: normalizeText(row.option2_name),
+        option3_name: normalizeText(row.option3_name),
+        option4_name: normalizeText(row.option4_name),
+      },
+      presence:
+        optionNamePresenceBySpu.get(normalizedSpu) ?? createEmptyOptionNamePresence(),
+    });
+    resolvedOptionNamesBySpu.set(normalizedSpu, resolved);
+    row.option1_name = resolved.option1_name;
+    row.option2_name = resolved.option2_name;
+    row.option3_name = resolved.option3_name;
+    row.option4_name = resolved.option4_name;
+  }
+
+  for (const row of stgSkuRows) {
+    const normalizedSpu = normalizeText(row.spu);
+    if (!normalizedSpu) continue;
+    const resolved = resolvedOptionNamesBySpu.get(normalizedSpu);
+    if (!resolved) continue;
+    row.option1_name = resolved.option1_name;
+    row.option2_name = resolved.option2_name;
+    row.option3_name = resolved.option3_name;
+    row.option4_name = resolved.option4_name;
+  }
 
   if (variantImageIssues.length > 0) {
     return NextResponse.json(
@@ -2972,6 +3096,28 @@ export async function POST(request: Request) {
         archived: Boolean(archivedRuns.get(runFolder)),
         archivePath: archivedRuns.get(runFolder),
         error: (err as Error).message,
+      });
+    }
+  }
+
+  // Re-edit runs are temporary workspaces. Once all SPU folders are published and removed,
+  // drop the now-empty run folder so it no longer appears in the Draft Explorer dropdown.
+  for (const runFolder of runFolders.keys()) {
+    const runName = path.basename(runFolder);
+    if (getDraftRunType(runName) !== "re_edit") continue;
+    if (!existsSync(runFolder)) continue;
+    try {
+      const remainingEntries = (await fs.readdir(runFolder, { withFileTypes: true })).filter(
+        (entry) => !entry.name.startsWith(".")
+      );
+      if (remainingEntries.length === 0) {
+        await fs.rm(runFolder, { recursive: true, force: true });
+      }
+    } catch (err) {
+      upsertArchiveResult(runFolder, {
+        archived: Boolean(archivedRuns.get(runFolder)),
+        archivePath: archivedRuns.get(runFolder),
+        error: `Failed to remove empty re-edit run folder: ${(err as Error).message}`,
       });
     }
   }

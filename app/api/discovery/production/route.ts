@@ -37,7 +37,7 @@ type SupplierSearchRow = {
   offers: unknown;
 };
 
-type DigidealManualSupplierRow = {
+type DealsManualSupplierRow = {
   product_id: string;
   "1688_URL"?: string | null;
   "1688_url"?: string | null;
@@ -225,9 +225,16 @@ export async function GET() {
 
   let items: any[] = [];
   for (const [provider, ids] of providerMap.entries()) {
-    if (provider === "digideal") {
+    const isDealsProvider =
+      provider === "digideal" ||
+      provider === "letsdeal" ||
+      provider === "offerilla";
+
+    if (isDealsProvider) {
+      const dealsProvider = resolveDealsProvider(provider);
+      const providerConfig = getDealsProviderConfig(dealsProvider);
       const { data: rows, error: rowsError } = await readClient
-        .from("digideal_products_search")
+        .from(providerConfig.productsSearchView)
         .select("*")
         .in("product_id", ids);
       if (rowsError) {
@@ -235,15 +242,15 @@ export async function GET() {
       }
 
       const manualSupplierMap = new Map<string, string>();
-      // Manual supplier links live on digideal_products (not the search view).
+      // Manual supplier links live on provider products table (not the search view).
       const { data: manualRows, error: manualError } = await readClient
-        .from("digideal_products")
+        .from(providerConfig.productsTable)
         .select('product_id, "1688_URL", 1688_url')
         .in("product_id", ids);
       if (manualError) {
         return NextResponse.json({ error: manualError.message }, { status: 500 });
       }
-      (manualRows as DigidealManualSupplierRow[] | null)?.forEach((row) => {
+      (manualRows as DealsManualSupplierRow[] | null)?.forEach((row) => {
         const url =
           firstString((row as any)["1688_URL"]) || firstString((row as any)["1688_url"]);
         if (url) manualSupplierMap.set(String(row.product_id), url);
@@ -252,7 +259,7 @@ export async function GET() {
       // DigiDeal: if a supplier URL was manually set (EST rerun price), it should behave like a
       // selected supplier in the production queue. Historically those items didn't create a
       // selection row, which left the UI showing "Fetching 1688 data" forever.
-      if (isAdmin && adminClient && manualSupplierMap.size > 0) {
+      if (provider === "digideal" && isAdmin && adminClient && manualSupplierMap.size > 0) {
         const manualIds = Array.from(manualSupplierMap.keys());
         const { data: existingSelections, error: existingError } = await adminClient
           .from("discovery_production_supplier_selection")
@@ -334,7 +341,7 @@ export async function GET() {
         }
       }
 
-      const digidealItems = (rows ?? []).map((row) => {
+      const dealsItems = (rows ?? []).map((row) => {
         const listingTitle = firstString((row as any).listing_title);
         const titleH1 = firstString((row as any).title_h1);
         const productSlug = firstString((row as any).product_slug);
@@ -350,19 +357,20 @@ export async function GET() {
         const taxonomyL2 = firstString((row as any).taxonomy_l2) ?? (googleParts[1] ?? null);
         const taxonomyL3 = firstString((row as any).taxonomy_l3) ?? (googleParts[2] ?? null);
         const supplier1688Url = manualSupplierMap.get(productId) ?? null;
+        const salesOffset = providerConfig.fakeSalesOffset ?? 0;
         const soldToday = Math.max(
           0,
-          (toNumber((row as any).sold_today) ?? 0) - 30
+          (toNumber((row as any).sold_today) ?? 0) - salesOffset
         );
-        const sold7d = Math.max(0, (toNumber((row as any).sold_7d) ?? 0) - 30);
+        const sold7d = Math.max(0, (toNumber((row as any).sold_7d) ?? 0) - salesOffset);
         const soldAllTime = Math.max(
           0,
           (toNumber((row as any).sold_all_time) ??
             toNumber((row as any).last_purchased_count) ??
-            0) - 30
+            0) - salesOffset
         );
         return {
-          provider: "digideal",
+          provider,
           product_id: productId,
           title: listingTitle || titleH1 || productSlug || productId || null,
           product_url: firstString((row as any).product_url),
@@ -379,7 +387,7 @@ export async function GET() {
           sold_today: soldToday,
           sold_7d: sold7d,
           sold_all_time: soldAllTime,
-          // DigiDeal deals table fields (for consistent formatting).
+          // Deals-manager compatibility fields for all deals providers.
           last_price: toNumber((row as any).last_price),
           last_original_price: toNumber((row as any).last_original_price),
           last_discount_percent: toNumber((row as any).last_discount_percent),
@@ -392,7 +400,7 @@ export async function GET() {
           supplier_locked: Boolean(supplier1688Url),
         };
       });
-      items = items.concat(digidealItems);
+      items = items.concat(dealsItems);
       continue;
     }
 

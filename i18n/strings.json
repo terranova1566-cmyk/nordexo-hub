@@ -962,6 +962,36 @@
       "context": "Orders filter option"
     },
     {
+      "key": "orders.pagination.summary",
+      "text": "Showing {from}-{to} of {count} orders",
+      "context": "Orders pagination summary"
+    },
+    {
+      "key": "orders.pagination.emptySummary",
+      "text": "No orders found",
+      "context": "Orders pagination summary"
+    },
+    {
+      "key": "orders.pagination.pageOf",
+      "text": "Page {page} of {pageCount}",
+      "context": "Orders pagination page indicator"
+    },
+    {
+      "key": "orders.pagination.pageSizeValue",
+      "text": "{size} / page",
+      "context": "Orders pagination page size option"
+    },
+    {
+      "key": "orders.pagination.previous",
+      "text": "Previous",
+      "context": "Orders pagination previous button"
+    },
+    {
+      "key": "orders.pagination.next",
+      "text": "Next",
+      "context": "Orders pagination next button"
+    },
+    {
       "key": "orders.actions.button",
       "text": "Actions",
       "context": "Orders actions menu button"
@@ -1405,6 +1435,11 @@
       "key": "orders.empty",
       "text": "No orders found.",
       "context": "Orders empty state"
+    },
+    {
+      "key": "orders.loading",
+      "text": "Loading orders...",
+      "context": "Orders table loading state"
     },
     {
       "key": "orders.details.loading",
@@ -7418,7 +7453,7 @@
     },
     {
       "key": "pricing.subtitle",
-      "text": "Configure exchange rates, shipping rules, and markups for calculated B2B pricing.",
+      "text": "Configure exchange rates, shipping rules, and markups for calculated pricing.",
       "context": "Pricing page subtitle"
     },
     {
@@ -7437,14 +7472,29 @@
       "context": "Pricing recalc button"
     },
     {
+      "key": "pricing.recalculateB2c",
+      "text": "Update standard B2C price",
+      "context": "Pricing B2C recalc button"
+    },
+    {
       "key": "pricing.recalculating",
       "text": "Recalculating…",
       "context": "Pricing recalc button loading"
     },
     {
+      "key": "pricing.recalculatingB2c",
+      "text": "Updating B2C…",
+      "context": "Pricing B2C recalc button loading"
+    },
+    {
       "key": "pricing.recalcSummary",
       "text": "Recalculation complete. Variants / rows updated:",
       "context": "Pricing recalc summary"
+    },
+    {
+      "key": "pricing.recalcB2cSummary",
+      "text": "B2C recalculation complete. Variants / rows updated:",
+      "context": "Pricing B2C recalc summary"
     },
     {
       "key": "pricing.exchangeRates",

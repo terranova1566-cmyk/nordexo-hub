@@ -12,6 +12,7 @@ const MODEL =
   process.env.DRAFT_REWRITE_MODEL ||
   process.env.OPENAI_EDIT_MODEL ||
   "gpt-4.1";
+const BIGINT_ID_RE = /^\d+$/;
 
 const extractJsonFromText = (text: string) => {
   const raw = String(text || "").trim();
@@ -31,6 +32,11 @@ const extractJsonFromText = (text: string) => {
 
 const asText = (value: unknown) =>
   value === null || value === undefined ? "" : String(value);
+
+const normalizeDraftId = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
 
 const toRowValue = (value: unknown) =>
   typeof value === "string" ? value : value == null ? "" : String(value);
@@ -138,7 +144,8 @@ export async function POST(request: Request) {
   }
 
   const { id, instruction } = body as { id?: string; instruction?: string };
-  if (!id || !instruction || !instruction.trim()) {
+  const draftId = normalizeDraftId(id);
+  if (!draftId || !instruction || !instruction.trim()) {
     return NextResponse.json({ error: "Missing instruction." }, { status: 400 });
   }
 
@@ -147,7 +154,7 @@ export async function POST(request: Request) {
     .select(
       "id,draft_spu,draft_title,draft_subtitle,draft_description_html,draft_product_description_main_html,draft_mf_product_description_short_html,draft_mf_product_description_extended_html,draft_mf_product_short_title,draft_mf_product_long_title,draft_mf_product_subtitle,draft_mf_product_bullets_short,draft_mf_product_bullets,draft_mf_product_bullets_long,draft_mf_product_specs,draft_raw_row"
     )
-    .eq("id", id)
+    .eq("id", draftId)
     .maybeSingle();
 
   if (error) {

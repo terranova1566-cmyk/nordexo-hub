@@ -29,6 +29,33 @@ function getAdminClient() {
 
 type AdminClient = NonNullable<ReturnType<typeof getAdminClient>>;
 
+type OrdersSortOption =
+  | "transaction_asc"
+  | "transaction_desc"
+  | "shipped_asc"
+  | "shipped_desc";
+
+const ORDER_SORT_OPTIONS = new Set<OrdersSortOption>([
+  "transaction_asc",
+  "transaction_desc",
+  "shipped_asc",
+  "shipped_desc",
+]);
+
+const DEFAULT_ORDERS_SORT_OPTION: OrdersSortOption = "transaction_desc";
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 1000;
+
+function parseOrdersSortOption(value: unknown): OrdersSortOption {
+  const token = String(value ?? "")
+    .trim()
+    .toLowerCase() as OrdersSortOption;
+  return ORDER_SORT_OPTIONS.has(token)
+    ? token
+    : DEFAULT_ORDERS_SORT_OPTION;
+}
+
 async function hasOrdersStatusColumn(adminClient: AdminClient) {
   const { data, error } = await adminClient
     .from("_introspect_columns")
@@ -36,6 +63,19 @@ async function hasOrdersStatusColumn(adminClient: AdminClient) {
     .eq("table_schema", "public")
     .eq("table_name", "orders_global")
     .eq("column_name", "status")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+async function hasOrdersDateShippedColumn(adminClient: AdminClient) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "date_shipped")
     .limit(1);
 
   if (error) return false;
@@ -158,6 +198,21 @@ function resolveDelayWarningDays() {
   return DEFAULT_ORDER_DELAY_WARNING_DAYS;
 }
 
+function parsePositiveInteger(
+  value: unknown,
+  fallback: number,
+  max: number | null = null
+) {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  if (max !== null && parsed > max) {
+    return max;
+  }
+  return parsed;
+}
+
 function chunkArray<T>(items: T[], size: number) {
   if (size <= 0) return [items];
   const chunks: T[][] = [];
@@ -230,12 +285,32 @@ function pickCountryFromRawRow(rawRow: unknown) {
   return { countryCode, countryName };
 }
 
-function sortOrderRows(rows: Array<Record<string, unknown>>) {
+function sortOrderRows(
+  rows: Array<Record<string, unknown>>,
+  sortOption: OrdersSortOption
+) {
+  const sortByShippedDate =
+    sortOption === "shipped_asc" || sortOption === "shipped_desc";
+  const isAscending =
+    sortOption === "transaction_asc" || sortOption === "shipped_asc";
+
   return [...rows].sort((left, right) => {
-    const leftDate = String(left.transaction_date ?? "");
-    const rightDate = String(right.transaction_date ?? "");
-    if (leftDate < rightDate) return 1;
-    if (leftDate > rightDate) return -1;
+    const leftRawDate = String(
+      (sortByShippedDate ? left.date_shipped : left.transaction_date) ?? ""
+    ).trim();
+    const rightRawDate = String(
+      (sortByShippedDate ? right.date_shipped : right.transaction_date) ?? ""
+    ).trim();
+    const leftTime = Date.parse(leftRawDate);
+    const rightTime = Date.parse(rightRawDate);
+    const hasLeftTime = Number.isFinite(leftTime);
+    const hasRightTime = Number.isFinite(rightTime);
+
+    if (!hasLeftTime && hasRightTime) return 1;
+    if (hasLeftTime && !hasRightTime) return -1;
+    if (hasLeftTime && hasRightTime && leftTime !== rightTime) {
+      return isAscending ? leftTime - rightTime : rightTime - leftTime;
+    }
 
     const leftOrderNumber = String(left.order_number ?? "");
     const rightOrderNumber = String(right.order_number ?? "");
@@ -385,6 +460,34 @@ export async function GET(request: Request) {
   const transactionTo = searchParams.get("transaction_to")?.trim();
   const shippedFrom = searchParams.get("shipped_from")?.trim();
   const shippedTo = searchParams.get("shipped_to")?.trim();
+  const statusFilterRaw = String(searchParams.get("status") ?? "")
+    .trim()
+    .toLowerCase();
+  const statusFilter =
+    statusFilterRaw && statusFilterRaw !== "all"
+      ? normalizeOrderStatus(statusFilterRaw)
+      : null;
+  const hasStatusFilter =
+    includeStatus &&
+    Boolean(statusFilter) &&
+    ORDER_STATUS_VALUES.includes(statusFilter as (typeof ORDER_STATUS_VALUES)[number]);
+  const sortOption = parseOrdersSortOption(searchParams.get("date_sort"));
+  const page = parsePositiveInteger(
+    searchParams.get("page"),
+    DEFAULT_PAGE
+  );
+  const pageSize = parsePositiveInteger(
+    searchParams.get("page_size"),
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE
+  );
+  const rangeFrom = (page - 1) * pageSize;
+  const rangeTo = rangeFrom + pageSize - 1;
+  const sortByShippedDate =
+    sortOption === "shipped_asc" || sortOption === "shipped_desc";
+  const sortColumn = sortByShippedDate ? "date_shipped" : "transaction_date";
+  const sortAscending =
+    sortOption === "transaction_asc" || sortOption === "shipped_asc";
   const orderFieldSearch = query
     ? `order_number.ilike.%${query}%,customer_name.ilike.%${query}%,customer_email.ilike.%${query}%,customer_address.ilike.%${query}%`
     : null;
@@ -409,6 +512,7 @@ export async function GET(request: Request) {
     T extends {
       gte: (column: string, value: string) => T;
       lte: (column: string, value: string) => T;
+      eq: (column: string, value: string) => T;
     },
   >(
     queryBuilder: T
@@ -425,6 +529,9 @@ export async function GET(request: Request) {
     }
     if (shippedTo) {
       next = next.lte("date_shipped", shippedTo);
+    }
+    if (hasStatusFilter && statusFilter) {
+      next = next.eq("status", statusFilter);
     }
     return next;
   };
@@ -467,8 +574,9 @@ export async function GET(request: Request) {
             .or(orderFieldSearch)
         : adminClient.from("orders_global").select(selectColumns)
       )
-        .order("transaction_date", { ascending: false })
+        .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
         .order("order_number", { ascending: true })
+        .order("id", { ascending: true })
     );
     error = directRowsError;
     if (!error) {
@@ -486,8 +594,9 @@ export async function GET(request: Request) {
               .from("orders_global")
               .select(selectColumns)
               .in("id", orderIdChunk)
-              .order("transaction_date", { ascending: false })
+              .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
               .order("order_number", { ascending: true })
+              .order("id", { ascending: true })
           );
           if (itemRowsError) {
             error = itemRowsError;
@@ -502,8 +611,9 @@ export async function GET(request: Request) {
       }
 
       if (!error) {
-        data = sortOrderRows(Array.from(merged.values()));
-        count = data.length;
+        const sortedRows = sortOrderRows(Array.from(merged.values()), sortOption);
+        count = sortedRows.length;
+        data = sortedRows.slice(rangeFrom, rangeTo + 1);
       }
     }
   } else {
@@ -511,8 +621,10 @@ export async function GET(request: Request) {
       adminClient
         .from("orders_global")
         .select(selectColumns, { count: "exact" })
-        .order("transaction_date", { ascending: false })
+        .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
         .order("order_number", { ascending: true })
+        .order("id", { ascending: true })
+        .range(rangeFrom, rangeTo)
     );
     data = (rows ?? []) as unknown as Array<Record<string, unknown>>;
     error = rowsError;
@@ -660,9 +772,66 @@ export async function GET(request: Request) {
     }
   }
 
+  const orderValueById = new Map<string, number>();
+  const orderIdsForValues = Array.from(
+    new Set(
+      itemsWithNotificationFallback
+        .map((item) => normalizeBigintId((item as Record<string, unknown>).id))
+        .filter((entry): entry is string => Boolean(entry))
+    )
+  );
+
+  if (orderIdsForValues.length > 0) {
+    for (const orderIdChunk of chunkArray(orderIdsForValues, 500)) {
+      const { data: itemRows, error: itemRowsError } = await adminClient
+        .from("order_items_global")
+        .select("order_id,sales_value_eur")
+        .in("order_id", orderIdChunk);
+
+      if (itemRowsError) {
+        return NextResponse.json(
+          { error: itemRowsError.message },
+          { status: 500 }
+        );
+      }
+
+      ((itemRows ?? []) as Array<{ order_id?: unknown; sales_value_eur?: unknown }>).forEach(
+        (entry) => {
+          const orderId = normalizeBigintId(entry.order_id);
+          if (!orderId) return;
+          const amount = Number(entry.sales_value_eur ?? 0);
+          if (!Number.isFinite(amount)) return;
+          orderValueById.set(orderId, (orderValueById.get(orderId) ?? 0) + amount);
+        }
+      );
+    }
+  }
+
+  const itemsWithOrderValue = itemsWithNotificationFallback.map((item) => {
+    const row = item as Record<string, unknown>;
+    const orderId = normalizeBigintId(row.id);
+    const orderTotalValue = orderId ? orderValueById.get(orderId) ?? null : null;
+    return {
+      ...row,
+      order_total_value: orderTotalValue,
+    };
+  });
+
+  const normalizedCount =
+    typeof count === "number" && Number.isFinite(count) ? count : 0;
+  const pageCount =
+    normalizedCount > 0 ? Math.ceil(normalizedCount / pageSize) : 0;
+  const from = normalizedCount > 0 ? rangeFrom + 1 : 0;
+  const to = normalizedCount > 0 ? Math.min(rangeTo + 1, normalizedCount) : 0;
+
   return NextResponse.json({
-    items: itemsWithNotificationFallback,
-    count,
+    items: itemsWithOrderValue,
+    count: normalizedCount,
+    page,
+    pageSize,
+    pageCount,
+    from,
+    to,
     delayWarningDays,
   });
 }
@@ -737,6 +906,7 @@ export async function PATCH(request: Request) {
 
   const adminClient = adminCheck.adminClient as AdminClient;
   const includeStatus = await hasOrdersStatusColumn(adminClient);
+  const includeDateShipped = await hasOrdersDateShippedColumn(adminClient);
   if (!includeStatus) {
     return NextResponse.json(
       {
@@ -779,19 +949,40 @@ export async function PATCH(request: Request) {
   }
 
   const nextStatus = normalizeOrderStatus(nextStatusRaw);
-  const { data, error } = await adminClient
-    .from("orders_global")
-    .update({ status: nextStatus })
-    .in("id", orderIds)
-    .select("id,status");
+  const nextPatch: Record<string, unknown> = { status: nextStatus };
+  if (nextStatus === "pending" && includeDateShipped) {
+    nextPatch.date_shipped = null;
+  }
+  let data: Array<{ id: unknown }> | null = null;
+  let error: { message: string } | null = null;
+  if (includeDateShipped) {
+    const { data: nextData, error: nextError } = await adminClient
+      .from("orders_global")
+      .update(nextPatch)
+      .in("id", orderIds)
+      .select("id,status,date_shipped");
+    data = (nextData ?? []) as Array<{ id: unknown }>;
+    error = nextError;
+  } else {
+    const { data: nextData, error: nextError } = await adminClient
+      .from("orders_global")
+      .update(nextPatch)
+      .in("id", orderIds)
+      .select("id,status");
+    data = (nextData ?? []) as Array<{ id: unknown }>;
+    error = nextError;
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const updatedRows = Array.isArray(data) ? data : [];
+
   return NextResponse.json({
-    updated: data?.length ?? 0,
-    ids: (data ?? []).map((row) => String(row.id)),
+    updated: updatedRows.length,
+    ids: updatedRows.map((row) => String(row.id)),
     status: nextStatus,
+    dateShippedCleared: nextStatus === "pending" && includeDateShipped,
   });
 }

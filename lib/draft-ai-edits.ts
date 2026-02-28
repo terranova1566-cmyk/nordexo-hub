@@ -13,6 +13,10 @@ import {
   markDraftImageUpscaled,
   moveDraftImageUpscaleMarkers,
 } from "@/lib/draft-image-upscale";
+import {
+  createDraftAdminClient,
+  repointDraftVariantImageLinksForMovedImage,
+} from "@/lib/draft-variant-image-links";
 
 export type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 export type AiPromptMode =
@@ -2388,6 +2392,22 @@ export const resolvePendingAiEdit = (input: ResolvePendingAiEditInput) =>
       }
       if (record.provider === "zimage" && record.mode === "upscale") {
         markDraftImageUpscaled(editedAbsPath);
+      }
+      try {
+        const sourcePath = toRelativePath(originalAbsPath);
+        const destinationPath = toRelativePath(editedAbsPath);
+        if (sourcePath && destinationPath) {
+          const adminClient = createDraftAdminClient();
+          if (adminClient) {
+            await repointDraftVariantImageLinksForMovedImage({
+              sourcePath,
+              destinationPath,
+              adminClient,
+            });
+          }
+        }
+      } catch {
+        // Best effort: AI keep-both should not fail if DB variant remap fails.
       }
       scorePathsToRefresh.push(uneditedAbsPath, editedAbsPath);
       refreshedScores.push({

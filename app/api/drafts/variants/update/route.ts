@@ -14,6 +14,12 @@ const ALLOWED_FIELDS = new Set([
   "raw_variation_other_se",
   "raw_variation_amount_se",
 ]);
+const BIGINT_ID_RE = /^\d+$/;
+
+const normalizeDraftId = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
 
 function getAdminClient() {
   const supabaseUrl =
@@ -51,8 +57,9 @@ export async function POST(request: Request) {
     field?: string;
     value?: string | number | null;
   };
+  const draftId = normalizeDraftId(id);
 
-  if (!id || !field || !ALLOWED_FIELDS.has(field)) {
+  if (!draftId || !field || !ALLOWED_FIELDS.has(field)) {
     return NextResponse.json({ error: "Invalid update." }, { status: 400 });
   }
 
@@ -64,7 +71,7 @@ export async function POST(request: Request) {
     const { data, error: fetchError } = await adminClient
       .from("draft_variants")
       .select("draft_raw_row")
-      .eq("id", id)
+      .eq("id", draftId)
       .maybeSingle();
     if (fetchError) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
@@ -83,7 +90,7 @@ export async function POST(request: Request) {
         draft_raw_row: nextRaw,
         draft_updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", draftId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -96,7 +103,7 @@ export async function POST(request: Request) {
       [field]: updateValue,
       draft_updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", draftId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -59,6 +59,7 @@ type OrderRow = {
   transaction_date: string | null;
   date_shipped: string | null;
   status: string | null;
+  order_total_value?: number | null;
   is_delayed: boolean;
   delay_days: number | null;
   latest_notification_name?: string | null;
@@ -217,6 +218,42 @@ const useStyles = makeStyles({
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
   },
+  tableLoadingState: {
+    minHeight: "96px",
+    padding: "18px 12px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+  },
+  tableLoadingLabel: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  paginationBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: "10px",
+    marginTop: "10px",
+  },
+  paginationMeta: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  paginationControls: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  paginationPageSize: {
+    minWidth: "118px",
+  },
   stickyHeader: {
     position: "sticky",
     top: 0,
@@ -279,6 +316,11 @@ const useStyles = makeStyles({
     minWidth: "250px",
   },
   colCountry: {
+    width: "120px",
+    minWidth: "120px",
+    whiteSpace: "nowrap",
+  },
+  colOrderValue: {
     width: "120px",
     minWidth: "120px",
     whiteSpace: "nowrap",
@@ -537,12 +579,13 @@ const useStyles = makeStyles({
     whiteSpace: "nowrap",
   },
   countryFlag: {
-    width: "24px",
-    height: "24px",
+    width: "19px",
+    height: "19px",
     display: "block",
     marginTop: "2px",
     marginBottom: "2px",
     flexShrink: 0,
+    opacity: 0.8,
   },
   notificationField: {
     display: "inline-flex",
@@ -819,6 +862,8 @@ type NotificationFilterOption = "all" | "have" | "none";
 
 type CountryCode = "NO" | "SE" | "FI";
 
+const ORDERS_PAGE_SIZE_OPTIONS = [100, 250, 500, 1000] as const;
+
 const flagByCountryCode: Record<CountryCode, string> = {
   NO: "/icons/flags/no.svg",
   SE: "/icons/flags/se.svg",
@@ -878,12 +923,18 @@ export default function OrdersPage() {
   const [transactionTo, setTransactionTo] = useState("");
   const [shippedFrom, setShippedFrom] = useState("");
   const [shippedTo, setShippedTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(ORDERS_PAGE_SIZE_OPTIONS[0]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadedFrom, setLoadedFrom] = useState(0);
+  const [loadedTo, setLoadedTo] = useState(0);
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [warningFilter, setWarningFilter] = useState<string>("all");
   const [dateSortOption, setDateSortOption] =
-    useState<DateSortOption>("transaction_asc");
+    useState<DateSortOption>("transaction_desc");
   const [notificationFilter, setNotificationFilter] =
     useState<NotificationFilterOption>("all");
   const [isExporting, setIsExporting] = useState(false);
@@ -927,6 +978,19 @@ export default function OrdersPage() {
     return () => clearTimeout(handle);
   }, [searchInput]);
 
+  useEffect(() => {
+    setPage((prev) => (prev === 1 ? prev : 1));
+  }, [
+    searchQuery,
+    transactionFrom,
+    transactionTo,
+    shippedFrom,
+    shippedTo,
+    statusFilter,
+    dateSortOption,
+    pageSize,
+  ]);
+
   const params = useMemo(() => {
     const searchParams = new URLSearchParams();
     if (searchQuery) searchParams.set("q", searchQuery);
@@ -934,9 +998,23 @@ export default function OrdersPage() {
     if (transactionTo) searchParams.set("transaction_to", transactionTo);
     if (shippedFrom) searchParams.set("shipped_from", shippedFrom);
     if (shippedTo) searchParams.set("shipped_to", shippedTo);
+    if (statusFilter !== "all") searchParams.set("status", statusFilter);
+    searchParams.set("date_sort", dateSortOption);
+    searchParams.set("page", String(page));
+    searchParams.set("page_size", String(pageSize));
     const query = searchParams.toString();
     return query ? `/api/orders?${query}` : "/api/orders";
-  }, [searchQuery, transactionFrom, transactionTo, shippedFrom, shippedTo]);
+  }, [
+    searchQuery,
+    transactionFrom,
+    transactionTo,
+    shippedFrom,
+    shippedTo,
+    statusFilter,
+    dateSortOption,
+    page,
+    pageSize,
+  ]);
 
   const getNormalizedSalesChannelName = (row: {
     sales_channel_name: string | null;
@@ -990,44 +1068,12 @@ export default function OrdersPage() {
       }
       return true;
     });
-    next.sort((a, b) => {
-      const sortByShippedDate =
-        dateSortOption === "shipped_asc" || dateSortOption === "shipped_desc";
-      const sortDirectionFactor =
-        dateSortOption === "transaction_asc" || dateSortOption === "shipped_asc"
-          ? 1
-          : -1;
-      const aRawDate = sortByShippedDate ? a.date_shipped : a.transaction_date;
-      const bRawDate = sortByShippedDate ? b.date_shipped : b.transaction_date;
-      const aTime = Date.parse(aRawDate ?? "");
-      const bTime = Date.parse(bRawDate ?? "");
-      const normalizedATime = Number.isFinite(aTime) ? aTime : null;
-      const normalizedBTime = Number.isFinite(bTime) ? bTime : null;
-      if (normalizedATime === null && normalizedBTime !== null) {
-        return 1;
-      }
-      if (normalizedATime !== null && normalizedBTime === null) {
-        return -1;
-      }
-      if (
-        normalizedATime !== null &&
-        normalizedBTime !== null &&
-        normalizedATime !== normalizedBTime
-      ) {
-        return (normalizedATime - normalizedBTime) * sortDirectionFactor;
-      }
-      return (
-        (a.order_number ?? "").localeCompare(b.order_number ?? "") *
-        sortDirectionFactor
-      );
-    });
     return next;
   }, [
     countryFilter,
     rows,
     salesChannelFilter,
     statusFilter,
-    dateSortOption,
     notificationFilter,
     warningFilter,
   ]);
@@ -1049,6 +1095,8 @@ export default function OrdersPage() {
     () => filteredRows.filter((row) => selectedOrderIds.has(row.id)),
     [filteredRows, selectedOrderIds]
   );
+  const canGoPreviousPage = page > 1;
+  const canGoNextPage = totalPages > 0 && page < totalPages;
   const previewOrderRow = selectedRows[0] ?? null;
   const selectedEmailTemplate = useMemo(
     () =>
@@ -1235,6 +1283,7 @@ export default function OrdersPage() {
           : ids
       );
       const nextStatus = normalizeDisplayStatus(payload?.status ?? statusDialogValue);
+      const shouldClearShippedDate = nextStatus === "pending";
 
       setRows((prev) =>
         prev.map((row) => {
@@ -1245,6 +1294,13 @@ export default function OrdersPage() {
               status: nextStatus,
               is_delayed: false,
               delay_days: null,
+            };
+          }
+          if (shouldClearShippedDate) {
+            return {
+              ...row,
+              status: nextStatus,
+              date_shipped: null,
             };
           }
           return { ...row, status: nextStatus };
@@ -1261,6 +1317,9 @@ export default function OrdersPage() {
             order: {
               ...details.order,
               status: nextStatus,
+              date_shipped: shouldClearShippedDate
+                ? null
+                : details.order.date_shipped,
             },
           };
         });
@@ -1514,16 +1573,57 @@ export default function OrdersPage() {
               }))
               .filter((row) => row.id.length > 0)
           : [];
+        const nextTotalCount = Math.max(
+          0,
+          Number.parseInt(String(payload.count ?? "0"), 10) || 0
+        );
+        const nextTotalPages = Math.max(
+          0,
+          Number.parseInt(String(payload.pageCount ?? "0"), 10) || 0
+        );
+        const nextLoadedFrom = Math.max(
+          0,
+          Number.parseInt(String(payload.from ?? "0"), 10) || 0
+        );
+        const nextLoadedTo = Math.max(
+          0,
+          Number.parseInt(String(payload.to ?? "0"), 10) || 0
+        );
+        setTotalCount(nextTotalCount);
+        setTotalPages(nextTotalPages);
+        setLoadedFrom(nextLoadedFrom);
+        setLoadedTo(nextLoadedTo);
         setRows(loadedRows);
+        if (nextTotalPages > 0 && page > nextTotalPages) {
+          setPage(nextTotalPages);
+        }
       } catch (err) {
         setError((err as Error).message);
         setRows([]);
+        setTotalCount(0);
+        setTotalPages(0);
+        setLoadedFrom(0);
+        setLoadedTo(0);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [params]);
+  }, [page, params]);
+
+  useEffect(() => {
+    if (totalCount <= 0) {
+      if (loadedFrom !== 0) setLoadedFrom(0);
+      if (loadedTo !== 0) setLoadedTo(0);
+      return;
+    }
+    if (loadedFrom > totalCount) {
+      setLoadedFrom(totalCount);
+    }
+    if (loadedTo > totalCount) {
+      setLoadedTo(totalCount);
+    }
+  }, [loadedFrom, loadedTo, totalCount]);
 
   useEffect(() => {
     setSelectedOrderIds((prev) => {
@@ -1964,7 +2064,7 @@ export default function OrdersPage() {
               })()}
               onOptionSelect={(_, data) => {
                 const nextValue = String(
-                  data.optionValue ?? "transaction_asc"
+                  data.optionValue ?? "transaction_desc"
                 ) as DateSortOption;
                 setDateSortOption(nextValue);
               }}
@@ -2229,6 +2329,9 @@ export default function OrdersPage() {
                   }
                   const idSet = new Set(ids);
                   setRows((prev) => prev.filter((row) => !idSet.has(row.id)));
+                  const removedCount = ids.length;
+                  setTotalCount((prev) => Math.max(0, prev - removedCount));
+                  setLoadedTo((prev) => Math.max(0, prev - removedCount));
                   setSelectedOrderIds(new Set());
                   setExpandedOrders((prev) => {
                     const next = new Set(prev);
@@ -2253,14 +2356,75 @@ export default function OrdersPage() {
             </Button>
           </div>
         </div>
+        <div className={styles.paginationBar}>
+          <Text className={styles.paginationMeta}>
+            {totalCount > 0
+              ? t("orders.pagination.summary", {
+                  from: loadedFrom,
+                  to: loadedTo,
+                  count: totalCount,
+                })
+              : t("orders.pagination.emptySummary")}
+          </Text>
+          <div className={styles.paginationControls}>
+            <Text className={styles.paginationMeta}>
+              {totalPages > 0
+                ? t("orders.pagination.pageOf", {
+                    page,
+                    pageCount: totalPages,
+                  })
+                : t("orders.pagination.pageOf", { page: 0, pageCount: 0 })}
+            </Text>
+            <Dropdown
+              className={styles.paginationPageSize}
+              selectedOptions={[String(pageSize)]}
+              value={t("orders.pagination.pageSizeValue", { size: pageSize })}
+              onOptionSelect={(_, data) => {
+                const nextSize = Number.parseInt(
+                  String(data.optionValue ?? ""),
+                  10
+                );
+                if (!Number.isFinite(nextSize) || nextSize <= 0) return;
+                setPageSize(nextSize);
+              }}
+            >
+              {ORDERS_PAGE_SIZE_OPTIONS.map((size) => (
+                <Option
+                  key={size}
+                  value={String(size)}
+                  text={t("orders.pagination.pageSizeValue", { size })}
+                >
+                  {t("orders.pagination.pageSizeValue", { size })}
+                </Option>
+              ))}
+            </Dropdown>
+            <Button
+              appearance="secondary"
+              disabled={loading || !canGoPreviousPage}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              {t("orders.pagination.previous")}
+            </Button>
+            <Button
+              appearance="secondary"
+              disabled={loading || !canGoNextPage}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              {t("orders.pagination.next")}
+            </Button>
+          </div>
+        </div>
       </Card>
 
       <Card className={styles.tableCard}>
         {error ? <Text className={styles.errorText}>{error}</Text> : null}
         <div className={styles.tableWrapper}>
           {loading ? (
-            <div style={{ padding: "12px" }}>
+            <div className={styles.tableLoadingState}>
               <Spinner size="tiny" />
+              <Text className={styles.tableLoadingLabel}>
+                {t("orders.loading")}
+              </Text>
             </div>
           ) : (
             <Table size="small">
@@ -2417,8 +2581,8 @@ export default function OrdersPage() {
                                 <Image
                                   src={flagByCountryCode[countryCode]}
                                   alt={countryName}
-                                  width={24}
-                                  height={24}
+                                  width={19}
+                                  height={19}
                                   className={styles.countryFlag}
                                 />
                               ) : null}

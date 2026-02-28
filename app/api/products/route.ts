@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { loadImageUrls, preferImageUrlFilenameFirst } from "@/lib/server-images";
 import { loadLegacyHeroWhiteBySpu } from "@/lib/legacy-product-image-data";
 import { getProductsIndex } from "@/lib/meili";
+import { isDigiDealDeliveryListName } from "@/lib/product-delivery/digideal";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
@@ -42,6 +43,73 @@ type DraftWorkflowRow = {
   draft_source: string | null;
   draft_image_folder: string | null;
   draft_updated_at: string | null;
+};
+
+type ShopRow = {
+  id: string;
+  code: string | null;
+  name: string | null;
+  platform: string | null;
+  shop_domain: string | null;
+  shopify_domain: string | null;
+  is_active: boolean | null;
+};
+
+type VariantInShopRow = {
+  catalog_variant_id: string | null;
+  shop_id: string | null;
+  is_active: boolean | null;
+  deleted_at: string | null;
+};
+
+const SHOPIFY_PUBLISHED_STORE_CODES = [
+  "shopify_tingelo",
+  "shopify_sparklar",
+  "shopify_sparkler",
+  "shopify_wellando",
+] as const;
+
+const PUBLISHED_CHANNEL_ORDER = ["tingelo", "sparkler", "wellando"] as const;
+
+const normalizePublishedChannel = (shop: {
+  code?: string | null;
+  name?: string | null;
+  shop_domain?: string | null;
+  shopify_domain?: string | null;
+}) => {
+  const haystack = [
+    shop.code,
+    shop.name,
+    shop.shop_domain,
+    shop.shopify_domain,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+  if (haystack.includes("tingelo")) return "tingelo";
+  if (haystack.includes("sparklar") || haystack.includes("sparkler")) {
+    return "sparkler";
+  }
+  if (haystack.includes("wellando")) return "wellando";
+  return null;
+};
+
+const sortPublishedChannels = (channels: string[]) => {
+  const rank: Record<string, number> = {
+    tingelo: 0,
+    sparkler: 1,
+    wellando: 2,
+  };
+  return channels
+    .slice()
+    .sort((left, right) => (rank[left] ?? 99) - (rank[right] ?? 99));
+};
+
+const chunk = <T,>(items: T[], size: number) => {
+  const output: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    output.push(items.slice(index, index + size));
+  }
+  return output;
 };
 
 const normalizeHtml = (value: string) =>
@@ -773,6 +841,7 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
   const variantCountMap = new Map<string, number>();
   const variantPriceMap = new Map<string, { min: number; max: number }>();
   const variantB2CPriceMap = new Map<string, { min: number; max: number }>();
+  const variantIdToProductId = new Map<string, string>();
   const variantPriceRows = new Map<
     string,
     Map<string, Map<string, number | null>>
@@ -837,6 +906,11 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
     }
 
     variants?.forEach((variant) => {
+      const variantId = String(variant.id ?? "").trim();
+      const productId = String(variant.product_id ?? "").trim();
+      if (variantId && productId) {
+        variantIdToProductId.set(variantId, productId);
+      }
       const priceEntry = variantPriceRows.get(variant.id);
       const resolveMarketPrice = (
         market: "SE" | "NO" | "DK" | "FI",
@@ -921,6 +995,56 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
     });
   }
 
+  const publishedChannelMap = new Map<string, Set<string>>();
+  if (productIds.length > 0 && variantIdToProductId.size > 0) {
+    const { data: shopRows, error: shopError } = await supabase
+      .from("shops")
+      .select("id,code,name,platform,shop_domain,shopify_domain,is_active")
+      .in("code", [...SHOPIFY_PUBLISHED_STORE_CODES]);
+
+    if (!shopError) {
+      const shopChannelById = new Map<string, string>();
+      (shopRows ?? []).forEach((shop) => {
+        const row = shop as ShopRow;
+        const shopId = String(row.id ?? "").trim();
+        if (!shopId || row.is_active === false) return;
+        const channel = normalizePublishedChannel(row);
+        if (!channel) return;
+        shopChannelById.set(shopId, channel);
+      });
+
+      if (shopChannelById.size > 0) {
+        const variantIds = Array.from(variantIdToProductId.keys());
+        const shopIds = Array.from(shopChannelById.keys());
+
+        for (const variantChunk of chunk(variantIds, 500)) {
+          const { data: variantInShopRows, error: variantInShopError } = await supabase
+            .from("variant_in_shop")
+            .select("catalog_variant_id,shop_id,is_active,deleted_at")
+            .in("catalog_variant_id", variantChunk)
+            .in("shop_id", shopIds);
+
+          if (variantInShopError) {
+            break;
+          }
+
+          (variantInShopRows ?? []).forEach((row) => {
+            const typed = row as VariantInShopRow;
+            if (typed.is_active !== true || typed.deleted_at !== null) return;
+            const variantId = String(typed.catalog_variant_id ?? "").trim();
+            const shopId = String(typed.shop_id ?? "").trim();
+            const productId = variantIdToProductId.get(variantId);
+            const channel = shopChannelById.get(shopId);
+            if (!productId || !channel) return;
+            const set = publishedChannelMap.get(productId) ?? new Set<string>();
+            set.add(channel);
+            publishedChannelMap.set(productId, set);
+          });
+        }
+      }
+    }
+  }
+
   const savedSet = new Set<string>();
   if (productIds.length > 0) {
     const { data: savedRows } = await supabase
@@ -952,6 +1076,35 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       if (!current || new Date(createdAt) > new Date(current)) {
         exportMap.set(row.product_id, createdAt);
       }
+    });
+  }
+
+  const deliveryPartnerMap = new Map<string, Set<string>>();
+  if (productIds.length > 0) {
+    const { data: deliveryRows, error: deliveryError } = await supabase
+      .from("product_manager_wishlist_items")
+      .select("product_id, product_manager_wishlists(name)")
+      .in("product_id", productIds);
+
+    if (deliveryError) {
+      return NextResponse.json({ error: deliveryError.message }, { status: 500 });
+    }
+
+    (deliveryRows ?? []).forEach((row) => {
+      const productId = String(row.product_id ?? "").trim();
+      if (!productId) return;
+      const wishlistData = row.product_manager_wishlists as
+        | { name?: string | null }
+        | Array<{ name?: string | null }>
+        | null
+        | undefined;
+      const wishlistName = Array.isArray(wishlistData)
+        ? wishlistData[0]?.name
+        : wishlistData?.name;
+      if (!isDigiDealDeliveryListName(wishlistName)) return;
+      const partners = deliveryPartnerMap.get(productId) ?? new Set<string>();
+      partners.add("digideal");
+      deliveryPartnerMap.set(productId, partners);
     });
   }
 
@@ -1001,6 +1154,12 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
         is_saved: savedSet.has(product.id),
         is_exported: exportMap.has(product.id),
         latest_exported_at: exportMap.get(product.id) ?? null,
+        published_channels: sortPublishedChannels(
+          Array.from(publishedChannelMap.get(product.id) ?? new Set<string>())
+        ),
+        delivery_partners: Array.from(
+          deliveryPartnerMap.get(product.id) ?? new Set<string>()
+        ),
         thumbnail_url: thumbnailUrl,
         small_image_url: smallUrl ?? null,
       };

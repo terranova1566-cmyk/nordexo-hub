@@ -26,6 +26,7 @@ export function normalizeOrderPlatformName(input: OrderPlatformInput): string {
   if (/lets\s*deal/.test(fingerprint)) return "LetsDeal";
   if (/offerilla/.test(fingerprint)) return "Offerilla";
   if (/digideal/.test(fingerprint)) return "Digideal";
+  if (/sparklar/.test(fingerprint)) return "Sparklar";
 
   return collapseRepeatedPhrase(rawName || rawId);
 }

@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
 import { moveDraftImageUpscaleMarkers } from "@/lib/draft-image-upscale";
+import {
+  clearDraftVariantImageLinksForMovedImage,
+  createDraftAdminClient,
+  repointDraftVariantImageLinksForMovedImage,
+} from "@/lib/draft-variant-image-links";
 
 export const runtime = "nodejs";
 
@@ -86,6 +91,7 @@ export async function POST(request: Request) {
   }
 
   const sourceStat = fs.statSync(sourceAbsolutePath);
+  const sourceRelativePath = toRelativePath(sourceAbsolutePath) || sourcePath;
   if (sourceStat.isDirectory() && targetAbsolutePath.startsWith(`${sourceAbsolutePath}${path.sep}`)) {
     return NextResponse.json({ error: "Cannot move a folder into itself." }, { status: 400 });
   }
@@ -116,10 +122,40 @@ export async function POST(request: Request) {
   if (sourceStat.isFile()) {
     moveDraftImageUpscaleMarkers(sourceAbsolutePath, finalDestinationAbsolutePath);
   }
+  const destinationRelativePath =
+    toRelativePath(finalDestinationAbsolutePath) ||
+    `${targetPath}/${path.basename(finalDestinationAbsolutePath)}`;
+
+  let unlockedVariantLinks = 0;
+  let remappedVariantLinks = 0;
+  let unlockVariantLinksError: string | null = null;
+  if (sourceStat.isFile()) {
+    try {
+      const adminClient = createDraftAdminClient();
+      const repointed = await repointDraftVariantImageLinksForMovedImage({
+        sourcePath: sourceRelativePath,
+        destinationPath: destinationRelativePath,
+        adminClient: adminClient ?? undefined,
+      });
+      remappedVariantLinks = repointed.updatedCount;
+      const cleared = await clearDraftVariantImageLinksForMovedImage({
+        sourcePath: sourceRelativePath,
+        destinationPath: destinationRelativePath,
+        adminClient: adminClient ?? undefined,
+      });
+      unlockedVariantLinks = cleared.clearedCount;
+    } catch (err) {
+      unlockVariantLinksError =
+        err instanceof Error ? err.message : "Unable to unlock variant links.";
+    }
+  }
 
   return NextResponse.json({
     ok: true,
-    path: toRelativePath(finalDestinationAbsolutePath),
+    path: destinationRelativePath,
     name: path.basename(finalDestinationAbsolutePath),
+    unlockedVariantLinks,
+    remappedVariantLinks,
+    unlockVariantLinksError,
   });
 }

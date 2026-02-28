@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+const BIGINT_ID_RE = /^\d+$/;
 
 type VariantUpdateInput = {
   id?: string | null;
@@ -39,6 +40,10 @@ const getAdminClient = () => {
 };
 
 const asText = (value: unknown) => String(value ?? "").trim();
+const normalizeDraftId = (value: unknown) => {
+  const text = asText(value);
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
 
 const asNullableText = (value: unknown) => {
   const text = asText(value);
@@ -98,7 +103,7 @@ const sanitizeVariantInput = (value: unknown): VariantUpdateInput | null => {
     fallback: optionCombinedInput,
   });
   return {
-    id: asNullableText(raw.id),
+    id: normalizeDraftId(raw.id),
     draft_sku: asNullableText(raw.draft_sku),
     draft_option1: draft_option1 || null,
     draft_option2: draft_option2 || null,

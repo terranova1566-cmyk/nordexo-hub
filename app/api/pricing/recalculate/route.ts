@@ -6,6 +6,8 @@ import { recalculateB2CPricesForSpus } from "@/lib/pricing/recalculate-b2c-spus"
 
 export const runtime = "nodejs";
 
+type RecalculateScope = "all" | "b2b" | "b2c";
+
 const getAdminClient = () => {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -73,7 +75,22 @@ const loadAllSpus = async (
   return Array.from(seen);
 };
 
-export async function POST() {
+const emptyB2BResult = () => ({
+  consideredVariants: 0,
+  processedVariants: 0,
+  skippedVariants: 0,
+  updatedRows: 0,
+});
+
+const emptyB2CResult = () => ({
+  consideredVariants: 0,
+  processedVariants: 0,
+  skippedVariants: 0,
+  updatedRows: 0,
+  updatedVariantPrices: 0,
+});
+
+export async function POST(request: Request) {
   const adminCheck = await requireAdmin();
   if (!adminCheck.ok) {
     return NextResponse.json(
@@ -90,6 +107,13 @@ export async function POST() {
     );
   }
 
+  const payload = await request.json().catch(() => null);
+  const requestedScope = String(payload?.scope || "all").toLowerCase();
+  const scope: RecalculateScope =
+    requestedScope === "b2b" || requestedScope === "b2c"
+      ? requestedScope
+      : "all";
+
   let spus: string[] = [];
   try {
     spus = await loadAllSpus(adminClient);
@@ -103,49 +127,46 @@ export async function POST() {
   if (spus.length === 0) {
     return NextResponse.json({
       ok: true,
+      scope,
       totalSpus: 0,
       processedVariants: 0,
       skippedVariants: 0,
       updatedRows: 0,
       updatedVariantPrices: 0,
-      b2b: {
-        consideredVariants: 0,
-        processedVariants: 0,
-        skippedVariants: 0,
-        updatedRows: 0,
-      },
-      b2c: {
-        consideredVariants: 0,
-        processedVariants: 0,
-        skippedVariants: 0,
-        updatedRows: 0,
-        updatedVariantPrices: 0,
-      },
+      b2b: emptyB2BResult(),
+      b2c: emptyB2CResult(),
     });
   }
 
-  let b2bResult: Awaited<ReturnType<typeof recalculateB2BPricesForSpus>>;
-  try {
-    b2bResult = await recalculateB2BPricesForSpus(adminClient, spus);
-  } catch (error) {
-    return NextResponse.json(
-      { error: `B2B recalc failed: ${(error as Error).message}` },
-      { status: 500 }
-    );
+  let b2bResult: Awaited<ReturnType<typeof recalculateB2BPricesForSpus>> =
+    emptyB2BResult();
+  if (scope === "all" || scope === "b2b") {
+    try {
+      b2bResult = await recalculateB2BPricesForSpus(adminClient, spus);
+    } catch (error) {
+      return NextResponse.json(
+        { error: `B2B recalc failed: ${(error as Error).message}` },
+        { status: 500 }
+      );
+    }
   }
 
-  let b2cResult: Awaited<ReturnType<typeof recalculateB2CPricesForSpus>>;
-  try {
-    b2cResult = await recalculateB2CPricesForSpus(adminClient, spus);
-  } catch (error) {
-    return NextResponse.json(
-      { error: `B2C recalc failed: ${(error as Error).message}` },
-      { status: 500 }
-    );
+  let b2cResult: Awaited<ReturnType<typeof recalculateB2CPricesForSpus>> =
+    emptyB2CResult();
+  if (scope === "all" || scope === "b2c") {
+    try {
+      b2cResult = await recalculateB2CPricesForSpus(adminClient, spus);
+    } catch (error) {
+      return NextResponse.json(
+        { error: `B2C recalc failed: ${(error as Error).message}` },
+        { status: 500 }
+      );
+    }
   }
 
   return NextResponse.json({
     ok: true,
+    scope,
     totalSpus: spus.length,
     processedVariants: Math.max(
       b2bResult.processedVariants,
@@ -156,7 +177,8 @@ export async function POST() {
       b2cResult.skippedVariants
     ),
     updatedRows: b2bResult.updatedRows + b2cResult.updatedRows,
-    updatedVariantPrices: b2cResult.updatedVariantPrices,
+    updatedVariantPrices:
+      b2cResult.updatedVariantPrices || b2cResult.processedVariants,
     b2b: b2bResult,
     b2c: b2cResult,
   });

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
@@ -101,6 +100,23 @@ const toErrorMessage = (error: unknown) =>
 const normalizeText = (value: unknown) => {
   const text = String(value ?? "").trim();
   return text || null;
+};
+
+const normalizeNumber = (value: unknown) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  let normalized = raw.replace(/\s+/g, "");
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/,/g, "");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(/,/g, ".");
+  }
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const normalizeAction = (value: unknown) => {
@@ -581,7 +597,6 @@ export async function POST(request: Request) {
                 : null;
 
             variantRowsForSpu.push({
-              id: randomUUID(),
               draft_spu: spu,
               draft_sku: sku,
               draft_option1: normalizeText(variant.option1),
@@ -593,10 +608,10 @@ export async function POST(request: Request) {
               draft_option2_zh: normalizeText(variant.option2_zh),
               draft_option3_zh: normalizeText(variant.option3_zh),
               draft_option4_zh: normalizeText(variant.option4_zh),
-              draft_price: variant.price ?? null,
-              draft_compare_at_price: variant.compare_at_price ?? null,
-              draft_cost: variant.cost ?? null,
-              draft_weight: variant.weight ?? null,
+              draft_price: normalizeNumber(variant.price),
+              draft_compare_at_price: normalizeNumber(variant.compare_at_price),
+              draft_cost: normalizeNumber(variant.cost),
+              draft_weight: normalizeNumber(variant.weight),
               draft_weight_unit: normalizeText(variant.weight_unit),
               draft_barcode: normalizeText(variant.barcode),
               draft_variant_image_url: mappedVariantImage,
@@ -612,11 +627,11 @@ export async function POST(request: Request) {
               draft_category_code_ld: normalizeText(variant.category_code_ld),
               draft_supplier_name: normalizeText(variant.supplier_name),
               draft_supplier_location: normalizeText(variant.supplier_location),
-              draft_b2b_dropship_price_se: variant.b2b_dropship_price_se ?? null,
-              draft_b2b_dropship_price_no: variant.b2b_dropship_price_no ?? null,
-              draft_b2b_dropship_price_dk: variant.b2b_dropship_price_dk ?? null,
-              draft_b2b_dropship_price_fi: variant.b2b_dropship_price_fi ?? null,
-              draft_purchase_price_cny: variant.purchase_price_cny ?? null,
+              draft_b2b_dropship_price_se: normalizeNumber(variant.b2b_dropship_price_se),
+              draft_b2b_dropship_price_no: normalizeNumber(variant.b2b_dropship_price_no),
+              draft_b2b_dropship_price_dk: normalizeNumber(variant.b2b_dropship_price_dk),
+              draft_b2b_dropship_price_fi: normalizeNumber(variant.b2b_dropship_price_fi),
+              draft_purchase_price_cny: normalizeNumber(variant.purchase_price_cny),
               draft_raw_row:
                 rawRowFromVariant ?? (buildDraftVariantRawRow(variant) as Record<string, unknown>),
               draft_status: "draft",
@@ -625,7 +640,6 @@ export async function POST(request: Request) {
           });
         } else {
           variantRowsForSpu.push({
-            id: randomUUID(),
             draft_spu: spu,
             draft_sku: spu,
             draft_option1: null,

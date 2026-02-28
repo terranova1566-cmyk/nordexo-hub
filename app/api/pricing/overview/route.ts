@@ -297,6 +297,7 @@ export async function GET(request: Request) {
         "b2b_fixed",
         "b2b_calc",
         "b2b_dropship",
+        "b2c_calc",
         ...shopifyTypes,
       ])
       .is("deleted_at", null);
@@ -358,6 +359,14 @@ export async function GET(request: Request) {
     const calc = readPrice("b2b_calc");
     if (calc !== undefined && calc !== null) return calc;
     return fallback ?? null;
+  };
+
+  const resolveB2CPrice = (
+    entry: Map<string, Map<string, number | null>> | undefined
+  ) => {
+    if (!entry) return null;
+    const value = entry.get("b2c_calc")?.get("SE");
+    return value !== undefined && value !== null ? value : null;
   };
 
   const items = variants
@@ -443,10 +452,7 @@ export async function GET(request: Request) {
         b2b_no: b2bNo,
         b2b_dk: b2bDk,
         b2b_fi: b2bFi,
-        b2c_price:
-          rawVariant.price !== null && rawVariant.price !== undefined
-            ? Number(rawVariant.price)
-            : null,
+        b2c_price: resolveB2CPrice(priceEntry),
         shopify_prices: shopifyPrices,
       };
     })
@@ -566,13 +572,191 @@ export async function PATCH(request: Request) {
 
   if (field === "b2c_price") {
     const priceValue = toNumber(rawValue);
+    const variantUpdatePayload: Record<string, unknown> = { updated_at: now };
+    if (priceValue === null) {
+      variantUpdatePayload.price = null;
+    } else {
+      variantUpdatePayload.price = priceValue;
+    }
     const { error } = await adminClient
       .from("catalog_variants")
-      .update({ price: priceValue, updated_at: now })
+      .update(variantUpdatePayload)
       .eq("id", variantId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    if (priceValue === null) {
+      const { error: b2cDeleteError } = await adminClient
+        .from("catalog_variant_prices")
+        .update({ deleted_at: now, updated_at: now })
+        .eq("catalog_variant_id", variantId)
+        .eq("price_type", "b2c_calc")
+        .eq("market", "SE")
+        .is("shop_id", null);
+      if (b2cDeleteError) {
+        return NextResponse.json(
+          { error: b2cDeleteError.message },
+          { status: 500 }
+        );
+      }
+    } else {
+      const { data: existingB2C, error: existingB2CError } = await adminClient
+        .from("catalog_variant_prices")
+        .select("id")
+        .eq("catalog_variant_id", variantId)
+        .eq("price_type", "b2c_calc")
+        .eq("market", "SE")
+        .is("shop_id", null)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (existingB2CError) {
+        return NextResponse.json(
+          { error: existingB2CError.message },
+          { status: 500 }
+        );
+      }
+
+      if (existingB2C?.id) {
+        const { error: b2cUpdateError } = await adminClient
+          .from("catalog_variant_prices")
+          .update({
+            currency: "SEK",
+            price: priceValue,
+            deleted_at: null,
+            updated_at: now,
+          })
+          .eq("id", existingB2C.id);
+        if (b2cUpdateError) {
+          return NextResponse.json(
+            { error: b2cUpdateError.message },
+            { status: 500 }
+          );
+        }
+      } else {
+        const { error: b2cInsertError } = await adminClient
+          .from("catalog_variant_prices")
+          .insert({
+            catalog_variant_id: variantId,
+            price_type: "b2c_calc",
+            market: "SE",
+            currency: "SEK",
+            price: priceValue,
+            shop_id: null,
+            deleted_at: null,
+            updated_at: now,
+          });
+        if (b2cInsertError) {
+          return NextResponse.json(
+            { error: b2cInsertError.message },
+            { status: 500 }
+          );
+        }
+      }
+    }
+
+    const b2cShopifyChannels = [
+      { shopCode: "shopify_tingelo", priceType: "shopify_tingelo" },
+      { shopCode: "shopify_wellando", priceType: "shopify_wellando" },
+      { shopCode: "shopify_sparklar", priceType: "shopify_sparklar" },
+    ] as const;
+
+    const { data: shopRows, error: shopError } = await adminClient
+      .from("shops")
+      .select("id, code")
+      .in(
+        "code",
+        b2cShopifyChannels.map((channel) => channel.shopCode)
+      );
+    if (shopError) {
+      return NextResponse.json({ error: shopError.message }, { status: 500 });
+    }
+
+    const shopTargets: Array<{ shopId: string; priceType: string }> = [];
+    for (const channel of b2cShopifyChannels) {
+      const shop = (shopRows ?? []).find(
+        (row) => String(row.code || "") === channel.shopCode
+      );
+      if (!shop?.id) continue;
+      shopTargets.push({
+        shopId: String(shop.id),
+        priceType: channel.priceType,
+      });
+    }
+
+    for (const target of shopTargets) {
+      if (priceValue === null) {
+        const { error: shopDeleteError } = await adminClient
+          .from("catalog_variant_prices")
+          .update({ deleted_at: now, updated_at: now })
+          .eq("catalog_variant_id", variantId)
+          .eq("price_type", target.priceType)
+          .eq("market", "SE")
+          .eq("shop_id", target.shopId);
+        if (shopDeleteError) {
+          return NextResponse.json(
+            { error: shopDeleteError.message },
+            { status: 500 }
+          );
+        }
+        continue;
+      }
+
+      const { data: existingShopify, error: existingShopifyError } =
+        await adminClient
+          .from("catalog_variant_prices")
+          .select("id")
+          .eq("catalog_variant_id", variantId)
+          .eq("price_type", target.priceType)
+          .eq("market", "SE")
+          .eq("shop_id", target.shopId)
+          .is("deleted_at", null)
+          .maybeSingle();
+      if (existingShopifyError) {
+        return NextResponse.json(
+          { error: existingShopifyError.message },
+          { status: 500 }
+        );
+      }
+
+      if (existingShopify?.id) {
+        const { error: shopUpdateError } = await adminClient
+          .from("catalog_variant_prices")
+          .update({
+            currency: "SEK",
+            price: priceValue,
+            deleted_at: null,
+            updated_at: now,
+          })
+          .eq("id", existingShopify.id);
+        if (shopUpdateError) {
+          return NextResponse.json(
+            { error: shopUpdateError.message },
+            { status: 500 }
+          );
+        }
+      } else {
+        const { error: shopInsertError } = await adminClient
+          .from("catalog_variant_prices")
+          .insert({
+            catalog_variant_id: variantId,
+            price_type: target.priceType,
+            market: "SE",
+            currency: "SEK",
+            price: priceValue,
+            shop_id: target.shopId,
+            deleted_at: null,
+            updated_at: now,
+          });
+        if (shopInsertError) {
+          return NextResponse.json(
+            { error: shopInsertError.message },
+            { status: 500 }
+          );
+        }
+      }
+    }
+
     return NextResponse.json({ ok: true });
   }
 

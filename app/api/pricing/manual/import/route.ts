@@ -92,6 +92,12 @@ const b2bMarketMap: Record<string, { market: string; currency: string }> = {
   b2b_fi: { market: "FI", currency: "EUR" },
 };
 
+const SHOPIFY_B2C_CHANNELS = [
+  { shopCode: "shopify_tingelo", priceType: "shopify_tingelo" },
+  { shopCode: "shopify_wellando", priceType: "shopify_wellando" },
+  { shopCode: "shopify_sparklar", priceType: "shopify_sparklar" },
+] as const;
+
 async function upsertB2BPrice(
   adminClient: AdminClient,
   variantId: string,
@@ -140,6 +146,113 @@ async function upsertB2BPrice(
       deleted_at: null,
       updated_at: now,
     });
+  }
+}
+
+async function upsertB2CStandardPrice(
+  adminClient: AdminClient,
+  variantId: string,
+  value: number,
+  now: string,
+  shopifyChannels: Array<{ shopId: string; priceType: string }>
+) {
+  const { error: variantError } = await adminClient
+    .from("catalog_variants")
+    .update({ price: value, updated_at: now })
+    .eq("id", variantId);
+  if (variantError) {
+    throw new Error(variantError.message);
+  }
+
+  const { data: existingB2C, error: existingB2CError } = await adminClient
+    .from("catalog_variant_prices")
+    .select("id")
+    .eq("catalog_variant_id", variantId)
+    .eq("price_type", "b2c_calc")
+    .eq("market", "SE")
+    .is("shop_id", null)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (existingB2CError) {
+    throw new Error(existingB2CError.message);
+  }
+
+  if (existingB2C?.id) {
+    const { error: b2cUpdateError } = await adminClient
+      .from("catalog_variant_prices")
+      .update({
+        currency: "SEK",
+        price: value,
+        deleted_at: null,
+        updated_at: now,
+      })
+      .eq("id", existingB2C.id);
+    if (b2cUpdateError) {
+      throw new Error(b2cUpdateError.message);
+    }
+  } else {
+    const { error: b2cInsertError } = await adminClient
+      .from("catalog_variant_prices")
+      .insert({
+        catalog_variant_id: variantId,
+        price_type: "b2c_calc",
+        market: "SE",
+        currency: "SEK",
+        price: value,
+        shop_id: null,
+        deleted_at: null,
+        updated_at: now,
+      });
+    if (b2cInsertError) {
+      throw new Error(b2cInsertError.message);
+    }
+  }
+
+  for (const channel of shopifyChannels) {
+    const { data: existingShopify, error: existingShopifyError } =
+      await adminClient
+        .from("catalog_variant_prices")
+        .select("id")
+        .eq("catalog_variant_id", variantId)
+        .eq("price_type", channel.priceType)
+        .eq("market", "SE")
+        .eq("shop_id", channel.shopId)
+        .is("deleted_at", null)
+        .maybeSingle();
+    if (existingShopifyError) {
+      throw new Error(existingShopifyError.message);
+    }
+
+    if (existingShopify?.id) {
+      const { error: shopifyUpdateError } = await adminClient
+        .from("catalog_variant_prices")
+        .update({
+          currency: "SEK",
+          price: value,
+          deleted_at: null,
+          updated_at: now,
+        })
+        .eq("id", existingShopify.id);
+      if (shopifyUpdateError) {
+        throw new Error(shopifyUpdateError.message);
+      }
+    } else {
+      const { error: shopifyInsertError } = await adminClient
+        .from("catalog_variant_prices")
+        .insert({
+          catalog_variant_id: variantId,
+          price_type: channel.priceType,
+          market: "SE",
+          currency: "SEK",
+          price: value,
+          shop_id: channel.shopId,
+          deleted_at: null,
+          updated_at: now,
+        });
+      if (shopifyInsertError) {
+        throw new Error(shopifyInsertError.message);
+      }
+    }
   }
 }
 
@@ -192,6 +305,24 @@ export async function POST(request: Request) {
     );
   }
   const admin = adminClient as AdminClient;
+  const { data: shopRows } = await admin
+    .from("shops")
+    .select("id, code")
+    .in(
+      "code",
+      SHOPIFY_B2C_CHANNELS.map((channel) => channel.shopCode)
+    );
+  const shopifyB2CChannels: Array<{ shopId: string; priceType: string }> = [];
+  for (const channel of SHOPIFY_B2C_CHANNELS) {
+    const row = (shopRows ?? []).find(
+      (shop) => String(shop.code || "") === channel.shopCode
+    );
+    if (!row?.id) continue;
+    shopifyB2CChannels.push({
+      shopId: String(row.id),
+      priceType: channel.priceType,
+    });
+  }
 
   const formData = await request.formData();
   const file = (formData.get("file") || formData.get("workbook")) as File | null;
@@ -322,7 +453,21 @@ export async function POST(request: Request) {
       const value = normalizeNumber(
         readCellText(row.getCell(fieldColumns.b2c_price))
       );
-      if (value !== null) updatePayload.price = value;
+      if (value !== null) {
+        try {
+          await upsertB2CStandardPrice(
+            admin,
+            variantId,
+            value,
+            now,
+            shopifyB2CChannels
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown B2C update error";
+          errors.push(`SKU ${sku} B2C update failed: ${message}`);
+        }
+      }
     }
 
     if (Object.keys(updatePayload).length > 0) {

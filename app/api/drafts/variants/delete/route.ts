@@ -3,6 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+const BIGINT_ID_RE = /^\d+$/;
+
+const normalizeDraftId = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
 
 const getAdminClient = () => {
   const supabaseUrl =
@@ -54,12 +60,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
-  const ids = Array.isArray(payload?.ids)
+  const rawIds = Array.isArray(payload?.ids)
     ? payload.ids.map((id) => String(id ?? "").trim()).filter(Boolean)
     : [];
+  const invalidIds = rawIds.filter((id) => !BIGINT_ID_RE.test(id));
+  const ids = rawIds.map((id) => normalizeDraftId(id)).filter((id): id is string => Boolean(id));
 
   if (ids.length === 0) {
     return NextResponse.json({ error: "Missing ids." }, { status: 400 });
+  }
+  if (invalidIds.length > 0) {
+    return NextResponse.json(
+      { error: `Invalid variant id(s): ${invalidIds.slice(0, 3).join(", ")}` },
+      { status: 400 }
+    );
   }
 
   let deleted = 0;

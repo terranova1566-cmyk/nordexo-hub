@@ -16,8 +16,8 @@ const HISTORY_PATH =
 type ParsedTrackingRow = {
   sales_channel_id: string;
   order_number: string;
-  sent_date: string;
-  tracking_number: string;
+  sent_date: string | null;
+  tracking_number: string | null;
 };
 
 type DbError = {
@@ -88,6 +88,11 @@ function normalizePlatformId(value: string) {
   return normalized;
 }
 
+function normalizeTrackingNumber(value: string) {
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+}
+
 function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
@@ -141,11 +146,17 @@ function chunkList<T>(list: T[], size: number) {
 function buildTrackingUniquenessKey(
   salesChannelId: string,
   orderNumber: string,
-  trackingNumber: string
+  trackingNumber: string | null,
+  sentDate: string | null
 ) {
-  return `${salesChannelId.trim().toLowerCase()}::${orderNumber
+  if (trackingNumber) {
+    return `tracking::${salesChannelId.trim().toLowerCase()}::${orderNumber
+      .trim()
+      .toLowerCase()}::${trackingNumber.trim().toLowerCase()}`;
+  }
+  return `shipdate::${salesChannelId.trim().toLowerCase()}::${orderNumber
     .trim()
-    .toLowerCase()}::${trackingNumber.trim().toLowerCase()}`;
+    .toLowerCase()}::${String(sentDate ?? "").trim().toLowerCase()}`;
 }
 
 async function hasTrackingSentDateColumn(
@@ -157,6 +168,36 @@ async function hasTrackingSentDateColumn(
     .eq("table_schema", "public")
     .eq("table_name", "order_tracking_numbers_global")
     .eq("column_name", "sent_date")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+async function hasOrdersDateShippedColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "date_shipped")
+    .limit(1);
+
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+async function hasOrdersStatusColumn(
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>
+) {
+  const { data, error } = await adminClient
+    .from("_introspect_columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", "orders_global")
+    .eq("column_name", "status")
     .limit(1);
 
   if (error) return false;
@@ -200,6 +241,10 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  const canWriteOrdersDateShipped = await hasOrdersDateShippedColumn(adminClient);
+  const canWriteOrdersStatus = await hasOrdersStatusColumn(adminClient);
+  let skippedOrderShipDatePatch = !canWriteOrdersDateShipped;
+  let skippedOrderStatusPatch = !canWriteOrdersStatus;
 
   const formData = await request.formData();
   const file = (formData.get("file") || formData.get("workbook")) as File | null;
@@ -270,7 +315,7 @@ export async function POST(request: Request) {
 
     const orderNumber = rawOrderNumber.trim();
     const sentDate = normalizeDateForDb(rawShippingDate);
-    const trackingNumber = rawTrackingNumber.trim();
+    const trackingNumber = normalizeTrackingNumber(rawTrackingNumber);
 
     if (!rawPlatformId.trim() && !orderNumber && !rawShippingDate.trim() && !trackingNumber) {
       continue;
@@ -279,7 +324,7 @@ export async function POST(request: Request) {
     sourceRows += 1;
 
     const platformId = normalizePlatformId(rawPlatformId);
-    if (!platformId || !orderNumber || !sentDate || !trackingNumber) {
+    if (!platformId || !orderNumber || (!sentDate && !trackingNumber)) {
       invalidRows += 1;
       continue;
     }
@@ -287,7 +332,8 @@ export async function POST(request: Request) {
     const uniqueRowKey = buildTrackingUniquenessKey(
       platformId,
       orderNumber,
-      trackingNumber
+      trackingNumber,
+      sentDate
     );
     if (seenRowKeys.has(uniqueRowKey)) {
       duplicateRows += 1;
@@ -308,7 +354,7 @@ export async function POST(request: Request) {
       {
         error:
           sourceRows > 0
-            ? "No valid tracking rows found. Check Platform ID format, Shipping date format, and required values."
+            ? "No valid tracking rows found. Check Platform ID format and ensure each row has Order number plus Shipping date and/or Tracking number."
             : "No rows found in file.",
       },
       { status: 400 }
@@ -354,8 +400,8 @@ export async function POST(request: Request) {
   const matchedRows: Array<{
     sales_channel_id: string;
     order_number: string;
-    sent_date: string;
-    tracking_number: string;
+    sent_date: string | null;
+    tracking_number: string | null;
     order_id: string;
   }> = [];
   let unmatchedCount = 0;
@@ -377,34 +423,167 @@ export async function POST(request: Request) {
     });
   });
 
-  const trackingRows: Array<{
+  const trackingRowsWithSentDate: Array<{
     sales_channel_id: string;
     order_number: string;
     sent_date: string;
     tracking_number: string;
     order_id: string;
-  }> = matchedRows.map((row) => ({
-    sales_channel_id: row.sales_channel_id,
-    order_number: row.order_number,
-    sent_date: row.sent_date,
-    tracking_number: row.tracking_number,
-    order_id: row.order_id,
-  }));
+  }> = [];
+  const trackingRowsWithoutSentDate: Array<{
+    sales_channel_id: string;
+    order_number: string;
+    tracking_number: string;
+    order_id: string;
+  }> = [];
+
+  matchedRows.forEach((row) => {
+    if (!row.tracking_number) return;
+    if (row.sent_date) {
+      trackingRowsWithSentDate.push({
+        sales_channel_id: row.sales_channel_id,
+        order_number: row.order_number,
+        sent_date: row.sent_date,
+        tracking_number: row.tracking_number,
+        order_id: row.order_id,
+      });
+      return;
+    }
+    trackingRowsWithoutSentDate.push({
+      sales_channel_id: row.sales_channel_id,
+      order_number: row.order_number,
+      tracking_number: row.tracking_number,
+      order_id: row.order_id,
+    });
+  });
+
+  const trackingRowsTotal =
+    trackingRowsWithSentDate.length + trackingRowsWithoutSentDate.length;
 
   const duplicatesSkipped = duplicateRows;
+  let backfilledOrderShipDates = 0;
+  let upsertedTrackingRows = 0;
+  let markedOrdersShipped = 0;
 
-  if (trackingRows.length > 0) {
-    const { error: trackingError } = await adminClient
+  if (trackingRowsWithSentDate.length > 0) {
+    const { data: upsertedRowsWithDate, error: trackingError } = await adminClient
       .from("order_tracking_numbers_global")
-      .upsert(trackingRows, {
+      .upsert(trackingRowsWithSentDate, {
         onConflict: "sales_channel_id,order_number,tracking_number",
-      });
+      })
+      .select("order_id");
 
     if (trackingError) {
       return NextResponse.json(
         buildDbErrorPayload(trackingError, "Unable to upsert tracking numbers."),
         { status: 500 }
       );
+    }
+
+    upsertedTrackingRows += upsertedRowsWithDate?.length ?? 0;
+  }
+
+  if (trackingRowsWithoutSentDate.length > 0) {
+    const { data: insertedRowsWithoutDate, error: insertTrackingError } =
+      await adminClient
+        .from("order_tracking_numbers_global")
+        .upsert(trackingRowsWithoutSentDate, {
+          onConflict: "sales_channel_id,order_number,tracking_number",
+          ignoreDuplicates: true,
+        })
+        .select("order_id");
+
+    if (insertTrackingError) {
+      return NextResponse.json(
+        buildDbErrorPayload(
+          insertTrackingError,
+          "Unable to upsert tracking numbers."
+        ),
+        { status: 500 }
+      );
+    }
+
+    upsertedTrackingRows += insertedRowsWithoutDate?.length ?? 0;
+  }
+
+  if (matchedRows.length > 0 && canWriteOrdersDateShipped) {
+    const shippingDateByOrderId = new Map<string, string>();
+    matchedRows.forEach((row) => {
+      if (!row.sent_date) return;
+      const currentValue = shippingDateByOrderId.get(row.order_id);
+      if (!currentValue || row.sent_date < currentValue) {
+        shippingDateByOrderId.set(row.order_id, row.sent_date);
+      }
+    });
+
+    for (const [orderId, shipDate] of shippingDateByOrderId.entries()) {
+      const { data: updatedOrderRows, error: updateOrderError } = await adminClient
+        .from("orders_global")
+        .update({ date_shipped: shipDate })
+        .eq("id", orderId)
+        .or("date_shipped.is.null,date_shipped.eq.")
+        .select("id");
+
+      if (updateOrderError) {
+        const errorMessage = String(
+          (updateOrderError as { message?: unknown })?.message ?? ""
+        ).toLowerCase();
+        if (
+          errorMessage.includes("orders_global.date_shipped") &&
+          errorMessage.includes("does not exist")
+        ) {
+          skippedOrderShipDatePatch = true;
+          break;
+        }
+        return NextResponse.json(
+          buildDbErrorPayload(
+            updateOrderError,
+            "Unable to update order shipping dates."
+          ),
+          { status: 500 }
+        );
+      }
+
+      backfilledOrderShipDates += updatedOrderRows?.length ?? 0;
+    }
+  }
+
+  if (matchedRows.length > 0 && canWriteOrdersStatus) {
+    const orderIdsToShip = Array.from(
+      new Set(
+        matchedRows
+          .filter((row) => Boolean(row.tracking_number))
+          .map((row) => row.order_id)
+      )
+    );
+
+    for (const chunk of chunkList(orderIdsToShip, 200)) {
+      const { data: updatedStatusRows, error: updateStatusError } =
+        await adminClient
+          .from("orders_global")
+          .update({ status: "shipped" })
+          .in("id", chunk)
+          .neq("status", "shipped")
+          .select("id");
+
+      if (updateStatusError) {
+        const errorMessage = String(
+          (updateStatusError as { message?: unknown })?.message ?? ""
+        ).toLowerCase();
+        if (
+          errorMessage.includes("orders_global.status") &&
+          errorMessage.includes("does not exist")
+        ) {
+          skippedOrderStatusPatch = true;
+          break;
+        }
+        return NextResponse.json(
+          buildDbErrorPayload(updateStatusError, "Unable to update order status."),
+          { status: 500 }
+        );
+      }
+
+      markedOrdersShipped += updatedStatusRows?.length ?? 0;
     }
   }
 
@@ -414,7 +593,7 @@ export async function POST(request: Request) {
     stored_name: storedName,
     stored_path: storedPath,
     row_count: parsedRows.length,
-    imported_count: trackingRows.length,
+    imported_count: trackingRowsTotal,
     duplicates_skipped: duplicatesSkipped,
     invalid_rows: invalidRows,
     unmatched_rows: unmatchedCount,
@@ -433,7 +612,12 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    importedCount: trackingRows.length,
+    importedCount: trackingRowsTotal,
+    upsertedTrackingRows,
+    backfilledOrderShipDates,
+    skippedOrderShipDatePatch,
+    markedOrdersShipped,
+    skippedOrderStatusPatch,
     validRows: parsedRows.length,
     duplicatesSkipped,
     invalidRows,

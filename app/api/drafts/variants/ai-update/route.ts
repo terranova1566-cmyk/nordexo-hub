@@ -7,6 +7,7 @@ const MODEL =
   process.env.DRAFT_VARIANTS_AI_MODEL ||
   process.env.OPENAI_EDIT_MODEL ||
   "gpt-5.2";
+const BIGINT_ID_RE = /^\d+$/;
 
 const asText = (value: unknown) => String(value ?? "").trim();
 
@@ -29,6 +30,13 @@ const asRawObject = (value: unknown) => {
   }
   return {};
 };
+
+const normalizeDraftId = (value: unknown) => {
+  const text = asText(value);
+  return BIGINT_ID_RE.test(text) ? text : null;
+};
+
+const normalizeSkuKey = (value: unknown) => asText(value).toLowerCase();
 
 const buildCombinedOption = (input: {
   draft_option1: string;
@@ -68,7 +76,7 @@ const sanitizeVariant = (value: unknown, fallbackSpu: string) => {
   });
 
   return {
-    id: asNullableText(raw.id),
+    id: normalizeDraftId(raw.id),
     draft_spu: asText(raw.draft_spu || fallbackSpu),
     draft_sku: asNullableText(raw.draft_sku),
     draft_option1: draft_option1 || null,
@@ -237,9 +245,34 @@ export async function POST(request: Request) {
     );
   }
 
+  const validInputIds = new Set(
+    normalizedInput.map((entry) => entry.id).filter((entry): entry is string => Boolean(entry))
+  );
+  const inputIdBySkuKey = new Map<string, string>();
+  normalizedInput.forEach((entry) => {
+    const skuKey = normalizeSkuKey(entry.draft_sku);
+    if (!skuKey || !entry.id) return;
+    if (!inputIdBySkuKey.has(skuKey)) {
+      inputIdBySkuKey.set(skuKey, entry.id);
+    }
+  });
+
+  // Keep variant row identity stable: AI output may mutate ids.
+  const reconciledVariants = outputVariants.map((entry) => {
+    let id = entry.id && validInputIds.has(entry.id) ? entry.id : null;
+    if (!id) {
+      const skuKey = normalizeSkuKey(entry.draft_sku);
+      id = skuKey ? inputIdBySkuKey.get(skuKey) ?? null : null;
+    }
+    return {
+      ...entry,
+      id,
+    };
+  });
+
   return NextResponse.json({
     ok: true,
     model: MODEL,
-    variants: outputVariants,
+    variants: reconciledVariants,
   });
 }
