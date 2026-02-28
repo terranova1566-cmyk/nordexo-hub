@@ -33,7 +33,13 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import Image from "next/image";
 import { useI18n } from "@/components/i18n-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -428,6 +434,19 @@ const useStyles = makeStyles({
     display: "inline-flex",
     alignItems: "center",
     gap: "4px",
+    ":hover": {
+      textDecoration: "underline",
+    },
+  },
+  trackingItem: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    gap: "6px",
+  },
+  trackingDate: {
+    color: tokens.colorNeutralForeground4,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
   },
   detailsTableWrapper: {
     borderRadius: "10px",
@@ -489,13 +508,8 @@ const useStyles = makeStyles({
     borderRadius: "8px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    overflow: "visible",
+    overflow: "hidden",
     cursor: "zoom-in",
-    ":hover .order-item-thumb-zoom": {
-      opacity: 1,
-      transform: "translateY(-50%) scale(1)",
-      pointerEvents: "auto",
-    },
   },
   itemImageThumb: {
     width: "45px",
@@ -504,26 +518,19 @@ const useStyles = makeStyles({
     objectFit: "cover",
     display: "block",
   },
-  itemImageZoom: {
-    position: "absolute",
-    left: "calc(100% + 10px)",
-    top: "50%",
-    width: "90px",
-    height: "90px",
+  floatingImagePreview: {
+    position: "fixed",
+    width: "100px",
+    height: "100px",
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    boxShadow: "0 10px 20px rgba(0,0,0,0.18)",
-    padding: "3px",
-    opacity: 0,
-    transform: "translateY(-50%) scale(0.96)",
-    transitionProperty: "opacity, transform",
-    transitionDuration: "120ms",
-    transitionTimingFunction: "ease",
+    boxShadow: "0 12px 24px rgba(0,0,0,0.2)",
+    padding: "4px",
     pointerEvents: "none",
-    zIndex: 5,
+    zIndex: 99999,
   },
-  itemImageZoomImg: {
+  floatingImagePreviewImg: {
     width: "100%",
     height: "100%",
     borderRadius: "7px",
@@ -532,6 +539,7 @@ const useStyles = makeStyles({
   },
   statusPill: {
     display: "inline-flex",
+    alignSelf: "flex-start",
     alignItems: "center",
     padding: "2px 10px",
     borderRadius: "999px",
@@ -861,6 +869,12 @@ type DateSortOption =
 type NotificationFilterOption = "all" | "have" | "none";
 
 type CountryCode = "NO" | "SE" | "FI";
+type HoverImagePreview = {
+  src: string;
+  alt: string;
+  x: number;
+  y: number;
+};
 
 const ORDERS_PAGE_SIZE_OPTIONS = [100, 250, 500, 1000] as const;
 
@@ -904,6 +918,14 @@ const getCountryCodeForOrder = (row: Pick<OrderRow, "sales_channel_id" | "custom
     getCountryCodeFromSalesChannelId(row.sales_channel_id);
   if (value === "NO" || value === "SE" || value === "FI") return value;
   return null;
+};
+
+const getOrderCurrency = (
+  row: Pick<OrderRow, "sales_channel_id" | "customer_country_code">
+) => {
+  const countryCode = getCountryCodeForOrder(row);
+  if (countryCode === "NO" || countryCode === "SE") return "SEK";
+  return "EUR";
 };
 
 const ORDER_EMAIL_BCC_OPTIONS = [
@@ -972,6 +994,8 @@ export default function OrdersPage() {
   const [emailPreview, setEmailPreview] = useState<EmailTemplatePreview | null>(null);
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
+  const [hoverImagePreview, setHoverImagePreview] =
+    useState<HoverImagePreview | null>(null);
 
   useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
@@ -1717,6 +1741,54 @@ export default function OrdersPage() {
       return truncateTitle(item.product_title);
     }
     return item.sku ? "-" : "";
+  };
+
+  const resolveHoverPreviewPosition = (
+    event: ReactMouseEvent<HTMLElement>
+  ) => {
+    const previewSize = 100;
+    const margin = 12;
+    const x = event.clientX + margin;
+    const y = event.clientY + margin;
+    if (typeof window === "undefined") {
+      return { x, y };
+    }
+    const maxX = Math.max(margin, window.innerWidth - previewSize - margin);
+    const maxY = Math.max(margin, window.innerHeight - previewSize - margin);
+    return {
+      x: Math.min(x, maxX),
+      y: Math.min(y, maxY),
+    };
+  };
+
+  const showHoverPreview = (
+    event: ReactMouseEvent<HTMLElement>,
+    src: string,
+    alt: string
+  ) => {
+    const position = resolveHoverPreviewPosition(event);
+    setHoverImagePreview({
+      src,
+      alt,
+      x: position.x,
+      y: position.y,
+    });
+  };
+
+  const moveHoverPreview = (event: ReactMouseEvent<HTMLElement>) => {
+    setHoverImagePreview((previous) => {
+      if (!previous) return previous;
+      const position = resolveHoverPreviewPosition(event);
+      return {
+        ...previous,
+        x: position.x,
+        y: position.y,
+      };
+    });
+  };
+
+  const hideHoverPreview = () => {
+    setHoverImagePreview(null);
   };
 
   const handleResendItemToggle = (
@@ -2475,6 +2547,11 @@ export default function OrdersPage() {
                     {t("orders.columns.country")}
                   </TableHeaderCell>
                   <TableHeaderCell
+                    className={mergeClasses(styles.stickyHeader, styles.colOrderValue)}
+                  >
+                    {t("orders.columns.orderValue")}
+                  </TableHeaderCell>
+                  <TableHeaderCell
                     className={mergeClasses(styles.stickyHeader, styles.colTransactionDate)}
                   >
                     {t("orders.columns.transactionDate")}
@@ -2504,7 +2581,7 @@ export default function OrdersPage() {
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11}>{t("orders.empty")}</TableCell>
+                    <TableCell colSpan={12}>{t("orders.empty")}</TableCell>
                   </TableRow>
                 ) : (
                   filteredRows.map((row, index) => {
@@ -2532,6 +2609,7 @@ export default function OrdersPage() {
                     const countryName = getCountryName(row, countryCode);
                     const platformDisplayName = getNormalizedSalesChannelName(row);
                     const latestNotificationText = getLatestNotificationText(row);
+                    const orderCurrency = getOrderCurrency(row);
                     return (
                       <Fragment key={row.id}>
                         <TableRow
@@ -2589,6 +2667,9 @@ export default function OrdersPage() {
                               <span>{countryName}</span>
                             </span>
                           </TableCell>
+                          <TableCell className={styles.colOrderValue}>
+                            {formatCurrency(row.order_total_value, orderCurrency) || "-"}
+                          </TableCell>
                           <TableCell className={styles.colTransactionDate}>
                             {formatDate(row.transaction_date)}
                           </TableCell>
@@ -2625,7 +2706,7 @@ export default function OrdersPage() {
                         </TableRow>
                         {isExpanded ? (
                           <TableRow>
-                            <TableCell colSpan={11} className={styles.detailsCell}>
+                            <TableCell colSpan={12} className={styles.detailsCell}>
                               <div className={styles.detailsCard}>
                                 {details?.loading ? (
                                   <Text>{t("orders.details.loading")}</Text>
@@ -2750,7 +2831,20 @@ export default function OrdersPage() {
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColImage}>
                                                       {item.item_image_url ? (
-                                                        <span className={styles.itemImageWrap}>
+                                                        <span
+                                                          className={styles.itemImageWrap}
+                                                          onMouseEnter={(event) => {
+                                                            showHoverPreview(
+                                                              event,
+                                                              item.item_image_url ?? "",
+                                                              item.product_title ||
+                                                                item.sku ||
+                                                                "Product image"
+                                                            );
+                                                          }}
+                                                          onMouseMove={moveHoverPreview}
+                                                          onMouseLeave={hideHoverPreview}
+                                                        >
                                                           <img
                                                             src={item.item_image_url}
                                                             alt={
@@ -2761,20 +2855,6 @@ export default function OrdersPage() {
                                                             className={styles.itemImageThumb}
                                                             loading="lazy"
                                                           />
-                                                          <span
-                                                            className={mergeClasses(
-                                                              styles.itemImageZoom,
-                                                              "order-item-thumb-zoom"
-                                                            )}
-                                                          >
-                                                            <img
-                                                              src={item.item_image_url}
-                                                              alt=""
-                                                              aria-hidden="true"
-                                                              className={styles.itemImageZoomImg}
-                                                              loading="lazy"
-                                                            />
-                                                          </span>
                                                         </span>
                                                       ) : (
                                                         <Text className={styles.detailLabel}>-</Text>
@@ -2796,7 +2876,10 @@ export default function OrdersPage() {
                                                         : item.quantity}
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColSalesValue}>
-                                                      {formatCurrency(item.sales_value_eur, "EUR")}
+                                                      {formatCurrency(
+                                                        item.sales_value_eur,
+                                                        orderCurrency
+                                                      )}
                                                     </TableCell>
                                                     <TableCell className={styles.detailsColMarketplace}>
                                                       {item.marketplace_order_number ?? "-"}
@@ -2913,23 +2996,29 @@ export default function OrdersPage() {
                                               {details?.tracking_numbers?.length ? (
                                                 <div className={styles.trackingList}>
                                                   {details.tracking_numbers.map((tracking) => (
-                                                    <a
+                                                    <div
                                                       key={tracking.tracking_number}
-                                                      className={styles.trackingLink}
-                                                      href={`https://t.17track.net/en#nums=${encodeURIComponent(
-                                                        tracking.tracking_number
-                                                      )}`}
-                                                      target="_blank"
-                                                      rel="noreferrer"
-                                                      aria-label={t(
-                                                        "orders.details.trackExternal"
-                                                      )}
+                                                      className={styles.trackingItem}
                                                     >
-                                                      ({tracking.sent_date
-                                                        ? formatDate(tracking.sent_date)
-                                                        : "-"}){" "}
-                                                      {tracking.tracking_number}
-                                                    </a>
+                                                      <a
+                                                        className={styles.trackingLink}
+                                                        href={`https://t.17track.net/en#nums=${encodeURIComponent(
+                                                          tracking.tracking_number
+                                                        )}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        aria-label={t(
+                                                          "orders.details.trackExternal"
+                                                        )}
+                                                      >
+                                                        {tracking.tracking_number}
+                                                      </a>
+                                                      {tracking.sent_date ? (
+                                                        <span className={styles.trackingDate}>
+                                                          {formatDate(tracking.sent_date)}
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
                                                   ))}
                                                 </div>
                                               ) : (
@@ -2996,6 +3085,21 @@ export default function OrdersPage() {
           )}
         </div>
       </Card>
+      {hoverImagePreview ? (
+        <div
+          className={styles.floatingImagePreview}
+          style={{
+            left: `${hoverImagePreview.x}px`,
+            top: `${hoverImagePreview.y}px`,
+          }}
+        >
+          <img
+            src={hoverImagePreview.src}
+            alt={hoverImagePreview.alt}
+            className={styles.floatingImagePreviewImg}
+          />
+        </div>
+      ) : null}
       <Dialog
         open={statusDialogOpen}
         onOpenChange={(_, data) => {

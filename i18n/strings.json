@@ -1217,6 +1217,11 @@
       "context": "Orders column"
     },
     {
+      "key": "orders.columns.orderValue",
+      "text": "Order Value",
+      "context": "Orders column"
+    },
+    {
       "key": "orders.columns.email",
       "text": "Customer Email",
       "context": "Orders column"
