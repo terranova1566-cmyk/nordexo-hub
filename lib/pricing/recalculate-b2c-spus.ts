@@ -235,7 +235,7 @@ const syncCatalogVariantBasePrices = async (
       );
     }
 
-    const upsertRows = (existingRows ?? [])
+    const updateRows = (existingRows ?? [])
       .map((row) => {
         const nextPrice = sePriceByVariant.get(String(row.id));
         if (nextPrice === undefined) return null;
@@ -252,17 +252,22 @@ const syncCatalogVariantBasePrices = async (
           Boolean(row)
       );
 
-    if (upsertRows.length === 0) continue;
-    const { data, error } = await adminClient
-      .from("catalog_variants")
-      .upsert(upsertRows, { onConflict: "id" })
-      .select("id");
-    if (error) {
-      throw new Error(
-        `Unable to sync catalog_variants.price from B2C: ${error.message}`
-      );
+    if (updateRows.length === 0) continue;
+    for (const row of updateRows) {
+      const { error } = await adminClient
+        .from("catalog_variants")
+        .update({
+          price: row.price,
+          updated_at: row.updated_at,
+        })
+        .eq("id", row.id);
+      if (error) {
+        throw new Error(
+          `Unable to sync catalog_variants.price from B2C: ${error.message}`
+        );
+      }
+      updated += 1;
     }
-    updated += data?.length ?? upsertRows.length;
   }
   return updated;
 };

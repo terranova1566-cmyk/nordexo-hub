@@ -937,6 +937,21 @@
       "context": "Orders filter option"
     },
     {
+      "key": "orders.filters.columns",
+      "text": "Columns",
+      "context": "Orders column picker label"
+    },
+    {
+      "key": "orders.filters.showColumns",
+      "text": "Show Columns",
+      "context": "Orders column picker label"
+    },
+    {
+      "key": "orders.filters.selectColumns",
+      "text": "Select Columns",
+      "context": "Orders column picker action label"
+    },
+    {
       "key": "orders.filters.dateSort",
       "text": "Date sort",
       "context": "Orders filter label"
@@ -1257,6 +1272,11 @@
       "context": "Orders column"
     },
     {
+      "key": "orders.columns.partnerInformed",
+      "text": "Partner Informed",
+      "context": "Orders column"
+    },
+    {
       "key": "orders.status.pending",
       "text": "Pending",
       "context": "Order status label"
@@ -1307,6 +1327,11 @@
       "context": "Orders notification placeholder"
     },
     {
+      "key": "orders.partnerInformed.sent",
+      "text": "Sent",
+      "context": "Orders partner informed badge text"
+    },
+    {
       "key": "orders.email.button",
       "text": "Send Email",
       "context": "Orders send email button"
@@ -1355,6 +1380,26 @@
       "key": "orders.email.bccPlaceholder",
       "text": "No BCC",
       "context": "Orders send email BCC placeholder"
+    },
+    {
+      "key": "orders.email.partnerReceiverLabel",
+      "text": "Send only to partner",
+      "context": "Orders send email partner receiver field"
+    },
+    {
+      "key": "orders.email.partnerReceiverPlaceholder",
+      "text": "Select receiver",
+      "context": "Orders send email partner receiver placeholder"
+    },
+    {
+      "key": "orders.email.partnerReceiver.letsdealSe",
+      "text": "LetsDeal SE",
+      "context": "Orders send email partner receiver option"
+    },
+    {
+      "key": "orders.email.partnerReceiver.letsdealNo",
+      "text": "LetsDeal NO",
+      "context": "Orders send email partner receiver option"
     },
     {
       "key": "orders.email.sendpulseNote",

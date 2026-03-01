@@ -17,6 +17,7 @@ type VariantUpdateInput = {
   draft_weight?: number | null;
   draft_weight_unit?: string | null;
   draft_variant_image_url?: string | null;
+  draft_shipping_class?: string | null;
   variation_color_se?: string | null;
   variation_size_se?: string | null;
   variation_other_se?: string | null;
@@ -65,6 +66,13 @@ const asRawObject = (value: unknown) => {
   return {};
 };
 
+const SHIPPING_CLASS_SET = new Set(["NOR", "BAT", "PBA", "LIQ"]);
+const asNullableShippingClass = (value: unknown) => {
+  const text = asText(value).toUpperCase();
+  if (!text) return null;
+  return SHIPPING_CLASS_SET.has(text) ? text : null;
+};
+
 const buildCombinedOption = (input: {
   draft_option1: string;
   draft_option2: string;
@@ -94,6 +102,9 @@ const sanitizeVariantInput = (value: unknown): VariantUpdateInput | null => {
   const variation_size_se = asText(raw.variation_size_se ?? draftRaw.variation_size_se);
   const variation_other_se = asText(raw.variation_other_se ?? draftRaw.variation_other_se);
   const variation_amount_se = asText(raw.variation_amount_se ?? draftRaw.variation_amount_se);
+  const draft_shipping_class = asNullableShippingClass(
+    raw.draft_shipping_class ?? draftRaw.draft_shipping_class
+  );
   const optionCombinedInput = asText(raw.draft_option_combined_zh);
   const draft_option_combined_zh = buildCombinedOption({
     draft_option1,
@@ -114,6 +125,7 @@ const sanitizeVariantInput = (value: unknown): VariantUpdateInput | null => {
     draft_weight: asNullableNumber(raw.draft_weight),
     draft_weight_unit: asNullableText(raw.draft_weight_unit),
     draft_variant_image_url: asNullableText(raw.draft_variant_image_url),
+    draft_shipping_class,
     variation_color_se: variation_color_se || null,
     variation_size_se: variation_size_se || null,
     variation_other_se: variation_other_se || null,
@@ -128,6 +140,7 @@ const sanitizeVariantInput = (value: unknown): VariantUpdateInput | null => {
       variation_size_se,
       variation_other_se,
       variation_amount_se,
+      draft_shipping_class,
     },
   };
 };
@@ -145,6 +158,7 @@ const buildRowUpdate = (spu: string, row: VariantUpdateInput, nowIso: string) =>
   draft_weight: row.draft_weight ?? null,
   draft_weight_unit: row.draft_weight_unit ?? null,
   draft_variant_image_url: row.draft_variant_image_url ?? null,
+  draft_shipping_class: row.draft_shipping_class ?? null,
   draft_raw_row: row.draft_raw_row ?? {},
   draft_updated_at: nowIso,
 });

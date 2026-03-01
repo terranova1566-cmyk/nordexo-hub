@@ -20,6 +20,9 @@ import {
   MenuPopover,
   MenuTrigger,
   Option,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Textarea,
   Spinner,
   Table,
@@ -38,9 +41,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { collectMacros } from "@/lib/email-templates";
@@ -70,6 +75,7 @@ type OrderRow = {
   delay_days: number | null;
   latest_notification_name?: string | null;
   latest_notification_sent_at?: string | null;
+  partner_informed?: boolean | null;
 };
 
 type OrderItem = {
@@ -305,6 +311,58 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     lineHeight: 1,
   },
+  columnsPopover: {
+    width: "280px",
+    maxWidth: "90vw",
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  columnsHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+  },
+  columnsHeaderText: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  columnsOptionsList: {
+    maxHeight: "260px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+  },
+  columnsOptionRow: {
+    minHeight: "32px",
+    padding: "3px 6px",
+    borderRadius: "6px",
+    display: "flex",
+    alignItems: "center",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  columnsActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+    paddingTop: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  columnsCounter: {
+    display: "flex",
+    justifyContent: "flex-end",
+    paddingTop: "8px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+  },
   clickableRow: {
     cursor: "pointer",
   },
@@ -364,6 +422,11 @@ const useStyles = makeStyles({
   colNotifications: {
     width: "260px",
     minWidth: "260px",
+  },
+  colPartnerInformed: {
+    width: "140px",
+    minWidth: "140px",
+    whiteSpace: "nowrap",
   },
   colDateShipped: {
     width: "126px",
@@ -930,6 +993,214 @@ type HoverImagePreview = {
 };
 
 const ORDERS_PAGE_SIZE_OPTIONS = [100, 250, 500, 1000] as const;
+const DATE_SORT_OPTIONS: DateSortOption[] = [
+  "transaction_asc",
+  "transaction_desc",
+  "shipped_asc",
+  "shipped_desc",
+];
+const STATUS_FILTER_OPTIONS = new Set<string>([
+  "all",
+  "pending",
+  "purchased",
+  "being_packed_and_shipped",
+  "shipped",
+]);
+const WARNING_FILTER_OPTIONS = new Set<string>(["all", "delayed", "on_time"]);
+const NOTIFICATION_FILTER_OPTIONS = new Set<NotificationFilterOption>([
+  "all",
+  "have",
+  "none",
+]);
+const COUNTRY_FILTER_OPTIONS = new Set(["all", "NO", "SE", "FI"]);
+const KNOWN_SALES_CHANNEL_OPTIONS = [
+  "LetsDeal",
+  "Offerilla",
+  "Digideal",
+  "Sparklar",
+] as const;
+const ORDERS_COLUMNS_STORAGE_KEY = "orders:view:visible-columns:v1";
+const ORDER_COLUMN_KEYS = [
+  "sales_channel_id",
+  "order_number",
+  "sales_channel",
+  "customer",
+  "country",
+  "order_value",
+  "transaction_date",
+  "status",
+  "warnings",
+  "notifications",
+  "partner_informed",
+  "date_shipped",
+] as const;
+
+type OrdersColumnKey = (typeof ORDER_COLUMN_KEYS)[number];
+
+const ORDER_COLUMN_KEY_SET = new Set<OrdersColumnKey>(ORDER_COLUMN_KEYS);
+const ORDER_COLUMN_LABEL_KEY_BY_ID: Record<OrdersColumnKey, string> = {
+  sales_channel_id: "orders.columns.salesChannelId",
+  order_number: "orders.columns.orderNumber",
+  sales_channel: "orders.columns.salesChannel",
+  customer: "orders.columns.customer",
+  country: "orders.columns.country",
+  order_value: "orders.columns.orderValue",
+  transaction_date: "orders.columns.transactionDate",
+  status: "orders.columns.status",
+  warnings: "orders.columns.warnings",
+  notifications: "orders.columns.notifications",
+  partner_informed: "orders.columns.partnerInformed",
+  date_shipped: "orders.columns.dateShipped",
+};
+
+const normalizeVisibleOrderColumns = (value: unknown): OrdersColumnKey[] => {
+  if (!Array.isArray(value)) return [...ORDER_COLUMN_KEYS];
+
+  const unique = new Set<OrdersColumnKey>();
+  value.forEach((entry) => {
+    const token = String(entry ?? "").trim() as OrdersColumnKey;
+    if (ORDER_COLUMN_KEY_SET.has(token)) {
+      unique.add(token);
+    }
+  });
+
+  const ordered = ORDER_COLUMN_KEYS.filter((key) => unique.has(key));
+  if (ordered.length === 0) return [...ORDER_COLUMN_KEYS];
+  return ordered;
+};
+
+type UrlSearchParamsLike = {
+  get: (key: string) => string | null;
+  getAll?: (key: string) => string[];
+};
+
+type OrdersViewUrlState = {
+  searchQuery: string;
+  transactionFrom: string;
+  transactionTo: string;
+  shippedFrom: string;
+  shippedTo: string;
+  countryFilter: string;
+  salesChannelFilters: string[];
+  statusFilter: string;
+  warningFilter: string;
+  notificationFilter: NotificationFilterOption;
+  dateSortOption: DateSortOption;
+  page: number;
+  pageSize: number;
+};
+
+const parsePositiveInt = (value: string | null, fallback: number) => {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
+
+const normalizeSalesChannelFilters = (values: unknown[]) =>
+  Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+        .filter((value) => value.toLowerCase() !== "all")
+    )
+  ).sort((left, right) => left.localeCompare(right));
+
+const getSearchParamValues = (params: UrlSearchParamsLike, key: string) => {
+  if (typeof params.getAll === "function") {
+    return params.getAll(key);
+  }
+  const value = params.get(key);
+  return value ? [value] : [];
+};
+
+const parseSalesChannelFiltersFromUrl = (params: UrlSearchParamsLike) =>
+  normalizeSalesChannelFilters(
+    getSearchParamValues(params, "sales_channel").flatMap((value) =>
+      String(value ?? "").split(",")
+    )
+  );
+
+const parseOrdersViewUrlState = (params: UrlSearchParamsLike): OrdersViewUrlState => {
+  const searchQuery = String(params.get("q") ?? "").trim();
+  const transactionFrom = String(params.get("transaction_from") ?? "").trim();
+  const transactionTo = String(params.get("transaction_to") ?? "").trim();
+  const shippedFrom = String(params.get("shipped_from") ?? "").trim();
+  const shippedTo = String(params.get("shipped_to") ?? "").trim();
+
+  const countryToken = String(params.get("country") ?? "all")
+    .trim()
+    .toUpperCase();
+  const countryFilter = COUNTRY_FILTER_OPTIONS.has(countryToken)
+    ? countryToken
+    : "all";
+
+  const salesChannelFilters = parseSalesChannelFiltersFromUrl(params);
+
+  const statusToken = String(params.get("status") ?? "all")
+    .trim()
+    .toLowerCase();
+  const statusFilter = STATUS_FILTER_OPTIONS.has(statusToken) ? statusToken : "all";
+
+  const warningToken = String(params.get("warning") ?? "all")
+    .trim()
+    .toLowerCase();
+  const warningFilter = WARNING_FILTER_OPTIONS.has(warningToken)
+    ? warningToken
+    : "all";
+
+  const notificationToken = String(params.get("notification") ?? "all")
+    .trim()
+    .toLowerCase() as NotificationFilterOption;
+  const notificationFilter = NOTIFICATION_FILTER_OPTIONS.has(notificationToken)
+    ? notificationToken
+    : "all";
+
+  const dateSortToken = String(params.get("date_sort") ?? "transaction_desc")
+    .trim()
+    .toLowerCase() as DateSortOption;
+  const dateSortOption = DATE_SORT_OPTIONS.includes(dateSortToken)
+    ? dateSortToken
+    : "transaction_desc";
+
+  const page = parsePositiveInt(params.get("page"), 1);
+  const pageSizeRaw = parsePositiveInt(
+    params.get("page_size"),
+    ORDERS_PAGE_SIZE_OPTIONS[0]
+  );
+  const pageSize = ORDERS_PAGE_SIZE_OPTIONS.includes(
+    pageSizeRaw as (typeof ORDERS_PAGE_SIZE_OPTIONS)[number]
+  )
+    ? pageSizeRaw
+    : ORDERS_PAGE_SIZE_OPTIONS[0];
+
+  return {
+    searchQuery,
+    transactionFrom,
+    transactionTo,
+    shippedFrom,
+    shippedTo,
+    countryFilter,
+    salesChannelFilters,
+    statusFilter,
+    warningFilter,
+    notificationFilter,
+    dateSortOption,
+    page,
+    pageSize,
+  };
+};
+
+const DEFAULT_ORDERS_VIEW_URL_STATE: OrdersViewUrlState = parseOrdersViewUrlState(
+  new URLSearchParams()
+);
+
+const getCurrentOrdersUrlQuery = () => {
+  if (typeof window === "undefined") return "";
+  return window.location.search.startsWith("?")
+    ? window.location.search.slice(1)
+    : window.location.search;
+};
 
 const flagByCountryCode: Record<CountryCode, string> = {
   NO: "/icons/flags/no.svg",
@@ -977,33 +1248,91 @@ const ORDER_EMAIL_BCC_OPTIONS = [
   "support@letsdeal.se",
   "support@letsdeal.no",
 ] as const;
+const ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS = [
+  {
+    key: "letsdeal_se",
+    labelKey: "orders.email.partnerReceiver.letsdealSe",
+  },
+  {
+    key: "letsdeal_no",
+    labelKey: "orders.email.partnerReceiver.letsdealNo",
+  },
+] as const;
+
+const eventHasShiftKey = (event: unknown) => {
+  if (!event || typeof event !== "object") return false;
+  const candidate = event as {
+    shiftKey?: unknown;
+    nativeEvent?: { shiftKey?: unknown };
+  };
+  if (typeof candidate.shiftKey === "boolean") {
+    return candidate.shiftKey;
+  }
+  if (typeof candidate.nativeEvent?.shiftKey === "boolean") {
+    return candidate.nativeEvent.shiftKey;
+  }
+  return false;
+};
 
 export default function OrdersPage() {
   const styles = useStyles();
   const { t } = useI18n();
+  const router = useRouter();
+  const pathname = usePathname();
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [transactionFrom, setTransactionFrom] = useState("");
-  const [transactionTo, setTransactionTo] = useState("");
-  const [shippedFrom, setShippedFrom] = useState("");
-  const [shippedTo, setShippedTo] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(ORDERS_PAGE_SIZE_OPTIONS[0]);
+  const [searchInput, setSearchInput] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.searchQuery
+  );
+  const [searchQuery, setSearchQuery] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.searchQuery
+  );
+  const [transactionFrom, setTransactionFrom] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.transactionFrom
+  );
+  const [transactionTo, setTransactionTo] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.transactionTo
+  );
+  const [shippedFrom, setShippedFrom] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.shippedFrom
+  );
+  const [shippedTo, setShippedTo] = useState(
+    DEFAULT_ORDERS_VIEW_URL_STATE.shippedTo
+  );
+  const [page, setPage] = useState(DEFAULT_ORDERS_VIEW_URL_STATE.page);
+  const [pageSize, setPageSize] = useState<number>(
+    DEFAULT_ORDERS_VIEW_URL_STATE.pageSize
+  );
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loadedFrom, setLoadedFrom] = useState(0);
   const [loadedTo, setLoadedTo] = useState(0);
-  const [countryFilter, setCountryFilter] = useState<string>("all");
-  const [salesChannelFilter, setSalesChannelFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [warningFilter, setWarningFilter] = useState<string>("all");
+  const [countryFilter, setCountryFilter] = useState<string>(
+    DEFAULT_ORDERS_VIEW_URL_STATE.countryFilter
+  );
+  const [salesChannelFilters, setSalesChannelFilters] = useState<string[]>(
+    DEFAULT_ORDERS_VIEW_URL_STATE.salesChannelFilters
+  );
+  const [statusFilter, setStatusFilter] = useState<string>(
+    DEFAULT_ORDERS_VIEW_URL_STATE.statusFilter
+  );
+  const [warningFilter, setWarningFilter] = useState<string>(
+    DEFAULT_ORDERS_VIEW_URL_STATE.warningFilter
+  );
   const [dateSortOption, setDateSortOption] =
-    useState<DateSortOption>("transaction_desc");
+    useState<DateSortOption>(DEFAULT_ORDERS_VIEW_URL_STATE.dateSortOption);
   const [notificationFilter, setNotificationFilter] =
-    useState<NotificationFilterOption>("all");
+    useState<NotificationFilterOption>(
+      DEFAULT_ORDERS_VIEW_URL_STATE.notificationFilter
+    );
+  const [columnPickerOpen, setColumnPickerOpen] = useState(false);
+  const [visibleOrderColumns, setVisibleOrderColumns] = useState<OrdersColumnKey[]>(
+    [...ORDER_COLUMN_KEYS]
+  );
+  const [orderColumnDraft, setOrderColumnDraft] = useState<OrdersColumnKey[]>(
+    [...ORDER_COLUMN_KEYS]
+  );
   const [isExporting, setIsExporting] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isAddingResend, setIsAddingResend] = useState(false);
@@ -1031,6 +1360,8 @@ export default function OrdersPage() {
   const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState("");
   const [selectedEmailSenderEmail, setSelectedEmailSenderEmail] = useState("");
   const [selectedEmailBcc, setSelectedEmailBcc] = useState<string[]>([]);
+  const [selectedEmailPartnerReceiverKey, setSelectedEmailPartnerReceiverKey] =
+    useState<string>(ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS[0]?.key ?? "");
   const [emailSubjectTemplateDraft, setEmailSubjectTemplateDraft] = useState("");
   const [emailBodyTemplateDraft, setEmailBodyTemplateDraft] = useState("");
   const [emailDialogLoading, setEmailDialogLoading] = useState(false);
@@ -1051,6 +1382,38 @@ export default function OrdersPage() {
   const [detailsEditErrorByOrderId, setDetailsEditErrorByOrderId] = useState<
     Record<string, string>
   >({});
+  const [urlStateReady, setUrlStateReady] = useState(false);
+  const lastSelectedOrderIndexRef = useRef<number | null>(null);
+  const hasInitializedPageResetRef = useRef(false);
+  const isApplyingUrlStateRef = useRef(false);
+
+  useEffect(() => {
+    const applyQueryToState = (query: string) => {
+      const next = parseOrdersViewUrlState(new URLSearchParams(query));
+      isApplyingUrlStateRef.current = true;
+      setSearchInput(next.searchQuery);
+      setSearchQuery(next.searchQuery);
+      setTransactionFrom(next.transactionFrom);
+      setTransactionTo(next.transactionTo);
+      setShippedFrom(next.shippedFrom);
+      setShippedTo(next.shippedTo);
+      setCountryFilter(next.countryFilter);
+      setSalesChannelFilters(next.salesChannelFilters);
+      setStatusFilter(next.statusFilter);
+      setWarningFilter(next.warningFilter);
+      setNotificationFilter(next.notificationFilter);
+      setDateSortOption(next.dateSortOption);
+      setPage(next.page);
+      setPageSize(next.pageSize);
+    };
+    applyQueryToState(getCurrentOrdersUrlQuery());
+    setUrlStateReady(true);
+    const handlePopState = () => {
+      applyQueryToState(getCurrentOrdersUrlQuery());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
@@ -1058,6 +1421,28 @@ export default function OrdersPage() {
   }, [searchInput]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(ORDERS_COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      const normalized = normalizeVisibleOrderColumns(parsed);
+      setVisibleOrderColumns(normalized);
+      setOrderColumnDraft(normalized);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasInitializedPageResetRef.current) {
+      hasInitializedPageResetRef.current = true;
+      return;
+    }
+    if (isApplyingUrlStateRef.current) {
+      isApplyingUrlStateRef.current = false;
+      return;
+    }
     setPage((prev) => (prev === 1 ? prev : 1));
   }, [
     searchQuery,
@@ -1065,35 +1450,63 @@ export default function OrdersPage() {
     transactionTo,
     shippedFrom,
     shippedTo,
+    countryFilter,
+    salesChannelFilters,
     statusFilter,
+    warningFilter,
+    notificationFilter,
     dateSortOption,
     pageSize,
   ]);
 
-  const params = useMemo(() => {
+  const ordersQueryString = useMemo(() => {
     const searchParams = new URLSearchParams();
     if (searchQuery) searchParams.set("q", searchQuery);
     if (transactionFrom) searchParams.set("transaction_from", transactionFrom);
     if (transactionTo) searchParams.set("transaction_to", transactionTo);
     if (shippedFrom) searchParams.set("shipped_from", shippedFrom);
     if (shippedTo) searchParams.set("shipped_to", shippedTo);
+    if (countryFilter !== "all") searchParams.set("country", countryFilter);
+    salesChannelFilters.forEach((name) =>
+      searchParams.append("sales_channel", name)
+    );
     if (statusFilter !== "all") searchParams.set("status", statusFilter);
+    if (warningFilter !== "all") searchParams.set("warning", warningFilter);
+    if (notificationFilter !== "all") {
+      searchParams.set("notification", notificationFilter);
+    }
     searchParams.set("date_sort", dateSortOption);
     searchParams.set("page", String(page));
     searchParams.set("page_size", String(pageSize));
-    const query = searchParams.toString();
-    return query ? `/api/orders?${query}` : "/api/orders";
+    return searchParams.toString();
   }, [
     searchQuery,
     transactionFrom,
     transactionTo,
     shippedFrom,
     shippedTo,
+    countryFilter,
+    salesChannelFilters,
     statusFilter,
+    warningFilter,
+    notificationFilter,
     dateSortOption,
     page,
     pageSize,
   ]);
+  const params = ordersQueryString ? `/api/orders?${ordersQueryString}` : "/api/orders";
+
+  useEffect(() => {
+    if (!urlStateReady) return;
+    const currentQuery = getCurrentOrdersUrlQuery();
+    if (isApplyingUrlStateRef.current) {
+      isApplyingUrlStateRef.current = false;
+      if (currentQuery === ordersQueryString) return;
+    }
+    if (currentQuery === ordersQueryString) return;
+    const nextUrl = ordersQueryString ? `${pathname}?${ordersQueryString}` : pathname;
+    router.replace(nextUrl, { scroll: false });
+  }, [ordersQueryString, pathname, router, urlStateReady]);
 
   const getNormalizedSalesChannelName = (row: {
     sales_channel_name: string | null;
@@ -1105,7 +1518,7 @@ export default function OrdersPage() {
     }).trim();
 
   const salesChannelOptions = useMemo(() => {
-    const unique = new Set<string>();
+    const unique = new Set<string>(KNOWN_SALES_CHANNEL_OPTIONS);
     rows.forEach((row) => {
       const name = getNormalizedSalesChannelName(row);
       if (name) unique.add(name);
@@ -1114,14 +1527,15 @@ export default function OrdersPage() {
   }, [rows]);
 
   const filteredRows = useMemo(() => {
+    const selectedSalesChannelSet = new Set(salesChannelFilters);
     const next = rows.filter((row) => {
       const normalizedCountry = getCountryCodeForOrder(row);
       if (countryFilter !== "all" && normalizedCountry !== countryFilter) {
         return false;
       }
       if (
-        salesChannelFilter !== "all" &&
-        getNormalizedSalesChannelName(row) !== salesChannelFilter
+        selectedSalesChannelSet.size > 0 &&
+        !selectedSalesChannelSet.has(getNormalizedSalesChannelName(row))
       ) {
         return false;
       }
@@ -1151,17 +1565,15 @@ export default function OrdersPage() {
   }, [
     countryFilter,
     rows,
-    salesChannelFilter,
+    salesChannelFilters,
     statusFilter,
     notificationFilter,
     warningFilter,
   ]);
 
   useEffect(() => {
-    if (salesChannelFilter === "all") return;
-    if (salesChannelOptions.includes(salesChannelFilter)) return;
-    setSalesChannelFilter("all");
-  }, [salesChannelFilter, salesChannelOptions]);
+    lastSelectedOrderIndexRef.current = null;
+  }, [filteredRows]);
 
   const allSelected =
     filteredRows.length > 0 &&
@@ -1174,6 +1586,44 @@ export default function OrdersPage() {
     () => filteredRows.filter((row) => selectedOrderIds.has(row.id)),
     [filteredRows, selectedOrderIds]
   );
+  const visibleOrderColumnSet = useMemo(
+    () => new Set<OrdersColumnKey>(visibleOrderColumns),
+    [visibleOrderColumns]
+  );
+  const orderColumnDraftSet = useMemo(
+    () => new Set<OrdersColumnKey>(orderColumnDraft),
+    [orderColumnDraft]
+  );
+  const visibleTableColumnCount = visibleOrderColumns.length + 1;
+  const toggleOrderColumnDraft = (column: OrdersColumnKey, checked: boolean) => {
+    setOrderColumnDraft((prev) => {
+      if (checked) {
+        const next = new Set(prev);
+        next.add(column);
+        return ORDER_COLUMN_KEYS.filter((key) => next.has(key));
+      }
+      if (prev.length <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(column);
+      const ordered = ORDER_COLUMN_KEYS.filter((key) => next.has(key));
+      return ordered.length > 0 ? ordered : prev;
+    });
+  };
+  const saveOrderColumns = () => {
+    const normalized = normalizeVisibleOrderColumns(orderColumnDraft);
+    setVisibleOrderColumns(normalized);
+    setOrderColumnDraft(normalized);
+    setColumnPickerOpen(false);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        ORDERS_COLUMNS_STORAGE_KEY,
+        JSON.stringify(normalized)
+      );
+    } catch {
+      return;
+    }
+  };
   const canGoPreviousPage = page > 1;
   const canGoNextPage = totalPages > 0 && page < totalPages;
   const previewOrderRow = selectedRows[0] ?? null;
@@ -1191,6 +1641,13 @@ export default function OrdersPage() {
   const selectedEmailSenderSignature = useMemo(
     () => String(selectedEmailSender?.signature ?? ""),
     [selectedEmailSender]
+  );
+  const selectedEmailPartnerReceiver = useMemo(
+    () =>
+      ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS.find(
+        (option) => option.key === selectedEmailPartnerReceiverKey
+      ) ?? null,
+    [selectedEmailPartnerReceiverKey]
   );
   const selectedEmailMacroKeys = useMemo(() => {
     if (!selectedEmailTemplate) return [];
@@ -1308,6 +1765,15 @@ export default function OrdersPage() {
         }
         return loadedSenders[0]?.email || "";
       });
+      setSelectedEmailPartnerReceiverKey((prev) => {
+        if (
+          prev &&
+          ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS.some((option) => option.key === prev)
+        ) {
+          return prev;
+        }
+        return ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS[0]?.key ?? "";
+      });
     } catch (err) {
       setEmailDialogError((err as Error).message);
     } finally {
@@ -1417,8 +1883,49 @@ export default function OrdersPage() {
       setStatusDialogSaving(false);
     }
   };
+  const exportSelectedOrders = async () => {
+    const ids = Array.from(selectedOrderIds);
+    if (ids.length === 0) return;
+    setIsExporting(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/orders/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!response.ok) {
+        let message = "Export failed.";
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch {
+          const text = await response.text();
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "orders-export.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
   const handleSendEmails = async () => {
     if (!selectedEmailTemplate || !selectedEmailSender || selectedRows.length === 0) return;
+    if (!selectedEmailPartnerReceiver) {
+      setEmailDialogError("A partner receiver is required.");
+      return;
+    }
     setIsSendingEmails(true);
     setEmailDialogError(null);
     setEmailDialogInfo(null);
@@ -1435,14 +1942,13 @@ export default function OrdersPage() {
           senderEmail: selectedEmailSender.email,
           senderName: selectedEmailSender.name ?? undefined,
           bccEmails: selectedEmailBcc,
+          partnerReceiverKey: selectedEmailPartnerReceiver.key,
         }),
       });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.error || "Unable to send emails.");
       }
-      const sentCount = Number(payload?.sent_count ?? 0);
-      const failedCount = Number(payload?.failed_count ?? 0);
       const resultEntries = Array.isArray(payload?.results)
         ? (payload.results as Array<{
             order_id?: unknown;
@@ -1492,23 +1998,7 @@ export default function OrdersPage() {
           })
         );
       }
-      setEmailDialogInfo(
-        failedCount > 0
-          ? t("orders.email.send.partial", {
-              sent: sentCount,
-              failed: failedCount,
-            })
-          : t("orders.email.send.success", { sent: sentCount })
-      );
-      if (failedCount > 0 && Array.isArray(payload?.results)) {
-        const firstError = payload.results.find(
-          (entry: { status?: string; error?: string }) =>
-            entry?.status === "failed" && String(entry?.error ?? "").trim()
-        );
-        if (firstError?.error) {
-          setEmailDialogError(String(firstError.error));
-        }
-      }
+      closeEmailDialog();
     } catch (err) {
       setEmailDialogError((err as Error).message);
     } finally {
@@ -1649,6 +2139,7 @@ export default function OrdersPage() {
   }, [emailDialogOpen, emailTemplates, selectedEmailTemplate, selectedEmailTemplateId]);
 
   useEffect(() => {
+    if (!urlStateReady) return;
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -1703,7 +2194,7 @@ export default function OrdersPage() {
       }
     };
     load();
-  }, [page, params]);
+  }, [page, params, urlStateReady]);
 
   useEffect(() => {
     if (totalCount <= 0) {
@@ -1783,18 +2274,17 @@ export default function OrdersPage() {
   };
 
   const toggleExpanded = (orderId: string) => {
-    let didCollapse = false;
-    setExpandedOrders((prev) => {
-      const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-        didCollapse = true;
-      } else {
-        next.add(orderId);
+    const isCurrentlyExpanded = expandedOrders.has(orderId);
+    if (isCurrentlyExpanded) {
+      setExpandedOrders(new Set());
+      if (editingOrderId === orderId) {
+        setEditingOrderId(null);
       }
-      return next;
-    });
-    if (didCollapse && editingOrderId === orderId) {
+      return;
+    }
+
+    setExpandedOrders(new Set([orderId]));
+    if (editingOrderId && editingOrderId !== orderId) {
       setEditingOrderId(null);
     }
     if (!detailsById[orderId]) {
@@ -2416,17 +2906,19 @@ export default function OrdersPage() {
             className={styles.filterField}
           >
             <Dropdown
-              selectedOptions={[salesChannelFilter]}
+              multiselect
+              selectedOptions={salesChannelFilters}
               value={
-                salesChannelFilter === "all"
+                salesChannelFilters.length === 0
                   ? t("orders.filters.salesChannelAll")
-                  : salesChannelFilter
+                  : salesChannelFilters.join(", ")
               }
               onOptionSelect={(_, data) => {
-                setSalesChannelFilter(String(data.optionValue ?? "all"));
+                setSalesChannelFilters(
+                  normalizeSalesChannelFilters(data.selectedOptions ?? [])
+                );
               }}
             >
-              <Option value="all">{t("orders.filters.salesChannelAll")}</Option>
               {salesChannelOptions.map((name) => (
                 <Option key={name} value={name} text={name}>
                   {name}
@@ -2513,6 +3005,74 @@ export default function OrdersPage() {
               <Option value="none">{t("orders.filters.notificationsNone")}</Option>
             </Dropdown>
           </Field>
+          <Field
+            label={
+              <span className={styles.filterLabel}>
+                {t("orders.filters.showColumns")}
+              </span>
+            }
+            className={styles.filterField}
+          >
+            <Popover
+              open={columnPickerOpen}
+              onOpenChange={(_, data) => {
+                setColumnPickerOpen(data.open);
+                if (data.open) {
+                  setOrderColumnDraft(visibleOrderColumns);
+                }
+              }}
+              positioning={{ position: "below", align: "start" }}
+            >
+              <PopoverTrigger disableButtonEnhancement>
+                <Button appearance="secondary" className={styles.actionMenuButton}>
+                  {t("orders.filters.selectColumns")}
+                  <span className={styles.actionButtonArrow} aria-hidden="true">
+                    ▾
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverSurface className={styles.columnsPopover}>
+                <div className={styles.columnsHeader}>
+                  <Text className={styles.columnsHeaderText}>
+                    {t("orders.filters.selectColumns")}
+                  </Text>
+                </div>
+                <div className={styles.columnsOptionsList}>
+                  {ORDER_COLUMN_KEYS.map((columnKey) => (
+                    <div key={columnKey} className={styles.columnsOptionRow}>
+                      <Checkbox
+                        label={t(ORDER_COLUMN_LABEL_KEY_BY_ID[columnKey])}
+                        checked={orderColumnDraftSet.has(columnKey)}
+                        onChange={(_, data) => {
+                          toggleOrderColumnDraft(columnKey, data.checked === true);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className={styles.columnsActions}>
+                  <Button
+                    appearance="secondary"
+                    onClick={() => {
+                      setOrderColumnDraft(visibleOrderColumns);
+                      setColumnPickerOpen(false);
+                    }}
+                  >
+                    {t("common.close")}
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    onClick={saveOrderColumns}
+                  >
+                    {t("common.save")}
+                  </Button>
+                </div>
+                <div className={styles.columnsCounter}>
+                  {`${orderColumnDraft.length}/${ORDER_COLUMN_KEYS.length}`}
+                </div>
+              </PopoverSurface>
+            </Popover>
+          </Field>
           <div className={styles.actionRow}>
             <Button
               appearance="primary"
@@ -2541,6 +3101,16 @@ export default function OrdersPage() {
                   <MenuItem disabled={!hasSelection} onClick={openStatusDialog}>
                     {t("orders.actions.changeStatus")}
                   </MenuItem>
+                  <MenuItem
+                    disabled={!hasSelection || isExporting}
+                    onClick={() => {
+                      void exportSelectedOrders();
+                    }}
+                  >
+                    {isExporting
+                      ? `${t("orders.export.button")}...`
+                      : t("orders.export.button")}
+                  </MenuItem>
                 </MenuList>
               </MenuPopover>
             </Menu>
@@ -2554,48 +3124,6 @@ export default function OrdersPage() {
                 {t("orders.email.button")}
               </Button>
             ) : null}
-            <Button
-              appearance="primary"
-              disabled={!hasSelection || isExporting}
-              onClick={async () => {
-                const ids = Array.from(selectedOrderIds);
-                if (ids.length === 0) return;
-                setIsExporting(true);
-                try {
-                  const response = await fetch("/api/orders/export", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ids }),
-                  });
-                  if (!response.ok) {
-                    let message = "Export failed.";
-                    try {
-                      const payload = await response.json();
-                      if (payload?.error) message = payload.error;
-                    } catch {
-                      const text = await response.text();
-                      if (text) message = text;
-                    }
-                    throw new Error(message);
-                  }
-                  const blob = await response.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.download = "orders-export.xlsx";
-                  document.body.appendChild(link);
-                  link.click();
-                  link.remove();
-                  window.URL.revokeObjectURL(url);
-                } catch (err) {
-                  setError((err as Error).message);
-                } finally {
-                  setIsExporting(false);
-                }
-              }}
-            >
-              {isExporting ? <Spinner size="tiny" /> : t("orders.export.button")}
-            </Button>
             <Button
               appearance="outline"
               disabled={!hasSelection || isRemoving}
@@ -2741,70 +3269,102 @@ export default function OrdersPage() {
                           }
                           return new Set();
                         });
+                        lastSelectedOrderIndexRef.current = null;
                       }}
                     />
                   </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colSalesChannelId)}
-                  >
-                    {t("orders.columns.salesChannelId")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colOrderNumber)}
-                  >
-                    {t("orders.columns.orderNumber")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colSalesChannel)}
-                  >
-                    {t("orders.columns.salesChannel")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colCustomer)}
-                  >
-                    {t("orders.columns.customer")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colCountry)}
-                  >
-                    {t("orders.columns.country")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colOrderValue)}
-                  >
-                    {t("orders.columns.orderValue")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colTransactionDate)}
-                  >
-                    {t("orders.columns.transactionDate")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colStatus)}
-                  >
-                    {t("orders.columns.status")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colWarnings)}
-                  >
-                    {t("orders.columns.warnings")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colNotifications)}
-                  >
-                    {t("orders.columns.notifications")}
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    className={mergeClasses(styles.stickyHeader, styles.colDateShipped)}
-                  >
-                    {t("orders.columns.dateShipped")}
-                  </TableHeaderCell>
+                  {visibleOrderColumnSet.has("sales_channel_id") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colSalesChannelId)}
+                    >
+                      {t("orders.columns.salesChannelId")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("order_number") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colOrderNumber)}
+                    >
+                      {t("orders.columns.orderNumber")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("sales_channel") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colSalesChannel)}
+                    >
+                      {t("orders.columns.salesChannel")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("customer") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colCustomer)}
+                    >
+                      {t("orders.columns.customer")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("country") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colCountry)}
+                    >
+                      {t("orders.columns.country")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("order_value") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colOrderValue)}
+                    >
+                      {t("orders.columns.orderValue")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("transaction_date") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colTransactionDate)}
+                    >
+                      {t("orders.columns.transactionDate")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("status") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colStatus)}
+                    >
+                      {t("orders.columns.status")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("warnings") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colWarnings)}
+                    >
+                      {t("orders.columns.warnings")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("notifications") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colNotifications)}
+                    >
+                      {t("orders.columns.notifications")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("partner_informed") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colPartnerInformed)}
+                    >
+                      {t("orders.columns.partnerInformed")}
+                    </TableHeaderCell>
+                  ) : null}
+                  {visibleOrderColumnSet.has("date_shipped") ? (
+                    <TableHeaderCell
+                      className={mergeClasses(styles.stickyHeader, styles.colDateShipped)}
+                    >
+                      {t("orders.columns.dateShipped")}
+                    </TableHeaderCell>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12}>{t("orders.empty")}</TableCell>
+                    <TableCell colSpan={visibleTableColumnCount}>
+                      {t("orders.empty")}
+                    </TableCell>
                   </TableRow>
                 ) : (
                   filteredRows.map((row, index) => {
@@ -2860,88 +3420,155 @@ export default function OrdersPage() {
                               aria-label={t("common.selectItem", {
                                 item: row.order_number ?? row.id,
                               })}
-                              onChange={(_, data) => {
+                              onChange={(event, data) => {
+                                const wantsChecked = data.checked === true;
+                                const isShiftSelect = eventHasShiftKey(event);
+                                const clickedIndex = index;
+                                const anchorIndex = lastSelectedOrderIndexRef.current;
                                 setSelectedOrderIds((prev) => {
                                   const next = new Set(prev);
-                                  if (data.checked === true) {
+                                  if (
+                                    isShiftSelect &&
+                                    anchorIndex !== null &&
+                                    anchorIndex >= 0 &&
+                                    anchorIndex < filteredRows.length
+                                  ) {
+                                    const start = Math.min(anchorIndex, clickedIndex);
+                                    const end = Math.max(anchorIndex, clickedIndex);
+                                    for (
+                                      let rowIndex = start;
+                                      rowIndex <= end;
+                                      rowIndex += 1
+                                    ) {
+                                      const rowId = filteredRows[rowIndex]?.id;
+                                      if (!rowId) continue;
+                                      if (wantsChecked) {
+                                        next.add(rowId);
+                                      } else {
+                                        next.delete(rowId);
+                                      }
+                                    }
+                                  } else if (wantsChecked) {
                                     next.add(row.id);
                                   } else {
                                     next.delete(row.id);
                                   }
                                   return next;
                                 });
+                                lastSelectedOrderIndexRef.current = clickedIndex;
                               }}
                             />
                           </TableCell>
-                          <TableCell className={styles.colSalesChannelId}>
-                            {row.sales_channel_id ?? ""}
-                          </TableCell>
-                          <TableCell className={styles.colOrderNumber}>
-                            {row.order_number ?? ""}
-                          </TableCell>
-                          <TableCell className={styles.colSalesChannel}>
-                            {platformDisplayName}
-                          </TableCell>
-                          <TableCell className={styles.colCustomer}>
-                            {row.customer_name ?? ""}
-                          </TableCell>
-                          <TableCell className={styles.colCountry}>
-                            <span className={styles.countryCell}>
-                              {countryCode ? (
-                                <Image
-                                  src={flagByCountryCode[countryCode]}
-                                  alt={countryName}
-                                  width={19}
-                                  height={19}
-                                  className={styles.countryFlag}
-                                />
-                              ) : null}
-                              <span>{countryName}</span>
-                            </span>
-                          </TableCell>
-                          <TableCell className={styles.colOrderValue}>
-                            {formatCurrency(row.order_total_value, "EUR") || "-"}
-                          </TableCell>
-                          <TableCell className={styles.colTransactionDate}>
-                            {formatDate(row.transaction_date)}
-                          </TableCell>
-                          <TableCell className={styles.colStatus}>
-                            <span
-                              className={mergeClasses(
-                                styles.statusPill,
-                                getStatusClassName(row.status)
-                              )}
-                            >
-                              {getStatusText(row.status)}
-                            </span>
-                          </TableCell>
-                          <TableCell className={styles.colWarnings}>
-                            {row.is_delayed ? (
-                              <span className={styles.warningPill}>
-                                {getDelayWarningText(row)}
+                          {visibleOrderColumnSet.has("sales_channel_id") ? (
+                            <TableCell className={styles.colSalesChannelId}>
+                              {row.sales_channel_id ?? ""}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("order_number") ? (
+                            <TableCell className={styles.colOrderNumber}>
+                              {row.order_number ?? ""}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("sales_channel") ? (
+                            <TableCell className={styles.colSalesChannel}>
+                              {platformDisplayName}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("customer") ? (
+                            <TableCell className={styles.colCustomer}>
+                              {row.customer_name ?? ""}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("country") ? (
+                            <TableCell className={styles.colCountry}>
+                              <span className={styles.countryCell}>
+                                {countryCode ? (
+                                  <Image
+                                    src={flagByCountryCode[countryCode]}
+                                    alt={countryName}
+                                    width={19}
+                                    height={19}
+                                    className={styles.countryFlag}
+                                  />
+                                ) : null}
+                                <span>{countryName}</span>
                               </span>
-                            ) : (
-                              "-"
-                            )}
-                          </TableCell>
-                          <TableCell className={styles.colNotifications}>
-                            <span
-                              className={mergeClasses(
-                                styles.notificationField,
-                                hasNotification ? styles.notificationFieldHas : undefined
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("order_value") ? (
+                            <TableCell className={styles.colOrderValue}>
+                              {formatCurrency(row.order_total_value, "EUR") || "-"}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("transaction_date") ? (
+                            <TableCell className={styles.colTransactionDate}>
+                              {formatDate(row.transaction_date)}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("status") ? (
+                            <TableCell className={styles.colStatus}>
+                              <span
+                                className={mergeClasses(
+                                  styles.statusPill,
+                                  getStatusClassName(row.status)
+                                )}
+                              >
+                                {getStatusText(row.status)}
+                              </span>
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("warnings") ? (
+                            <TableCell className={styles.colWarnings}>
+                              {row.is_delayed ? (
+                                <span className={styles.warningPill}>
+                                  {getDelayWarningText(row)}
+                                </span>
+                              ) : (
+                                "-"
                               )}
-                              title={latestNotificationText}
-                            >
-                              {latestNotificationText}
-                            </span>
-                          </TableCell>
-                          <TableCell className={styles.colDateShipped}>
-                            {formatDate(row.date_shipped)}
-                          </TableCell>
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("notifications") ? (
+                            <TableCell className={styles.colNotifications}>
+                              <span
+                                className={mergeClasses(
+                                  styles.notificationField,
+                                  hasNotification ? styles.notificationFieldHas : undefined
+                                )}
+                                title={latestNotificationText}
+                              >
+                                {latestNotificationText}
+                              </span>
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("partner_informed") ? (
+                            <TableCell className={styles.colPartnerInformed}>
+                              {row.partner_informed ? (
+                                <span
+                                  className={mergeClasses(
+                                    styles.statusPill,
+                                    styles.statusShipped
+                                  )}
+                                >
+                                  {t("orders.partnerInformed.sent")}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                          ) : null}
+                          {visibleOrderColumnSet.has("date_shipped") ? (
+                            <TableCell className={styles.colDateShipped}>
+                              {formatDate(row.date_shipped)}
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                         {isExpanded ? (
                           <TableRow>
-                            <TableCell colSpan={12} className={styles.detailsCell}>
+                            <TableCell
+                              colSpan={visibleTableColumnCount}
+                              className={styles.detailsCell}
+                            >
                               <div className={styles.detailsCard}>
                                 {details?.loading ? (
                                   <Text>{t("orders.details.loading")}</Text>
@@ -3353,7 +3980,7 @@ export default function OrdersPage() {
                                                 </Text>
                                               )}
                                               <Text className={styles.detailLabel}>
-                                                TRACKING_NUMBER
+                                                Tracking Number
                                               </Text>
                                               {isEditingDetails ? (
                                                 <Textarea
@@ -3725,6 +4352,38 @@ export default function OrdersPage() {
                         ))}
                       </Dropdown>
                     </Field>
+                    <Field label={t("orders.email.partnerReceiverLabel")}>
+                      <Dropdown
+                        value={
+                          selectedEmailPartnerReceiver
+                            ? t(selectedEmailPartnerReceiver.labelKey)
+                            : ""
+                        }
+                        selectedOptions={
+                          selectedEmailPartnerReceiverKey
+                            ? [selectedEmailPartnerReceiverKey]
+                            : []
+                        }
+                        placeholder={t("orders.email.partnerReceiverPlaceholder")}
+                        onOptionSelect={(_, data) => {
+                          setSelectedEmailPartnerReceiverKey(
+                            String(data.optionValue ?? "")
+                          );
+                          setEmailDialogInfo(null);
+                          setEmailDialogError(null);
+                        }}
+                      >
+                        {ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS.map((receiver) => (
+                          <Option
+                            key={receiver.key}
+                            value={receiver.key}
+                            text={t(receiver.labelKey)}
+                          >
+                            {t(receiver.labelKey)}
+                          </Option>
+                        ))}
+                      </Dropdown>
+                    </Field>
                   </div>
 
                   <Text className={styles.emailSelectionMeta}>
@@ -3839,6 +4498,7 @@ export default function OrdersPage() {
                     emailDialogLoading ||
                     !selectedEmailTemplate ||
                     !selectedEmailSender ||
+                    !selectedEmailPartnerReceiver ||
                     selectedRows.length === 0
                   }
                 >

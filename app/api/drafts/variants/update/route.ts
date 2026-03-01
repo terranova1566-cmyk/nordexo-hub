@@ -9,6 +9,7 @@ const ALLOWED_FIELDS = new Set([
   "draft_price",
   "draft_weight",
   "draft_variant_image_url",
+  "draft_shipping_class",
   "raw_variation_color_se",
   "raw_variation_size_se",
   "raw_variation_other_se",

@@ -224,6 +224,7 @@ type DraftSkuRow = {
   draft_weight: number | string | null;
   draft_weight_unit: string | null;
   draft_variant_image_url: string | null;
+  draft_shipping_class: string | null;
   draft_status: string | null;
   draft_updated_at: string | null;
   draft_raw_row: Record<string, unknown> | null;
@@ -249,6 +250,7 @@ type DraftVariantEditorRow = {
   draft_weight: string;
   draft_weight_unit: string;
   draft_variant_image_url: string;
+  draft_shipping_class: string;
   variation_color_se: string;
   variation_size_se: string;
   variation_other_se: string;
@@ -274,6 +276,7 @@ type DraftVariantEditorEditableField =
   | "draft_option2"
   | "draft_option3"
   | "draft_option4"
+  | "draft_shipping_class"
   | "draft_price"
   | "draft_weight";
 
@@ -282,6 +285,14 @@ type VariantEditorSortDirection = "asc" | "desc";
 type ImageFolderTabValue = "main" | "variants" | "ocr" | "others" | "downloaded";
 type MainImageViewFilter = "all" | "var_only";
 type ReverseSearchLocale = "sweden" | "us_global";
+
+const SHIPPING_CLASS_OPTIONS = ["NOR", "BAT", "PBA", "LIQ"] as const;
+const SHIPPING_CLASS_OPTION_SET = new Set<string>(SHIPPING_CLASS_OPTIONS);
+const normalizeShippingClassCode = (value: unknown) => {
+  const text = String(value ?? "").trim().toUpperCase();
+  if (!text) return "";
+  return SHIPPING_CLASS_OPTION_SET.has(text) ? text : "";
+};
 
 type ReverseSearchResultItem = {
   rank: number;
@@ -3363,6 +3374,34 @@ const useStyles = makeStyles({
       width: "100%",
       maxWidth: "100%",
       boxSizing: "border-box",
+    },
+  },
+  variantsEditorSelect: {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    height: "28px",
+    borderRadius: tokens.borderRadiusMedium,
+    borderTop: `1px solid ${tokens.colorNeutralStroke1}`,
+    borderRight: `1px solid ${tokens.colorNeutralStroke1}`,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke1}`,
+    borderLeft: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    paddingTop: "0px",
+    paddingRight: "24px",
+    paddingBottom: "0px",
+    paddingLeft: "8px",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    outlineStyle: "none",
+    cursor: "pointer",
+    "&:focus": {
+      borderTopColor: tokens.colorBrandStroke1,
+      borderRightColor: tokens.colorBrandStroke1,
+      borderBottomColor: tokens.colorBrandStroke1,
+      borderLeftColor: tokens.colorBrandStroke1,
     },
   },
   variantsEditorCheckCol: {
@@ -9265,6 +9304,9 @@ export default function DraftExplorerPage() {
       const variationSize = toText(raw.variation_size_se).trim();
       const variationOther = toText(raw.variation_other_se).trim();
       const variationAmount = toText(raw.variation_amount_se).trim();
+      const shippingClass = normalizeShippingClassCode(
+        row.draft_shipping_class ?? raw.draft_shipping_class
+      );
       const optionColorZh = toText(row.draft_option1).trim();
       const optionSizeZh = toText(row.draft_option2).trim();
       const optionOtherZh = toText(row.draft_option3).trim();
@@ -9291,6 +9333,7 @@ export default function DraftExplorerPage() {
         draft_weight: row.draft_weight == null ? "" : String(row.draft_weight),
         draft_weight_unit: row.draft_weight_unit ?? "",
         draft_variant_image_url: row.draft_variant_image_url ?? "",
+        draft_shipping_class: shippingClass,
         variation_color_se: variationColor,
         variation_size_se: variationSize,
         variation_other_se: variationOther,
@@ -9320,6 +9363,7 @@ export default function DraftExplorerPage() {
         variation_size_se: row.variation_size_se.trim(),
         variation_other_se: row.variation_other_se.trim(),
         variation_amount_se: row.variation_amount_se.trim(),
+        draft_shipping_class: normalizeShippingClassCode(row.draft_shipping_class) || null,
       };
       const combined =
         buildVariantCombinedZhValue({
@@ -9341,6 +9385,7 @@ export default function DraftExplorerPage() {
         draft_weight: parseOptionalNumber(row.draft_weight),
         draft_weight_unit: row.draft_weight_unit.trim() || null,
         draft_variant_image_url: row.draft_variant_image_url.trim() || null,
+        draft_shipping_class: normalizeShippingClassCode(row.draft_shipping_class) || null,
         variation_color_se: row.variation_color_se.trim(),
         variation_size_se: row.variation_size_se.trim(),
         variation_other_se: row.variation_other_se.trim(),
@@ -9564,6 +9609,11 @@ export default function DraftExplorerPage() {
         sample.map((row) => row.draft_option4),
         { minPx: 70, maxPx: 220, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
+      shippingClass: makeStyle(
+        "Ship",
+        sample.map((row) => row.draft_shipping_class).concat("PBA"),
+        { minPx: 62, maxPx: 90, headerPaddingPx: 14, contentPaddingPx: 14 }
+      ),
       price: makeStyle(
         "Price",
         sample.map((row) => row.draft_price).concat("99999"),
@@ -9599,6 +9649,7 @@ export default function DraftExplorerPage() {
           draft_weight: template?.draft_weight ?? "",
           draft_weight_unit: template?.draft_weight_unit ?? "",
           draft_variant_image_url: "",
+          draft_shipping_class: template?.draft_shipping_class ?? "",
           variation_color_se: template?.variation_color_se ?? "",
           variation_size_se: template?.variation_size_se ?? "",
           variation_other_se: template?.variation_other_se ?? "",
@@ -9756,6 +9807,10 @@ export default function DraftExplorerPage() {
                 row.draft_variant_image_url == null
                   ? null
                   : String(row.draft_variant_image_url),
+              draft_shipping_class:
+                row.draft_shipping_class == null
+                  ? null
+                  : String(row.draft_shipping_class),
               draft_status: "draft",
               draft_updated_at: null,
               draft_raw_row:
@@ -10617,6 +10672,7 @@ export default function DraftExplorerPage() {
       const failures: string[] = [];
       const created: Array<{
         sourcePath: string;
+        sourceIsVariant: boolean;
         name: string;
         path: string;
         size: number;
@@ -10652,9 +10708,14 @@ export default function DraftExplorerPage() {
               typeof copy?.zimageUpscaled === "boolean"
                 ? copy.zimageUpscaled
                 : false;
+            const sourcePathNormalized = normalizeDraftRelativePath(entry.path);
+            const sourceIsVariant =
+              sourcePathNormalized.includes("/variant images (v)/") ||
+              extractImageTagsFromFileName(entry.name).includes("VAR");
             if (copyName && copyPath) {
               created.push({
                 sourcePath: entry.path,
+                sourceIsVariant,
                 name: copyName,
                 path: copyPath,
                 size: entry.size,
@@ -10667,31 +10728,96 @@ export default function DraftExplorerPage() {
           }
         }
         if (created.length > 0) {
-          const now = new Date().toISOString();
-          setEntries((prev) => {
-            const existing = new Set(prev.map((row) => row.path));
-            const next = [...prev];
-            for (const item of created) {
-              if (existing.has(item.path)) continue;
-              existing.add(item.path);
-              const copyEntry: DraftEntry = {
-                type: "file",
-                name: item.name,
-                path: item.path,
-                size: item.size,
-                modifiedAt: now,
-                pixelQualityScore: item.pixelQualityScore,
-                zimageUpscaled: item.zimageUpscaled,
-              };
-              const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
-              if (sourceIndex < 0) {
-                next.push(copyEntry);
-              } else {
-                next.splice(sourceIndex + 1, 0, copyEntry);
+          const finalizedCreated = [...created];
+          for (let index = 0; index < finalizedCreated.length; index += 1) {
+            const item = finalizedCreated[index];
+            if (!item.sourceIsVariant) continue;
+            const mainPath = getSpuRootFromDraftPath(item.sourcePath);
+            if (!mainPath) continue;
+            try {
+              const moveResponse = await fetch("/api/drafts/move", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sourcePath: item.path,
+                  targetPath: mainPath,
+                  allowRenameOnConflict: true,
+                }),
+              });
+              const movePayload = await moveResponse.json().catch(() => ({}));
+              if (!moveResponse.ok) {
+                throw new Error(movePayload?.error || "Unable to move copy to Main.");
               }
+
+              let movedPath = String(movePayload?.path || item.path).trim();
+              let movedName = String(movePayload?.name || item.name).trim();
+              if (extractImageTagsFromFileName(movedName).includes("VAR")) {
+                const requestedName = toggleImageTagInFileName(movedName, "VAR");
+                if (requestedName && requestedName !== movedName) {
+                  const renameResponse = await fetch("/api/drafts/images/rename", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: movedPath, name: requestedName }),
+                  });
+                  const renamePayload = await renameResponse.json().catch(() => ({}));
+                  if (!renameResponse.ok) {
+                    throw new Error(
+                      renamePayload?.error || "Unable to remove VAR tag from copied image."
+                    );
+                  }
+                  movedPath = String(renamePayload?.path || movedPath).trim();
+                  movedName = String(renamePayload?.name || requestedName).trim();
+                }
+              }
+
+              finalizedCreated[index] = {
+                ...item,
+                name: movedName || item.name,
+                path: movedPath || item.path,
+                sourceIsVariant: false,
+              };
+            } catch (err) {
+              failures.push(`${item.name}: ${(err as Error).message}`);
             }
-            return next;
-          });
+          }
+
+          const now = new Date().toISOString();
+          const normalizedCurrentPath = String(currentPath || "").trim();
+          const createdForCurrentPath = normalizedCurrentPath
+            ? finalizedCreated.filter(
+                (item) =>
+                  String(getParentFolderPathFromEntryPath(item.path) || "").trim() ===
+                  normalizedCurrentPath
+              )
+            : [];
+          if (createdForCurrentPath.length > 0) {
+            setEntries((prev) => {
+              const existing = new Set(prev.map((row) => row.path));
+              const next = [...prev];
+              for (const item of createdForCurrentPath) {
+                if (existing.has(item.path)) continue;
+                existing.add(item.path);
+                const copyEntry: DraftEntry = {
+                  type: "file",
+                  name: item.name,
+                  path: item.path,
+                  size: item.size,
+                  modifiedAt: now,
+                  pixelQualityScore: item.pixelQualityScore,
+                  zimageUpscaled: item.zimageUpscaled,
+                };
+                const sourceIndex = next.findIndex((row) => row.path === item.sourcePath);
+                if (sourceIndex < 0) {
+                  next.push(copyEntry);
+                } else {
+                  next.splice(sourceIndex + 1, 0, copyEntry);
+                }
+              }
+              return next;
+            });
+          } else if (currentPath) {
+            await refreshEntries(currentPath);
+          }
         } else if (currentPath) {
           await refreshEntries(currentPath);
         }
@@ -12041,9 +12167,17 @@ export default function DraftExplorerPage() {
         if (decision !== "keep_original") {
           markSpuNeedsAiReview(originalPath);
         }
-        if (decision === "replace_with_ai" || decision === "keep_both") {
-          const folderPath = getParentFolderPathFromEntryPath(originalPath);
-          if (folderPath) {
+        // Close dialog immediately after server ack + optimistic state updates.
+        // Heavy housekeeping runs in background to keep save/replace responsive.
+        setAiReviewOriginalPath(null);
+        setAiReviewSubmitting(false);
+
+        const folderPath = getParentFolderPathFromEntryPath(originalPath);
+        void (async () => {
+          if (
+            folderPath &&
+            (decision === "replace_with_ai" || decision === "keep_both")
+          ) {
             const reorderFailures = await resortImageFoldersByHierarchy([folderPath]);
             if (reorderFailures.length > 0) {
               setError(
@@ -12053,17 +12187,14 @@ export default function DraftExplorerPage() {
               );
             }
           }
-        }
-        setAiReviewOriginalPath(null);
-        if (shouldRefreshActiveFolder && pathAtStart) {
-          void (async () => {
+          if (shouldRefreshActiveFolder && pathAtStart) {
             await refreshEntries(pathAtStart);
             await fetchPendingAiEdits(pathAtStart);
-          })();
-        }
+          }
+        })();
+
       } catch (err) {
         setError((err as Error).message);
-      } finally {
         setAiReviewSubmitting(false);
       }
     },
@@ -12356,6 +12487,54 @@ export default function DraftExplorerPage() {
     }
     const confirmed = window.confirm(t("bulkProcessing.explorer.deleteConfirm"));
     if (!confirmed) return;
+    const isDeletedPath = (candidatePath: string) =>
+      paths.some(
+        (deletedPath) =>
+          candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
+      );
+
+    const previousEntries = entries;
+    const previousMainViewVariantImageEntries = mainViewVariantImageEntries;
+    const previousSelectedFiles = selectedFiles;
+    const previousSelectedTreeFolders = selectedTreeFolders;
+    const previousLastDeletedImageUndoItems = lastDeletedImageUndoItems;
+    const previousPendingAiEditsByOriginal = pendingAiEditsByOriginal;
+    const previousAiEditJobsByPath = aiEditJobsByPath;
+    const previousImageDimensions = imageDimensions;
+    const previousPreviewPath = previewPath;
+
+    setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
+    setMainViewVariantImageEntries((prev) =>
+      prev.filter((entry) => !isDeletedPath(entry.path))
+    );
+    setSelectedFiles(new Set());
+    setSelectedTreeFolders(new Set());
+    setLastDeletedImageUndoItems([]);
+    setPendingAiEditsByOriginal((prev) => {
+      const next: Record<string, PendingAiEditRecord> = {};
+      Object.entries(prev).forEach(([pathValue, row]) => {
+        if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
+        next[pathValue] = row;
+      });
+      return next;
+    });
+    setAiEditJobsByPath((prev) => {
+      const next: Record<string, AiEditRuntimeJob> = {};
+      Object.entries(prev).forEach(([pathValue, row]) => {
+        if (isDeletedPath(pathValue)) return;
+        next[pathValue] = row;
+      });
+      return next;
+    });
+    setImageDimensions((prev) => {
+      const next: Record<string, { width: number; height: number }> = {};
+      Object.entries(prev).forEach(([pathValue, dims]) => {
+        if (isDeletedPath(pathValue)) return;
+        next[pathValue] = dims;
+      });
+      return next;
+    });
+    setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
     try {
       const response = await fetch("/api/drafts/delete", {
         method: "POST",
@@ -12366,43 +12545,6 @@ export default function DraftExplorerPage() {
         const message = await response.text();
         throw new Error(message || "Delete failed.");
       }
-      const isDeletedPath = (candidatePath: string) =>
-        paths.some(
-          (deletedPath) =>
-            candidatePath === deletedPath || candidatePath.startsWith(`${deletedPath}/`)
-        );
-      setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
-      setMainViewVariantImageEntries((prev) =>
-        prev.filter((entry) => !isDeletedPath(entry.path))
-      );
-      setSelectedFiles(new Set());
-      setSelectedTreeFolders(new Set());
-      setLastDeletedImageUndoItems([]);
-      setPendingAiEditsByOriginal((prev) => {
-        const next: Record<string, PendingAiEditRecord> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue) || isDeletedPath(row.pendingPath)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setAiEditJobsByPath((prev) => {
-        const next: Record<string, AiEditRuntimeJob> = {};
-        Object.entries(prev).forEach(([pathValue, row]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = row;
-        });
-        return next;
-      });
-      setImageDimensions((prev) => {
-        const next: Record<string, { width: number; height: number }> = {};
-        Object.entries(prev).forEach(([pathValue, dims]) => {
-          if (isDeletedPath(pathValue)) return;
-          next[pathValue] = dims;
-        });
-        return next;
-      });
-      setPreviewPath((prev) => (prev && isDeletedPath(prev) ? null : prev));
       if (selectedFolder) {
         fetchFolderTree(selectedFolder);
       }
@@ -12412,6 +12554,15 @@ export default function DraftExplorerPage() {
         await fetchPendingAiEdits(activePath);
       }
     } catch (err) {
+      setEntries(previousEntries);
+      setMainViewVariantImageEntries(previousMainViewVariantImageEntries);
+      setSelectedFiles(previousSelectedFiles);
+      setSelectedTreeFolders(previousSelectedTreeFolders);
+      setLastDeletedImageUndoItems(previousLastDeletedImageUndoItems);
+      setPendingAiEditsByOriginal(previousPendingAiEditsByOriginal);
+      setAiEditJobsByPath(previousAiEditJobsByPath);
+      setImageDimensions(previousImageDimensions);
+      setPreviewPath(previousPreviewPath);
       setError((err as Error).message);
     }
   };
@@ -13344,6 +13495,32 @@ export default function DraftExplorerPage() {
     ]
   );
 
+  const renderVariantEditorShippingClassSelect = useCallback(
+    (row: DraftVariantEditorRow) => (
+      <div className={styles.variantsEditorInputWrap}>
+        <select
+          className={styles.variantsEditorSelect}
+          value={normalizeShippingClassCode(row.draft_shipping_class)}
+          onChange={(event) =>
+            handleVariantEditorCellChange(
+              row.key,
+              "draft_shipping_class",
+              normalizeShippingClassCode(event.target.value)
+            )
+          }
+        >
+          <option value="">-</option>
+          {SHIPPING_CLASS_OPTIONS.map((code) => (
+            <option key={code} value={code}>
+              {code}
+            </option>
+          ))}
+        </select>
+      </div>
+    ),
+    [handleVariantEditorCellChange, styles.variantsEditorInputWrap, styles.variantsEditorSelect]
+  );
+
   const toggleExpanded = (id: string) => {
     setExpandedSkus((prev) => {
       const next = new Set(prev);
@@ -13538,6 +13715,50 @@ export default function DraftExplorerPage() {
     [clearSelectedFilesForImageActions]
   );
 
+  const applyLocalImageRename = useCallback(
+    (oldPathRaw: string, nextPathRaw: string, nextNameRaw: string) => {
+      const oldPath = String(oldPathRaw || "").trim();
+      const nextPath = String(nextPathRaw || "").trim();
+      const nextName = String(nextNameRaw || "").trim();
+      if (!oldPath || !nextPath || !nextName) return;
+
+      const applyEntryRename = (item: DraftEntry) =>
+        item.path === oldPath ? { ...item, name: nextName, path: nextPath } : item;
+
+      setEntries((prev) => prev.map(applyEntryRename));
+      setMainViewVariantImageEntries((prev) => prev.map(applyEntryRename));
+      setSelectedFiles((prev) => {
+        if (!prev.has(oldPath)) return prev;
+        const next = new Set(prev);
+        next.delete(oldPath);
+        next.add(nextPath);
+        return next;
+      });
+      setPreviewPath((prev) => (prev === oldPath ? nextPath : prev));
+      setImageDimensions((prev) => {
+        const dims = prev[oldPath];
+        if (!dims) return prev;
+        const next: Record<string, { width: number; height: number }> = { ...prev };
+        delete next[oldPath];
+        next[nextPath] = dims;
+        return next;
+      });
+      setContextMenu((prev) => {
+        if (!prev) return prev;
+        if (prev.entry.path !== oldPath) return prev;
+        return {
+          ...prev,
+          entry: {
+            ...prev.entry,
+            path: nextPath,
+            name: nextName,
+          },
+        };
+      });
+    },
+    []
+  );
+
   const handleApplyImageTag = useCallback(
     async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
       clearSelectedFilesForImageActions();
@@ -13552,92 +13773,58 @@ export default function DraftExplorerPage() {
       setBulkImageActionPending(true);
       setError(null);
       const failures: string[] = [];
-      const renames: Record<string, { name: string; path: string }> = {};
+      const foldersNeedingResort = new Set<string>();
 
       try {
-        for (const entry of targets) {
+        for (const sourceEntry of targets) {
+          const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
           if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
             failures.push(`${entry.name}: resolve AI status first.`);
             continue;
           }
+          const previousPath = entry.path;
+          const previousName = entry.name;
           const requestedName = buildTaggedImageFileName(entry.name, tag);
           if (!requestedName || requestedName === entry.name) continue;
+          const parentPath = getParentFolderPathFromEntryPath(previousPath);
+          const optimisticPath = parentPath
+            ? `${parentPath}/${requestedName}`.replace(/\/{2,}/g, "/")
+            : previousPath;
+          applyLocalImageRename(previousPath, optimisticPath, requestedName);
+          if (parentPath) foldersNeedingResort.add(parentPath);
+          const optimisticFolderPath = getParentFolderPathFromEntryPath(optimisticPath);
+          if (optimisticFolderPath) foldersNeedingResort.add(optimisticFolderPath);
           try {
             const response = await fetch("/api/drafts/images/rename", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path, name: requestedName }),
+              body: JSON.stringify({ path: previousPath, name: requestedName }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
               throw new Error(payload?.error || "Rename failed.");
             }
-            const renamedPath = String(payload?.path || entry.path);
+            const renamedPath = String(payload?.path || optimisticPath || previousPath).trim();
             const renamedName = String(payload?.name || requestedName);
-            renames[entry.path] = { path: renamedPath, name: renamedName };
+            const safeRenamedPath = renamedPath || optimisticPath || previousPath;
+            const safeRenamedName = renamedName || requestedName;
+            if (
+              safeRenamedPath !== optimisticPath ||
+              safeRenamedName !== requestedName
+            ) {
+              applyLocalImageRename(optimisticPath, safeRenamedPath, safeRenamedName);
+            }
+            const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
+            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
           } catch (err) {
+            applyLocalImageRename(optimisticPath, previousPath, previousName);
             failures.push(`${entry.name}: ${(err as Error).message}`);
           }
         }
 
-        if (Object.keys(renames).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const renamed = renames[item.path];
-              if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(renamed.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev];
-            return renamed ? renamed.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = { ...prev };
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              const dims = next[oldPath];
-              if (!dims) return;
-              delete next[oldPath];
-              next[renamed.path] = dims;
-            });
-            return next;
-          });
-          setContextMenu((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev.entry.path];
-            if (!renamed) return prev;
-            return {
-              ...prev,
-              entry: {
-                ...prev.entry,
-                path: renamed.path,
-                name: renamed.name,
-              },
-            };
-          });
-
-          const foldersNeedingResort = new Set<string>();
-          Object.entries(renames).forEach(([oldPath, renamed]) => {
-            const oldFolderPath = getParentFolderPathFromEntryPath(oldPath);
-            const renamedFolderPath = getParentFolderPathFromEntryPath(renamed.path);
-            if (oldFolderPath) foldersNeedingResort.add(oldFolderPath);
-            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
-          });
-          if (foldersNeedingResort.size > 0) {
-            const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
-            reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
-          }
+        if (foldersNeedingResort.size > 0) {
+          const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+          reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
         }
       } finally {
         setBulkImageActionPending(false);
@@ -13654,8 +13841,10 @@ export default function DraftExplorerPage() {
     },
     [
       aiEditJobsByPath,
+      applyLocalImageRename,
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
+      entryByPath,
       isImage,
       pendingAiEditsByOriginal,
       resortImageFoldersByHierarchy,
@@ -13676,7 +13865,7 @@ export default function DraftExplorerPage() {
       setBulkImageActionPending(true);
       setError(null);
       const failures: string[] = [];
-      const renames: Record<string, { name: string; path: string }> = {};
+      const foldersNeedingResort = new Set<string>();
 
       try {
         for (const sourceEntry of targets) {
@@ -13685,84 +13874,49 @@ export default function DraftExplorerPage() {
             failures.push(`${entry.name}: resolve AI status first.`);
             continue;
           }
+          const previousPath = entry.path;
+          const previousName = entry.name;
           const requestedName = toggleImageTagInFileName(entry.name, tag);
           if (!requestedName || requestedName === entry.name) continue;
+          const parentPath = getParentFolderPathFromEntryPath(previousPath);
+          const optimisticPath = parentPath
+            ? `${parentPath}/${requestedName}`.replace(/\/{2,}/g, "/")
+            : previousPath;
+          applyLocalImageRename(previousPath, optimisticPath, requestedName);
+          if (parentPath) foldersNeedingResort.add(parentPath);
+          const optimisticFolderPath = getParentFolderPathFromEntryPath(optimisticPath);
+          if (optimisticFolderPath) foldersNeedingResort.add(optimisticFolderPath);
           try {
             const response = await fetch("/api/drafts/images/rename", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: entry.path, name: requestedName }),
+              body: JSON.stringify({ path: previousPath, name: requestedName }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
               throw new Error(payload?.error || "Rename failed.");
             }
-            const renamedPath = String(payload?.path || entry.path);
+            const renamedPath = String(payload?.path || optimisticPath || previousPath).trim();
             const renamedName = String(payload?.name || requestedName);
-            renames[entry.path] = { path: renamedPath, name: renamedName };
+            const safeRenamedPath = renamedPath || optimisticPath || previousPath;
+            const safeRenamedName = renamedName || requestedName;
+            if (
+              safeRenamedPath !== optimisticPath ||
+              safeRenamedName !== requestedName
+            ) {
+              applyLocalImageRename(optimisticPath, safeRenamedPath, safeRenamedName);
+            }
+            const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
+            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
           } catch (err) {
+            applyLocalImageRename(optimisticPath, previousPath, previousName);
             failures.push(`${entry.name}: ${(err as Error).message}`);
           }
         }
 
-        if (Object.keys(renames).length > 0) {
-          setEntries((prev) =>
-            prev.map((item) => {
-              const renamed = renames[item.path];
-              if (!renamed) return item;
-              return { ...item, name: renamed.name, path: renamed.path };
-            })
-          );
-          setSelectedFiles((prev) => {
-            if (prev.size === 0) return prev;
-            const next = new Set(prev);
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              if (!next.has(oldPath)) return;
-              next.delete(oldPath);
-              next.add(renamed.path);
-            });
-            return next;
-          });
-          setPreviewPath((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev];
-            return renamed ? renamed.path : prev;
-          });
-          setImageDimensions((prev) => {
-            const next: Record<string, { width: number; height: number }> = { ...prev };
-            Object.entries(renames).forEach(([oldPath, renamed]) => {
-              const dims = next[oldPath];
-              if (!dims) return;
-              delete next[oldPath];
-              next[renamed.path] = dims;
-            });
-            return next;
-          });
-          setContextMenu((prev) => {
-            if (!prev) return prev;
-            const renamed = renames[prev.entry.path];
-            if (!renamed) return prev;
-            return {
-              ...prev,
-              entry: {
-                ...prev.entry,
-                path: renamed.path,
-                name: renamed.name,
-              },
-            };
-          });
-
-          const foldersNeedingResort = new Set<string>();
-          Object.entries(renames).forEach(([oldPath, renamed]) => {
-            const oldFolderPath = getParentFolderPathFromEntryPath(oldPath);
-            const renamedFolderPath = getParentFolderPathFromEntryPath(renamed.path);
-            if (oldFolderPath) foldersNeedingResort.add(oldFolderPath);
-            if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
-          });
-          if (foldersNeedingResort.size > 0) {
-            const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
-            reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
-          }
+        if (foldersNeedingResort.size > 0) {
+          const reorderFailures = await resortImageFoldersByHierarchy(foldersNeedingResort);
+          reorderFailures.forEach((message) => failures.push(`re-sort: ${message}`));
         }
       } finally {
         setBulkImageActionPending(false);
@@ -13779,6 +13933,7 @@ export default function DraftExplorerPage() {
     },
     [
       aiEditJobsByPath,
+      applyLocalImageRename,
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
       entryByPath,
@@ -18578,6 +18733,15 @@ export default function DraftExplorerPage() {
                             styles.variantsEditorHeadCell,
                             styles.resizableHeader
                           )}
+                          style={variantsEditorColumnStyles.shippingClass}
+                        >
+                          Shipping
+                        </th>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
+                            styles.resizableHeader
+                          )}
                           style={variantsEditorColumnStyles.price}
                         >
                           Price
@@ -18596,7 +18760,7 @@ export default function DraftExplorerPage() {
                     <tbody>
                       {variantsEditorRows.length === 0 ? (
                         <tr>
-                          <td className={styles.variantsEditorCell} colSpan={13}>
+                          <td className={styles.variantsEditorCell} colSpan={14}>
                             No variants yet. Add one or run AI update.
                           </td>
                         </tr>
@@ -18675,6 +18839,12 @@ export default function DraftExplorerPage() {
                               style={variantsEditorColumnStyles.amountZh}
                             >
                               {renderVariantEditorInput(row, "draft_option4")}
+                            </td>
+                            <td
+                              className={styles.variantsEditorCell}
+                              style={variantsEditorColumnStyles.shippingClass}
+                            >
+                              {renderVariantEditorShippingClassSelect(row)}
                             </td>
                             <td
                               className={styles.variantsEditorCell}

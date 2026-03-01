@@ -602,6 +602,33 @@ const isSrvPath = (value: string) => String(value || "").trim().startsWith("/srv
 const toImageFileName = (value: string) =>
   path.basename(String(value || "").replace(/\\/g, "/").trim());
 
+const IMAGE_TAG_TOKEN_REGEX = (tag: "MAIN" | "ENV" | "INF" | "DIGI" | "VAR") =>
+  new RegExp(`(?:\\(\\s*${tag}\\s*\\)|(?:^|[-_ ])${tag}(?=$|[-_ .)]))`, "i");
+
+const inferUniqueTagFallbackImageName = (
+  requestedFileName: string,
+  finalTopLevelImageNames: string[]
+) => {
+  const normalizedRequested = String(requestedFileName || "").trim();
+  if (!normalizedRequested) return null;
+  const tagOrder: Array<"MAIN" | "ENV" | "INF" | "DIGI" | "VAR"> = [
+    "MAIN",
+    "ENV",
+    "INF",
+    "DIGI",
+    "VAR",
+  ];
+  const requestedTag =
+    tagOrder.find((tag) => IMAGE_TAG_TOKEN_REGEX(tag).test(normalizedRequested)) ?? null;
+  if (!requestedTag) return null;
+
+  const matching = finalTopLevelImageNames.filter((name) =>
+    IMAGE_TAG_TOKEN_REGEX(requestedTag).test(String(name || ""))
+  );
+  if (matching.length !== 1) return null;
+  return matching[0];
+};
+
 const normalizeVariantMatchToken = (value: unknown) => {
   const normalized = String(value ?? "")
     .normalize("NFKC")
@@ -866,6 +893,7 @@ const resolveVariantImageForPublish = (input: {
   value: string | null;
   renameMapBySpu: Map<string, Map<string, string>>;
   finalTopLevelImagesBySpu: Map<string, Set<string>>;
+  finalTopLevelImageNamesBySpu: Map<string, string[]>;
 }) => {
   const normalized = normalizeText(input.value);
   if (!normalized) {
@@ -891,6 +919,11 @@ const resolveVariantImageForPublish = (input: {
 
   const finalImageSet = spu ? input.finalTopLevelImagesBySpu.get(spu) : undefined;
   if (finalImageSet && finalImageSet.size > 0 && !finalImageSet.has(finalName.toLowerCase())) {
+    const finalImageNames = spu ? input.finalTopLevelImageNamesBySpu.get(spu) ?? [] : [];
+    const tagFallback = inferUniqueTagFallbackImageName(fileName, finalImageNames);
+    if (tagFallback && finalImageSet.has(tagFallback.toLowerCase())) {
+      return { value: tagFallback, issue: null as string | null };
+    }
     return {
       value: null,
       issue: `Variant image "${fileName}" is not in the final top-level publish image set.`,
@@ -2749,6 +2782,7 @@ export async function POST(request: Request) {
       value: normalizeText(row.draft_variant_image_url),
       renameMapBySpu: variantImageRenameMapBySpu,
       finalTopLevelImagesBySpu,
+      finalTopLevelImageNamesBySpu,
     });
     if (resolvedVariantImage.issue) {
       variantImageIssues.push({

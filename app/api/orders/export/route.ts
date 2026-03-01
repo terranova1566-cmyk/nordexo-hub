@@ -2,34 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import ExcelJS from "exceljs";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { ORDER_IMPORT_SHIPPED_HEADERS } from "@/lib/orders/import-template";
 
-const HEADERS = [
-  "Sales Channel ID",
-  "Quantity",
-  "Order number",
-  "Customer Name",
-  "Customer address",
-  "Customer zip code",
-  "Customer city",
-  "Customer cell phone",
-  "Sales Channel Readable name",
-  "Customer email",
-  "Marketplace order number",
-  "Sales channel order number",
-  "SKU",
-  "Ignore",
-  "Ignore2",
-  "Transaction Date",
-  "Sales value EUR",
-  "Date shipped",
-  "Ignore3",
-  "Ignore4",
-  "Ignore5",
-  "Ignore6",
-  "Ignore7",
-  "Ignore8",
-  "Tracking number",
-];
+const HEADERS = [...ORDER_IMPORT_SHIPPED_HEADERS];
 
 type AdminClient = NonNullable<ReturnType<typeof getAdminClient>>;
 

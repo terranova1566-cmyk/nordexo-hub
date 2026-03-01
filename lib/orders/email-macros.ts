@@ -115,7 +115,6 @@ export function buildOrderEmailMacroVariables(input: OrderEmailMacroInput) {
     platform_name: platformName,
     platform_seller_name: platformName,
     tracking_number: trackingNumber,
-    TRACKING_NUMBER: trackingNumber,
 
     // Legacy aliases retained for backward compatibility.
     orders_id: ordersNumber,

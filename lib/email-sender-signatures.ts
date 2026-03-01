@@ -167,7 +167,7 @@ export function appendSignatureToEmailHtml(bodyHtml: unknown, signatureText: unk
     .replace(/(?:\s|&nbsp;)*(?:<br\s*\/?>\s*)+$/gi, "")
     .trimEnd();
   if (!bodyWithoutTrailingBreaks.trim()) return signatureHtml;
-  return `${bodyWithoutTrailingBreaks}<br /><br />${signatureHtml}`;
+  return `${bodyWithoutTrailingBreaks}<br />${signatureHtml}`;
 }
 
 export function appendSignatureToEmailText(bodyText: unknown, signatureText: unknown) {
@@ -175,5 +175,5 @@ export function appendSignatureToEmailText(bodyText: unknown, signatureText: unk
   const normalizedBody = String(bodyText ?? "");
   if (!normalizedSignature) return normalizedBody;
   if (!normalizedBody.trim()) return normalizedSignature;
-  return `${normalizedBody.replace(/\s+$/, "")}\n\n${normalizedSignature}`;
+  return `${normalizedBody.replace(/\s+$/, "")}\n${normalizedSignature}`;
 }

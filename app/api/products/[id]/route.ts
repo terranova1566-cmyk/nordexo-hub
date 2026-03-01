@@ -11,6 +11,7 @@ import {
   loadLegacyVariantLocksBySku,
 } from "@/lib/legacy-product-image-data";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
+import { recalculateB2CPricesForSpus } from "@/lib/pricing/recalculate-b2c-spus";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -796,6 +797,7 @@ export async function PATCH(
 
   if (variantsPayload.length > 0) {
     const nowIso = new Date().toISOString();
+    let shouldRecalculateB2C = false;
     let tingeloShopId: string | null = null;
     const needsTingeloShopId = variantsPayload.some(
       (entry: any) =>
@@ -874,6 +876,15 @@ export async function PATCH(
       setVariantBool("taxable");
 
       if (Object.keys(variantUpdates).length === 0) continue;
+
+      if (
+        Object.prototype.hasOwnProperty.call(variantUpdates, "purchase_price_cny") ||
+        Object.prototype.hasOwnProperty.call(variantUpdates, "weight") ||
+        Object.prototype.hasOwnProperty.call(variantUpdates, "shipping_class")
+      ) {
+        shouldRecalculateB2C = true;
+      }
+
       const { error: variantError } = await adminClient
         .from("catalog_variants")
         .update(variantUpdates)
@@ -966,6 +977,33 @@ export async function PATCH(
           { error: (error as Error).message },
           { status: 500 }
         );
+      }
+    }
+
+    if (shouldRecalculateB2C) {
+      const { data: productRow, error: productSpuError } = await adminClient
+        .from("catalog_products")
+        .select("spu")
+        .eq("id", id)
+        .maybeSingle();
+      if (productSpuError) {
+        return NextResponse.json(
+          { error: `Unable to resolve product SPU for B2C recalc: ${productSpuError.message}` },
+          { status: 500 }
+        );
+      }
+      const productSpu = productRow?.spu ? String(productRow.spu).trim() : "";
+      if (productSpu) {
+        try {
+          await recalculateB2CPricesForSpus(adminClient, [productSpu]);
+        } catch (error) {
+          return NextResponse.json(
+            {
+              error: `B2C pricing generation failed: ${(error as Error).message}`,
+            },
+            { status: 500 }
+          );
+        }
       }
     }
   }

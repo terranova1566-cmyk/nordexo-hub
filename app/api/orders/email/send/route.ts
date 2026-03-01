@@ -24,6 +24,25 @@ export const runtime = "nodejs";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
+const BATCH_PREVIEW_BCC_EMAIL = "terranova_sh@hotmail.com";
+const ORDER_EMAIL_PARTNER_RECEIVERS = {
+  letsdeal_se: {
+    name: "LetsDeal SE",
+    email: "support@letsdeal.se",
+  },
+  letsdeal_no: {
+    name: "LetsDeal NO",
+    email: "support@letsdeal.no",
+  },
+  letsdeal_sc: {
+    name: "LetsDeal SE",
+    email: "support@letsdeal.se",
+  },
+  letsdeal_nordexo: {
+    name: "LetsDeal NO",
+    email: "support@letsdeal.no",
+  },
+} as const;
 
 function getAdminClient() {
   const supabaseUrl =
@@ -346,6 +365,15 @@ export async function POST(request: Request) {
   const senderEmail = String(payload.senderEmail ?? "").trim();
   const senderName = String(payload.senderName ?? "").trim() || null;
   const bccEmails = parseEmailList(payload.bccEmails);
+  const partnerReceiverKey = String(
+    payload.partnerReceiverKey ?? payload.partner_receiver_key ?? ""
+  )
+    .trim()
+    .toLowerCase();
+  const partnerReceiver =
+    ORDER_EMAIL_PARTNER_RECEIVERS[
+      partnerReceiverKey as keyof typeof ORDER_EMAIL_PARTNER_RECEIVERS
+    ] ?? null;
   const providedMacros = parseMacroList(payload.macros);
   const hasSubjectTemplateOverride =
     Object.prototype.hasOwnProperty.call(payload, "subjectTemplate") ||
@@ -362,6 +390,18 @@ export async function POST(request: Request) {
   }
   if (!senderEmail || !emailRegex.test(senderEmail)) {
     return NextResponse.json({ error: "A valid sender email is required." }, { status: 400 });
+  }
+  if (!partnerReceiver) {
+    return NextResponse.json(
+      { error: "A partner receiver is required." },
+      { status: 400 }
+    );
+  }
+  if (!emailRegex.test(String(partnerReceiver.email ?? "").trim())) {
+    return NextResponse.json(
+      { error: "Configured partner receiver email is invalid." },
+      { status: 500 }
+    );
   }
 
   const { data: template, error: templateError } = await adminClient
@@ -518,6 +558,7 @@ export async function POST(request: Request) {
     order_id: string;
     order_number: string | null;
     customer_email: string | null;
+    receiver_email: string | null;
     status: "sent" | "failed";
     latest_notification_name?: string | null;
     latest_notification_sent_at?: string | null;
@@ -526,6 +567,7 @@ export async function POST(request: Request) {
     deprecated_macros?: string[];
     missing_macros?: string[];
   }> = [];
+  let previewBccPending = true;
 
   for (const orderId of ids) {
     const order = orderMap.get(orderId);
@@ -534,23 +576,14 @@ export async function POST(request: Request) {
         order_id: orderId,
         order_number: null,
         customer_email: null,
+        receiver_email: String(partnerReceiver.email ?? "").trim() || null,
         status: "failed",
         error: "Order not found.",
       });
       continue;
     }
 
-    const recipientEmail = String(order.customer_email ?? "").trim();
-    if (!emailRegex.test(recipientEmail)) {
-      results.push({
-        order_id: order.id,
-        order_number: order.order_number ?? null,
-        customer_email: order.customer_email ?? null,
-        status: "failed",
-        error: "Order is missing a valid customer email.",
-      });
-      continue;
-    }
+    const recipientEmail = String(partnerReceiver.email ?? "").trim();
 
     const orderItems = orderItemMap.get(order.id) ?? [];
     const preferredOrderId = resolvePreferredOrderIdFromItems(orderItems);
@@ -586,6 +619,7 @@ export async function POST(request: Request) {
         order_id: order.id,
         order_number: order.order_number ?? null,
         customer_email: order.customer_email ?? null,
+        receiver_email: recipientEmail,
         status: "failed",
         error: "Missing required macro values.",
         unknown_macros: macroResolution.unknownMacros,
@@ -616,6 +650,7 @@ export async function POST(request: Request) {
         order_id: order.id,
         order_number: order.order_number ?? null,
         customer_email: order.customer_email ?? null,
+        receiver_email: recipientEmail,
         status: "failed",
         error: "Rendered subject is empty.",
       });
@@ -625,6 +660,13 @@ export async function POST(request: Request) {
     let sendStatus: "sent" | "failed" = "sent";
     let sendError: string | null = null;
     let sendResponse: unknown = null;
+    const resolvedBccEmails = Array.from(
+      new Set(
+        previewBccPending
+          ? [...bccEmails, BATCH_PREVIEW_BCC_EMAIL]
+          : [...bccEmails]
+      )
+    );
     try {
       sendResponse = await sendRenderedEmail({
         subject: renderedSubject,
@@ -633,16 +675,19 @@ export async function POST(request: Request) {
         recipients: [
           {
             email: recipientEmail,
-            name: variables.customer_name || undefined,
+            name: partnerReceiver.name || undefined,
           },
         ],
-        bcc: bccEmails.map((email) => ({ email })),
+        bcc: resolvedBccEmails.map((email) => ({ email })),
         html: renderedBodyWithSignature,
         text: renderedTextWithSignature,
       });
     } catch (error) {
       sendStatus = "failed";
       sendError = (error as Error).message || "Unable to send email via SendPulse.";
+    }
+    if (sendStatus === "sent") {
+      previewBccPending = false;
     }
 
     const providerMessageId = extractProviderMessageId(sendResponse);
@@ -657,7 +702,10 @@ export async function POST(request: Request) {
       recipient_email: recipientEmail,
       variables: {
         ...renderVariables,
-        bcc_emails: bccEmails,
+        partner_receiver_key: partnerReceiverKey,
+        partner_receiver_name: partnerReceiver.name,
+        partner_receiver_email: recipientEmail,
+        bcc_emails: resolvedBccEmails,
       },
       status: sendStatus,
       provider_message_id: providerMessageId,
@@ -680,6 +728,7 @@ export async function POST(request: Request) {
       order_id: order.id,
       order_number: order.order_number ?? null,
       customer_email: order.customer_email ?? null,
+      receiver_email: recipientEmail,
       status: sendStatus,
       latest_notification_name:
         sendStatus === "sent" ? notificationName : null,
@@ -745,6 +794,8 @@ export async function POST(request: Request) {
     failed_count: failedCount,
     notification_name: notificationName,
     notification_sent_at: notificationSentAt,
+    partner_receiver_key: partnerReceiverKey,
+    partner_receiver_email: partnerReceiver.email,
     notification_updated_ids: notificationUpdatedOrderIds,
     notification_update_error: notificationUpdateErrorMessage,
     results,

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const escapeLikeToken = (value: string) => value.replace(/[%_]/g, "\\$&");
 
 const VARIANT_SELECT =
-  "id,draft_sku,draft_spu,draft_option1,draft_option2,draft_option3,draft_option4,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_variant_image_url,draft_status,draft_updated_at,draft_raw_row";
+  "id,draft_sku,draft_spu,draft_option1,draft_option2,draft_option3,draft_option4,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_variant_image_url,draft_shipping_class,draft_status,draft_updated_at,draft_raw_row";
 
 function getAdminClient() {
   const supabaseUrl =
@@ -24,7 +25,7 @@ function getAdminClient() {
 }
 
 const fetchSpusForRun = async (
-  adminClient: any,
+  adminClient: SupabaseClient,
   run: string
 ) => {
   const prefix = `images/draft_products/${run}/`;
@@ -42,7 +43,10 @@ const fetchSpusForRun = async (
     throw new Error(error.message);
   }
 
-  const spus = ((data ?? []) as any[])
+  const rows = Array.isArray(data)
+    ? (data as Array<{ draft_spu?: unknown }>)
+    : [];
+  const spus = rows
     .map((row) => String(row?.draft_spu ?? "").trim())
     .filter((value): value is string => Boolean(value));
 

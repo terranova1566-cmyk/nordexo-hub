@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { recalculateB2CPricesForSpus } from "@/lib/pricing/recalculate-b2c-spus";
 
 export const runtime = "nodejs";
 
@@ -506,6 +507,25 @@ export async function PATCH(request: Request) {
 
   const now = new Date().toISOString();
 
+  const recalculateVariantB2C = async () => {
+    const { data: variantRow, error: variantError } = await adminClient
+      .from("catalog_variants")
+      .select("catalog_products(spu)")
+      .eq("id", variantId)
+      .maybeSingle();
+    if (variantError) {
+      throw new Error(`Unable to load variant SPU for B2C recalc: ${variantError.message}`);
+    }
+
+    const product = Array.isArray(variantRow?.catalog_products)
+      ? variantRow.catalog_products[0]
+      : variantRow?.catalog_products;
+    const spu = product?.spu ? String(product.spu).trim() : "";
+    if (!spu) return;
+
+    await recalculateB2CPricesForSpus(adminClient, [spu]);
+  };
+
   const b2bMarketMap: Record<string, { market: string; currency: string }> = {
     b2b_se: { market: "SE", currency: "SEK" },
     b2b_no: { market: "NO", currency: "NOK" },
@@ -769,6 +789,14 @@ export async function PATCH(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    try {
+      await recalculateVariantB2C();
+    } catch (recalcError) {
+      return NextResponse.json(
+        { error: `B2C pricing generation failed: ${(recalcError as Error).message}` },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -780,6 +808,14 @@ export async function PATCH(request: Request) {
       .eq("id", variantId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    try {
+      await recalculateVariantB2C();
+    } catch (recalcError) {
+      return NextResponse.json(
+        { error: `B2C pricing generation failed: ${(recalcError as Error).message}` },
+        { status: 500 }
+      );
     }
     return NextResponse.json({ ok: true });
   }
@@ -795,6 +831,14 @@ export async function PATCH(request: Request) {
       .eq("id", variantId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    try {
+      await recalculateVariantB2C();
+    } catch (recalcError) {
+      return NextResponse.json(
+        { error: `B2C pricing generation failed: ${(recalcError as Error).message}` },
+        { status: 500 }
+      );
     }
     return NextResponse.json({ ok: true });
   }

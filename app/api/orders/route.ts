@@ -34,6 +34,8 @@ type OrdersSortOption =
   | "transaction_desc"
   | "shipped_asc"
   | "shipped_desc";
+type OrdersWarningFilterOption = "delayed" | "on_time";
+type OrdersNotificationFilterOption = "have" | "none";
 
 const ORDER_SORT_OPTIONS = new Set<OrdersSortOption>([
   "transaction_asc",
@@ -41,11 +43,35 @@ const ORDER_SORT_OPTIONS = new Set<OrdersSortOption>([
   "shipped_asc",
   "shipped_desc",
 ]);
+const ORDER_WARNING_FILTER_OPTIONS = new Set<OrdersWarningFilterOption>([
+  "delayed",
+  "on_time",
+]);
+const ORDER_NOTIFICATION_FILTER_OPTIONS =
+  new Set<OrdersNotificationFilterOption>(["have", "none"]);
 
 const DEFAULT_ORDERS_SORT_OPTION: OrdersSortOption = "transaction_desc";
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
+const PARTNER_INFORMED_TEMPLATE_NAME =
+  "EN - Tracking and order info to partner";
+const PARTNER_INFORMED_RECEIVER_KEYS = new Set([
+  "letsdeal_se",
+  "letsdeal_no",
+  "letsdeal_sc",
+  "letsdeal_nordexo",
+]);
+const PARTNER_INFORMED_RECEIVER_NAMES = new Set([
+  "letsdeal se",
+  "letsdeal no",
+  "letsdeal at sc",
+  "letsdeal at nordexo (nodexo)",
+]);
+const PARTNER_INFORMED_RECEIVER_EMAILS = new Set([
+  "support@letsdeal.se",
+  "support@letsdeal.no",
+]);
 
 function parseOrdersSortOption(value: unknown): OrdersSortOption {
   const token = String(value ?? "")
@@ -54,6 +80,91 @@ function parseOrdersSortOption(value: unknown): OrdersSortOption {
   return ORDER_SORT_OPTIONS.has(token)
     ? token
     : DEFAULT_ORDERS_SORT_OPTION;
+}
+
+function normalizeFilterText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function parseCountryFilter(value: unknown) {
+  const token = String(value ?? "").trim();
+  if (!token || token.toLowerCase() === "all") return null;
+  return normalizeCountryCode(token);
+}
+
+function parseSalesChannelFilters(values: unknown[]) {
+  const tokens = values
+    .flatMap((value) => String(value ?? "").split(","))
+    .map((value) => normalizeFilterText(value))
+    .filter((value) => Boolean(value) && value !== "all");
+  return Array.from(new Set(tokens)).sort((left, right) =>
+    left.localeCompare(right)
+  );
+}
+
+function escapeIlikeToken(value: string) {
+  return value.replace(/[,%()]/g, " ").trim();
+}
+
+function buildSalesChannelOrClauses(filters: string[]) {
+  const clauses = new Set<string>();
+
+  filters.forEach((filter) => {
+    const token = normalizeFilterText(filter);
+    if (!token) return;
+    const safeToken = escapeIlikeToken(token);
+
+    if (token === "letsdeal") {
+      clauses.add("sales_channel_id.ilike.LD-%");
+      return;
+    }
+
+    if (token === "offerilla") {
+      clauses.add("sales_channel_id.ilike.OF-%");
+      return;
+    }
+
+    if (token === "digideal") {
+      clauses.add("sales_channel_id.ilike.DI-%");
+      return;
+    }
+
+    if (token === "sparklar") {
+      clauses.add("sales_channel_id.ilike.SH-%");
+      clauses.add("sales_channel_id.ilike.SK-%");
+      clauses.add("sales_channel_name.ilike.Sparklar%");
+      return;
+    }
+
+    if (!safeToken) return;
+    clauses.add(`sales_channel_name.ilike.${safeToken}%`);
+    clauses.add(`sales_channel_id.ilike.${safeToken}%`);
+  });
+
+  return Array.from(clauses);
+}
+
+function isStatementTimeoutError(value: unknown) {
+  return /statement timeout/i.test(String(value ?? ""));
+}
+
+function parseOrdersWarningFilter(value: unknown): OrdersWarningFilterOption | null {
+  const tokenRaw = String(value ?? "").trim().toLowerCase();
+  if (!tokenRaw || tokenRaw === "all") return null;
+  const token = tokenRaw as OrdersWarningFilterOption;
+  return ORDER_WARNING_FILTER_OPTIONS.has(token) ? token : null;
+}
+
+function parseOrdersNotificationFilter(
+  value: unknown
+): OrdersNotificationFilterOption | null {
+  const tokenRaw = String(value ?? "").trim().toLowerCase();
+  if (!tokenRaw || tokenRaw === "all") return null;
+  const token = tokenRaw as OrdersNotificationFilterOption;
+  return ORDER_NOTIFICATION_FILTER_OPTIONS.has(token) ? token : null;
 }
 
 async function hasOrdersStatusColumn(adminClient: AdminClient) {
@@ -96,6 +207,9 @@ type SendpulseHistoryColumnFlags = {
   orderId: boolean;
   sendDate: boolean;
   notificationName: boolean;
+  templateId: boolean;
+  recipientEmail: boolean;
+  variables: boolean;
 };
 
 async function getOrdersNotificationColumnFlags(
@@ -167,13 +281,23 @@ async function getSendpulseHistoryColumnFlags(
     .select("column_name")
     .eq("table_schema", "public")
     .eq("table_name", "sendpulse_email_logs")
-    .in("column_name", ["order_id", "send_date", "notification_name"]);
+    .in("column_name", [
+      "order_id",
+      "send_date",
+      "notification_name",
+      "template_id",
+      "recipient_email",
+      "variables",
+    ]);
 
   if (error) {
     return {
       orderId: false,
       sendDate: false,
       notificationName: false,
+      templateId: false,
+      recipientEmail: false,
+      variables: false,
     };
   }
 
@@ -187,6 +311,9 @@ async function getSendpulseHistoryColumnFlags(
     orderId: columnNames.has("order_id"),
     sendDate: columnNames.has("send_date"),
     notificationName: columnNames.has("notification_name"),
+    templateId: columnNames.has("template_id"),
+    recipientEmail: columnNames.has("recipient_email"),
+    variables: columnNames.has("variables"),
   };
 }
 
@@ -257,6 +384,25 @@ function pickObject(value: unknown) {
   return value as Record<string, unknown>;
 }
 
+function normalizeToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function parseJsonObject(value: unknown) {
+  const direct = pickObject(value);
+  if (direct) return direct;
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return pickObject(parsed);
+  } catch {
+    return null;
+  }
+}
+
 function pickCountryFromRawRow(rawRow: unknown) {
   const root = pickObject(rawRow);
   if (!root) return { countryCode: null as string | null, countryName: null as string | null };
@@ -321,6 +467,69 @@ function sortOrderRows(
     const rightId = String(right.id ?? "");
     return leftId.localeCompare(rightId);
   });
+}
+
+type OrdersDatasetFilters = {
+  status: string | null;
+  countryCode: string | null;
+  salesChannel: string[];
+  warning: OrdersWarningFilterOption | null;
+  notification: OrdersNotificationFilterOption | null;
+};
+
+function matchesOrdersDatasetFilters(
+  row: Record<string, unknown>,
+  filters: OrdersDatasetFilters
+) {
+  if (filters.status) {
+    const normalizedStatus = normalizeOrderStatus(row.status);
+    if (normalizedStatus !== filters.status) {
+      return false;
+    }
+  }
+
+  if (filters.countryCode) {
+    const countryCode =
+      normalizeCountryCode(row.customer_country_code) ||
+      normalizeCountryCode(String(row.sales_channel_id ?? "").slice(-2));
+    if (countryCode !== filters.countryCode) {
+      return false;
+    }
+  }
+
+  if (filters.salesChannel.length > 0) {
+    const normalizedPlatformName = normalizeFilterText(
+      normalizeOrderPlatformName({
+        salesChannelName: row.sales_channel_name,
+        salesChannelId: row.sales_channel_id,
+      })
+    );
+    if (!filters.salesChannel.includes(normalizedPlatformName)) {
+      return false;
+    }
+  }
+
+  if (filters.warning === "delayed" && !Boolean(row.is_delayed)) {
+    return false;
+  }
+  if (filters.warning === "on_time" && Boolean(row.is_delayed)) {
+    return false;
+  }
+
+  if (filters.notification) {
+    const hasNotification = Boolean(
+      String(row.latest_notification_name ?? "").trim() ||
+        String(row.latest_notification_sent_at ?? "").trim()
+    );
+    if (filters.notification === "have" && !hasNotification) {
+      return false;
+    }
+    if (filters.notification === "none" && hasNotification) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 async function findOrderIdsBySkuOrSpu(adminClient: AdminClient, query: string) {
@@ -467,10 +676,39 @@ export async function GET(request: Request) {
     statusFilterRaw && statusFilterRaw !== "all"
       ? normalizeOrderStatus(statusFilterRaw)
       : null;
+  const countryFilter = parseCountryFilter(searchParams.get("country"));
+  const salesChannelFilters = parseSalesChannelFilters(
+    searchParams.getAll("sales_channel")
+  );
+  const salesChannelOrClauses = buildSalesChannelOrClauses(salesChannelFilters);
+  const warningFilter = parseOrdersWarningFilter(searchParams.get("warning"));
+  const notificationFilter = parseOrdersNotificationFilter(
+    searchParams.get("notification")
+  );
+  const canFilterNotificationInDb = Boolean(notificationFilter) && (
+    notificationColumns.latestNotificationSentAt ||
+    notificationColumns.latestNotificationName
+  );
+  const requiresPostNotificationFilter =
+    Boolean(notificationFilter) && !canFilterNotificationInDb;
+  const datasetFilters: OrdersDatasetFilters = {
+    status: statusFilter ?? null,
+    countryCode: countryFilter,
+    salesChannel: salesChannelFilters,
+    warning: warningFilter,
+    notification: requiresPostNotificationFilter ? notificationFilter : null,
+  };
+  const hasDatasetLevelFilters = Boolean(
+    countryFilter || warningFilter || requiresPostNotificationFilter
+  );
   const hasStatusFilter =
     includeStatus &&
     Boolean(statusFilter) &&
     ORDER_STATUS_VALUES.includes(statusFilter as (typeof ORDER_STATUS_VALUES)[number]);
+  const requiresPostStatusFilter = Boolean(statusFilter) && !hasStatusFilter;
+  const hasPostProcessingFilters = Boolean(
+    hasDatasetLevelFilters || requiresPostStatusFilter
+  );
   const sortOption = parseOrdersSortOption(searchParams.get("date_sort"));
   const page = parsePositiveInteger(
     searchParams.get("page"),
@@ -513,6 +751,10 @@ export async function GET(request: Request) {
       gte: (column: string, value: string) => T;
       lte: (column: string, value: string) => T;
       eq: (column: string, value: string) => T;
+      is: (column: string, value: null) => T;
+      not: (column: string, operator: string, value: unknown) => T;
+      neq: (column: string, value: string) => T;
+      or: (filters: string) => T;
     },
   >(
     queryBuilder: T
@@ -524,6 +766,9 @@ export async function GET(request: Request) {
     if (transactionTo) {
       next = next.lte("transaction_date", transactionTo);
     }
+    if (shippedFrom || shippedTo) {
+      next = next.not("date_shipped", "is", null).neq("date_shipped", "");
+    }
     if (shippedFrom) {
       next = next.gte("date_shipped", shippedFrom);
     }
@@ -532,6 +777,25 @@ export async function GET(request: Request) {
     }
     if (hasStatusFilter && statusFilter) {
       next = next.eq("status", statusFilter);
+    }
+    if (salesChannelOrClauses.length > 0) {
+      next = next.or(salesChannelOrClauses.join(","));
+    }
+    if (notificationFilter && canFilterNotificationInDb) {
+      if (notificationColumns.latestNotificationSentAt) {
+        if (notificationFilter === "have") {
+          next = next.not("latest_notification_sent_at", "is", null);
+        } else {
+          next = next.is("latest_notification_sent_at", null);
+        }
+      } else if (notificationColumns.latestNotificationName) {
+        if (notificationFilter === "have") {
+          next = next.not("latest_notification_name", "is", null);
+          next = next.neq("latest_notification_name", "");
+        } else {
+          next = next.is("latest_notification_name", null);
+        }
+      }
     }
     return next;
   };
@@ -566,69 +830,202 @@ export async function GET(request: Request) {
   let error: { message: string } | null = null;
   let count: number | null = null;
   if (query) {
-    const { data: directRows, error: directRowsError } = await applyFilters(
-      (orderFieldSearch
-        ? adminClient
+    const merged = new Map<string, Record<string, unknown>>();
+    if (orderFieldSearch) {
+      let offset = 0;
+      while (true) {
+        const { data: directRowsChunk, error: directRowsError } = await applyFilters(
+          adminClient
             .from("orders_global")
             .select(selectColumns)
             .or(orderFieldSearch)
-        : adminClient.from("orders_global").select(selectColumns)
-      )
-        .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
-        .order("order_number", { ascending: true })
-        .order("id", { ascending: true })
-    );
-    error = directRowsError;
-    if (!error) {
-      const merged = new Map<string, Record<string, unknown>>();
-      (directRows ?? []).forEach((row) => {
-        const id = String((row as { id?: unknown }).id ?? "").trim();
-        if (!id) return;
-        merged.set(id, row as unknown as Record<string, unknown>);
-      });
-
-      if (itemMatchedOrderIds.length > 0) {
-        for (const orderIdChunk of chunkArray(itemMatchedOrderIds, 500)) {
-          const { data: itemRows, error: itemRowsError } = await applyFilters(
-            adminClient
-              .from("orders_global")
-              .select(selectColumns)
-              .in("id", orderIdChunk)
-              .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
-              .order("order_number", { ascending: true })
-              .order("id", { ascending: true })
-          );
-          if (itemRowsError) {
-            error = itemRowsError;
-            break;
-          }
-          (itemRows ?? []).forEach((row) => {
-            const id = String((row as { id?: unknown }).id ?? "").trim();
-            if (!id) return;
-            merged.set(id, row as unknown as Record<string, unknown>);
-          });
+            .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
+            .order("order_number", { ascending: true })
+            .order("id", { ascending: true })
+            .range(offset, offset + MAX_PAGE_SIZE - 1)
+        );
+        if (directRowsError) {
+          error = directRowsError;
+          break;
         }
-      }
-
-      if (!error) {
-        const sortedRows = sortOrderRows(Array.from(merged.values()), sortOption);
-        count = sortedRows.length;
-        data = sortedRows.slice(rangeFrom, rangeTo + 1);
+        const rowsChunk =
+          (directRowsChunk ?? []) as unknown as Array<Record<string, unknown>>;
+        rowsChunk.forEach((row) => {
+          const id = String((row as { id?: unknown }).id ?? "").trim();
+          if (!id) return;
+          merged.set(id, row);
+        });
+        if (rowsChunk.length < MAX_PAGE_SIZE) {
+          break;
+        }
+        offset += MAX_PAGE_SIZE;
       }
     }
+
+    if (!error && itemMatchedOrderIds.length > 0) {
+      for (const orderIdChunk of chunkArray(itemMatchedOrderIds, 500)) {
+        const { data: itemRows, error: itemRowsError } = await applyFilters(
+          adminClient
+            .from("orders_global")
+            .select(selectColumns)
+            .in("id", orderIdChunk)
+            .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
+            .order("order_number", { ascending: true })
+            .order("id", { ascending: true })
+        );
+        if (itemRowsError) {
+          error = itemRowsError;
+          break;
+        }
+        (itemRows ?? []).forEach((row) => {
+          const id = String((row as { id?: unknown }).id ?? "").trim();
+          if (!id) return;
+          merged.set(id, row as unknown as Record<string, unknown>);
+        });
+      }
+    }
+
+    if (!error) {
+      const sortedRows = sortOrderRows(Array.from(merged.values()), sortOption);
+      count = sortedRows.length;
+      data = hasPostProcessingFilters
+        ? sortedRows
+        : sortedRows.slice(rangeFrom, rangeTo + 1);
+    }
+  } else if (hasPostProcessingFilters) {
+    const collectedRows: Array<Record<string, unknown>> = [];
+    let offset = 0;
+    while (true) {
+      const { data: rowsChunk, error: rowsError } = await applyFilters(
+        adminClient
+          .from("orders_global")
+          .select(selectColumns)
+          .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
+          .order("order_number", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + MAX_PAGE_SIZE - 1)
+      );
+      if (rowsError) {
+        error = rowsError;
+        break;
+      }
+      const normalizedChunk = (rowsChunk ?? []) as unknown as Array<
+        Record<string, unknown>
+      >;
+      collectedRows.push(...normalizedChunk);
+      if (normalizedChunk.length < MAX_PAGE_SIZE) {
+        break;
+      }
+      offset += MAX_PAGE_SIZE;
+    }
+    if (!error) {
+      data = collectedRows;
+      count = collectedRows.length;
+    }
   } else {
-    const { data: rows, error: rowsError, count: rowsCount } = await applyFilters(
-      adminClient
+    const runRowsQuery = async (from: number, to: number) =>
+      applyFilters(
+        adminClient
+          .from("orders_global")
+          .select(selectColumns)
+          .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
+          .order("order_number", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+
+    const runCountQuery = async () => {
+      let next = adminClient
         .from("orders_global")
-        .select(selectColumns, { count: "exact" })
-        .order(sortColumn, { ascending: sortAscending, nullsFirst: false })
-        .order("order_number", { ascending: true })
-        .order("id", { ascending: true })
-        .range(rangeFrom, rangeTo)
-    );
+        .select("id", { count: "planned", head: true });
+
+      if (transactionFrom) {
+        next = next.gte("transaction_date", transactionFrom);
+      }
+      if (transactionTo) {
+        next = next.lte("transaction_date", transactionTo);
+      }
+      if (shippedFrom || shippedTo) {
+        next = next.not("date_shipped", "is", null).neq("date_shipped", "");
+      }
+      if (shippedFrom) {
+        next = next.gte("date_shipped", shippedFrom);
+      }
+      if (shippedTo) {
+        next = next.lte("date_shipped", shippedTo);
+      }
+      if (hasStatusFilter && statusFilter) {
+        next = next.eq("status", statusFilter);
+      }
+      if (salesChannelOrClauses.length > 0) {
+        next = next.or(salesChannelOrClauses.join(","));
+      }
+      if (notificationFilter && canFilterNotificationInDb) {
+        if (notificationColumns.latestNotificationSentAt) {
+          if (notificationFilter === "have") {
+            next = next.not("latest_notification_sent_at", "is", null);
+          } else {
+            next = next.is("latest_notification_sent_at", null);
+          }
+        } else if (notificationColumns.latestNotificationName) {
+          if (notificationFilter === "have") {
+            next = next.not("latest_notification_name", "is", null);
+            next = next.neq("latest_notification_name", "");
+          } else {
+            next = next.is("latest_notification_name", null);
+          }
+        }
+      }
+      return next;
+    };
+
+    const rowsResult = await runRowsQuery(rangeFrom, rangeTo);
+    const countResult = await runCountQuery();
+    const rows = rowsResult.data;
+    const rowsError = rowsResult.error;
+    const rowsCount = countResult.count;
+    const rowsCountError = countResult.error;
+
     data = (rows ?? []) as unknown as Array<Record<string, unknown>>;
-    error = rowsError;
+    error = rowsError || rowsCountError;
     count = rowsCount;
+
+    if (
+      !rowsError &&
+      rowsCountError &&
+      isStatementTimeoutError(rowsCountError.message)
+    ) {
+      error = null;
+      count = null;
+    }
+
+    if (error && isStatementTimeoutError(error.message) && pageSize > 250) {
+      const chunkedRows: Array<Record<string, unknown>> = [];
+      let chunkError: { message: string } | null = null;
+      for (let start = rangeFrom; start <= rangeTo; start += 250) {
+        const end = Math.min(rangeTo, start + 249);
+        const { data: chunkRows, error: chunkRowsError } = await runRowsQuery(
+          start,
+          end
+        );
+        if (chunkRowsError) {
+          chunkError = chunkRowsError;
+          break;
+        }
+        chunkedRows.push(
+          ...((chunkRows ?? []) as unknown as Array<Record<string, unknown>>)
+        );
+      }
+
+      if (!chunkError) {
+        data = chunkedRows;
+        error = null;
+      }
+    }
+
+    if (!error && (typeof count !== "number" || !Number.isFinite(count))) {
+      count = rangeFrom + data.length + (data.length >= pageSize ? 1 : 0);
+    }
   }
 
   if (error) {
@@ -772,10 +1169,16 @@ export async function GET(request: Request) {
     }
   }
 
+  const filteredItemsWithNotification = hasPostProcessingFilters
+    ? itemsWithNotificationFallback.filter((item) =>
+        matchesOrdersDatasetFilters(item as Record<string, unknown>, datasetFilters)
+      )
+    : itemsWithNotificationFallback;
+
   const orderValueById = new Map<string, number>();
   const orderIdsForValues = Array.from(
     new Set(
-      itemsWithNotificationFallback
+      filteredItemsWithNotification
         .map((item) => normalizeBigintId((item as Record<string, unknown>).id))
         .filter((entry): entry is string => Boolean(entry))
     )
@@ -807,7 +1210,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const itemsWithOrderValue = itemsWithNotificationFallback.map((item) => {
+  const itemsWithOrderValue = filteredItemsWithNotification.map((item) => {
     const row = item as Record<string, unknown>;
     const orderId = normalizeBigintId(row.id);
     const orderTotalValue = orderId ? orderValueById.get(orderId) ?? null : null;
@@ -817,15 +1220,111 @@ export async function GET(request: Request) {
     };
   });
 
+  const pagedItems = hasPostProcessingFilters
+    ? itemsWithOrderValue.slice(rangeFrom, rangeTo + 1)
+    : itemsWithOrderValue;
   const normalizedCount =
-    typeof count === "number" && Number.isFinite(count) ? count : 0;
+    hasPostProcessingFilters
+      ? itemsWithOrderValue.length
+      : typeof count === "number" && Number.isFinite(count)
+        ? count
+        : 0;
   const pageCount =
     normalizedCount > 0 ? Math.ceil(normalizedCount / pageSize) : 0;
-  const from = normalizedCount > 0 ? rangeFrom + 1 : 0;
-  const to = normalizedCount > 0 ? Math.min(rangeTo + 1, normalizedCount) : 0;
+  const hasVisibleRange = normalizedCount > 0 && rangeFrom < normalizedCount;
+  const from = hasVisibleRange ? rangeFrom + 1 : 0;
+  const to = hasVisibleRange ? Math.min(rangeTo + 1, normalizedCount) : 0;
+
+  const partnerInformedOrderIds = new Set<string>();
+  const pagedOrderIds = Array.from(
+    new Set(
+      pagedItems
+        .map((item) => normalizeBigintId((item as Record<string, unknown>).id))
+        .filter((entry): entry is string => Boolean(entry))
+    )
+  );
+
+  if (sendpulseHistoryColumns.orderId && pagedOrderIds.length > 0) {
+    const partnerTemplateIds = new Set<string>();
+    try {
+      const { data: partnerTemplates } = await adminClient
+        .from("partner_email_templates")
+        .select("template_id")
+        .eq("name", PARTNER_INFORMED_TEMPLATE_NAME);
+      ((partnerTemplates ?? []) as Array<{ template_id?: unknown }>).forEach((row) => {
+        const templateId = String(row.template_id ?? "").trim();
+        if (templateId) partnerTemplateIds.add(templateId);
+      });
+    } catch {
+      // Non-blocking: keep partner informed as false if template metadata lookup fails.
+    }
+
+    const sendpulseHistorySelectColumns = [
+      "order_id",
+      "status",
+      "created_at",
+      sendpulseHistoryColumns.sendDate ? "send_date" : null,
+      sendpulseHistoryColumns.notificationName ? "notification_name" : null,
+      sendpulseHistoryColumns.templateId ? "template_id" : null,
+      sendpulseHistoryColumns.recipientEmail ? "recipient_email" : null,
+      sendpulseHistoryColumns.variables ? "variables" : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+
+    for (const orderIdChunk of chunkArray(pagedOrderIds, 500)) {
+      const { data: historyRows, error: historyError } = await adminClient
+        .from("sendpulse_email_logs")
+        .select(sendpulseHistorySelectColumns)
+        .in("order_id", orderIdChunk)
+        .order("created_at", { ascending: false });
+
+      if (historyError) {
+        break;
+      }
+
+      ((historyRows ?? []) as unknown as Array<Record<string, unknown>>).forEach((entry) => {
+        const orderId = normalizeBigintId(entry.order_id);
+        if (!orderId || partnerInformedOrderIds.has(orderId)) return;
+
+        const statusToken = normalizeToken(entry.status);
+        if (statusToken && statusToken !== "sent" && statusToken !== "success") {
+          return;
+        }
+
+        const notificationNameToken = normalizeToken(entry.notification_name);
+        const templateId = String(entry.template_id ?? "").trim();
+        const isMatchingTemplate =
+          (templateId && partnerTemplateIds.has(templateId)) ||
+          notificationNameToken === normalizeToken(PARTNER_INFORMED_TEMPLATE_NAME);
+        if (!isMatchingTemplate) return;
+
+        const recipientEmailToken = normalizeToken(entry.recipient_email);
+        const variables = parseJsonObject(entry.variables);
+        const receiverKeyToken = normalizeToken(variables?.partner_receiver_key);
+        const receiverNameToken = normalizeToken(variables?.partner_receiver_name);
+        const isMatchingReceiver =
+          PARTNER_INFORMED_RECEIVER_EMAILS.has(recipientEmailToken) ||
+          PARTNER_INFORMED_RECEIVER_KEYS.has(receiverKeyToken) ||
+          PARTNER_INFORMED_RECEIVER_NAMES.has(receiverNameToken);
+        if (!isMatchingReceiver) return;
+
+        partnerInformedOrderIds.add(orderId);
+      });
+    }
+  }
+
+  const pagedItemsWithPartnerInformed = pagedItems.map((item) => {
+    const row = item as Record<string, unknown>;
+    const orderId = normalizeBigintId(row.id);
+    return {
+      ...row,
+      partner_informed: orderId ? partnerInformedOrderIds.has(orderId) : false,
+    };
+  });
 
   return NextResponse.json({
-    items: itemsWithOrderValue,
+    items: pagedItemsWithPartnerInformed,
     count: normalizedCount,
     page,
     pageSize,

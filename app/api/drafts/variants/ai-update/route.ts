@@ -31,6 +31,13 @@ const asRawObject = (value: unknown) => {
   return {};
 };
 
+const SHIPPING_CLASS_SET = new Set(["NOR", "BAT", "PBA", "LIQ"]);
+const asNullableShippingClass = (value: unknown) => {
+  const text = asText(value).toUpperCase();
+  if (!text) return null;
+  return SHIPPING_CLASS_SET.has(text) ? text : null;
+};
+
 const normalizeDraftId = (value: unknown) => {
   const text = asText(value);
   return BIGINT_ID_RE.test(text) ? text : null;
@@ -67,6 +74,9 @@ const sanitizeVariant = (value: unknown, fallbackSpu: string) => {
   const variation_size_se = asText(raw.variation_size_se ?? draftRaw.variation_size_se);
   const variation_other_se = asText(raw.variation_other_se ?? draftRaw.variation_other_se);
   const variation_amount_se = asText(raw.variation_amount_se ?? draftRaw.variation_amount_se);
+  const draft_shipping_class = asNullableShippingClass(
+    raw.draft_shipping_class ?? draftRaw.draft_shipping_class
+  );
   const draft_option_combined_zh = buildCombinedOption({
     draft_option1,
     draft_option2,
@@ -88,6 +98,7 @@ const sanitizeVariant = (value: unknown, fallbackSpu: string) => {
     draft_weight: asNullableNumber(raw.draft_weight),
     draft_weight_unit: asNullableText(raw.draft_weight_unit),
     draft_variant_image_url: asNullableText(raw.draft_variant_image_url),
+    draft_shipping_class,
     variation_color_se: variation_color_se || null,
     variation_size_se: variation_size_se || null,
     variation_other_se: variation_other_se || null,
@@ -102,6 +113,7 @@ const sanitizeVariant = (value: unknown, fallbackSpu: string) => {
       variation_size_se,
       variation_other_se,
       variation_amount_se,
+      draft_shipping_class,
     },
   };
 };
@@ -182,13 +194,14 @@ export async function POST(request: Request) {
     "You are a product variant manager.",
     "Rewrite variant rows while keeping the same output schema.",
     "Return strict JSON with this shape only:",
-    '{ "variants": [ { "id": string|null, "draft_spu": string, "draft_sku": string|null, "draft_option1": string|null, "draft_option2": string|null, "draft_option3": string|null, "draft_option4": string|null, "draft_option_combined_zh": string|null, "draft_price": number|null, "draft_weight": number|null, "draft_weight_unit": string|null, "draft_variant_image_url": string|null, "variation_color_se": string|null, "variation_size_se": string|null, "variation_other_se": string|null, "variation_amount_se": string|null, "draft_raw_row": object } ] }',
+    '{ "variants": [ { "id": string|null, "draft_spu": string, "draft_sku": string|null, "draft_option1": string|null, "draft_option2": string|null, "draft_option3": string|null, "draft_option4": string|null, "draft_option_combined_zh": string|null, "draft_price": number|null, "draft_weight": number|null, "draft_weight_unit": string|null, "draft_variant_image_url": string|null, "draft_shipping_class": "NOR|BAT|PBA|LIQ|null", "variation_color_se": string|null, "variation_size_se": string|null, "variation_other_se": string|null, "variation_amount_se": string|null, "draft_raw_row": object } ] }',
     "Rules:",
     "1) Keep draft_spu unchanged.",
     "2) Keep draft_sku unique.",
     "3) Keep values as plain text, no markdown.",
     "4) Keep output compatible with the same format as input.",
     "5) If unsure, preserve original values.",
+    '6) "draft_shipping_class" must be one of NOR, BAT, PBA, LIQ, or null.',
     "",
     `SPU: ${spu}`,
     "",
