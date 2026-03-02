@@ -77,6 +77,14 @@ const formatShortDate = (value?: string | null) => {
   }).format(date);
 };
 
+const buildProductHref = (id: string, spu: string | null | undefined) => {
+  const normalizedSpu = String(spu ?? "").trim();
+  if (normalizedSpu) {
+    return `/app/products/spu/${encodeURIComponent(normalizedSpu)}`;
+  }
+  return `/app/products/${id}`;
+};
+
 const TrashIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -1104,7 +1112,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
               <button
                 type="button"
                 className={styles.listNameButton}
-                onClick={() => router.push(`/app/products/${item.id}`)}
+                onClick={() => router.push(buildProductHref(item.id, item.spu))}
               >
                 <span className={styles.productTitleLink}>{title}</span>
               </button>
@@ -1157,7 +1165,7 @@ function SavedListDetailView({ listId }: { listId: string }) {
                 <Button
                   appearance="outline"
                   className={styles.viewButton}
-                  onClick={() => router.push(`/app/products/${item.id}`)}
+                  onClick={() => router.push(buildProductHref(item.id, item.spu))}
                 >
                   {t("common.view")}
                 </Button>

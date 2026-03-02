@@ -750,6 +750,7 @@ export async function GET(request: Request) {
     T extends {
       gte: (column: string, value: string) => T;
       lte: (column: string, value: string) => T;
+      like: (column: string, pattern: string) => T;
       eq: (column: string, value: string) => T;
       is: (column: string, value: null) => T;
       not: (column: string, operator: string, value: unknown) => T;
@@ -767,7 +768,10 @@ export async function GET(request: Request) {
       next = next.lte("transaction_date", transactionTo);
     }
     if (shippedFrom || shippedTo) {
-      next = next.not("date_shipped", "is", null).neq("date_shipped", "");
+      next = next
+        .not("date_shipped", "is", null)
+        .neq("date_shipped", "")
+        .like("date_shipped", "____-__-__");
     }
     if (shippedFrom) {
       next = next.gte("date_shipped", shippedFrom);
@@ -946,7 +950,10 @@ export async function GET(request: Request) {
         next = next.lte("transaction_date", transactionTo);
       }
       if (shippedFrom || shippedTo) {
-        next = next.not("date_shipped", "is", null).neq("date_shipped", "");
+        next = next
+          .not("date_shipped", "is", null)
+          .neq("date_shipped", "")
+          .like("date_shipped", "____-__-__");
       }
       if (shippedFrom) {
         next = next.gte("date_shipped", shippedFrom);

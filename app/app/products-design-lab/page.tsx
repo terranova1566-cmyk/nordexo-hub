@@ -731,6 +731,14 @@ const formatRangeSummary = (
   return `→ ${formatShortDate(to)}`;
 };
 
+const buildProductHref = (id: string, spu: string | null | undefined) => {
+  const normalizedSpu = String(spu ?? "").trim();
+  if (normalizedSpu) {
+    return `/app/products/spu/${encodeURIComponent(normalizedSpu)}`;
+  }
+  return `/app/products/${id}`;
+};
+
 const TrashIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -1553,7 +1561,7 @@ function ProductsPageInner() {
             <TableCell className={styles.productCol}>
               <div className={styles.productStack}>
                 <Link
-                  href={`/app/products/${product.id}`}
+                  href={buildProductHref(product.id, product.spu)}
                   className={styles.productTitleLink}
                 >
                   <Text as="span" className={styles.productTitleText}>
@@ -1760,7 +1768,7 @@ function ProductsPageInner() {
               <Button
                 appearance="outline"
                 className={styles.viewButton}
-                onClick={() => router.push(`/app/products/${product.id}`)}
+                onClick={() => router.push(buildProductHref(product.id, product.spu))}
               >
                 {t("common.view")}
               </Button>

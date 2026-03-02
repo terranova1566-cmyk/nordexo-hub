@@ -31,6 +31,9 @@ export async function GET() {
     return {
       ...item,
       keywordLabel: keywordCache?.label ?? "",
+      keywordItems: Array.isArray(keywordCache?.keywords)
+        ? keywordCache.keywords
+        : [],
       keywordCached: hasAiKeywords,
       keywordSource: keywordCache?.source ?? null,
       keywordUpdatedAt: keywordCache?.updatedAt ?? null,

@@ -395,12 +395,10 @@ export async function GET(
     const sentDateFromDb = normalizeDateForDb((row as { sent_date?: unknown }).sent_date);
     const sentDateFromItems = itemTrackingDateMap.get(trackingNumber) ?? null;
     const sentDateFromCreatedAt = normalizeDateForDb(row.created_at);
+    const preferredSentDate = chooseDate(sentDateFromDb, sentDateFromItems);
     trackingMap.set(
       trackingNumber,
-      chooseDate(
-        chooseDate(sentDateFromDb, sentDateFromItems),
-        sentDateFromCreatedAt
-      )
+      preferredSentDate ?? sentDateFromCreatedAt
     );
   });
 

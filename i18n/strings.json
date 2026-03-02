@@ -2153,7 +2153,7 @@
     },
     {
       "key": "bulkProcessing.queueIncoming.title",
-      "text": "Production Queue Incoming Products",
+      "text": "Product processing batches",
       "context": "Bulk processing incoming production queue files title"
     },
     {
@@ -6752,6 +6752,11 @@
       "context": "DigiDeal campaigns inactivity filter label"
     },
     {
+      "key": "digideal.filters.noReruns",
+      "text": "No Reruns",
+      "context": "DigiDeal campaigns no-reruns filter label"
+    },
+    {
       "key": "digideal.filters.inactiveMode.any",
       "text": "Any",
       "context": "DigiDeal campaigns inactivity mode option"
@@ -6770,6 +6775,16 @@
       "key": "digideal.filters.inactiveDaysPlaceholder",
       "text": "Days",
       "context": "DigiDeal campaigns inactivity days input placeholder"
+    },
+    {
+      "key": "digideal.filters.offlineForPlaceholder",
+      "text": "Offline for (days)",
+      "context": "DigiDeal campaigns offline-for input placeholder"
+    },
+    {
+      "key": "digideal.filters.noRerunsForPlaceholder",
+      "text": "No reruns for (days)",
+      "context": "DigiDeal campaigns no-reruns input placeholder"
     },
     {
       "key": "digideal.filters.resetAll",

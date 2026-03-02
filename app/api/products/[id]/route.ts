@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   loadImageUrls,
@@ -149,6 +149,73 @@ const normalizeList = (value: unknown) => {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return parts.length ? parts : null;
+};
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const normalizeSpu = (value: string | null | undefined) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase();
+
+type ProductSpuLookupRow = {
+  id: string | null;
+  spu: string | null;
+  updated_at: string | null;
+};
+
+const pickSpuMatchId = (
+  rows: ProductSpuLookupRow[] | null | undefined,
+  normalizedTarget: string
+) => {
+  if (!rows || rows.length === 0) return null;
+  const exact = rows.find((row) => normalizeSpu(row.spu) === normalizedTarget);
+  const row = exact ?? rows[0];
+  return row?.id ? String(row.id) : null;
+};
+
+const resolveProductIdFromSpu = async (
+  client: SupabaseClient,
+  rawSpu: string
+) => {
+  const normalizedTarget = normalizeSpu(rawSpu);
+  if (!normalizedTarget) return null;
+
+  const { data: exactRows } = await client
+    .from("catalog_products")
+    .select("id, spu, updated_at")
+    .eq("spu", normalizedTarget)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  const exact = pickSpuMatchId(
+    exactRows as ProductSpuLookupRow[] | null | undefined,
+    normalizedTarget
+  );
+  if (exact) return exact;
+
+  const { data: ciRows } = await client
+    .from("catalog_products")
+    .select("id, spu, updated_at")
+    .ilike("spu", normalizedTarget)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  const ci = pickSpuMatchId(
+    ciRows as ProductSpuLookupRow[] | null | undefined,
+    normalizedTarget
+  );
+  if (ci) return ci;
+
+  const { data: containsRows } = await client
+    .from("catalog_products")
+    .select("id, spu, updated_at")
+    .ilike("spu", `%${normalizedTarget}%`)
+    .order("updated_at", { ascending: false })
+    .limit(25);
+  return pickSpuMatchId(
+    containsRows as ProductSpuLookupRow[] | null | undefined,
+    normalizedTarget
+  );
 };
 
 const SHOPIFY_TINGELO_PRICE_TYPE = "shopify_tingelo";
@@ -314,6 +381,14 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
+  const decodedId = (() => {
+    try {
+      return decodeURIComponent(id);
+    } catch {
+      return id;
+    }
+  })();
+  const routeProductKey = decodedId.trim();
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -334,6 +409,27 @@ export async function GET(
       : ["SE"];
   const isAdmin = Boolean(userSettings?.is_admin);
 
+  let resolvedProductId = routeProductKey;
+  if (!resolvedProductId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!UUID_PATTERN.test(resolvedProductId)) {
+    let resolvedBySpu = await resolveProductIdFromSpu(supabase, resolvedProductId);
+    if (!resolvedBySpu) {
+      const adminClient = getAdminClient();
+      if (adminClient) {
+        resolvedBySpu = await resolveProductIdFromSpu(
+          adminClient,
+          resolvedProductId
+        );
+      }
+    }
+    if (!resolvedBySpu) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    resolvedProductId = resolvedBySpu;
+  }
+
   const productSelectV2 =
     "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, shopify_category_id, shopify_category_path, image_folder, images, updated_at, created_at, visible_updated_at, brand, vendor, nordic_partner_enabled, option1_name, option2_name, option3_name, option4_name, supplier_1688_url, google_taxonomy_id, google_taxonomy_id_secondary, google_taxonomy_path, google_taxonomy_path_secondary, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, product_categorizer_keywords, shopify_tingelo_sync, shopify_collection_handles, shopify_collection_ids, shopify_tingelo_category_keys, video_files, is_blocked, blocked_at, blocked_by, legacy_title_sv, legacy_description_sv, legacy_bullets_sv";
   const productSelectV1 =
@@ -342,7 +438,7 @@ export async function GET(
   let productResp = await supabase
     .from("catalog_products")
     .select(productSelectV2)
-    .eq("id", id)
+    .eq("id", resolvedProductId)
     .maybeSingle();
 
   if (
@@ -352,7 +448,7 @@ export async function GET(
     productResp = await supabase
       .from("catalog_products")
       .select(productSelectV1)
-      .eq("id", id)
+      .eq("id", resolvedProductId)
       .maybeSingle();
   }
 
@@ -391,7 +487,7 @@ export async function GET(
     .select(
       "id, sku, sku_norm, sku_bak, inventory_quantity, option1, option2, option3, option4, option_combined_zh, option1_zh, option2_zh, option3_zh, option4_zh, short_title_zh, variation_color_se, variation_size_se, variation_other_se, variation_amount_se, price, compare_at_price, cost, variant_image_url, barcode, b2b_dropship_price_se, b2b_dropship_price_no, b2b_dropship_price_dk, b2b_dropship_price_fi, shipping_name_en, shipping_name_zh, shipping_class, weight, purchase_price_cny, supplier_name, supplier_location, tax_code, hs_code, country_of_origin, category_code_fq, category_code_ld, taxable"
     )
-    .eq("product_id", id)
+    .eq("product_id", resolvedProductId)
     .order("sku", { ascending: true });
 
   if (variantError) {
@@ -410,14 +506,14 @@ export async function GET(
   const { data: savedRow } = await supabase
     .from("partner_saved_products")
     .select("id")
-    .eq("product_id", id)
+    .eq("product_id", resolvedProductId)
     .maybeSingle();
 
   const { data: exportRows } = await supabase
     .from("partner_export_items")
     .select("partner_exports(created_at, user_id)")
     .eq("partner_exports.user_id", user.id)
-    .eq("product_id", id);
+    .eq("product_id", resolvedProductId);
 
   const latestExport = exportRows
     ?.map((row) => {
@@ -531,7 +627,7 @@ export async function GET(
       .from("metafield_values")
       .select("definition_id, value_text, value, value_number, value_json")
       .eq("target_type", "product")
-      .eq("target_id", id)
+      .eq("target_id", resolvedProductId)
       .in("definition_id", metaDefIds);
 
     metaValues?.forEach((row) => {
@@ -602,7 +698,7 @@ export async function GET(
       .from("metafield_values")
       .select("definition_id, value_text, value, value_number, value_json")
       .eq("target_type", "product")
-      .eq("target_id", id)
+      .eq("target_id", resolvedProductId)
       .in("definition_id", allMetaDefIds);
 
     metaValues?.forEach((row) => {

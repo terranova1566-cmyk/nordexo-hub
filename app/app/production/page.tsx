@@ -523,34 +523,41 @@ const useStyles = makeStyles({
     },
   },
   linkedDialogSurface: {
-    width: "min(2200px, 70vw)",
-    maxWidth: "min(2200px, 70vw)",
+    width: "min(980px, calc(100vw - 32px))",
+    maxWidth: "980px",
     "@media (max-width: 1100px)": {
-      width: "96vw",
-      maxWidth: "96vw",
+      width: "calc(100vw - 24px)",
+      maxWidth: "calc(100vw - 24px)",
     },
   },
   linkedDialogBody: {
     display: "flex",
     flexDirection: "column",
     gap: "12px",
-    maxHeight: "min(78vh, 720px)",
+    maxHeight: "min(86vh, 860px)",
     minHeight: 0,
+    overflow: "hidden",
   },
   linkedDialogGrid: {
-    display: "grid",
-    gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
-    gap: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    flex: 1,
     minHeight: 0,
-    "@media (max-width: 1100px)": {
-      gridTemplateColumns: "1fr",
-    },
+    overflow: "hidden",
   },
   linkedResultsWrap: {
     minHeight: 0,
+    maxHeight: "min(48vh, 460px)",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+    overflowY: "auto",
+    overflowX: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    padding: "10px",
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   linkedResultRow: {
     borderRadius: "12px",
@@ -756,7 +763,9 @@ const useStyles = makeStyles({
     width: "min(980px, calc(100vw - 32px))",
     minWidth: "680px",
     maxWidth: "980px",
-    maxHeight: "min(84vh, 820px)",
+    height: "min(92vh, 920px)",
+    maxHeight: "min(92vh, 920px)",
+    overflow: "hidden",
     "@media (max-width: 760px)": {
       minWidth: "calc(100vw - 24px)",
     },
@@ -765,13 +774,16 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    maxHeight: "min(84vh, 820px)",
+    height: "100%",
+    maxHeight: "100%",
     minHeight: 0,
+    overflow: "hidden",
   },
   supplierDialogContent: {
     flex: 1,
     minHeight: 0,
-    overflow: "hidden",
+    overflowX: "hidden",
+    overflowY: "auto",
   },
   supplierHeaderRow: {
     display: "flex",
@@ -801,6 +813,15 @@ const useStyles = makeStyles({
     width: "14px",
     height: "14px",
     display: "block",
+  },
+  supplierRecropButton: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  supplierDialogActions: {
+    flexShrink: 0,
   },
   supplierDialogContentWrap: {
     position: "relative",
@@ -2509,6 +2530,59 @@ export default function ProductionPage() {
     return raw;
   }, []);
 
+  const pickSupplierOfferImageRaw = useCallback((offer: SupplierOffer | null) => {
+    if (!offer || typeof offer !== "object") return "";
+    const record = offer as Record<string, unknown>;
+    const candidates = [
+      record.imageUrl,
+      record.image_url,
+      record.image,
+      record.thumbUrl,
+      record.thumb_url,
+      record.thumbnailUrl,
+      record.thumbnail_url,
+    ];
+    for (const candidate of candidates) {
+      const text = typeof candidate === "string" ? candidate.trim() : "";
+      if (text) return text;
+    }
+    return "";
+  }, []);
+
+  const findSupplierOfferMatch = useCallback(
+    (offers: SupplierOffer[], offerId: string, detailUrl: string | null) => {
+      const normalizedOfferId = offerId.trim();
+      if (normalizedOfferId) {
+        const byId = offers.find((offer) => {
+          const rowId =
+            offer?.offerId === null || offer?.offerId === undefined
+              ? ""
+              : String(offer.offerId).trim();
+          return rowId === normalizedOfferId;
+        });
+        if (byId) return byId;
+      }
+
+      const normalizedDetailUrl = String(detailUrl ?? "").trim();
+      if (normalizedDetailUrl) {
+        const byUrl = offers.find((offer) => {
+          const row = offer as Record<string, unknown>;
+          const candidate =
+            typeof row.detailUrl === "string"
+              ? row.detailUrl.trim()
+              : typeof row.detail_url === "string"
+                ? row.detail_url.trim()
+                : "";
+          return candidate === normalizedDetailUrl;
+        });
+        if (byUrl) return byUrl;
+      }
+
+      return null;
+    },
+    []
+  );
+
   const formatRmb = useCallback((value: number) => {
     // Keep it simple and consistent across environments.
     const fixed = Number.isFinite(value) ? value.toFixed(2) : String(value);
@@ -2883,6 +2957,25 @@ export default function ProductionPage() {
           typeof selectedPayload?.selected_offer_id === "string"
             ? String(selectedPayload.selected_offer_id)
             : "";
+        const selectedDetailUrl =
+          typeof selectedPayload?.selected_detail_url === "string"
+            ? selectedPayload.selected_detail_url
+            : null;
+        const selectedOfferRaw =
+          selectedPayload?.selected_offer && typeof selectedPayload.selected_offer === "object"
+            ? (selectedPayload.selected_offer as SupplierOffer)
+            : null;
+        const selectedOfferImageRaw = pickSupplierOfferImageRaw(selectedOfferRaw);
+        const selectedOfferFallback = findSupplierOfferMatch(
+          offers as SupplierOffer[],
+          selectedOfferId,
+          selectedDetailUrl
+        );
+        const fallbackImageRaw = pickSupplierOfferImageRaw(selectedOfferFallback);
+        const hydratedSelectedOffer =
+          selectedOfferRaw && !selectedOfferImageRaw && fallbackImageRaw
+            ? ({ ...selectedOfferRaw, imageUrl: fallbackImageRaw } as SupplierOffer)
+            : selectedOfferRaw;
         setSupplierSelectedOfferId(selectedOfferId);
         setSupplierSelected(
           selectedPayload && typeof selectedPayload === "object"
@@ -2893,14 +2986,8 @@ export default function ProductionPage() {
                   typeof selectedPayload.selected_offer_id === "string"
                     ? selectedPayload.selected_offer_id
                     : null,
-                selected_detail_url:
-                  typeof selectedPayload.selected_detail_url === "string"
-                    ? selectedPayload.selected_detail_url
-                    : null,
-                selected_offer:
-                  selectedPayload.selected_offer && typeof selectedPayload.selected_offer === "object"
-                    ? (selectedPayload.selected_offer as SupplierOffer)
-                    : null,
+                selected_detail_url: selectedDetailUrl,
+                selected_offer: hydratedSelectedOffer,
                 locked: Boolean(selectedPayload.locked),
               }
             : null
@@ -2951,7 +3038,7 @@ export default function ProductionPage() {
         setSupplierLoading(false);
       }
     },
-    [t]
+    [findSupplierOfferMatch, pickSupplierOfferImageRaw, t]
   );
 
   const openCropDialog = useCallback(() => {
@@ -3213,10 +3300,19 @@ export default function ProductionPage() {
           locked: false,
         });
 
-        const selectedImageUrl =
-          selectedOffer && typeof (selectedOffer as any)?.imageUrl === "string"
-            ? normalizeSupplierImageUrl(String((selectedOffer as any).imageUrl))
-            : null;
+        const selectedOfferMatch = findSupplierOfferMatch(
+          supplierOffers,
+          offerId,
+          selectedOffer && typeof (selectedOffer as any)?.detailUrl === "string"
+            ? String((selectedOffer as any).detailUrl)
+            : null
+        );
+        const selectedImageRaw =
+          pickSupplierOfferImageRaw(selectedOffer) ||
+          pickSupplierOfferImageRaw(selectedOfferMatch);
+        const selectedImageUrl = selectedImageRaw
+          ? normalizeSupplierImageUrl(selectedImageRaw)
+          : null;
         const selectedTitle =
           selectedOffer && typeof (selectedOffer as any)?.subject === "string"
             ? String((selectedOffer as any).subject)
@@ -3292,8 +3388,11 @@ export default function ProductionPage() {
     }
   }, [
     closeSupplierDialog,
+    findSupplierOfferMatch,
     normalizeSupplierImageUrl,
+    pickSupplierOfferImageRaw,
     supplierLockedUrl,
+    supplierOffers,
     supplierSelectedOfferId,
     supplierTarget,
     t,
@@ -3586,12 +3685,18 @@ export default function ProductionPage() {
     setLinkedSaving(true);
     setLinkedError(null);
     try {
+      const normalizedProvider = String(linkedTarget.provider ?? "")
+        .trim()
+        .toLowerCase();
       const endpoint =
-        linkedTarget.provider === "digideal" ? "/api/digideal/identical" : "/api/discovery/identical";
-      const body =
-        linkedTarget.provider === "digideal"
-          ? { product_id: linkedTarget.product_id, identical_spu: spu }
-          : { provider: linkedTarget.provider, product_id: linkedTarget.product_id, identical_spu: spu };
+        normalizedProvider === "cdon" || normalizedProvider === "fyndiq"
+          ? "/api/discovery/identical"
+          : "/api/digideal/identical";
+      const body = {
+        provider: normalizedProvider,
+        product_id: linkedTarget.product_id,
+        identical_spu: spu,
+      };
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3629,12 +3734,18 @@ export default function ProductionPage() {
     setLinkedSaving(true);
     setLinkedError(null);
     try {
+      const normalizedProvider = String(linkedTarget.provider ?? "")
+        .trim()
+        .toLowerCase();
       const endpoint =
-        linkedTarget.provider === "digideal" ? "/api/digideal/identical" : "/api/discovery/identical";
-      const body =
-        linkedTarget.provider === "digideal"
-          ? { product_id: linkedTarget.product_id, identical_spu: null }
-          : { provider: linkedTarget.provider, product_id: linkedTarget.product_id, identical_spu: null };
+        normalizedProvider === "cdon" || normalizedProvider === "fyndiq"
+          ? "/api/discovery/identical"
+          : "/api/digideal/identical";
+      const body = {
+        provider: normalizedProvider,
+        product_id: linkedTarget.product_id,
+        identical_spu: null,
+      };
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5666,7 +5777,16 @@ export default function ProductionPage() {
                         const titleEn =
                           typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
                         const imageUrl = normalizeSupplierImageUrl(
-                          typeof offer?.imageUrl === "string" ? offer.imageUrl : ""
+                          pickSupplierOfferImageRaw(offer) ||
+                            pickSupplierOfferImageRaw(
+                              findSupplierOfferMatch(
+                                supplierOffers,
+                                supplierSelected?.selected_offer_id
+                                  ? String(supplierSelected.selected_offer_id)
+                                  : "",
+                                typeof offer?.detailUrl === "string" ? offer.detailUrl : null
+                              )
+                            )
                         );
                         const meta = buildOfferMeta(offer);
                         return (
@@ -5813,7 +5933,7 @@ export default function ProductionPage() {
                     const titleEn =
                       typeof offer?.subject_en === "string" ? offer.subject_en.trim() : "";
                     const imageUrl = normalizeSupplierImageUrl(
-                      typeof offer?.imageUrl === "string" ? offer.imageUrl : ""
+                      pickSupplierOfferImageRaw(offer)
                     );
                     const isSelected = offerId && supplierSelectedOfferId === offerId;
                     const meta = buildOfferMeta(offer);
@@ -5942,9 +6062,10 @@ export default function ProductionPage() {
               ) : null}
 
             </DialogContent>
-            <DialogActions>
+            <DialogActions className={styles.supplierDialogActions}>
               <Button
                 appearance="outline"
+                className={styles.supplierRecropButton}
                 onClick={openCropDialog}
                 disabled={supplierLoading || supplierBusy || !supplierTarget}
               >

@@ -2759,6 +2759,11 @@ const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<
   offerilla: "2026-02-20T00:00:00.000Z",
 };
 const SUPPLIER_AUTOMATION_PROVIDERS = new Set(["digideal", "letsdeal", "offerilla"]);
+const AUTO_SUPPLIER_RETRY_TICK_MS = 60_000;
+const AUTO_SUPPLIER_RETRY_BASE_DELAY_MS = 90_000;
+const AUTO_SUPPLIER_RETRY_MAX_DELAY_MS = 15 * 60_000;
+const AUTO_SUPPLIER_MAX_ATTEMPTS = 20;
+const AUTO_SUPPLIER_MAX_ITEMS_PER_CYCLE = 6;
 
 export default function DigidealCampaignsPage() {
   const styles = useStyles();
@@ -2836,8 +2841,8 @@ export default function DigidealCampaignsPage() {
   const [priceDraftMin, setPriceDraftMin] = useState("");
   const [priceDraftMax, setPriceDraftMax] = useState("");
   const [pricePopoverOpen, setPricePopoverOpen] = useState(false);
-  const [inactiveMode, setInactiveMode] = useState("any");
-  const [inactiveDays, setInactiveDays] = useState("");
+  const [offlineDays, setOfflineDays] = useState("");
+  const [noRerunsDays, setNoRerunsDays] = useState("");
   const [groupIdFilter, setGroupIdFilter] = useState<string | null>(null);
   // Empty = no seller filtering (all sellers).
   const [sellerFilters, setSellerFilters] = useState<string[]>([]);
@@ -3552,7 +3557,10 @@ export default function DigidealCampaignsPage() {
   );
 
   const autoVariantPickAttemptsRef = useRef<Set<string>>(new Set());
-  const autoSupplierSearchAttemptsRef = useRef<Set<string>>(new Set());
+  const autoSupplierSearchStateRef = useRef<
+    Map<string, { attempts: number; nextRetryAt: number }>
+  >(new Map());
+  const [autoSupplierRetryTick, setAutoSupplierRetryTick] = useState(0);
 
   const attemptAutoPickDigidealVariant = useCallback(
     async (item: DigidealItem) => {
@@ -3707,18 +3715,30 @@ export default function DigidealCampaignsPage() {
 
   useEffect(() => {
     if (provider !== "digideal") return;
+    const timer = window.setInterval(() => {
+      setAutoSupplierRetryTick((prev) => prev + 1);
+    }, AUTO_SUPPLIER_RETRY_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [provider]);
+
+  useEffect(() => {
+    if (provider !== "digideal") return;
     if (!ENABLE_AUTO_SUPPLIER_LOOKUP) return;
     if (!isAdmin) return;
     if (bulkFindingSuppliers) return;
 
-    const providerRollout = AUTO_SUPPLIER_INCOMING_ROLLOUT_AT[provider];
-    const providerRolloutTs = Date.parse(providerRollout);
-    if (!Number.isFinite(providerRolloutTs)) return;
+    const nextRetryDelayMs = (attempts: number) => {
+      const safeAttempts = Math.max(1, attempts);
+      return Math.min(
+        AUTO_SUPPLIER_RETRY_MAX_DELAY_MS,
+        AUTO_SUPPLIER_RETRY_BASE_DELAY_MS * safeAttempts
+      );
+    };
 
+    const nowMs = Date.now();
     const candidates = items.filter((item) => {
       const productId = String(item?.product_id ?? "").trim();
       if (!productId) return false;
-      if (autoSupplierSearchAttemptsRef.current.has(productId)) return false;
 
       const isNordexoSeller = String(item?.seller_name ?? "")
         .trim()
@@ -3731,33 +3751,31 @@ export default function DigidealCampaignsPage() {
         item.weight_grams !== null ||
         item.weight_kg !== null ||
         (typeof item.supplier_url === "string" && Boolean(item.supplier_url.trim()));
-      if (hasManualSupplierData) return false;
-      if (Boolean(item.supplier_locked)) return false;
-      if (Boolean(item.supplier_selected)) return false;
+      if (hasManualSupplierData || Boolean(item.supplier_locked) || Boolean(item.supplier_selected)) {
+        autoSupplierSearchStateRef.current.delete(productId);
+        return false;
+      }
 
       const supplierCount =
         typeof item.supplier_count === "number" && Number.isFinite(item.supplier_count)
           ? Number(item.supplier_count)
           : null;
       const hasSuggestions = supplierCount !== null && supplierCount > 0;
-      if (hasSuggestions) return false;
+      if (hasSuggestions) {
+        autoSupplierSearchStateRef.current.delete(productId);
+        return false;
+      }
+      if (supplierFindingIds.has(productId)) return false;
 
-      // Incoming-only auto-run. No historical backfill.
-      const firstSeenTs = item.first_seen_at ? Date.parse(item.first_seen_at) : NaN;
-      if (!Number.isFinite(firstSeenTs)) return false;
-      if (firstSeenTs < providerRolloutTs) return false;
-
-      return true;
-    });
+      const retryState = autoSupplierSearchStateRef.current.get(productId);
+      if (!retryState) return true;
+      if (retryState.attempts >= AUTO_SUPPLIER_MAX_ATTEMPTS) return false;
+      return nowMs >= retryState.nextRetryAt;
+    }).slice(0, AUTO_SUPPLIER_MAX_ITEMS_PER_CYCLE);
 
     if (candidates.length === 0) return;
 
     let cancelled = false;
-    candidates.forEach((item) => {
-      const productId = String(item?.product_id ?? "").trim();
-      if (!productId) return;
-      autoSupplierSearchAttemptsRef.current.add(productId);
-    });
     setSupplierFindingIds((prev) => {
       const next = new Set(prev);
       candidates.forEach((item) => {
@@ -3775,6 +3793,7 @@ export default function DigidealCampaignsPage() {
           const params = new URLSearchParams({
             provider,
             product_id: productId,
+            refresh: "1",
           });
           const imageUrls = normalizeImageUrls(item.image_urls);
           const imageUrl = item.primary_image_url || imageUrls[0] || null;
@@ -3799,8 +3818,24 @@ export default function DigidealCampaignsPage() {
               )
             );
           }
+
+          if (typeof offerCount === "number" && offerCount > 0) {
+            autoSupplierSearchStateRef.current.delete(productId);
+          } else {
+            const prevState = autoSupplierSearchStateRef.current.get(productId);
+            const attempts = (prevState?.attempts ?? 0) + 1;
+            autoSupplierSearchStateRef.current.set(productId, {
+              attempts,
+              nextRetryAt: Date.now() + nextRetryDelayMs(attempts),
+            });
+          }
         } catch {
-          // Keep best-effort behavior; user can still trigger manually if needed.
+          const prevState = autoSupplierSearchStateRef.current.get(productId);
+          const attempts = (prevState?.attempts ?? 0) + 1;
+          autoSupplierSearchStateRef.current.set(productId, {
+            attempts,
+            nextRetryAt: Date.now() + nextRetryDelayMs(attempts),
+          });
         } finally {
           if (!cancelled) {
             setSupplierFindingIds((prev) => {
@@ -3820,7 +3855,7 @@ export default function DigidealCampaignsPage() {
     return () => {
       cancelled = true;
     };
-  }, [bulkFindingSuppliers, isAdmin, items, provider]);
+  }, [autoSupplierRetryTick, bulkFindingSuppliers, isAdmin, items, provider, supplierFindingIds]);
 
   const supplierPayloadPollersRef = useRef<Map<string, { stop: () => void }>>(new Map());
 
@@ -4426,6 +4461,7 @@ export default function DigidealCampaignsPage() {
         const params = new URLSearchParams({
           provider,
           product_id: item.product_id,
+          refresh: "1",
         });
         const imageUrls = normalizeImageUrls(item.image_urls);
         const imageUrl = item.primary_image_url || imageUrls[0] || null;
@@ -5776,8 +5812,8 @@ export default function DigidealCampaignsPage() {
     setPriceDraftMin("");
     setPriceDraftMax("");
     setPricePopoverOpen(false);
-    setInactiveMode("any");
-    setInactiveDays("");
+    setOfflineDays("");
+    setNoRerunsDays("");
     setSelectedIds(new Set());
     setError(null);
     setRefreshToken((prev) => prev + 1);
@@ -6731,10 +6767,13 @@ export default function DigidealCampaignsPage() {
           params.set("minSold", String(minSoldValue));
           params.set("minSoldMetric", minSoldMetric);
         }
-        const inactiveDaysValue = Number(inactiveDays);
-        if (inactiveMode !== "any" && Number.isFinite(inactiveDaysValue) && inactiveDaysValue > 0) {
-          params.set("inactiveMode", inactiveMode);
-          params.set("inactiveDays", String(inactiveDaysValue));
+        const offlineDaysValue = Number(offlineDays);
+        if (Number.isFinite(offlineDaysValue) && offlineDaysValue > 0) {
+          params.set("offlineDays", String(offlineDaysValue));
+        }
+        const noRerunsDaysValue = Number(noRerunsDays);
+        if (Number.isFinite(noRerunsDaysValue) && noRerunsDaysValue > 0) {
+          params.set("noRerunsDays", String(noRerunsDaysValue));
         }
         if (groupIdFilter) {
           params.set("groupId", groupIdFilter);
@@ -6812,8 +6851,8 @@ export default function DigidealCampaignsPage() {
     sort,
     minSoldMetric,
     minSold,
-    inactiveMode,
-    inactiveDays,
+    offlineDays,
+    noRerunsDays,
     groupIdFilter,
     viewIdFilter,
     sellerFilters,
@@ -8972,38 +9011,28 @@ export default function DigidealCampaignsPage() {
             </div>
           </Field>
           <Field
-            label={<span className={styles.filterLabel}>{t("digideal.filters.inactivity")}</span>}
+            label={<span className={styles.filterLabel}>{t("digideal.filters.noReruns")}</span>}
             className={styles.filterField}
           >
             <div className={styles.inlineFilterRow}>
-              <Dropdown
-                value={
-                  inactiveMode === "offline"
-                    ? t("digideal.filters.inactiveMode.offline")
-                    : inactiveMode === "no_sales"
-                      ? t("digideal.filters.inactiveMode.noSales")
-                      : t("digideal.filters.inactiveMode.any")
-                }
-                selectedOptions={[inactiveMode]}
-                onOptionSelect={(_, data) => {
-                  setInactiveMode(String(data.optionValue) || "any");
-                  setPage(1);
-                }}
-                className={styles.dropdownCompact}
-              >
-                <Option value="any">{t("digideal.filters.inactiveMode.any")}</Option>
-                <Option value="offline">{t("digideal.filters.inactiveMode.offline")}</Option>
-                <Option value="no_sales">{t("digideal.filters.inactiveMode.noSales")}</Option>
-              </Dropdown>
               <Input
                 type="number"
-                value={inactiveDays}
-                placeholder={t("digideal.filters.inactiveDaysPlaceholder")}
+                value={offlineDays}
+                placeholder={t("digideal.filters.offlineForPlaceholder")}
                 onChange={(_, data) => {
-                  setInactiveDays(data.value);
+                  setOfflineDays(data.value);
                   setPage(1);
                 }}
-                disabled={inactiveMode === "any"}
+                className={styles.inlineNumberInput}
+              />
+              <Input
+                type="number"
+                value={noRerunsDays}
+                placeholder={t("digideal.filters.noRerunsForPlaceholder")}
+                onChange={(_, data) => {
+                  setNoRerunsDays(data.value);
+                  setPage(1);
+                }}
                 className={styles.inlineNumberInput}
               />
             </div>

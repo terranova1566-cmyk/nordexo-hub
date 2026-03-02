@@ -1050,6 +1050,14 @@ const buildSwedishVariantLabel = (variant: ProductVariantPreview) =>
     .filter(Boolean)
     .join(" / ");
 
+const buildProductHref = (id: string, spu: string | null | undefined) => {
+  const normalizedSpu = String(spu ?? "").trim();
+  if (normalizedSpu) {
+    return `/app/products/spu/${encodeURIComponent(normalizedSpu)}`;
+  }
+  return `/app/products/${id}`;
+};
+
 const TrashIcon = () => (
   <svg
     viewBox="0 0 24 24"
@@ -2195,7 +2203,7 @@ function ProductsPageInner() {
             <TableCell className={styles.productCol}>
               <div className={styles.productStack}>
                 <Link
-                  href={`/app/products/${product.id}`}
+                  href={buildProductHref(product.id, product.spu)}
                   className={styles.productTitleLink}
                 >
                   <Text as="span" className={styles.productTitleText}>
@@ -2430,7 +2438,10 @@ function ProductsPageInner() {
               </div>
             </TableCell>
             <TableCell>
-              <Link href={`/app/products/${product.id}`} className={styles.viewLink}>
+              <Link
+                href={buildProductHref(product.id, product.spu)}
+                className={styles.viewLink}
+              >
                 {t("common.view")}
               </Link>
             </TableCell>

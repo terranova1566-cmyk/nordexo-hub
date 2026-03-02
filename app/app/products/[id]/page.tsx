@@ -651,8 +651,23 @@ const TrashIcon = () => (
 
 export default function ProductDetailPage() {
   const styles = useStyles();
-  const params = useParams();
-  const productId = params.id as string;
+  const params = useParams<{ id?: string | string[]; spu?: string | string[] }>();
+  const routeProductParamRaw = (() => {
+    const idValue = params.id;
+    if (typeof idValue === "string") return idValue;
+    if (Array.isArray(idValue) && idValue.length > 0) return idValue[0];
+    const spuValue = params.spu;
+    if (typeof spuValue === "string") return spuValue;
+    if (Array.isArray(spuValue) && spuValue.length > 0) return spuValue[0];
+    return "";
+  })();
+  const routeProductParam = (() => {
+    try {
+      return decodeURIComponent(routeProductParamRaw).trim();
+    } catch {
+      return routeProductParamRaw.trim();
+    }
+  })();
   const { t } = useI18n();
 
   const variantIdentityTableRef = useRef<HTMLDivElement | null>(null);
@@ -726,14 +741,20 @@ export default function ProductDetailPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [aiPreviewActive, setAiPreviewActive] = useState(false);
   const [aiSnapshot, setAiSnapshot] = useState<DescriptionForm | null>(null);
+  const resolvedProductId = data?.product?.id ?? routeProductParam;
 
   const loadProduct = useCallback(
     async (signal?: AbortSignal) => {
+      if (!routeProductParam) {
+        setError(t("productDetail.error.load"));
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(`/api/products/${productId}`, {
+        const response = await fetch(`/api/products/${routeProductParam}`, {
           signal,
         });
 
@@ -751,7 +772,7 @@ export default function ProductDetailPage() {
         setIsLoading(false);
       }
     },
-    [productId, t]
+    [routeProductParam, t]
   );
 
   useEffect(() => {
@@ -954,6 +975,10 @@ export default function ProductDetailPage() {
   }, [data]);
 
   const saveProductToWishlist = async (wishlistId: string) => {
+    if (!resolvedProductId) {
+      setError(t("productDetail.error.load"));
+      return;
+    }
     setIsSavingList(true);
     setError(null);
     try {
@@ -962,7 +987,7 @@ export default function ProductDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wishlistId,
-          items: [{ product_id: productId }],
+          items: [{ product_id: resolvedProductId }],
         }),
       });
       if (!response.ok) {
@@ -1057,7 +1082,7 @@ export default function ProductDetailPage() {
   }, [descriptionDraft, descriptionBaseline]);
 
   const saveDescription = async () => {
-    if (!descriptionDraft) return;
+    if (!descriptionDraft || !resolvedProductId) return;
     setIsSavingDescription(true);
     setDescriptionSaveError(null);
     setDescriptionSaveSuccess(false);
@@ -1070,7 +1095,7 @@ export default function ProductDetailPage() {
         descriptionDraft.bullets_long
       );
 
-      const response = await fetch(`/api/products/${productId}`, {
+      const response = await fetch(`/api/products/${resolvedProductId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1115,12 +1140,12 @@ export default function ProductDetailPage() {
   };
 
   const runRegenerate = async () => {
-    if (!descriptionDraft) return;
+    if (!descriptionDraft || !resolvedProductId) return;
     setIsRegenerating(true);
     setRegenerateError(null);
     try {
       const response = await fetch(
-        `/api/products/${productId}/description/rewrite`,
+        `/api/products/${resolvedProductId}/description/rewrite`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1201,11 +1226,12 @@ export default function ProductDetailPage() {
   };
 
   const saveInternalData = async () => {
+    if (!resolvedProductId) return;
     setIsSavingInternal(true);
     setInternalSaveError(null);
     setInternalSaveSuccess(false);
     try {
-      const response = await fetch(`/api/products/${productId}`, {
+      const response = await fetch(`/api/products/${resolvedProductId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1332,12 +1358,16 @@ export default function ProductDetailPage() {
   };
 
   const removeFromAllWishlists = async () => {
+    if (!resolvedProductId) {
+      setError(t("productDetail.error.load"));
+      return;
+    }
     setError(null);
     try {
       const response = await fetch("/api/products/wishlists/items", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId }),
+        body: JSON.stringify({ product_id: resolvedProductId }),
       });
       if (!response.ok) {
         const message = await response.text();

@@ -64,6 +64,7 @@ type ExtractorFileSummary = {
   missingSpuCount: number;
   deckItems?: ExtractorPreviewItem[];
   keywordLabel?: string;
+  keywordItems?: string[];
   keywordCached?: boolean;
   keywordUpdatedAt?: string | null;
 };
@@ -163,6 +164,31 @@ const hasSameIndexes = (left: number[], right: number[]) => {
     if (left[i] !== right[i]) return false;
   }
   return true;
+};
+
+const normalizeQueueKeywordItems = (
+  keywords: unknown,
+  fallbackLabel?: string
+) => {
+  const fallback =
+    typeof fallbackLabel === "string"
+      ? fallbackLabel
+          .split(/[,，、]+/)
+          .map((part) => part.trim())
+          .filter(Boolean)
+      : [];
+  const rawList = Array.isArray(keywords) ? keywords : fallback;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  rawList.forEach((entry) => {
+    const value = typeof entry === "string" ? entry.trim() : "";
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(value);
+  });
+  return out;
 };
 
 const useStyles = makeStyles({
@@ -306,7 +332,31 @@ const useStyles = makeStyles({
   queueKeywordsWrap: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "6px",
+  },
+  queueKeywordBadgeList: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignContent: "flex-start",
+    gap: "6px",
+    maxHeight: "50px",
+    overflow: "hidden",
+  },
+  queueKeywordBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    maxWidth: "100%",
+    minHeight: "22px",
+    paddingInline: "10px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   queueKeywordsMain: {
     display: "-webkit-box",
@@ -615,11 +665,6 @@ const useStyles = makeStyles({
     overflow: "hidden",
     wordBreak: "break-word",
   },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
   uploadCard: {
     padding: "18px",
     borderRadius: "16px",
@@ -760,6 +805,9 @@ export default function BulkProcessingPage() {
   const [queueKeywordsByFile, setQueueKeywordsByFile] = useState<
     Record<string, string>
   >({});
+  const [queueKeywordItemsByFile, setQueueKeywordItemsByFile] = useState<
+    Record<string, string[]>
+  >({});
   const [queueKeywordsLoadingByFile, setQueueKeywordsLoadingByFile] = useState<
     Record<string, boolean>
   >({});
@@ -843,6 +891,16 @@ export default function BulkProcessingPage() {
         nextItems.forEach((item) => {
           const cached = typeof item.keywordLabel === "string" ? item.keywordLabel.trim() : "";
           next[item.name] = cached;
+        });
+        return next;
+      });
+      setQueueKeywordItemsByFile(() => {
+        const next: Record<string, string[]> = {};
+        nextItems.forEach((item) => {
+          next[item.name] = normalizeQueueKeywordItems(
+            item.keywordItems,
+            item.keywordLabel
+          );
         });
         return next;
       });
@@ -1051,11 +1109,17 @@ export default function BulkProcessingPage() {
             const payload = (await response.json()) as QueueKeywordPayload;
             const label =
               typeof payload?.label === "string" ? payload.label.trim() : "";
+            const keywordItems = normalizeQueueKeywordItems(payload?.keywords, label);
             if (cancelled) return;
             setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: label }));
+            setQueueKeywordItemsByFile((prev) => ({
+              ...prev,
+              [entry.name]: keywordItems,
+            }));
           } catch {
             if (cancelled) return;
             setQueueKeywordsByFile((prev) => ({ ...prev, [entry.name]: "" }));
+            setQueueKeywordItemsByFile((prev) => ({ ...prev, [entry.name]: [] }));
           } finally {
             queueKeywordRequestRef.current.delete(entry.name);
             if (!cancelled) {
@@ -1879,15 +1943,6 @@ export default function BulkProcessingPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <Text size={700} weight="semibold">
-          {t("bulkProcessing.title")}
-        </Text>
-        <Text size={300} color="neutral">
-          {t("bulkProcessing.subtitle")}
-        </Text>
-      </div>
-
       <Card className={styles.chromeCard}>
         <div className={styles.chromeHeaderRow}>
           <Text size={500} weight="semibold">
@@ -2068,24 +2123,36 @@ export default function BulkProcessingPage() {
                   </TableCell>
                   <TableCell className={styles.chromeColKeywords}>
                     {(() => {
-                      const hasKeyword = Object.prototype.hasOwnProperty.call(
-                        queueKeywordsByFile,
-                        entry.name
-                      );
                       const label = queueKeywordsByFile[entry.name] ?? "";
-                      const topText = queueKeywordsLoadingByFile[entry.name]
-                        ? "Building batch content..."
-                        : label || (hasKeyword ? "-" : "-");
-                      const topClass = queueKeywordsLoadingByFile[entry.name]
-                        ? styles.queueKeywordsLoading
-                        : styles.queueKeywordsMain;
-                      const topSize = queueKeywordsLoadingByFile[entry.name] ? 200 : 300;
+                      const keywordItems =
+                        queueKeywordItemsByFile[entry.name] ??
+                        normalizeQueueKeywordItems(undefined, label);
 
                       return (
                         <div className={styles.queueKeywordsWrap}>
-                          <Text size={topSize} className={topClass}>
-                            {topText}
-                          </Text>
+                          {queueKeywordsLoadingByFile[entry.name] ? (
+                            <Text size={200} className={styles.queueKeywordsLoading}>
+                              Building batch content...
+                            </Text>
+                          ) : keywordItems.length > 0 ? (
+                            <div
+                              className={styles.queueKeywordBadgeList}
+                              title={keywordItems.join(", ")}
+                            >
+                              {keywordItems.map((item, index) => (
+                                <span
+                                  key={`${entry.name}-keyword-${index}`}
+                                  className={styles.queueKeywordBadge}
+                                >
+                                  {item}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <Text size={300} className={styles.queueKeywordsMain}>
+                              -
+                            </Text>
+                          )}
                           <Text className={styles.queueKeywordsFile}>{entry.name}</Text>
                         </div>
                       );

@@ -426,6 +426,81 @@ const resolveOptionNamesForPublish = (input: {
   ),
 });
 
+type VariationSemanticKey = "amount" | "color" | "size" | "other";
+
+const normalizeOptionHeaderKey = (value: string | null) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+  return normalized
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+};
+
+const semanticKeyFromOptionName = (
+  value: string | null
+): VariationSemanticKey | null => {
+  const key = normalizeOptionHeaderKey(value);
+  if (!key) return null;
+  if (key === "antal" || key === "quantity" || key === "qty") return "amount";
+  if (key === "farg" || key === "color" || key === "colour") return "color";
+  if (key === "storlek" || key === "size") return "size";
+  if (
+    key === "alternativ" ||
+    key === "ovrigt" ||
+    key === "other" ||
+    key === "option"
+  ) {
+    return "other";
+  }
+  return null;
+};
+
+const buildSemanticVariationValues = (row: PublishStgSkuRow) => ({
+  amount: normalizeText(row.variation_amount_se),
+  color: normalizeText(row.variation_color_se),
+  size: normalizeText(row.variation_size_se),
+  other: normalizeText(row.variation_other_se),
+});
+
+const mapSkuOptionsFromResolvedNames = (
+  row: PublishStgSkuRow,
+  resolved: OptionNameSet
+) => {
+  const hasStructuredVariationValues = Object.values(
+    buildSemanticVariationValues(row)
+  ).some((value) => Boolean(value));
+  if (!hasStructuredVariationValues) {
+    return {
+      option1: normalizeText(row.option1),
+      option2: normalizeText(row.option2),
+      option3: normalizeText(row.option3),
+      option4: normalizeText(row.option4),
+    };
+  }
+
+  const variationValues = buildSemanticVariationValues(row);
+  const slotNames = [
+    resolved.option1_name,
+    resolved.option2_name,
+    resolved.option3_name,
+    resolved.option4_name,
+  ] as const;
+
+  const mapped = slotNames.map((name) => {
+    const semantic = semanticKeyFromOptionName(name);
+    return semantic ? variationValues[semantic] : null;
+  });
+
+  return {
+    option1: mapped[0],
+    option2: mapped[1],
+    option3: mapped[2],
+    option4: mapped[3],
+  };
+};
+
 const getSpuPrefix = (spu: string | null) => {
   const normalized = normalizeText(spu);
   if (!normalized) return null;
@@ -1813,15 +1888,79 @@ const applyExplicitSkuFieldClears = async (
     .map((row) => ({
       spu: normalizeText(row.spu),
       sku: normalizeText(row.sku),
-      clear_option1: !normalizeText(row.option1),
-      clear_option2: !normalizeText(row.option2),
-      clear_option3: !normalizeText(row.option3),
-      clear_option4: !normalizeText(row.option4),
+      clear_option1: (() => {
+        const compact = [
+          normalizeText(row.option1),
+          normalizeText(row.option2),
+          normalizeText(row.option3),
+          normalizeText(row.option4),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[0];
+      })(),
+      clear_option2: (() => {
+        const compact = [
+          normalizeText(row.option1),
+          normalizeText(row.option2),
+          normalizeText(row.option3),
+          normalizeText(row.option4),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[1];
+      })(),
+      clear_option3: (() => {
+        const compact = [
+          normalizeText(row.option1),
+          normalizeText(row.option2),
+          normalizeText(row.option3),
+          normalizeText(row.option4),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[2];
+      })(),
+      clear_option4: (() => {
+        const compact = [
+          normalizeText(row.option1),
+          normalizeText(row.option2),
+          normalizeText(row.option3),
+          normalizeText(row.option4),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[3];
+      })(),
       clear_option_combined_zh: !normalizeText(row.option_combined_zh),
-      clear_option1_zh: !normalizeText(row.option1_zh),
-      clear_option2_zh: !normalizeText(row.option2_zh),
-      clear_option3_zh: !normalizeText(row.option3_zh),
-      clear_option4_zh: !normalizeText(row.option4_zh),
+      clear_option1_zh: (() => {
+        const compact = [
+          normalizeText(row.option1_zh),
+          normalizeText(row.option2_zh),
+          normalizeText(row.option3_zh),
+          normalizeText(row.option4_zh),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[0];
+      })(),
+      clear_option2_zh: (() => {
+        const compact = [
+          normalizeText(row.option1_zh),
+          normalizeText(row.option2_zh),
+          normalizeText(row.option3_zh),
+          normalizeText(row.option4_zh),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[1];
+      })(),
+      clear_option3_zh: (() => {
+        const compact = [
+          normalizeText(row.option1_zh),
+          normalizeText(row.option2_zh),
+          normalizeText(row.option3_zh),
+          normalizeText(row.option4_zh),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[2];
+      })(),
+      clear_option4_zh: (() => {
+        const compact = [
+          normalizeText(row.option1_zh),
+          normalizeText(row.option2_zh),
+          normalizeText(row.option3_zh),
+          normalizeText(row.option4_zh),
+        ].filter((value): value is string => Boolean(value));
+        return !compact[3];
+      })(),
       clear_weight: !normalizeText(row.weight),
       clear_price: !normalizeText(row.price),
       clear_compare_at_price: !normalizeText(row.compare_at_price),
@@ -2672,11 +2811,13 @@ export async function POST(request: Request) {
       "poduct_categorizer_keywords",
       "poduct_keywords",
     ]),
-    is_active: "true",
-    status: "active",
-    published: "true",
-    published_scope: "global",
-    shopify_tingelo_sync: true,
+    // Safety default: publishing from Draft Explorer saves to DB but does not
+    // auto-activate Shopify channel state. Activation is handled explicitly later.
+    is_active: "false",
+    status: "draft",
+    published: "false",
+    published_scope: null,
+    shopify_tingelo_sync: false,
     image_folder: `${CATALOG_ROOT}/${row.draft_spu}`,
     raw_row: row.draft_raw_row ?? null,
     imported_at: now,
@@ -2748,32 +2889,55 @@ export async function POST(request: Request) {
     });
     const normalizedSpu = normalizeText(row.draft_spu);
     if (normalizedSpu) {
+      const hasStructuredSeValues = Boolean(
+        normalizeText(normalizedLocalizedVariantValues.variation_color_se) ||
+          normalizeText(normalizedLocalizedVariantValues.variation_size_se) ||
+          normalizeText(normalizedLocalizedVariantValues.variation_other_se) ||
+          normalizeText(normalizedLocalizedVariantValues.variation_amount_se)
+      );
       const presence =
         optionNamePresenceBySpu.get(normalizedSpu) ?? createEmptyOptionNamePresence();
-      presence.option1 =
-        presence.option1 ||
-        Boolean(
-          normalizeText(normalizedLocalizedVariantValues.option1) ||
-            normalizeText(normalizedLocalizedVariantValues.variation_amount_se)
-        );
-      presence.option2 =
-        presence.option2 ||
-        Boolean(
-          normalizeText(normalizedLocalizedVariantValues.option2) ||
-            normalizeText(normalizedLocalizedVariantValues.variation_color_se)
-        );
-      presence.option3 =
-        presence.option3 ||
-        Boolean(
-          normalizeText(normalizedLocalizedVariantValues.option3) ||
-            normalizeText(normalizedLocalizedVariantValues.variation_size_se)
-        );
-      presence.option4 =
-        presence.option4 ||
-        Boolean(
-          normalizeText(normalizedLocalizedVariantValues.option4) ||
-            normalizeText(normalizedLocalizedVariantValues.variation_other_se)
-        );
+      if (hasStructuredSeValues) {
+        // When structured Swedish variation columns exist, they are the source of truth
+        // for option slot semantics and product option names.
+        presence.option1 =
+          presence.option1 ||
+          Boolean(normalizeText(normalizedLocalizedVariantValues.variation_amount_se));
+        presence.option2 =
+          presence.option2 ||
+          Boolean(normalizeText(normalizedLocalizedVariantValues.variation_color_se));
+        presence.option3 =
+          presence.option3 ||
+          Boolean(normalizeText(normalizedLocalizedVariantValues.variation_size_se));
+        presence.option4 =
+          presence.option4 ||
+          Boolean(normalizeText(normalizedLocalizedVariantValues.variation_other_se));
+      } else {
+        presence.option1 =
+          presence.option1 ||
+          Boolean(
+            normalizeText(normalizedLocalizedVariantValues.option1) ||
+              normalizeText(normalizedLocalizedVariantValues.variation_amount_se)
+          );
+        presence.option2 =
+          presence.option2 ||
+          Boolean(
+            normalizeText(normalizedLocalizedVariantValues.option2) ||
+              normalizeText(normalizedLocalizedVariantValues.variation_color_se)
+          );
+        presence.option3 =
+          presence.option3 ||
+          Boolean(
+            normalizeText(normalizedLocalizedVariantValues.option3) ||
+              normalizeText(normalizedLocalizedVariantValues.variation_size_se)
+          );
+        presence.option4 =
+          presence.option4 ||
+          Boolean(
+            normalizeText(normalizedLocalizedVariantValues.option4) ||
+              normalizeText(normalizedLocalizedVariantValues.variation_other_se)
+          );
+      }
       optionNamePresenceBySpu.set(normalizedSpu, presence);
     }
     const sku = normalizeText(row.draft_sku);
@@ -2871,10 +3035,15 @@ export async function POST(request: Request) {
     if (!normalizedSpu) continue;
     const resolved = resolvedOptionNamesBySpu.get(normalizedSpu);
     if (!resolved) continue;
+    const mappedOptions = mapSkuOptionsFromResolvedNames(row, resolved);
     row.option1_name = resolved.option1_name;
     row.option2_name = resolved.option2_name;
     row.option3_name = resolved.option3_name;
     row.option4_name = resolved.option4_name;
+    row.option1 = mappedOptions.option1;
+    row.option2 = mappedOptions.option2;
+    row.option3 = mappedOptions.option3;
+    row.option4 = mappedOptions.option4;
   }
 
   if (variantImageIssues.length > 0) {

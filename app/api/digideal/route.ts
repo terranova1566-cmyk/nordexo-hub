@@ -1029,10 +1029,29 @@ export async function GET(request: NextRequest) {
       .trim()
       .toLowerCase();
     const inactiveDaysRaw = toNumber(searchParams.get("inactiveDays")?.trim());
-    const inactiveDays =
+    const inactiveDaysLegacy =
       inactiveDaysRaw !== null && inactiveDaysRaw > 0
         ? Math.floor(inactiveDaysRaw)
         : 0;
+    const offlineDaysRaw = toNumber(searchParams.get("offlineDays")?.trim());
+    let offlineDays =
+      offlineDaysRaw !== null && offlineDaysRaw > 0
+        ? Math.floor(offlineDaysRaw)
+        : 0;
+    const noRerunsDaysRaw = toNumber(searchParams.get("noRerunsDays")?.trim());
+    let noRerunsDays =
+      noRerunsDaysRaw !== null && noRerunsDaysRaw > 0
+        ? Math.floor(noRerunsDaysRaw)
+        : 0;
+
+    // Backward compatibility for older clients using inactiveMode/inactiveDays.
+    if (inactiveDaysLegacy > 0 && offlineDays === 0 && noRerunsDays === 0) {
+      if (inactiveMode === "offline") {
+        offlineDays = inactiveDaysLegacy;
+      } else if (inactiveMode === "no_sales" || inactiveMode === "no_reruns") {
+        noRerunsDays = inactiveDaysLegacy;
+      }
+    }
 
     const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
     const pageSize = Math.min(
@@ -1040,13 +1059,10 @@ export async function GET(request: NextRequest) {
       Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE))
     );
 
-    const needsActivityFilter =
-      inactiveDays > 0 &&
-      (inactiveMode === "no_sales" || inactiveMode === "offline");
+    const needsActivityFilter = offlineDays > 0 || noRerunsDays > 0;
     const needsComputedRangeFilter = Boolean(priceRange || rerunMarginRange);
     const needsAllRows = needsActivityFilter || needsComputedRangeFilter;
-    const effectiveStatus =
-      needsActivityFilter && inactiveMode === "offline" ? "all" : status;
+    const effectiveStatus = offlineDays > 0 ? "all" : status;
 
     const productSelect =
       provider === "letsdeal" ? PRODUCT_SELECT_LETSDEAL : PRODUCT_SELECT;
@@ -1523,21 +1539,37 @@ export async function GET(request: NextRequest) {
         const idKey = prodnoKey || titleKey;
         return `${sellerKey}::${idKey}`;
       };
+      const toGroupKey = (row: any) => {
+        const groupId =
+          typeof row?.digideal_group_id === "string" ? row.digideal_group_id.trim() : "";
+        return groupId || toKey(row);
+      };
+      const latestIso = (a: string | null, b: string | null) => {
+        const aTs = a ? Date.parse(a) : Number.NaN;
+        const bTs = b ? Date.parse(b) : Number.NaN;
+        if (!Number.isFinite(aTs)) return Number.isFinite(bTs) ? b : null;
+        if (!Number.isFinite(bTs)) return a;
+        return bTs > aTs ? b : a;
+      };
 
-      if (inactiveMode === "offline") {
+      let activityFilteredRows: any[] = all;
+
+      if (offlineDays > 0) {
         const onlineKeys = new Set(
           all
             .filter((row) => String(row?.status ?? "").toLowerCase() === "online")
             .map(toKey)
         );
 
-        filteredRows = all.filter((row) => {
+        activityFilteredRows = all.filter((row) => {
           if (String(row?.status ?? "").toLowerCase() !== "offline") return false;
-          if (daysSinceTimestamp(row?.last_seen_at ?? null) < inactiveDays) return false;
+          if (daysSinceTimestamp(row?.last_seen_at ?? null) < offlineDays) return false;
           const key = toKey(row);
           return key.length > 2 && !onlineKeys.has(key);
         });
-      } else {
+      }
+
+      if (noRerunsDays > 0) {
         const { map: lastSoldMap, error: lastSoldError } = await loadLastSoldAtMap(
           readClient,
           productDailyTable,
@@ -1552,18 +1584,38 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        filteredRows = all.filter((row) => {
+        const nowIso = new Date().toISOString();
+        const groupLastRerunAt = new Map<string, string | null>();
+        for (const row of all) {
+          const groupKey = toGroupKey(row);
+          if (!groupKey) continue;
+
           const productId =
             typeof row?.product_id === "string" ? row.product_id.trim() : "";
-          if (!productId) return false;
-          const lastSoldAt = lastSoldMap.get(productId) ?? null;
-          return daysSinceDate(lastSoldAt) >= inactiveDays;
+          const lastSoldAt = productId ? lastSoldMap.get(productId) ?? null : null;
+          const onlineSeenAt =
+            String(row?.status ?? "").toLowerCase() === "online"
+              ? (typeof row?.last_seen_at === "string" ? row.last_seen_at : nowIso)
+              : null;
+
+          const current = groupLastRerunAt.get(groupKey) ?? null;
+          groupLastRerunAt.set(
+            groupKey,
+            latestIso(latestIso(current, lastSoldAt), onlineSeenAt)
+          );
+        }
+
+        activityFilteredRows = activityFilteredRows.filter((row) => {
+          const groupKey = toGroupKey(row);
+          if (!groupKey) return false;
+          const lastRerunAt = groupLastRerunAt.get(groupKey) ?? null;
+          return daysSinceDate(lastRerunAt) >= noRerunsDays;
         });
       }
 
       const seenKeys = new Set<string>();
       const deduped: any[] = [];
-      for (const row of filteredRows) {
+      for (const row of activityFilteredRows) {
         const key = toKey(row);
         if (!key || seenKeys.has(key)) continue;
         seenKeys.add(key);

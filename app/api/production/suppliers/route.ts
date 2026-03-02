@@ -442,56 +442,117 @@ const hasMissingOfferEnglish = (offers: Offer[]) =>
     const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
     const english =
       typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
-    return Boolean(subject) && (!english || hasCjk(english));
+    return Boolean(subject) && hasCjk(subject) && (!english || hasCjk(english));
   });
 
-const translateOffersBestEffort = async (offers: Offer[]) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return offers;
+const asOfferText = (value: unknown) =>
+  value === null || value === undefined ? "" : String(value).trim();
 
-  const subjectsToTranslate: string[] = [];
-  const seen = new Set<string>();
-  for (const offer of offers) {
-    const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
-    const existingEn =
-      typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
-    if (!subject || (existingEn && !hasCjk(existingEn))) continue;
-    if (seen.has(subject)) continue;
-    seen.add(subject);
-    subjectsToTranslate.push(subject);
-  }
-
-  if (subjectsToTranslate.length === 0) return offers;
-
-  const configured = [
-    process.env.SUPPLIER_TRANSLATE_MODEL,
-    "gpt-5-mini",
-    "gpt-4o-mini",
-    process.env.OPENAI_EDIT_MODEL,
-  ]
-    .map((v) => String(v || "").trim())
-    .filter(Boolean);
-  const modelCandidates = Array.from(new Set(configured));
-  const limitedSubjects = subjectsToTranslate.slice(0, 15);
+const translateSingleOfferSubjectBestEffort = async (
+  apiKey: string,
+  modelCandidates: string[],
+  subject: string
+) => {
+  const source = asOfferText(subject);
+  if (!source) return "";
 
   const prompt = [
-    "You translate Chinese 1688 product titles into clean English for sourcing.",
-    "Return JSON only.",
-    'Return format: { \"items\": [ { \"subject\": \"...\", \"english_title\": \"...\" } ] }',
-    "Rules:",
-    "1) Remove marketing filler words and hype.",
-    "2) Keep technical data: material, dimensions, model, pack count, and key specs.",
-    "3) Keep clear product nouns and essential attributes.",
-    "4) Output should be detailed but concise, max 120 characters.",
+    "Translate this Chinese supplier product title into concise, natural English.",
+    "Keep technical attributes, remove hype, max 120 characters.",
+    'Return JSON only with format: { "english_title": "..." }',
     "",
-    "Titles to translate:",
-    ...limitedSubjects.map((s, i) => `${i + 1}. ${s}`),
+    `Title: ${source}`,
+  ].join("\n");
+
+  for (const model of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json().catch(() => null);
+      const parsed: any = extractJsonFromText(
+        String(result?.choices?.[0]?.message?.content || "")
+      );
+      const translated = asOfferText(
+        parsed?.english_title ||
+          parsed?.englishTitle ||
+          parsed?.title_en ||
+          parsed?.translation ||
+          parsed?.english
+      ).slice(0, 120);
+      if (translated) return translated;
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return "";
+};
+
+const translateOffersBestEffort = async (offers: Offer[]) => {
+  const apiKey = asOfferText(process.env.OPENAI_API_KEY);
+  if (!apiKey) return offers;
+
+  const offersToTranslate = offers.filter((offer) => {
+    const subject = asOfferText(offer?.subject);
+    const existingEn = asOfferText((offer as any)?.subject_en);
+    if (!subject || !hasCjk(subject)) return false;
+    return !existingEn || hasCjk(existingEn);
+  });
+
+  if (offersToTranslate.length === 0) return offers;
+
+  const modelCandidates = Array.from(
+    new Set(
+      [
+        "gpt-4o-mini",
+        process.env.SUPPLIER_TRANSLATE_MODEL,
+        "gpt-5-mini",
+        process.env.OPENAI_EDIT_MODEL,
+      ]
+        .map((value) => asOfferText(value))
+        .filter(Boolean)
+    )
+  );
+
+  const limitedOffers = offersToTranslate.slice(0, 20).map((offer, index) => ({
+    idx: index + 1,
+    offer_id: asOfferText(toOfferId(offer)),
+    subject: asOfferText(offer?.subject),
+  }));
+
+  const prompt = [
+    "Translate Chinese supplier product titles into concise, natural English.",
+    "Remove marketing words, hype, and unrelated selling language.",
+    "Keep practical usage and core product nouns.",
+    "Keep meaningful technical attributes such as material, dimensions, model, and pack details.",
+    "Do not add brand claims or promotional copy.",
+    "Maximum 120 characters per translated title.",
+    "Return JSON only.",
+    'Return format: { "items": [ { "offer_id": "...", "subject": "...", "english_title": "..." } ] }',
+    "",
+    "Input JSON:",
+    JSON.stringify(limitedOffers, null, 2),
   ].join("\n");
 
   let parsed: any = null;
   for (const model of modelCandidates) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -519,15 +580,12 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
   }
   if (!parsed) return offers;
   const items = Array.isArray((parsed as any)?.items) ? (parsed as any).items : [];
-  const map = new Map<string, string>();
+  const mapByOfferId = new Map<string, string>();
+  const mapBySubject = new Map<string, string>();
 
   items.forEach((row: any, idx: number) => {
-    const subject =
-      typeof row?.subject === "string"
-        ? row.subject.trim()
-        : typeof limitedSubjects[idx] === "string"
-          ? limitedSubjects[idx].trim()
-          : "";
+    const subject = asOfferText(row?.subject) || asOfferText(limitedOffers[idx]?.subject);
+    const offerId = asOfferText(row?.offer_id) || asOfferText(limitedOffers[idx]?.offer_id);
     const englishCandidate =
       (typeof row?.english_title === "string" && row.english_title.trim()) ||
       (typeof row?.englishTitle === "string" && row.englishTitle.trim()) ||
@@ -537,20 +595,103 @@ const translateOffersBestEffort = async (offers: Offer[]) => {
       "";
     const english = typeof englishCandidate === "string" ? englishCandidate.trim() : "";
     if (!subject || !english) return;
-    map.set(subject, english.slice(0, 120));
+    if (offerId) mapByOfferId.set(offerId, english.slice(0, 120));
+    mapBySubject.set(subject, english.slice(0, 120));
   });
 
-  if (map.size === 0) return offers;
+  const unresolved = limitedOffers.filter((offer) => {
+    const subject = asOfferText(offer.subject);
+    const offerId = asOfferText(offer.offer_id);
+    if (!subject) return false;
+    if (offerId && mapByOfferId.has(offerId)) return false;
+    return !mapBySubject.has(subject);
+  });
+
+  for (const row of unresolved) {
+    const subject = asOfferText(row.subject);
+    if (!subject) continue;
+    const fallbackTranslated = await translateSingleOfferSubjectBestEffort(
+      apiKey,
+      modelCandidates,
+      subject
+    );
+    if (!fallbackTranslated) continue;
+    const offerId = asOfferText(row.offer_id);
+    if (offerId) mapByOfferId.set(offerId, fallbackTranslated.slice(0, 120));
+    mapBySubject.set(subject, fallbackTranslated.slice(0, 120));
+  }
+
+  if (mapByOfferId.size === 0 && mapBySubject.size === 0) return offers;
 
   return offers.map((offer) => {
-    const subject = typeof offer?.subject === "string" ? offer.subject.trim() : "";
+    const subject = asOfferText(offer?.subject);
+    const offerId = asOfferText(toOfferId(offer));
     if (!subject) return offer;
-    const existingEn =
-      typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
+    const existingEn = asOfferText((offer as any)?.subject_en);
     if (existingEn && !hasCjk(existingEn)) return offer;
-    const translated = map.get(subject);
+    const translated = (offerId && mapByOfferId.get(offerId)) || mapBySubject.get(subject);
     return translated ? ({ ...(offer as any), subject_en: translated.slice(0, 120) } as Offer) : offer;
   });
+};
+
+const getOfferEnglishTitle = (offer: Offer) =>
+  typeof (offer as any)?.subject_en === "string" ? String((offer as any).subject_en).trim() : "";
+
+const hasOfferEnglishDelta = (before: Offer[], after: Offer[]) => {
+  if (before.length !== after.length) return true;
+  for (let i = 0; i < before.length; i += 1) {
+    if (getOfferEnglishTitle(before[i]) !== getOfferEnglishTitle(after[i])) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const translationBackfillInFlight = new Set<string>();
+
+const queueOfferTranslationBackfillBestEffort = (
+  adminClient: any,
+  provider: string,
+  productId: string,
+  offers: Offer[]
+) => {
+  if (!offers.length || !hasMissingOfferEnglish(offers)) return;
+
+  const key = `${provider}:${productId}`;
+  if (translationBackfillInFlight.has(key)) return;
+  translationBackfillInFlight.add(key);
+
+  void (async () => {
+    try {
+      const translatedOffers = await translateOffersBestEffort(offers);
+      if (!hasOfferEnglishDelta(offers, translatedOffers)) return;
+
+      const { error } = await adminClient
+        .from("discovery_production_supplier_searches")
+        .update({ offers: translatedOffers })
+        .eq("provider", provider)
+        .eq("product_id", productId);
+
+      if (error) {
+        console.warn(
+          "[api/production/suppliers] background translation update failed",
+          {
+            provider,
+            productId,
+            error: error.message,
+          }
+        );
+      }
+    } catch (error) {
+      console.warn("[api/production/suppliers] background translation failed", {
+        provider,
+        productId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      translationBackfillInFlight.delete(key);
+    }
+  })();
 };
 
 const toDetailUrl = (offer: Offer) => canonical1688OfferUrl(offer);
@@ -685,26 +826,13 @@ export async function GET(request: NextRequest) {
     // Always return cached suppliers immediately unless caller explicitly requests refresh=1.
     // This keeps the supplier dialog fast when we already have results.
     if (!looksLikeFailure) {
-      let normalizedOffers = normalizedOffersBase;
-      if (hasMissingOfferEnglish(normalizedOffers)) {
-        const translatedOffers = await translateOffersBestEffort(normalizedOffers);
-        if (translatedOffers !== normalizedOffers) {
-          normalizedOffers = translatedOffers;
-          await adminClient
-            .from("discovery_production_supplier_searches")
-            .update({
-              offers: normalizedOffers,
-              meta,
-              input,
-              fetched_at:
-                typeof (searchRow as any)?.fetched_at === "string"
-                  ? (searchRow as any).fetched_at
-                  : new Date().toISOString(),
-            })
-            .eq("provider", provider)
-            .eq("product_id", productId);
-        }
-      }
+      const normalizedOffers = normalizedOffersBase;
+      queueOfferTranslationBackfillBestEffort(
+        adminClient,
+        provider,
+        productId,
+        normalizedOffers
+      );
       const selected = selectionRow ?? null;
       return NextResponse.json({
         provider,
@@ -822,12 +950,10 @@ export async function GET(request: NextRequest) {
 
   const payload = run.payload ?? {};
   const offers = Array.isArray(payload.offers) ? payload.offers : [];
-  let normalizedOffers = offers.map((offer: Offer) => {
+  const normalizedOffers = offers.map((offer: Offer) => {
     const canonical = canonical1688OfferUrl(offer);
     return canonical ? { ...offer, detailUrl: canonical } : offer;
   });
-  // Best-effort: translate titles during the search run so revisits already have English cached.
-  normalizedOffers = await translateOffersBestEffort(normalizedOffers);
   const meta = payload.meta ?? null;
   const input = payload.input ?? null;
   const fetchedAt =
@@ -855,6 +981,13 @@ export async function GET(request: NextRequest) {
   if (upsertError) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
+
+  queueOfferTranslationBackfillBestEffort(
+    adminClient,
+    provider,
+    productId,
+    normalizedOffers
+  );
 
   const selected = selectionRow ?? null;
 

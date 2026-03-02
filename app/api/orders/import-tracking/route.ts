@@ -5,6 +5,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { ORDER_TRACKING_IMPORT_HEADERS } from "@/lib/orders/import-template";
+import { normalizeIncomingSalesChannelId } from "@/lib/orders/sales-channel-id";
 
 export const runtime = "nodejs";
 
@@ -81,7 +82,7 @@ function normalizeHeader(value: string) {
 }
 
 function normalizePlatformId(value: string) {
-  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  const normalized = normalizeIncomingSalesChannelId(value);
   if (!/^[A-Z]{2}-[A-Z]{2}$/.test(normalized)) {
     return null;
   }
@@ -123,6 +124,15 @@ function normalizeDateForDb(value: string) {
 
   const isoTimestamp = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s].*$/);
   if (isoTimestamp) return isoTimestamp[1];
+
+  const dmySlash = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmySlash) return `${dmySlash[3]}-${dmySlash[2]}-${dmySlash[1]}`;
+
+  const dmyDash = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dmyDash) return `${dmyDash[3]}-${dmyDash[2]}-${dmyDash[1]}`;
+
+  const dmyDot = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dmyDot) return `${dmyDot[3]}-${dmyDot[2]}-${dmyDot[1]}`;
 
   const serialLike = raw.match(/^-?\d+(?:[.,]\d+)?$/);
   if (serialLike) {
@@ -517,12 +527,10 @@ export async function POST(request: Request) {
     });
 
     for (const [orderId, shipDate] of shippingDateByOrderId.entries()) {
-      const { data: updatedOrderRows, error: updateOrderError } = await adminClient
+      const { error: updateOrderError } = await adminClient
         .from("orders_global")
         .update({ date_shipped: shipDate })
         .eq("id", orderId)
-        .or("date_shipped.is.null,date_shipped.eq.")
-        .select("id");
 
       if (updateOrderError) {
         const errorMessage = String(
@@ -544,7 +552,7 @@ export async function POST(request: Request) {
         );
       }
 
-      backfilledOrderShipDates += updatedOrderRows?.length ?? 0;
+      backfilledOrderShipDates += 1;
     }
   }
 

@@ -234,10 +234,26 @@ type VariantsPayload = {
   } | null;
 };
 
-type SourceFilter = "all" | "image" | "url";
+type SourceFilter =
+  | "all"
+  | "image"
+  | "url_all"
+  | "url_temu"
+  | "url_amazon"
+  | "url_1688"
+  | "url_other";
 type SupplierFilter = "all" | "not_started" | "searching" | "selected";
 type VariantFilter = "all" | "picked" | "not_picked";
 type SuggestionReviewStatus = "new" | "unqualified";
+type SuggestionStatusFilter =
+  | "all"
+  | "production_done"
+  | "in_production"
+  | "ready"
+  | "unqualified"
+  | "new"
+  | "queued"
+  | "maybe";
 type ViewerPriceRole = "admin" | "partner" | "non_admin";
 type CategorySelection = { level: "l1" | "l2" | "l3"; value: string };
 type CategoryNode = { name: string; children?: CategoryNode[] };
@@ -353,6 +369,34 @@ const useStyles = makeStyles({
     minWidth: "unset",
     width: "auto",
     maxWidth: "100%",
+  },
+  sourceDropdownCompact: {
+    minWidth: "unset",
+    width: "auto",
+    maxWidth: "100%",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: "1.2",
+  },
+  sourceDropdownOption: {
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: "1.2",
+  },
+  sourceDropdownOptionRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  sourceDropdownOptionLabel: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200,
+  },
+  sourceDropdownOptionCount: {
+    color: tokens.colorNeutralForeground4,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: "1.2",
+  },
+  sourceDropdownOptionSub: {
+    paddingLeft: "10px",
   },
   compactFieldLabel: {
     fontSize: tokens.fontSizeBase100,
@@ -549,6 +593,16 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
       backgroundColor: tokens.colorBrandBackgroundPressed,
     },
+  },
+  actionsButtonContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  actionsButtonArrow: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: "1",
+    color: "inherit",
   },
   sendButtonActive: {
     border: `1px solid ${tokens.colorBrandBackground}`,
@@ -2351,6 +2405,56 @@ const getSourceLinkMeta = (value: unknown): { url: string; domain: string } | nu
   return { url, domain };
 };
 
+const classifySourceUrlCategory = (
+  value: unknown
+): "temu" | "amazon" | "1688" | "other" => {
+  const url = toText(value);
+  if (!/^https?:\/\//i.test(url)) return "other";
+  const hostname = normalizeDomainLabel(getHostname(url));
+  if (!hostname) return "other";
+
+  if (hostname === "1688.com" || hostname.endsWith(".1688.com")) return "1688";
+  if (hostname === "temu.com" || hostname.endsWith(".temu.com")) return "temu";
+  if (
+    hostname === "amazon.com" ||
+    hostname.endsWith(".amazon.com") ||
+    /^amazon\.[a-z.]+$/i.test(hostname) ||
+    hostname === "amzn.to"
+  ) {
+    return "amazon";
+  }
+
+  return "other";
+};
+
+const getSuggestionSourceProductUrl = (item: SuggestionItem) =>
+  firstValidUrl(
+    item.externalData?.finalUrl,
+    item.externalData?.inputUrl,
+    item.crawlFinalUrl,
+    item.sourceUrl
+  );
+
+const getSourceFilterKeyForSuggestion = (
+  item: SuggestionItem
+): Exclude<SourceFilter, "all"> => {
+  const sourceType = toText(item.sourceType).toLowerCase();
+  if (sourceType === "image") return "image";
+  const category = classifySourceUrlCategory(getSuggestionSourceProductUrl(item));
+  if (category === "temu") return "url_temu";
+  if (category === "amazon") return "url_amazon";
+  if (category === "1688") return "url_1688";
+  return "url_other";
+};
+
+const matchesSourceFilter = (item: SuggestionItem, filter: SourceFilter) => {
+  if (filter === "all") return true;
+  const sourceKey = getSourceFilterKeyForSuggestion(item);
+  if (filter === "image") return sourceKey === "image";
+  if (filter === "url_all") return sourceKey !== "image";
+  return sourceKey === filter;
+};
+
 const normalizePartnerLabel = (value: unknown) => {
   const text = toText(value).replace(/\s+/g, " ").trim();
   if (!text) return "";
@@ -2483,23 +2587,148 @@ const isSuggestionReadyForProduction = (item: SuggestionItem) => {
   return supplierSelected && variantsPicked && payloadReady && hasSuggestionPriceData(item);
 };
 
-const sourceFilterLabel: Record<SourceFilter, string> = {
-  all: "All Sources",
-  image: "Images",
-  url: "URLs",
+type SuggestionStatusSnapshot = {
+  queueStatus: string;
+  statusIsDone: boolean;
+  statusIsInProduction: boolean;
+  statusIsQueued: boolean;
+  statusIsUnqualified: boolean;
+  statusIsReady: boolean;
+  statusIsMaybe: boolean;
+  displayStatusLabel: string;
+  latestStatusAt: string | null;
+};
+
+const getSuggestionStatusSnapshot = (item: SuggestionItem): SuggestionStatusSnapshot => {
+  const reviewStatus = normalizeSuggestionReviewStatus(item.reviewStatus);
+  const queueStatusRaw = toText(item.productionStatus?.status).toLowerCase();
+  const queueStatus = queueStatusRaw.replace(/\s+/g, "_").replace(/-/g, "_");
+
+  const spuAssignedAt = toText(item.productionStatus?.spu_assigned_at) || null;
+  const productionStartedAt = toText(item.productionStatus?.production_started_at) || null;
+  const productionDoneAt = toText(item.productionStatus?.production_done_at) || null;
+  const statusUpdatedAt = toText(item.productionStatus?.updated_at) || null;
+
+  const statusIsDone = Boolean(productionDoneAt || queueStatus === "production_done");
+  const statusIsQueued =
+    !statusIsDone &&
+    Boolean(
+      queueStatus === "queued_for_production" ||
+        queueStatus === "queued" ||
+        queueStatus === "sent_to_q" ||
+        queueStatus === "sent_to_queue" ||
+        queueStatus === "sent_to_production_queue"
+    );
+  const statusIsInProduction =
+    !statusIsDone &&
+    Boolean(
+      productionStartedAt ||
+        spuAssignedAt ||
+        queueStatus === "production_started" ||
+        queueStatus === "spu_assigned" ||
+        queueStatus === "queued_for_production" ||
+        queueStatus === "queued" ||
+        queueStatus === "sent_to_q" ||
+        queueStatus === "sent_to_queue" ||
+        queueStatus === "sent_to_production_queue" ||
+        queueStatus === "in_production"
+    );
+  const statusIsUnqualified = !statusIsDone && !statusIsInProduction && reviewStatus === "unqualified";
+
+  const supplierSelected = Boolean(
+    toText(item.selection?.selected_offer_id) || toText(item.selection?.selected_detail_url)
+  );
+  const hasPickedVariants = Boolean(item.variantMetrics && item.variantMetrics.selectedCount > 0);
+  const variantPrice = Number(item.variantMetrics?.purchasePriceCny);
+  const variantWeight = Number(item.variantMetrics?.weightGrams);
+  const variantPriceMin = Number(item.variantMetrics?.priceMinCny);
+  const variantPriceMax = Number(item.variantMetrics?.priceMaxCny);
+  const variantWeightMin = Number(item.variantMetrics?.weightMinGrams);
+  const variantWeightMax = Number(item.variantMetrics?.weightMaxGrams);
+  const hasVariantPrice =
+    (Number.isFinite(variantPrice) && variantPrice > 0) ||
+    (Number.isFinite(variantPriceMin) && variantPriceMin > 0) ||
+    (Number.isFinite(variantPriceMax) && variantPriceMax > 0);
+  const hasVariantWeight =
+    (Number.isFinite(variantWeight) && variantWeight > 0) ||
+    (Number.isFinite(variantWeightMin) && variantWeightMin > 0) ||
+    (Number.isFinite(variantWeightMax) && variantWeightMax > 0);
+
+  const statusIsReady =
+    !statusIsDone &&
+    !statusIsInProduction &&
+    !statusIsUnqualified &&
+    supplierSelected &&
+    hasPickedVariants &&
+    hasVariantPrice &&
+    hasVariantWeight;
+  const statusIsMaybe = queueStatus.startsWith("maybe");
+
+  const displayStatusLabel = statusIsDone
+    ? "Production done"
+    : statusIsInProduction
+      ? "In production"
+      : statusIsReady
+        ? "Ready"
+        : statusIsUnqualified
+          ? "Unqualified"
+          : "New Product";
+
+  return {
+    queueStatus,
+    statusIsDone,
+    statusIsInProduction,
+    statusIsQueued,
+    statusIsUnqualified,
+    statusIsReady,
+    statusIsMaybe,
+    displayStatusLabel,
+    latestStatusAt: productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt,
+  };
+};
+
+const matchesSuggestionStatusFilter = (
+  item: SuggestionItem,
+  filter: SuggestionStatusFilter
+) => {
+  if (filter === "all") return true;
+  const snapshot = getSuggestionStatusSnapshot(item);
+  if (filter === "production_done") return snapshot.statusIsDone;
+  if (filter === "in_production") return snapshot.statusIsInProduction;
+  if (filter === "ready") return snapshot.statusIsReady;
+  if (filter === "unqualified") return snapshot.statusIsUnqualified;
+  if (filter === "queued") return snapshot.statusIsQueued;
+  if (filter === "maybe") return snapshot.statusIsMaybe;
+  return (
+    !snapshot.statusIsDone &&
+    !snapshot.statusIsInProduction &&
+    !snapshot.statusIsUnqualified &&
+    !snapshot.statusIsReady
+  );
 };
 
 const supplierFilterLabel: Record<SupplierFilter, string> = {
   all: "All Supplier States",
-  not_started: "Supplier Not Started",
-  searching: "Supplier Searching",
-  selected: "Supplier Selected",
+  not_started: "Not Started",
+  searching: "Searching",
+  selected: "Selecting",
 };
 
 const variantFilterLabel: Record<VariantFilter, string> = {
-  all: "All Variant States",
+  all: "All Variants State",
   not_picked: "Variants Not Picked",
   picked: "Variants Picked",
+};
+
+const statusFilterLabel: Record<SuggestionStatusFilter, string> = {
+  all: "All Statuses",
+  production_done: "Production done",
+  in_production: "In production",
+  ready: "Ready",
+  unqualified: "Unqualified",
+  new: "New",
+  queued: "Queued",
+  maybe: "Maybe",
 };
 
 export default function DigiDealProductSuggestionsPage() {
@@ -2538,6 +2767,7 @@ export default function DigiDealProductSuggestionsPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [supplierFilter, setSupplierFilter] = useState<SupplierFilter>("all");
   const [variantFilter, setVariantFilter] = useState<VariantFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<SuggestionStatusFilter>("all");
   const [categorySelections, setCategorySelections] = useState<CategorySelection[]>([]);
   const [categoryDraft, setCategoryDraft] = useState<CategorySelection[]>([]);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
@@ -3895,10 +4125,44 @@ export default function DigiDealProductSuggestionsPage() {
     return nodes.filter((l3) => matchCategoryTokens(l3.name));
   }, [filteredCategories, activeL1, activeL2, categoryTokens.length, matchCategoryTokens]);
 
+  const sourceFilterCounts = useMemo(() => {
+    const counts: Record<SourceFilter, number> = {
+      all: items.length,
+      image: 0,
+      url_all: 0,
+      url_temu: 0,
+      url_amazon: 0,
+      url_1688: 0,
+      url_other: 0,
+    };
+
+    items.forEach((item) => {
+      const sourceKey = getSourceFilterKeyForSuggestion(item);
+      if (sourceKey === "image") {
+        counts.image += 1;
+        return;
+      }
+      counts.url_all += 1;
+      counts[sourceKey] += 1;
+    });
+
+    return counts;
+  }, [items]);
+
+  const sourceFilterValueLabel = useMemo(() => {
+    if (sourceFilter === "all") return `All Sources (${sourceFilterCounts.all})`;
+    if (sourceFilter === "image") return `Images (${sourceFilterCounts.image})`;
+    if (sourceFilter === "url_all") return `URLs (${sourceFilterCounts.url_all})`;
+    if (sourceFilter === "url_temu") return `Temu (${sourceFilterCounts.url_temu})`;
+    if (sourceFilter === "url_amazon") return `Amazon (${sourceFilterCounts.url_amazon})`;
+    if (sourceFilter === "url_1688") return `1688 (${sourceFilterCounts.url_1688})`;
+    return `Others (${sourceFilterCounts.url_other})`;
+  }, [sourceFilter, sourceFilterCounts]);
+
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return items.filter((item) => {
-      if (sourceFilter !== "all" && item.sourceType !== sourceFilter) return false;
+      if (!matchesSourceFilter(item, sourceFilter)) return false;
 
       const searchJobStatus = toText(item.searchJob?.status).toLowerCase();
       const payloadStatus = normalizePayloadStatus(item.selection?.payload_status);
@@ -3927,6 +4191,7 @@ export default function DigiDealProductSuggestionsPage() {
       );
       if (variantFilter === "picked" && !hasPickedVariants) return false;
       if (variantFilter === "not_picked" && hasPickedVariants) return false;
+      if (!matchesSuggestionStatusFilter(item, statusFilter)) return false;
 
       if (categorySelections.length > 0) {
         const taxonomyPath = toText(
@@ -3992,6 +4257,7 @@ export default function DigiDealProductSuggestionsPage() {
     sourceFilter,
     supplierFilter,
     variantFilter,
+    statusFilter,
     categorySelections,
   ]);
 
@@ -4952,16 +5218,101 @@ export default function DigiDealProductSuggestionsPage() {
               className={styles.filterField}
             >
               <Dropdown
-                className={mergeClasses(styles.dropdownCompact, styles.filterField)}
+                className={mergeClasses(
+                  styles.sourceDropdownCompact,
+                  styles.dropdownCompact,
+                  styles.filterField
+                )}
                 selectedOptions={[sourceFilter]}
-                value={sourceFilterLabel[sourceFilter]}
+                value={sourceFilterValueLabel}
                 onOptionSelect={(_, data) =>
                   setSourceFilter((data.optionValue as SourceFilter) || "all")
                 }
               >
-                <Option value="all">All Sources</Option>
-                <Option value="image">Images</Option>
-                <Option value="url">URLs</Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="all"
+                  text={`All Sources (${sourceFilterCounts.all})`}
+                >
+                  <span className={styles.sourceDropdownOptionRow}>
+                    <span className={styles.sourceDropdownOptionLabel}>All Sources</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.all})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="image"
+                  text={`Images (${sourceFilterCounts.image})`}
+                >
+                  <span className={styles.sourceDropdownOptionRow}>
+                    <span className={styles.sourceDropdownOptionLabel}>Images</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.image})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="url_all"
+                  text={`URLs / All (${sourceFilterCounts.url_all})`}
+                >
+                  <span className={styles.sourceDropdownOptionRow}>
+                    <span className={styles.sourceDropdownOptionLabel}>URLs / All</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.url_all})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="url_temu"
+                  text={`URLs / Temu (${sourceFilterCounts.url_temu})`}
+                >
+                  <span className={mergeClasses(styles.sourceDropdownOptionRow, styles.sourceDropdownOptionSub)}>
+                    <span className={styles.sourceDropdownOptionLabel}>Temu</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.url_temu})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="url_amazon"
+                  text={`URLs / Amazon (${sourceFilterCounts.url_amazon})`}
+                >
+                  <span className={mergeClasses(styles.sourceDropdownOptionRow, styles.sourceDropdownOptionSub)}>
+                    <span className={styles.sourceDropdownOptionLabel}>Amazon</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.url_amazon})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="url_1688"
+                  text={`URLs / 1688 (${sourceFilterCounts.url_1688})`}
+                >
+                  <span className={mergeClasses(styles.sourceDropdownOptionRow, styles.sourceDropdownOptionSub)}>
+                    <span className={styles.sourceDropdownOptionLabel}>1688</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.url_1688})
+                    </span>
+                  </span>
+                </Option>
+                <Option
+                  className={styles.sourceDropdownOption}
+                  value="url_other"
+                  text={`URLs / Others (${sourceFilterCounts.url_other})`}
+                >
+                  <span className={mergeClasses(styles.sourceDropdownOptionRow, styles.sourceDropdownOptionSub)}>
+                    <span className={styles.sourceDropdownOptionLabel}>Others</span>
+                    <span className={styles.sourceDropdownOptionCount}>
+                      ({sourceFilterCounts.url_other})
+                    </span>
+                  </span>
+                </Option>
               </Dropdown>
             </Field>
 
@@ -4978,9 +5329,9 @@ export default function DigiDealProductSuggestionsPage() {
                 }
               >
                 <Option value="all">All Supplier States</Option>
-                <Option value="not_started">Supplier Not Started</Option>
-                <Option value="searching">Supplier Searching</Option>
-                <Option value="selected">Supplier Selected</Option>
+                <Option value="not_started">Not Started</Option>
+                <Option value="searching">Searching</Option>
+                <Option value="selected">Selecting</Option>
               </Dropdown>
             </Field>
 
@@ -4996,9 +5347,32 @@ export default function DigiDealProductSuggestionsPage() {
                   setVariantFilter((data.optionValue as VariantFilter) || "all")
                 }
               >
-                <Option value="all">All Variant States</Option>
+                <Option value="all">All Variants State</Option>
                 <Option value="not_picked">Variants Not Picked</Option>
                 <Option value="picked">Variants Picked</Option>
+              </Dropdown>
+            </Field>
+
+            <Field
+              label={<span className={styles.compactFieldLabel}>Status</span>}
+              className={styles.filterField}
+            >
+              <Dropdown
+                className={mergeClasses(styles.dropdownCompact, styles.filterField)}
+                selectedOptions={[statusFilter]}
+                value={statusFilterLabel[statusFilter]}
+                onOptionSelect={(_, data) =>
+                  setStatusFilter((data.optionValue as SuggestionStatusFilter) || "all")
+                }
+              >
+                <Option value="all">All Statuses</Option>
+                <Option value="production_done">Production done</Option>
+                <Option value="in_production">In production</Option>
+                <Option value="ready">Ready</Option>
+                <Option value="unqualified">Unqualified</Option>
+                <Option value="new">New</Option>
+                <Option value="queued">Queued</Option>
+                <Option value="maybe">Maybe</Option>
               </Dropdown>
             </Field>
           </div>
@@ -5009,17 +5383,58 @@ export default function DigiDealProductSuggestionsPage() {
                 <Button
                   appearance={selectedItemIds.length > 0 ? "primary" : "outline"}
                   className={
-                    selectedItemIds.length > 0 && !isUpdatingStatus && !isDeleting
+                    selectedItemIds.length > 0 &&
+                    !isUpdatingStatus &&
+                    !isDeleting &&
+                    !isSendingToProduction
                       ? styles.actionsButtonActive
                       : undefined
                   }
-                  disabled={selectedItemIds.length === 0 || isUpdatingStatus || isDeleting}
+                  disabled={
+                    selectedItemIds.length === 0 ||
+                    isUpdatingStatus ||
+                    isDeleting ||
+                    isSendingToProduction
+                  }
                 >
-                  {isUpdatingStatus ? "Updating..." : isDeleting ? "Deleting..." : "Actions"}
+                  <span className={styles.actionsButtonContent}>
+                    <span>
+                      {isUpdatingStatus
+                        ? "Updating..."
+                        : isDeleting
+                          ? "Deleting..."
+                          : isSendingToProduction
+                            ? "Sending..."
+                            : "Actions"}
+                    </span>
+                    <span className={styles.actionsButtonArrow}>▾</span>
+                  </span>
                 </Button>
               </MenuTrigger>
               <MenuPopover>
                 <MenuList>
+                  <MenuItem
+                    disabled={
+                      selectedItemIds.length === 0 ||
+                      !canSendSelectedToProduction ||
+                      isSendingToProduction ||
+                      isDeleting ||
+                      isUpdatingStatus
+                    }
+                    onClick={() => {
+                      void sendSelectedToProduction();
+                    }}
+                  >
+                    {isSendingToProduction ? "Sending..." : "Send to Production"}
+                  </MenuItem>
+                  <MenuItem
+                    disabled={selectedItemIds.length === 0 || isDeleting || isUpdatingStatus}
+                    onClick={() => {
+                      void deleteSelectedSuggestions();
+                    }}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete Product"}
+                  </MenuItem>
                   <Menu positioning="after-top">
                     <MenuTrigger disableButtonEnhancement>
                       <MenuItem hasSubmenu disabled={isUpdatingStatus || isDeleting}>
@@ -5047,29 +5462,9 @@ export default function DigiDealProductSuggestionsPage() {
                       </MenuList>
                     </MenuPopover>
                   </Menu>
-                  <MenuItem
-                    disabled={selectedItemIds.length === 0 || isDeleting || isUpdatingStatus}
-                    onClick={() => {
-                      void deleteSelectedSuggestions();
-                    }}
-                  >
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </MenuItem>
                 </MenuList>
               </MenuPopover>
             </Menu>
-            <Button
-              appearance={selectedItemIds.length > 0 ? "primary" : "outline"}
-              className={
-                selectedItemIds.length > 0 && !isSendingToProduction
-                  ? styles.sendButtonActive
-                  : undefined
-              }
-              disabled={!canSendSelectedToProduction || isSendingToProduction}
-              onClick={sendSelectedToProduction}
-            >
-              {isSendingToProduction ? "Sending..." : "Send to Production"}
-            </Button>
             <Button appearance="primary" onClick={openAddDialog}>
               Add Products
             </Button>
@@ -5162,12 +5557,7 @@ export default function DigiDealProductSuggestionsPage() {
                 const taxonomyIsBusy =
                   taxonomyStatus === "queued" || taxonomyStatus === "running";
                 const external = item.externalData || null;
-                const sourceProductUrl = firstValidUrl(
-                  external?.finalUrl,
-                  external?.inputUrl,
-                  item.crawlFinalUrl,
-                  item.sourceUrl
-                );
+                const sourceProductUrl = getSuggestionSourceProductUrl(item);
                 const sourceLinkMeta = getSourceLinkMeta(sourceProductUrl);
                 const partnerLabel = getSuggestionPartnerLabel(item);
                 const sourceJobStatus = toText(item.sourceJob?.status).toLowerCase();
@@ -5180,7 +5570,8 @@ export default function DigiDealProductSuggestionsPage() {
                   sourceJobStatus === "done" ||
                   sourceJobStatus === "error" ||
                   item.sourceType === "url";
-                const productSourceLabel = sourceLinkMeta?.domain || "—";
+                const productSourceLabel =
+                  sourceLinkMeta?.domain || (item.sourceType === "image" ? "Image" : "—");
                 const visiblePricing = filterPricingByViewerRole(
                   Array.isArray(item.pricing) ? (item.pricing as PricingEntry[]) : [],
                   viewerPriceRole
@@ -5188,64 +5579,15 @@ export default function DigiDealProductSuggestionsPage() {
                 const sekPricing = visiblePricing.filter(
                   (entry) => normalizeCurrencyCode(entry.currency || entry.market) === "SEK"
                 );
-                const reviewStatus = normalizeSuggestionReviewStatus(item.reviewStatus);
+                const statusSnapshot = getSuggestionStatusSnapshot(item);
                 const productionSpu = toText(item.production_assigned_spu);
-                const queueStatusRaw = toText(item.productionStatus?.status).toLowerCase();
-                const queueStatus = queueStatusRaw.replace(/\s+/g, "_").replace(/-/g, "_");
-                const spuAssignedAt = toText(item.productionStatus?.spu_assigned_at) || null;
-                const productionStartedAt =
-                  toText(item.productionStatus?.production_started_at) || null;
-                const productionDoneAt = toText(item.productionStatus?.production_done_at) || null;
-                const statusUpdatedAt = toText(item.productionStatus?.updated_at) || null;
-                const statusIsDone = Boolean(
-                  productionDoneAt || queueStatus === "production_done"
-                );
-                const statusIsInProduction =
-                  !statusIsDone &&
-                  Boolean(
-                    productionStartedAt ||
-                      spuAssignedAt ||
-                      queueStatus === "production_started" ||
-                      queueStatus === "spu_assigned" ||
-                      queueStatus === "queued_for_production" ||
-                      queueStatus === "queued" ||
-                      queueStatus === "in_production"
-                  );
-                const statusIsUnqualified =
-                  !statusIsDone && !statusIsInProduction && reviewStatus === "unqualified";
-                const variantPrice = Number(item.variantMetrics?.purchasePriceCny);
-                const variantWeight = Number(item.variantMetrics?.weightGrams);
-                const variantPriceMin = Number(item.variantMetrics?.priceMinCny);
-                const variantPriceMax = Number(item.variantMetrics?.priceMaxCny);
-                const variantWeightMin = Number(item.variantMetrics?.weightMinGrams);
-                const variantWeightMax = Number(item.variantMetrics?.weightMaxGrams);
-                const hasVariantPrice =
-                  (Number.isFinite(variantPrice) && variantPrice > 0) ||
-                  (Number.isFinite(variantPriceMin) && variantPriceMin > 0) ||
-                  (Number.isFinite(variantPriceMax) && variantPriceMax > 0);
-                const hasVariantWeight =
-                  (Number.isFinite(variantWeight) && variantWeight > 0) ||
-                  (Number.isFinite(variantWeightMin) && variantWeightMin > 0) ||
-                  (Number.isFinite(variantWeightMax) && variantWeightMax > 0);
-                const statusIsReady =
-                  !statusIsDone &&
-                  !statusIsInProduction &&
-                  !statusIsUnqualified &&
-                  supplierSelected &&
-                  hasPickedVariants &&
-                  hasVariantPrice &&
-                  hasVariantWeight;
-                const displayStatusLabel = statusIsDone
-                  ? "Production done"
-                  : statusIsInProduction
-                    ? "In production"
-                    : statusIsReady
-                      ? "Ready"
-                    : statusIsUnqualified
-                      ? "Unqualified"
-                      : "New Product";
-                const latestStatusAt =
-                  productionDoneAt || productionStartedAt || spuAssignedAt || statusUpdatedAt;
+                const queueStatus = statusSnapshot.queueStatus;
+                const statusIsDone = statusSnapshot.statusIsDone;
+                const statusIsInProduction = statusSnapshot.statusIsInProduction;
+                const statusIsUnqualified = statusSnapshot.statusIsUnqualified;
+                const statusIsReady = statusSnapshot.statusIsReady;
+                const displayStatusLabel = statusSnapshot.displayStatusLabel;
+                const latestStatusAt = statusSnapshot.latestStatusAt;
                 const displayStatusAt =
                   latestStatusAt || toText(item.createdAt) || null;
                 const displayStatusTimestamp = displayStatusAt

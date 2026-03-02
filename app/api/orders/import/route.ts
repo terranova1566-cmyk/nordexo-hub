@@ -11,6 +11,7 @@ import {
   pickHigherPriorityOrderStatus,
 } from "@/lib/orders/status";
 import { normalizeOrderPlatformName } from "@/lib/orders/platform";
+import { normalizeIncomingSalesChannelId } from "@/lib/orders/sales-channel-id";
 import { promises as fs } from "fs";
 import path from "path";
 
@@ -317,7 +318,9 @@ export async function POST(request: Request) {
       rowData[header] = readCellText(row.getCell(colIndex));
     });
 
-    const salesChannelId = rowData["Sales Channel ID"];
+    const salesChannelId = normalizeIncomingSalesChannelId(
+      rowData["Sales Channel ID"]
+    );
     const orderNumber = rowData["Order number"];
     const sku = rowData["SKU"];
 
