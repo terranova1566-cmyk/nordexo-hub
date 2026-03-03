@@ -810,6 +810,8 @@ export async function PATCH(
   const metafieldsPayload = Array.isArray(payload?.metafields)
     ? payload.metafields
     : [];
+  const forceRecalculateB2C = normalizeBoolean(payload?.recalculate_b2c) === true;
+  let shouldRecalculateB2C = forceRecalculateB2C;
 
   const productUpdates: Record<string, unknown> = {};
   const setProductField = (field: string, value: unknown) => {
@@ -893,7 +895,6 @@ export async function PATCH(
 
   if (variantsPayload.length > 0) {
     const nowIso = new Date().toISOString();
-    let shouldRecalculateB2C = false;
     let tingeloShopId: string | null = null;
     const needsTingeloShopId = variantsPayload.some(
       (entry: any) =>
@@ -1076,30 +1077,31 @@ export async function PATCH(
       }
     }
 
-    if (shouldRecalculateB2C) {
-      const { data: productRow, error: productSpuError } = await adminClient
-        .from("catalog_products")
-        .select("spu")
-        .eq("id", id)
-        .maybeSingle();
-      if (productSpuError) {
+  }
+
+  if (shouldRecalculateB2C) {
+    const { data: productRow, error: productSpuError } = await adminClient
+      .from("catalog_products")
+      .select("spu")
+      .eq("id", id)
+      .maybeSingle();
+    if (productSpuError) {
+      return NextResponse.json(
+        { error: `Unable to resolve product SPU for B2C recalc: ${productSpuError.message}` },
+        { status: 500 }
+      );
+    }
+    const productSpu = productRow?.spu ? String(productRow.spu).trim() : "";
+    if (productSpu) {
+      try {
+        await recalculateB2CPricesForSpus(adminClient, [productSpu]);
+      } catch (error) {
         return NextResponse.json(
-          { error: `Unable to resolve product SPU for B2C recalc: ${productSpuError.message}` },
+          {
+            error: `B2C pricing generation failed: ${(error as Error).message}`,
+          },
           { status: 500 }
         );
-      }
-      const productSpu = productRow?.spu ? String(productRow.spu).trim() : "";
-      if (productSpu) {
-        try {
-          await recalculateB2CPricesForSpus(adminClient, [productSpu]);
-        } catch (error) {
-          return NextResponse.json(
-            {
-              error: `B2C pricing generation failed: ${(error as Error).message}`,
-            },
-            { status: 500 }
-          );
-        }
       }
     }
   }

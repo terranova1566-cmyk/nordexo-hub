@@ -48,7 +48,7 @@ type CategorySelection = {
 };
 
 type DiscoveryItem = {
-  provider: "cdon" | "fyndiq" | "aliexpress";
+  provider: "cdon" | "fyndiq" | "aliexpress" | "stack";
   product_id: string;
   title: string | null;
   identical_spu: string | null;
@@ -91,6 +91,16 @@ type DiscoveryItem = {
   reviews: number | null;
   delivery_time: string | null;
   wishlist_names: string[];
+  stack_id: string | null;
+  is_stack_card: boolean;
+  stack_size: number | null;
+  stack_provider_label: string | null;
+  stack_member_items: Array<{
+    provider: "cdon" | "fyndiq";
+    product_id: string;
+  }>;
+  stack_price_max: number | null;
+  stack_has_trending?: boolean;
 };
 
 type Wishlist = {
@@ -139,6 +149,12 @@ const DISCOVERY_TREND = {
 };
 
 const SIMILAR_PRIORITY_SPU_PREFIXES = ["GB", "ND", "LD", "SK"] as const;
+const SIMILAR_NO_VENDOR_TOKEN = "__no_vendor__";
+
+const normalizeSimilarVendor = (vendor: string | null) => {
+  const normalized = String(vendor ?? "").trim();
+  return normalized ? normalized : SIMILAR_NO_VENDOR_TOKEN;
+};
 
 const getSimilarSpuPriority = (spu: string | null) => {
   const normalized = String(spu ?? "").trim().toUpperCase();
@@ -252,6 +268,14 @@ const getDiscoveryProductionVisualState = (item: DiscoveryItem) => {
   return { isDone, isPending };
 };
 
+const getDiscoveryItemKey = (item: DiscoveryItem) => {
+  const stackId = String(item.stack_id ?? "").trim();
+  if (item.is_stack_card && stackId) {
+    return `stack:${stackId}`;
+  }
+  return `${item.provider}:${item.product_id}`;
+};
+
 const useStyles = makeStyles({
   layout: {
     display: "flex",
@@ -259,7 +283,7 @@ const useStyles = makeStyles({
     gap: "16px",
   },
   controlsCard: {
-    padding: "6px 16px 16px",
+    padding: "8px 16px 16px",
     borderRadius: "var(--app-radius)",
     display: "flex",
     flexDirection: "column",
@@ -302,7 +326,7 @@ const useStyles = makeStyles({
     lineHeight: tokens.lineHeightBase100,
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
     border: "none",
     padding: 0,
     background: "transparent",
@@ -344,6 +368,40 @@ const useStyles = makeStyles({
     alignItems: "center",
     flexWrap: "wrap",
     gap: "8px",
+    width: "100%",
+  },
+  selectionLeadingActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  selectionField: {
+    flex: "1 1 360px",
+    minWidth: "280px",
+  },
+  selectionActionMenu: {
+    marginLeft: "auto",
+  },
+  selectionActionTrigger: {
+    selectors: {
+      "&:not(:disabled)": {
+        border: `1px solid ${tokens.colorNeutralStroke1}`,
+      },
+    },
+  },
+  selectionActionMenuPopover: {
+    padding: "4px",
+  },
+  selectionActionMenuList: {
+    maxHeight: "260px",
+    overflowY: "auto",
+    "& .fui-MenuItem": {
+      minHeight: "28px",
+      fontSize: tokens.fontSizeBase200,
+      lineHeight: tokens.lineHeightBase200,
+      paddingBlock: "4px",
+    },
   },
   unselectButton: {
     selectors: {
@@ -419,9 +477,9 @@ const useStyles = makeStyles({
   categoryItem: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    padding: "4px 6px",
-    borderRadius: "6px",
+    gap: "4px",
+    padding: "4px 8px",
+    borderRadius: "var(--app-radius-md)",
     width: "100%",
     boxSizing: "border-box",
     backgroundColor: "transparent",
@@ -430,7 +488,7 @@ const useStyles = makeStyles({
   categoryItemInteractive: {
     cursor: "pointer",
     "&:hover": {
-      backgroundColor: "#f1f1f1",
+      backgroundColor: tokens.colorNeutralBackground3,
     },
     "&:focus-visible": {
       outline: `2px solid ${tokens.colorBrandStroke1}`,
@@ -468,7 +526,7 @@ const useStyles = makeStyles({
     justifyContent: "flex-start",
   },
   card: {
-    padding: "13px",
+    padding: "12px",
     borderRadius: "var(--app-radius)",
     display: "flex",
     flexDirection: "column",
@@ -486,9 +544,9 @@ const useStyles = makeStyles({
       content: '""',
       position: "absolute",
       inset: "-2px",
-      borderRadius: "calc(var(--app-radius) + 2px)",
+      borderRadius: "var(--app-radius)",
       border: `2px solid ${tokens.colorBrandStroke1}`,
-      boxShadow: "0 0 10px rgba(0, 120, 212, 0.25)",
+      boxShadow: "0 0 0 2px var(--app-accent-soft)",
       pointerEvents: "none",
     },
   },
@@ -496,13 +554,13 @@ const useStyles = makeStyles({
     border: `3px dashed ${tokens.colorBrandForeground1}`,
   },
   cardProductionDone: {
-    border: "3px dashed #009600",
+    border: `3px dashed ${tokens.colorPaletteGreenBorder1}`,
   },
   cardImageWrap: {
     width: "100%",
     aspectRatio: "1 / 1",
     position: "relative",
-    borderRadius: "12px",
+    borderRadius: "var(--app-radius)",
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "hidden",
     display: "flex",
@@ -522,8 +580,31 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
-    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.28)",
+    boxShadow: tokens.shadow8,
     pointerEvents: "auto",
+  },
+  trendingBadgeShifted: {
+    left: "44px",
+  },
+  stackBadge: {
+    position: "absolute",
+    top: "8px",
+    left: "8px",
+    width: "28px",
+    height: "28px",
+    borderRadius: "999px",
+    backgroundColor: "#ffd84d",
+    color: "#111111",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    pointerEvents: "none",
+  },
+  stackBadgeIcon: {
+    width: "16px",
+    height: "16px",
+    display: "block",
   },
   trendingIcon: {
     width: "16px",
@@ -583,13 +664,13 @@ const useStyles = makeStyles({
   rowLeft: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
     flexWrap: "wrap",
   },
   rowRight: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
     justifyContent: "flex-end",
     textAlign: "right",
   },
@@ -616,6 +697,20 @@ const useStyles = makeStyles({
     height: "12px",
     display: "block",
   },
+  stackViewButton: {
+    border: "1px solid #e0b944",
+    backgroundColor: "#ffd84d",
+    color: "#111111",
+    borderRadius: "6px",
+    padding: "2px 8px",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    cursor: "pointer",
+    textDecorationLine: "none",
+    "&:hover": {
+      backgroundColor: "#f0c634",
+    },
+  },
   cardFooter: {
     display: "flex",
     alignItems: "center",
@@ -630,6 +725,11 @@ const useStyles = makeStyles({
   providerBadge: {
     textTransform: "uppercase",
   },
+  multiProviderBadge: {
+    backgroundColor: "#fdecc8",
+    color: "#7a4b00",
+    border: "1px solid #f3cc77",
+  },
   cdonBadge: {
     backgroundColor: tokens.colorPaletteLightGreenBackground1,
     color: tokens.colorPaletteGreenForeground2,
@@ -641,20 +741,6 @@ const useStyles = makeStyles({
   emptyState: {
     padding: "24px 0",
   },
-  loadingState: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "20px 0",
-    color: tokens.colorBrandForeground1,
-  },
-  loadingSpinner: {
-    color: tokens.colorBrandForeground1,
-  },
-  loadingText: {
-    color: tokens.colorBrandForeground1,
-    fontWeight: tokens.fontWeightSemibold,
-  },
   salesButton: {
     borderRadius: "999px",
     border: `1px solid ${tokens.colorBrandStroke1}`,
@@ -663,8 +749,8 @@ const useStyles = makeStyles({
     height: "20px",
     paddingInline: "4px",
     paddingBlock: "0px",
-    backgroundColor: "transparent",
-    fontSize: "11px",
+    backgroundColor: "#fff",
+    fontSize: tokens.fontSizeBase200,
     fontWeight: tokens.fontWeightBold,
     lineHeight: "14px",
     display: "inline-flex",
@@ -681,7 +767,7 @@ const useStyles = makeStyles({
   salesGroupTight: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "1px",
+    gap: "2px",
   },
   breadcrumbRow: {
     display: "block",
@@ -789,19 +875,25 @@ const useStyles = makeStyles({
     color: "#009600",
     backgroundColor: "rgba(0, 150, 0, 0.16)",
   },
+  stackDisabledAction: {
+    color: tokens.colorNeutralForegroundDisabled,
+    backgroundColor: tokens.colorNeutralBackground3,
+    cursor: "not-allowed",
+    opacity: 0.8,
+  },
   imageSpuBadge: {
     position: "absolute",
     top: "8px",
     right: "8px",
     zIndex: 2,
-    backgroundColor: "#009600",
-    color: "#ffffff",
+    backgroundColor: tokens.colorPaletteGreenBackground3,
+    color: tokens.colorNeutralForegroundOnBrand,
     borderRadius: "999px",
-    padding: "3px 8px",
+    padding: "4px 8px",
     fontSize: tokens.fontSizeBase100,
     fontWeight: tokens.fontWeightSemibold,
     lineHeight: tokens.lineHeightBase100,
-    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.24)",
+    boxShadow: tokens.shadow4,
     maxWidth: "calc(100% - 16px)",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -827,8 +919,8 @@ const useStyles = makeStyles({
     transform: "translateY(-50%) translateX(-4px)",
     backgroundColor: tokens.colorNeutralBackground1,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: "10px",
-    padding: "8px 10px",
+    borderRadius: "var(--app-radius-md)",
+    padding: "8px 12px",
     boxShadow: tokens.shadow8,
     opacity: 0,
     pointerEvents: "none",
@@ -844,12 +936,12 @@ const useStyles = makeStyles({
   wishlistList: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "4px",
   },
   wishlistRow: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
   },
   wishlistLink: {
     color: tokens.colorBrandForeground1,
@@ -875,7 +967,7 @@ const useStyles = makeStyles({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "4px",
+    borderRadius: "var(--app-radius-sm)",
     color: tokens.colorNeutralForeground3,
     cursor: "pointer",
     transition: "background-color 0.12s ease, color 0.12s ease",
@@ -896,7 +988,7 @@ const useStyles = makeStyles({
   similarDialogBody: {
     display: "flex",
     flexDirection: "column",
-    gap: "14px",
+    gap: "16px",
     height: "100%",
     minHeight: 0,
     overflow: "hidden",
@@ -910,14 +1002,14 @@ const useStyles = makeStyles({
   similarHeaderImage: {
     width: "140px",
     height: "140px",
-    borderRadius: "12px",
+    borderRadius: "var(--app-radius)",
     objectFit: "contain",
     backgroundColor: tokens.colorNeutralBackground2,
   },
   similarHeaderContent: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
     minWidth: 0,
   },
   similarHeaderTitle: {
@@ -936,6 +1028,16 @@ const useStyles = makeStyles({
     gap: "8px",
     width: "100%",
   },
+  similarVendorFilterRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+  },
+  similarVendorDropdown: {
+    width: "260px",
+    maxWidth: "100%",
+  },
   similarSearchInput: {
     flex: "1 1 auto",
   },
@@ -944,24 +1046,19 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     color: tokens.colorNeutralForeground1,
   },
-  similarDivider: {
-    height: "1px",
-    backgroundColor: tokens.colorNeutralStroke2,
-    marginTop: "4px",
-  },
   similarLinkedBox: {
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    padding: "10px 12px",
-    borderRadius: "12px",
+    gap: "12px",
+    padding: "12px",
+    borderRadius: "var(--app-radius)",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
   },
   similarLinkedImage: {
     width: "44px",
     height: "44px",
-    borderRadius: "10px",
+    borderRadius: "var(--app-radius-md)",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground2,
   },
@@ -995,7 +1092,7 @@ const useStyles = makeStyles({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "8px",
+    borderRadius: "var(--app-radius-md)",
     color: tokens.colorNeutralForeground3,
     cursor: "pointer",
     flex: "0 0 auto",
@@ -1018,7 +1115,7 @@ const useStyles = makeStyles({
     flex: "1 1 auto",
     overflowY: "auto",
     minHeight: 0,
-    borderRadius: "12px",
+    borderRadius: "var(--app-radius)",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
   },
@@ -1026,7 +1123,7 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    padding: "12px 14px",
+    padding: "12px 16px",
     width: "100%",
     background: "transparent",
     border: "none",
@@ -1047,7 +1144,7 @@ const useStyles = makeStyles({
   similarResultImage: {
     width: "84px",
     height: "84px",
-    borderRadius: "10px",
+    borderRadius: "var(--app-radius-md)",
     objectFit: "cover",
     backgroundColor: tokens.colorNeutralBackground2,
     flex: "0 0 auto",
@@ -1058,6 +1155,18 @@ const useStyles = makeStyles({
     gap: "4px",
     minWidth: 0,
     flex: "1 1 auto",
+  },
+  similarResultSkuColumn: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200,
+    width: "124px",
+    minWidth: "124px",
+    textAlign: "left",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   similarResultPrimary: {
     fontSize: tokens.fontSizeBase300,
@@ -1070,21 +1179,10 @@ const useStyles = makeStyles({
     WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
   },
-  similarResultSpu: {
-    fontSize: tokens.fontSizeBase200,
-    color: tokens.colorNeutralForeground3,
-    fontWeight: tokens.fontWeightSemibold,
-    flex: "0 0 auto",
-    whiteSpace: "nowrap",
-    marginLeft: "8px",
-    textAlign: "right",
-  },
   similarDialogActions: {
     display: "flex",
     justifyContent: "flex-end",
     gap: "8px",
-    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
-    paddingTop: "10px",
   },
   similarActionButton: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -1112,6 +1210,7 @@ const showOnlyOptions = [
 ];
 const showOnlyValues = showOnlyOptions.map((option) => option.value);
 const pageSizeOptions = [25, 50, 100, 200];
+type StackFilterMode = "all" | "only";
 
 function DiscoveryPageInner() {
   const styles = useStyles();
@@ -1121,6 +1220,7 @@ function DiscoveryPageInner() {
   const [searchInput, setSearchInput] = useState("");
   const [providers, setProviders] = useState<string[]>(providerValues);
   const [showOnly, setShowOnly] = useState<string[]>([]);
+  const [stackViewMode, setStackViewMode] = useState<StackFilterMode>("all");
   const [sort, setSort] = useState("sold_7d");
   const [wishlistFilterId, setWishlistFilterId] = useState("all");
   const [updatedFrom, setUpdatedFrom] = useState("");
@@ -1141,9 +1241,9 @@ function DiscoveryPageInner() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
+  const [stackFilterId, setStackFilterId] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -1155,6 +1255,9 @@ function DiscoveryPageInner() {
   const [isSavingSelection, setIsSavingSelection] = useState(false);
   const [isRemovingSelection, setIsRemovingSelection] = useState(false);
   const [isProducingSelection, setIsProducingSelection] = useState(false);
+  const [isStackingSelection, setIsStackingSelection] = useState(false);
+  const [isRemovingFromStackSelection, setIsRemovingFromStackSelection] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [openWishlistFor, setOpenWishlistFor] = useState<string | null>(null);
   const wishlistCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringRef = useRef(false);
@@ -1174,7 +1277,33 @@ function DiscoveryPageInner() {
   const [similarSaving, setSimilarSaving] = useState(false);
   const [similarError, setSimilarError] = useState<string | null>(null);
   const [similarQueryInput, setSimilarQueryInput] = useState("");
+  const [similarVendorFilters, setSimilarVendorFilters] = useState<string[]>([]);
   const similarSearchRequestRef = useRef(0);
+  const discoveryRequestRef = useRef(0);
+  const stackPrefetchCacheRef = useRef<
+    Map<string, { items: DiscoveryItem[]; total: number }>
+  >(new Map());
+  const stackPrefetchInFlightRef = useRef<Set<string>>(new Set());
+  const suppressLoadingOnceRef = useRef(false);
+  const viewBeforeStackRef = useRef<{
+    searchInput: string;
+    providers: string[];
+    showOnly: string[];
+    stackViewMode: StackFilterMode;
+    sort: string;
+    wishlistFilterId: string;
+    updatedFrom: string;
+    addedFrom: string;
+    categorySelections: CategorySelection[];
+    priceMin: number | null;
+    priceMax: number | null;
+    priceMinInput: string;
+    priceMaxInput: string;
+    page: number;
+    pageSize: number;
+    items: DiscoveryItem[];
+    total: number;
+  } | null>(null);
 
   const debouncedSearch = useDebouncedValue(searchInput, 400);
   const sortOptions = useMemo(
@@ -1201,15 +1330,27 @@ function DiscoveryPageInner() {
   const trendingMetaByItemKey = useMemo(() => {
     const result = new Map<string, TrendingMetrics>();
     items.forEach((item) => {
-      result.set(`${item.provider}:${item.product_id}`, computeTrendingMetrics(item));
+      const key = getDiscoveryItemKey(item);
+      const computed = computeTrendingMetrics(item);
+      if (item.is_stack_card && item.stack_has_trending && !computed.isTrending) {
+        const fallbackScore = Math.max(1, Math.round(Number(item.trending_score ?? 0)));
+        result.set(key, {
+          ...computed,
+          isTrending: true,
+          score: Math.max(computed.score, fallbackScore),
+          reason: "At least one product in this stack is trending",
+          trendDaysEstimate: Math.max(1, computed.trendDaysEstimate || 0),
+        });
+        return;
+      }
+      result.set(key, computed);
     });
     return result;
   }, [items]);
   const trendingRanksByItemKey = useMemo(() => {
-    const recentCutoffTs = Date.now() - 30 * 86_400_000;
     const trendRows = items
       .map((item) => {
-        const key = `${item.provider}:${item.product_id}`;
+        const key = getDiscoveryItemKey(item);
         const metrics = trendingMetaByItemKey.get(key);
         if (!metrics?.isTrending) return null;
         return { key, metrics };
@@ -1250,6 +1391,10 @@ function DiscoveryPageInner() {
               value
           )
           .join(", ");
+  const stackViewLabel =
+    stackViewMode === "only"
+      ? t("discovery.filters.stacksOnly")
+      : t("discovery.filters.stacksAll");
   const categorySearchNormalized = categorySearch.trim().toLowerCase();
   const categoryTokens = useMemo(
     () => categorySearchNormalized.split(/\s+/).filter(Boolean),
@@ -1296,6 +1441,35 @@ function DiscoveryPageInner() {
     if (categoryTokens.length === 0) return nodes;
     return nodes.filter((l3) => matchCategoryTokens(l3.name));
   }, [filteredCategories, activeL1, activeL2, categoryTokens.length, matchCategoryTokens]);
+  const similarVendorOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(similarResults.map((row) => normalizeSimilarVendor(row.vendor)))
+    );
+    values.sort((a, b) => {
+      if (a === SIMILAR_NO_VENDOR_TOKEN) return 1;
+      if (b === SIMILAR_NO_VENDOR_TOKEN) return -1;
+      return a.localeCompare(b);
+    });
+    return values.map((value) => ({
+      value,
+      label: value === SIMILAR_NO_VENDOR_TOKEN ? "No vendor" : value,
+    }));
+  }, [similarResults]);
+  const filteredSimilarResults = useMemo(() => {
+    if (similarVendorFilters.length === 0) return [];
+    const selected = new Set(similarVendorFilters);
+    return similarResults.filter((row) =>
+      selected.has(normalizeSimilarVendor(row.vendor))
+    );
+  }, [similarResults, similarVendorFilters]);
+  const similarVendorLabel = useMemo(() => {
+    if (similarVendorOptions.length === 0) return "Vendors";
+    if (similarVendorFilters.length === 0) return "No vendors selected";
+    if (similarVendorFilters.length === similarVendorOptions.length) {
+      return "All vendors";
+    }
+    return `${similarVendorFilters.length} vendors selected`;
+  }, [similarVendorFilters.length, similarVendorOptions.length]);
 
   useEffect(() => {
     let isActive = true;
@@ -1359,6 +1533,7 @@ function DiscoveryPageInner() {
       setSimilarLoading(true);
       setSimilarError(null);
       setSimilarResults([]);
+      setSimilarVendorFilters([]);
       setSimilarSelectedId(null);
 
       if (!query) {
@@ -1416,6 +1591,11 @@ function DiscoveryPageInner() {
           .map((entry) => entry.row);
         if (requestId !== similarSearchRequestRef.current) return;
         setSimilarResults(prioritized);
+        setSimilarVendorFilters(
+          Array.from(
+            new Set(prioritized.map((row) => normalizeSimilarVendor(row.vendor)))
+          )
+        );
       } catch (err) {
         if (requestId !== similarSearchRequestRef.current) return;
         setSimilarError((err as Error).message);
@@ -1437,6 +1617,7 @@ function DiscoveryPageInner() {
       setSimilarLinkedProduct(null);
       setSimilarError(null);
       setSimilarQueryInput(getDefaultSimilarQuery(item));
+      setSimilarVendorFilters([]);
     },
     [getDefaultSimilarQuery]
   );
@@ -1452,6 +1633,7 @@ function DiscoveryPageInner() {
     setSimilarLoading(false);
     setSimilarSaving(false);
     setSimilarQueryInput("");
+    setSimilarVendorFilters([]);
   }, []);
 
   useEffect(() => {
@@ -1517,6 +1699,14 @@ function DiscoveryPageInner() {
       controller.abort();
     };
   }, [similarDialogOpen, similarItem?.identical_spu]);
+
+  useEffect(() => {
+    if (!similarSelectedId) return;
+    if (filteredSimilarResults.some((row) => row.id === similarSelectedId)) {
+      return;
+    }
+    setSimilarSelectedId(null);
+  }, [filteredSimilarResults, similarSelectedId]);
 
   const handleSaveIdentical = useCallback(async () => {
     if (!similarItem) return;
@@ -1667,6 +1857,36 @@ function DiscoveryPageInner() {
       .join("|");
   };
 
+  const prefetchStackItems = useCallback(async (stackId: string) => {
+    const normalized = String(stackId ?? "").trim();
+    if (!normalized) return;
+    if (stackPrefetchCacheRef.current.has(normalized)) return;
+    if (stackPrefetchInFlightRef.current.has(normalized)) return;
+    stackPrefetchInFlightRef.current.add(normalized);
+    try {
+      const params = new URLSearchParams();
+      params.set("stackId", normalized);
+      params.set("page", "1");
+      params.set("pageSize", "200");
+      const response = await fetch(`/api/discovery?${params.toString()}`);
+      if (!response.ok) return;
+      const payload = await response.json();
+      const prefetchedItems = Array.isArray(payload?.items)
+        ? (payload.items as DiscoveryItem[])
+        : [];
+      const prefetchedTotal =
+        typeof payload?.total === "number" ? payload.total : prefetchedItems.length;
+      stackPrefetchCacheRef.current.set(normalized, {
+        items: prefetchedItems,
+        total: prefetchedTotal,
+      });
+    } catch {
+      // ignore stack prefetch errors
+    } finally {
+      stackPrefetchInFlightRef.current.delete(normalized);
+    }
+  }, []);
+
   useEffect(() => {
     try {
       const params = new URLSearchParams(urlSearch);
@@ -1674,7 +1894,11 @@ function DiscoveryPageInner() {
       const nextSort = params.get("sort") ?? "sold_7d";
       const nextProviders = parseProviderParam(params.get("provider"));
       const nextShowOnly = parseShowOnlyParam(params.get("showOnly"));
+      const nextStackViewModeRaw = (params.get("stacks") ?? "all").toLowerCase();
+      const nextStackViewMode: StackFilterMode =
+        nextStackViewModeRaw === "only" ? "only" : "all";
       const nextWishlist = params.get("wishlistId") ?? "all";
+      const nextStackId = params.get("stackId") ?? "";
       const nextUpdatedFrom = params.get("updatedFrom") ?? "";
       const nextAddedFrom = params.get("addedFrom") ?? "";
       const nextPriceMinRaw = params.get("priceMin");
@@ -1707,7 +1931,9 @@ function DiscoveryPageInner() {
       setSort(nextSort);
       setProviders(nextProviders);
       setShowOnly(nextShowOnly);
+      setStackViewMode(nextStackViewMode);
       setWishlistFilterId(nextWishlist);
+      setStackFilterId(nextStackId);
       setUpdatedFrom(nextUpdatedFrom);
       setAddedFrom(nextAddedFrom);
       setPriceMin(Number.isFinite(nextPriceMin) ? nextPriceMin : null);
@@ -1734,7 +1960,9 @@ function DiscoveryPageInner() {
     providerParam,
     sort,
     showOnly,
+    stackViewMode,
     wishlistFilterId,
+    stackFilterId,
     updatedFrom,
     addedFrom,
     categorySelections,
@@ -1745,8 +1973,24 @@ function DiscoveryPageInner() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = discoveryRequestRef.current + 1;
+    discoveryRequestRef.current = requestId;
+    const suppressLoading = suppressLoadingOnceRef.current;
+    if (suppressLoading) {
+      suppressLoadingOnceRef.current = false;
+    }
+    const cachedStack =
+      stackFilterId && stackPrefetchCacheRef.current.has(stackFilterId)
+        ? stackPrefetchCacheRef.current.get(stackFilterId) ?? null
+        : null;
     const load = async () => {
-      setIsLoading(true);
+      if (cachedStack) {
+        setItems(cachedStack.items);
+        setTotal(cachedStack.total);
+        setIsLoading(false);
+      } else if (!suppressLoading) {
+        setIsLoading(true);
+      }
       setError(null);
       try {
         const params = new URLSearchParams();
@@ -1754,8 +1998,14 @@ function DiscoveryPageInner() {
         params.set("provider", providerParam);
         if (sort) params.set("sort", sort);
         if (showOnly.length > 0) params.set("showOnly", showOnly.join(","));
+        if (stackViewMode === "only" && !stackFilterId) {
+          params.set("stacks", "only");
+        }
         if (wishlistFilterId !== "all") {
           params.set("wishlistId", wishlistFilterId);
+        }
+        if (stackFilterId) {
+          params.set("stackId", stackFilterId);
         }
         if (updatedFrom) params.set("updatedFrom", updatedFrom);
         if (addedFrom) params.set("addedFrom", addedFrom);
@@ -1781,16 +2031,34 @@ function DiscoveryPageInner() {
           throw new Error(t("discovery.error.load"));
         }
         const payload = await response.json();
-        setItems(payload.items ?? []);
-        setTotal(payload.total ?? 0);
-        setHasLoadedOnce(true);
+        if (controller.signal.aborted || discoveryRequestRef.current !== requestId) {
+          return;
+        }
+        const nextItems = Array.isArray(payload?.items)
+          ? (payload.items as DiscoveryItem[])
+          : [];
+        const nextTotal =
+          typeof payload?.total === "number" ? payload.total : nextItems.length;
+        setItems(nextItems);
+        setTotal(nextTotal);
+        if (stackFilterId) {
+          stackPrefetchCacheRef.current.set(stackFilterId, {
+            items: nextItems,
+            total: nextTotal,
+          });
+        }
       } catch (err) {
-        if ((err as Error).name !== "AbortError") {
+        if (
+          (err as Error).name !== "AbortError" &&
+          !controller.signal.aborted &&
+          discoveryRequestRef.current === requestId
+        ) {
           setError((err as Error).message);
-          setHasLoadedOnce(true);
         }
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted && discoveryRequestRef.current === requestId) {
+          setIsLoading(false);
+        }
       }
     };
     load();
@@ -1800,7 +2068,9 @@ function DiscoveryPageInner() {
     providerParam,
     sort,
     showOnly,
+    stackViewMode,
     wishlistFilterId,
+    stackFilterId,
     updatedFrom,
     addedFrom,
     categorySelections,
@@ -1808,7 +2078,23 @@ function DiscoveryPageInner() {
     priceMax,
     page,
     pageSize,
+    refreshKey,
   ]);
+
+  useEffect(() => {
+    if (isLoading || stackFilterId) return;
+    const stackIds = Array.from(
+      new Set(
+        items
+          .filter((item) => item.is_stack_card)
+          .map((item) => String(item.stack_id ?? "").trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 100);
+    stackIds.forEach((id) => {
+      void prefetchStackItems(id);
+    });
+  }, [items, isLoading, stackFilterId, prefetchStackItems]);
 
   useEffect(() => {
     if (skipUrlSyncRef.current) {
@@ -1822,7 +2108,9 @@ function DiscoveryPageInner() {
     }
     if (sort !== "sold_7d") params.set("sort", sort);
     if (showOnly.length > 0) params.set("showOnly", showOnly.join(","));
+    if (stackViewMode === "only") params.set("stacks", "only");
     if (wishlistFilterId !== "all") params.set("wishlistId", wishlistFilterId);
+    if (stackFilterId) params.set("stackId", stackFilterId);
     if (updatedFrom) params.set("updatedFrom", updatedFrom);
     if (addedFrom) params.set("addedFrom", addedFrom);
     if (priceMin !== null && Number.isFinite(priceMin)) {
@@ -1847,7 +2135,9 @@ function DiscoveryPageInner() {
     providerParam,
     sort,
     showOnly,
+    stackViewMode,
     wishlistFilterId,
+    stackFilterId,
     updatedFrom,
     addedFrom,
     priceMin,
@@ -2058,7 +2348,8 @@ function DiscoveryPageInner() {
     action: "like" | "remove",
     valueOverride?: boolean
   ) => {
-    const itemKey = `${item.provider}:${item.product_id}`;
+    if (item.is_stack_card) return;
+    const itemKey = getDiscoveryItemKey(item);
     const nextValue =
       typeof valueOverride === "boolean"
         ? valueOverride
@@ -2186,6 +2477,9 @@ function DiscoveryPageInner() {
   };
 
   const toggleProductionItem = async (item: DiscoveryItem) => {
+    if (item.is_stack_card) {
+      return;
+    }
     const visual = getDiscoveryProductionVisualState(item);
     if (visual.isDone) {
       return;
@@ -2302,14 +2596,54 @@ function DiscoveryPageInner() {
   );
 
   const selectedItems = items.filter((item) =>
-    selectedIds.has(`${item.provider}:${item.product_id}`)
+    selectedIds.has(getDiscoveryItemKey(item))
   );
+  const visibleItemKeys = useMemo(
+    () => items.map((item) => getDiscoveryItemKey(item)),
+    [items]
+  );
+  const handleSelectAllVisible = useCallback(() => {
+    setSelectedIds(new Set(visibleItemKeys));
+  }, [visibleItemKeys]);
+  const selectionCount = selectedItems.length;
+  const selectedStackCards = selectedItems.filter((item) => item.is_stack_card);
+  const selectedRawItems = selectedItems.filter((item) => !item.is_stack_card);
+  const selectedContainsStackCard = selectedStackCards.length > 0;
+
+  const selectedRefsForStack = useMemo(() => {
+    const refs: Array<{ provider: "cdon" | "fyndiq"; product_id: string }> = [];
+    selectedRawItems.forEach((item) => {
+      if (item.provider !== "cdon" && item.provider !== "fyndiq") return;
+      refs.push({ provider: item.provider, product_id: item.product_id });
+    });
+    selectedStackCards.forEach((stackCard) => {
+      (stackCard.stack_member_items ?? []).forEach((member) => {
+        refs.push({ provider: member.provider, product_id: member.product_id });
+      });
+    });
+    const seen = new Set<string>();
+    return refs.filter((entry) => {
+      const key = `${entry.provider}:${entry.product_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [selectedRawItems, selectedStackCards]);
+  const canRunStandardSelectionActions =
+    selectionCount > 0 && !selectedContainsStackCard;
+  const canStackSelection =
+    selectedRefsForStack.length >= 2 &&
+    (selectedRawItems.length > 0 || selectedStackCards.length > 1);
+  const hasAnySelectionAction =
+    canRunStandardSelectionActions ||
+    canStackSelection ||
+    (Boolean(stackFilterId) && selectedRawItems.length > 0);
 
   const saveSelectedToWishlist = async (
     wishlistId: string,
     wishlistName?: string
   ) => {
-    if (selectedItems.length === 0) return;
+    if (selectedRawItems.length === 0) return;
     setIsSavingSelection(true);
     setError(null);
     try {
@@ -2318,7 +2652,7 @@ function DiscoveryPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wishlistId,
-          items: selectedItems.map((item) => ({
+          items: selectedRawItems.map((item) => ({
             provider: item.provider,
             product_id: item.product_id,
           })),
@@ -2401,13 +2735,15 @@ function DiscoveryPageInner() {
   };
 
   const handleRemoveSelected = async () => {
-    if (selectedItems.length === 0) return;
+    if (selectedRawItems.length === 0) return;
     setIsRemovingSelection(true);
     setError(null);
     try {
       await Promise.all(
-        selectedItems.map((item) => updateItemAction(item, "remove", true))
+        selectedRawItems.map((item) => updateItemAction(item, "remove", true))
       );
+      setSelectedIds(new Set());
+      setRefreshKey((prev) => prev + 1);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -2416,7 +2752,7 @@ function DiscoveryPageInner() {
   };
 
   const handleProduceSelected = async () => {
-    if (selectedItems.length === 0) return;
+    if (selectedRawItems.length === 0) return;
     setIsProducingSelection(true);
     setError(null);
     try {
@@ -2424,7 +2760,7 @@ function DiscoveryPageInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: selectedItems.map((item) => ({
+          items: selectedRawItems.map((item) => ({
             provider: item.provider,
             product_id: item.product_id,
           })),
@@ -2441,7 +2777,7 @@ function DiscoveryPageInner() {
         throw new Error(message);
       }
       const selectedKeys = new Set(
-        selectedItems.map((item) => `${item.provider}:${item.product_id}`)
+        selectedRawItems.map((item) => `${item.provider}:${item.product_id}`)
       );
       setItems((prev) =>
         prev.map((entry) =>
@@ -2450,12 +2786,183 @@ function DiscoveryPageInner() {
             : entry
         )
       );
+      setSelectedIds(new Set());
+      setRefreshKey((prev) => prev + 1);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setIsProducingSelection(false);
     }
   };
+
+  const openStackView = useCallback((stackId: string) => {
+    const normalized = String(stackId ?? "").trim();
+    if (!normalized) return;
+    if (!stackFilterId) {
+      viewBeforeStackRef.current = {
+        searchInput,
+        providers: [...providers],
+        showOnly: [...showOnly],
+        stackViewMode,
+        sort,
+        wishlistFilterId,
+        updatedFrom,
+        addedFrom,
+        categorySelections: [...categorySelections],
+        priceMin,
+        priceMax,
+        priceMinInput,
+        priceMaxInput,
+        page,
+        pageSize,
+        items: [...items],
+        total,
+      };
+    }
+    const cachedStack = stackPrefetchCacheRef.current.get(normalized) ?? null;
+    if (cachedStack) {
+      setItems(cachedStack.items);
+      setTotal(cachedStack.total);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+    setSearchInput("");
+    setProviders(providerValues);
+    setShowOnly([]);
+    setStackViewMode("all");
+    setWishlistFilterId("all");
+    setUpdatedFrom("");
+    setAddedFrom("");
+    setCategorySelections([]);
+    setPriceMin(null);
+    setPriceMax(null);
+    setPriceMinInput("");
+    setPriceMaxInput("");
+    setStackFilterId(normalized);
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [
+    stackFilterId,
+    searchInput,
+    providers,
+    showOnly,
+    stackViewMode,
+    sort,
+    wishlistFilterId,
+    updatedFrom,
+    addedFrom,
+    categorySelections,
+    priceMin,
+    priceMax,
+    priceMinInput,
+    priceMaxInput,
+    page,
+    pageSize,
+    items,
+    total,
+  ]);
+
+  const clearStackView = useCallback(() => {
+    const previous = viewBeforeStackRef.current;
+    if (previous) {
+      suppressLoadingOnceRef.current = true;
+      setItems(previous.items);
+      setTotal(previous.total);
+      setIsLoading(false);
+      setError(null);
+      setSearchInput(previous.searchInput);
+      setProviders(previous.providers);
+      setShowOnly(previous.showOnly);
+      setStackViewMode(previous.stackViewMode);
+      setSort(previous.sort);
+      setWishlistFilterId(previous.wishlistFilterId);
+      setUpdatedFrom(previous.updatedFrom);
+      setAddedFrom(previous.addedFrom);
+      setCategorySelections(previous.categorySelections);
+      setPriceMin(previous.priceMin);
+      setPriceMax(previous.priceMax);
+      setPriceMinInput(previous.priceMinInput);
+      setPriceMaxInput(previous.priceMaxInput);
+      setPage(previous.page);
+      setPageSize(previous.pageSize);
+    } else {
+      setPage(1);
+    }
+    setStackFilterId("");
+    setSelectedIds(new Set());
+    viewBeforeStackRef.current = null;
+  }, []);
+
+  const handleStackSelected = useCallback(async () => {
+    if (selectedRefsForStack.length < 2) return;
+    setIsStackingSelection(true);
+    setError(null);
+    try {
+      const selectedStackIds = Array.from(
+        new Set(
+          selectedStackCards
+            .map((item) => String(item.stack_id ?? "").trim())
+            .filter(Boolean)
+        )
+      );
+      const stackId =
+        selectedStackIds.length === 1 ? selectedStackIds[0] : undefined;
+
+      const response = await fetch("/api/discovery/stacks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stack_id: stackId,
+          items: selectedRefsForStack,
+        }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Unable to stack selected products.");
+      }
+      setSelectedIds(new Set());
+      stackPrefetchCacheRef.current.clear();
+      stackPrefetchInFlightRef.current.clear();
+      setRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsStackingSelection(false);
+    }
+  }, [selectedRefsForStack, selectedStackCards]);
+
+  const handleRemoveFromStackSelected = useCallback(async () => {
+    const refs = selectedRawItems
+      .filter(
+        (item): item is DiscoveryItem & { provider: "cdon" | "fyndiq" } =>
+          item.provider === "cdon" || item.provider === "fyndiq"
+      )
+      .map((item) => ({ provider: item.provider, product_id: item.product_id }));
+    if (refs.length === 0) return;
+    setIsRemovingFromStackSelection(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/discovery/stacks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: refs }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Unable to remove selected products from stack.");
+      }
+      setSelectedIds(new Set());
+      stackPrefetchCacheRef.current.clear();
+      stackPrefetchInFlightRef.current.clear();
+      setRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsRemovingFromStackSelection(false);
+    }
+  }, [selectedRawItems]);
 
   return (
     <div className={styles.layout}>
@@ -2766,6 +3273,24 @@ function DiscoveryPageInner() {
               ))}
             </Dropdown>
           </Field>
+          <Field
+            label={<span className={styles.filterLabel}>{t("discovery.filters.stacks")}</span>}
+            className={styles.filterField}
+          >
+            <Dropdown
+              value={stackViewLabel}
+              selectedOptions={[stackViewMode]}
+              onOptionSelect={(_, data) =>
+                setStackViewMode(
+                  String(data.optionValue) === "only" ? "only" : "all"
+                )
+              }
+              className={styles.dropdownCompact}
+            >
+              <Option value="all">{t("discovery.filters.stacksAll")}</Option>
+              <Option value="only">{t("discovery.filters.stacksOnly")}</Option>
+            </Dropdown>
+          </Field>
         </div>
         <div className={styles.controlRow}>
           <Field
@@ -2865,74 +3390,134 @@ function DiscoveryPageInner() {
             label={
               <span className={styles.filterLabel}>{t("discovery.selection.label")}</span>
             }
-            className={styles.filterField}
+            className={mergeClasses(styles.filterField, styles.selectionField)}
           >
             <div className={styles.selectionActions}>
+              <div className={styles.selectionLeadingActions}>
+                {stackFilterId ? (
+                  <Button
+                    appearance="outline"
+                    onClick={clearStackView}
+                    className={styles.unselectButton}
+                  >
+                    {t("discovery.stack.backToAllCount", {
+                      count: Math.max(0, total),
+                    })}
+                  </Button>
+                ) : null}
+                <Button
+                  appearance="outline"
+                  onClick={handleSelectAllVisible}
+                  className={styles.unselectButton}
+                >
+                  {t("common.selectAll")}
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={selectionCount === 0}
+                  className={styles.unselectButton}
+                >
+                  {`${t("common.unselect")} (${selectionCount})`}
+                </Button>
+              </div>
+
               <Menu>
                 <MenuTrigger disableButtonEnhancement>
                   <Button
-                    appearance={selectedItems.length > 0 ? "primary" : "outline"}
-                    disabled={selectedItems.length === 0 || isSavingSelection}
+                    appearance={selectionCount > 1 ? "primary" : "outline"}
+                    disabled={
+                      !hasAnySelectionAction ||
+                      isSavingSelection ||
+                      isRemovingSelection ||
+                      isProducingSelection ||
+                      isStackingSelection ||
+                      isRemovingFromStackSelection
+                    }
+                    className={mergeClasses(
+                      styles.selectionActionTrigger,
+                      styles.selectionActionMenu
+                    )}
                   >
-                    {t("common.save")}
+                    {t("discovery.selection.action")}
                   </Button>
                 </MenuTrigger>
-                <MenuPopover>
-                  <MenuList>
-                    {wishlistsLoading ? (
-                      <MenuItem disabled>{t("discovery.lists.loading")}</MenuItem>
-                    ) : wishlistsError ? (
-                      <MenuItem disabled>{wishlistsError}</MenuItem>
-                    ) : wishlists.length === 0 ? (
-                      <MenuItem disabled>{t("discovery.lists.empty")}</MenuItem>
-                    ) : (
-                      wishlists.map((list) => (
+                <MenuPopover className={styles.selectionActionMenuPopover}>
+                  <MenuList className={styles.selectionActionMenuList}>
+                    <Menu>
+                      <MenuTrigger disableButtonEnhancement>
                         <MenuItem
-                          key={list.id}
-                          onClick={() => saveSelectedToWishlist(list.id, list.name)}
+                          hasSubmenu
+                          disabled={!canRunStandardSelectionActions || isSavingSelection}
                         >
-                          {list.name}
+                          {t("discovery.selection.saveToList")}
                         </MenuItem>
-                      ))
-                    )}
-                    <MenuItem onClick={() => setNewListDialogOpen(true)}>
-                      {t("discovery.lists.new")}
+                      </MenuTrigger>
+                      <MenuPopover className={styles.selectionActionMenuPopover}>
+                        <MenuList className={styles.selectionActionMenuList}>
+                          {wishlistsLoading ? (
+                            <MenuItem disabled>{t("discovery.lists.loading")}</MenuItem>
+                          ) : wishlistsError ? (
+                            <MenuItem disabled>{wishlistsError}</MenuItem>
+                          ) : wishlists.length === 0 ? (
+                            <MenuItem disabled>{t("discovery.lists.empty")}</MenuItem>
+                          ) : (
+                            wishlists.map((list) => (
+                              <MenuItem
+                                key={list.id}
+                                onClick={() => saveSelectedToWishlist(list.id, list.name)}
+                              >
+                                {list.name}
+                              </MenuItem>
+                            ))
+                          )}
+                          <MenuItem onClick={() => setNewListDialogOpen(true)}>
+                            {t("discovery.lists.new")}
+                          </MenuItem>
+                        </MenuList>
+                      </MenuPopover>
+                    </Menu>
+
+                    <MenuItem
+                      onClick={handleRemoveSelected}
+                      disabled={!canRunStandardSelectionActions || isRemovingSelection}
+                    >
+                      {t("discovery.selection.hideFromView")}
                     </MenuItem>
+
+                    {isAdmin ? (
+                      <MenuItem
+                        onClick={handleProduceSelected}
+                        disabled={!canRunStandardSelectionActions || isProducingSelection}
+                      >
+                        {t("discovery.selection.sentToProduction")}
+                      </MenuItem>
+                    ) : null}
+
+                    <MenuItem
+                      onClick={handleStackSelected}
+                      disabled={!canStackSelection || isStackingSelection}
+                    >
+                      {isStackingSelection
+                        ? t("discovery.stack.stacking")
+                        : t("discovery.stack.stackProducts")}
+                    </MenuItem>
+
+                    {stackFilterId ? (
+                      <MenuItem
+                        onClick={handleRemoveFromStackSelected}
+                        disabled={
+                          selectedRawItems.length === 0 || isRemovingFromStackSelection
+                        }
+                      >
+                        {isRemovingFromStackSelection
+                          ? t("discovery.stack.removing")
+                          : t("discovery.stack.removeFromStack")}
+                      </MenuItem>
+                    ) : null}
                   </MenuList>
                 </MenuPopover>
               </Menu>
-              <Button
-                appearance="outline"
-                onClick={handleRemoveSelected}
-                disabled={selectedItems.length === 0 || isRemovingSelection}
-                className={
-                  selectedItems.length > 0 ? styles.removeSelectedActive : undefined
-                }
-              >
-                {t("common.hide")}
-              </Button>
-              {isAdmin && selectedItems.length > 0 ? (
-                <Button
-                  appearance="outline"
-                  onClick={handleProduceSelected}
-                  disabled={isProducingSelection}
-                >
-                  {t("discovery.selection.produce")}
-                </Button>
-              ) : null}
-              <Button
-                appearance="outline"
-                onClick={() => setSelectedIds(new Set())}
-                disabled={selectedItems.length === 0}
-                className={styles.unselectButton}
-              >
-                {t("common.unselect")}
-              </Button>
-              <Text className={styles.selectionCount}>
-                {t("discovery.selection.selectedCount", {
-                  count: selectedItems.length,
-                })}
-              </Text>
             </div>
           </Field>
         </div>
@@ -3026,6 +3611,24 @@ function DiscoveryPageInner() {
                         {similarLoading ? "Searching..." : "Search"}
                       </Button>
                     </div>
+                    <div className={styles.similarVendorFilterRow}>
+                      <Dropdown
+                        multiselect
+                        value={similarVendorLabel}
+                        selectedOptions={similarVendorFilters}
+                        onOptionSelect={(_, data) =>
+                          setSimilarVendorFilters((data.selectedOptions ?? []) as string[])
+                        }
+                        className={styles.similarVendorDropdown}
+                        disabled={similarVendorOptions.length === 0}
+                      >
+                        {similarVendorOptions.map((option) => (
+                          <Option key={option.value} value={option.value}>
+                            {option.label}
+                          </Option>
+                        ))}
+                      </Dropdown>
+                    </div>
                   </div>
                 </div>
 
@@ -3084,12 +3687,6 @@ function DiscoveryPageInner() {
                   </div>
                 ) : null}
 
-                <div className={styles.similarDivider} />
-
-                <Text size={200} className={styles.cardMeta}>
-                  Catalog matches
-                </Text>
-
                 {similarError ? (
                   <MessageBar intent="error">{similarError}</MessageBar>
                 ) : null}
@@ -3098,12 +3695,12 @@ function DiscoveryPageInner() {
                   <Spinner label="Searching..." />
                 ) : (
                   <div className={styles.similarResultsWrap}>
-                    {similarResults.length === 0 ? (
+                    {filteredSimilarResults.length === 0 ? (
                       <Text className={styles.cardMeta} style={{ padding: "12px" }}>
                         No matches found.
                       </Text>
                     ) : (
-                      similarResults.map((row) => {
+                      filteredSimilarResults.map((row) => {
                         const rowTitle = row.title ?? row.spu ?? row.id;
                         const rowSpu = String(row.spu ?? "").trim();
                         const imageSrc = row.small_image_url || row.thumbnail_url;
@@ -3128,14 +3725,14 @@ function DiscoveryPageInner() {
                             ) : (
                               <div className={styles.similarResultImage} />
                             )}
+                            <span className={styles.similarResultSkuColumn}>
+                              {rowSpu || "\u2014"}
+                            </span>
                             <div className={styles.similarResultText}>
                               <span className={styles.similarResultPrimary}>
                                 {rowTitle}
                               </span>
                             </div>
-                            <span className={styles.similarResultSpu}>
-                              {rowSpu || "\u2014"}
-                            </span>
                           </button>
                         );
                       })
@@ -3174,11 +3771,8 @@ function DiscoveryPageInner() {
       </Dialog>
 
       {error ? <MessageBar intent="error">{error}</MessageBar> : null}
-      {isLoading || !hasLoadedOnce ? (
-        <div className={styles.loadingState}>
-          <Spinner className={styles.loadingSpinner} size="medium" />
-          <Text className={styles.loadingText}>Loading products</Text>
-        </div>
+      {isLoading ? (
+        <Spinner label={t("discovery.loading")} />
       ) : items.length === 0 ? (
         <Text className={styles.emptyState}>
           {t("discovery.empty")}
@@ -3188,8 +3782,20 @@ function DiscoveryPageInner() {
           {items.map((item) => {
             const title = item.title ?? item.product_id;
             const price = item.price ?? item.last_price;
-            const providerLabel = item.provider.toUpperCase();
-            const productUrl = item.product_url ?? item.source_url;
+            const isStackCard = Boolean(item.is_stack_card);
+            const stackId = String(item.stack_id ?? "").trim();
+            const stackItemCount =
+              typeof item.stack_size === "number" && Number.isFinite(item.stack_size)
+                ? Math.max(0, Math.trunc(item.stack_size))
+                : Array.isArray(item.stack_member_items)
+                  ? item.stack_member_items.length
+                  : 0;
+            const providerLabel = isStackCard
+              ? String(item.stack_provider_label ?? "Stack")
+              : item.provider.toUpperCase();
+            const productUrl = isStackCard
+              ? null
+              : item.product_url ?? item.source_url;
             const reviewLabel =
               item.reviews ?? item.last_reviews ?? null;
             const reviewValue =
@@ -3201,7 +3807,7 @@ function DiscoveryPageInner() {
             const soldToday = item.sold_today ?? 0;
             const sold7d = item.sold_7d ?? 0;
             const soldAll = item.sold_all_time ?? 0;
-            const itemKey = `${item.provider}:${item.product_id}`;
+            const itemKey = getDiscoveryItemKey(item);
             const trendingMeta = trendingMetaByItemKey.get(itemKey) ?? computeTrendingMetrics(item);
             const isTrending = trendingMeta.isTrending;
             const trendAllRank = trendingRanksByItemKey.allRank.get(itemKey) ?? null;
@@ -3229,6 +3835,18 @@ function DiscoveryPageInner() {
                   )}`
                 : null);
             const imageSrc = localImageUrl || item.image_url;
+            const priceLabel =
+              isStackCard &&
+              typeof price === "number" &&
+              Number.isFinite(price) &&
+              typeof item.stack_price_max === "number" &&
+              Number.isFinite(item.stack_price_max) &&
+              item.stack_price_max > price
+                ? `${formatCurrency(price, "SEK")} - ${formatCurrency(
+                    item.stack_price_max,
+                    "SEK"
+                  )}`
+                : formatCurrency(price, "SEK");
             const categoryClick = (level: "l1" | "l2" | "l3", value: string) =>
               setCategorySelections([{ level, value }]);
             const breadcrumbs = [
@@ -3289,7 +3907,13 @@ function DiscoveryPageInner() {
                         </div>
                       }
                     >
-                      <span className={styles.trendingBadge} aria-label="Trending">
+                      <span
+                        className={mergeClasses(
+                          styles.trendingBadge,
+                          isStackCard ? styles.trendingBadgeShifted : undefined
+                        )}
+                        aria-label="Trending"
+                      >
                         <svg
                           className={styles.trendingIcon}
                           viewBox="0 0 24 24"
@@ -3306,6 +3930,29 @@ function DiscoveryPageInner() {
                         </svg>
                       </span>
                     </Tooltip>
+                  ) : null}
+                  {isStackCard ? (
+                    <span
+                      className={styles.stackBadge}
+                      aria-label="Stacked"
+                    >
+                      <svg
+                        className={styles.stackBadgeIcon}
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M12 4l-8 4l8 4l8 -4l-8 -4" />
+                        <path d="M4 12l8 4l8 -4" />
+                        <path d="M4 16l8 4l8 -4" />
+                      </svg>
+                    </span>
                   ) : null}
                   {badgeHref ? (
                     <a
@@ -3334,9 +3981,17 @@ function DiscoveryPageInner() {
                       appearance="outline"
                       className={mergeClasses(
                         styles.providerBadge,
-                        item.provider === "cdon"
-                          ? styles.cdonBadge
-                          : styles.fyndiqBadge
+                        isStackCard && providerLabel.toLowerCase() === "stack"
+                          ? styles.multiProviderBadge
+                          : isStackCard && providerLabel.toLowerCase() === "cdon"
+                            ? styles.cdonBadge
+                            : isStackCard && providerLabel.toLowerCase() === "fyndiq"
+                              ? styles.fyndiqBadge
+                          : item.provider === "cdon"
+                            ? styles.cdonBadge
+                            : item.provider === "fyndiq"
+                              ? styles.fyndiqBadge
+                              : undefined
                       )}
                     >
                       {providerLabel}
@@ -3373,9 +4028,9 @@ function DiscoveryPageInner() {
                       className={styles.priceText}
                       style={{ color: tokens.colorBrandForeground1 }}
                     >
-                      {formatCurrency(price, "SEK")}
+                      {priceLabel}
                     </Text>
-                    {item.previous_price ? (
+                    {!isStackCard && item.previous_price ? (
                       <Text
                         size={200}
                         className={mergeClasses(
@@ -3470,7 +4125,8 @@ function DiscoveryPageInner() {
                         type="button"
                         className={mergeClasses(
                           styles.actionIconButton,
-                          heartActive ? styles.actionIconLiked : undefined
+                          isStackCard ? styles.stackDisabledAction : undefined,
+                          !isStackCard && heartActive ? styles.actionIconLiked : undefined
                         )}
                         aria-pressed={heartActive}
                         aria-label={
@@ -3478,8 +4134,10 @@ function DiscoveryPageInner() {
                             ? t("discovery.wishlist.savedInList")
                             : t("discovery.wishlist.like")
                         }
+                        disabled={isStackCard}
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (isStackCard) return;
                           updateItemAction(item, "like");
                         }}
                       >
@@ -3497,7 +4155,7 @@ function DiscoveryPageInner() {
                           />
                         </svg>
                       </button>
-                      {wishlistNames.length > 0 ? (
+                      {!isStackCard && wishlistNames.length > 0 ? (
                         <div
                           className={mergeClasses(
                             styles.wishlistPopover,
@@ -3575,12 +4233,17 @@ function DiscoveryPageInner() {
                         type="button"
                         className={mergeClasses(
                           styles.actionIconButton,
-                          productionButtonActive ? styles.actionIconSimilarLinked : undefined
+                          isStackCard ? styles.stackDisabledAction : undefined,
+                          !isStackCard && productionButtonActive
+                            ? styles.actionIconSimilarLinked
+                            : undefined
                         )}
                         aria-pressed={productionButtonActive}
                         aria-label={t("discovery.selection.produce")}
+                        disabled={isStackCard}
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (isStackCard) return;
                           void toggleProductionItem(item);
                         }}
                       >
@@ -3609,12 +4272,15 @@ function DiscoveryPageInner() {
                         type="button"
                         className={mergeClasses(
                           styles.actionIconButton,
+                          isStackCard ? styles.stackDisabledAction : undefined,
                           similarStateDone ? styles.actionIconSimilarLinked : undefined
                         )}
                         aria-pressed={similarStateDone}
                         aria-label="Similar search"
+                        disabled={isStackCard}
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (isStackCard) return;
                           openSimilarDialog(item);
                         }}
                       >
@@ -3642,7 +4308,8 @@ function DiscoveryPageInner() {
                       type="button"
                       className={mergeClasses(
                         styles.actionIconButton,
-                        item.removed ? styles.actionIconRemoved : undefined
+                        isStackCard ? styles.stackDisabledAction : undefined,
+                        !isStackCard && item.removed ? styles.actionIconRemoved : undefined
                       )}
                       aria-pressed={item.removed}
                       aria-label={
@@ -3650,8 +4317,10 @@ function DiscoveryPageInner() {
                           ? t("discovery.actions.restore")
                           : t("discovery.actions.remove")
                       }
+                      disabled={isStackCard}
                       onClick={(event) => {
                         event.stopPropagation();
+                        if (isStackCard) return;
                         updateItemAction(item, "remove");
                       }}
                     >
@@ -3675,7 +4344,21 @@ function DiscoveryPageInner() {
                       </svg>
                     </button>
                   </div>
-                  {productUrl ? (
+                  {isStackCard && stackId ? (
+                    <button
+                      type="button"
+                      className={styles.stackViewButton}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStackView(stackId);
+                      }}
+                    >
+                      {t("discovery.stack.backToAllCount", {
+                        count: stackItemCount,
+                      })}
+                    </button>
+                  ) : null}
+                  {!isStackCard && productUrl ? (
                     <a
                       href={productUrl}
                       target="_blank"

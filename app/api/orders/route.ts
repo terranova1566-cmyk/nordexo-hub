@@ -54,8 +54,13 @@ const DEFAULT_ORDERS_SORT_OPTION: OrdersSortOption = "transaction_desc";
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
-const PARTNER_INFORMED_TEMPLATE_NAME =
-  "EN - Tracking and order info to partner";
+const PARTNER_INFORMED_TEMPLATE_NAMES = new Set([
+  "en - tracking and order info to partner",
+  "en_order_partner_tracking",
+]);
+const PARTNER_INFORMED_TEMPLATE_IDS = new Set([
+  "en_order_partner_tracking",
+]);
 const PARTNER_INFORMED_RECEIVER_KEYS = new Set([
   "letsdeal_se",
   "letsdeal_no",
@@ -1256,11 +1261,16 @@ export async function GET(request: Request) {
     try {
       const { data: partnerTemplates } = await adminClient
         .from("partner_email_templates")
-        .select("template_id")
-        .eq("name", PARTNER_INFORMED_TEMPLATE_NAME);
-      ((partnerTemplates ?? []) as Array<{ template_id?: unknown }>).forEach((row) => {
+        .select("template_id,name");
+      ((partnerTemplates ?? []) as Array<{ template_id?: unknown; name?: unknown }>).forEach((row) => {
         const templateId = String(row.template_id ?? "").trim();
-        if (templateId) partnerTemplateIds.add(templateId);
+        const templateNameToken = normalizeToken(row.name);
+        if (
+          (templateId && PARTNER_INFORMED_TEMPLATE_IDS.has(templateId)) ||
+          (templateNameToken && PARTNER_INFORMED_TEMPLATE_NAMES.has(templateNameToken))
+        ) {
+          if (templateId) partnerTemplateIds.add(templateId);
+        }
       });
     } catch {
       // Non-blocking: keep partner informed as false if template metadata lookup fails.
@@ -1301,9 +1311,12 @@ export async function GET(request: Request) {
 
         const notificationNameToken = normalizeToken(entry.notification_name);
         const templateId = String(entry.template_id ?? "").trim();
+        const templateIdToken = normalizeToken(templateId);
         const isMatchingTemplate =
           (templateId && partnerTemplateIds.has(templateId)) ||
-          notificationNameToken === normalizeToken(PARTNER_INFORMED_TEMPLATE_NAME);
+          (templateIdToken && PARTNER_INFORMED_TEMPLATE_IDS.has(templateIdToken)) ||
+          (notificationNameToken &&
+            PARTNER_INFORMED_TEMPLATE_NAMES.has(notificationNameToken));
         if (!isMatchingTemplate) return;
 
         const recipientEmailToken = normalizeToken(entry.recipient_email);

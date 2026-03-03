@@ -3,11 +3,17 @@
 import {
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogBody,
   DialogSurface,
   DialogTitle,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   MessageBar,
   Spinner,
   Table,
@@ -73,7 +79,26 @@ const useStyles = makeStyles({
   },
   tableTitle: {
     fontWeight: tokens.fontWeightSemibold,
+  },
+  tableHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    justifyContent: "space-between",
     marginBottom: "12px",
+  },
+  tableActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  selectionCount: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+  },
+  sellerCol: {
+    width: "120px",
+    minWidth: "120px",
   },
   imageExplorerCol: {
     width: "190px",
@@ -97,6 +122,28 @@ const useStyles = makeStyles({
   downloadsCol: {
     width: "290px",
     minWidth: "290px",
+  },
+  selectCol: {
+    width: "56px",
+    minWidth: "56px",
+    maxWidth: "56px",
+    textAlign: "right",
+  },
+  selectCheckboxWrap: {
+    display: "flex",
+    width: "100%",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  selectCheckbox: {
+    "& .fui-Checkbox__indicator": {
+      backgroundColor: tokens.colorNeutralBackground1,
+    },
+    "& input:checked + .fui-Checkbox__indicator": {
+      backgroundColor: tokens.colorBrandBackground,
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
   },
   queueDeckWrap: {
     position: "relative",
@@ -290,6 +337,8 @@ export default function ProductDeliveryPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [selectedListIds, setSelectedListIds] = useState<Set<string>>(new Set());
+  const [isApplyingAction, setIsApplyingAction] = useState(false);
 
   const loadLists = useCallback(async () => {
     setIsLoading(true);
@@ -311,6 +360,21 @@ export default function ProductDeliveryPage() {
   useEffect(() => {
     void loadLists();
   }, [loadLists]);
+
+  useEffect(() => {
+    setSelectedListIds((prev) => {
+      if (prev.size === 0) return prev;
+      const available = new Set(lists.map((list) => list.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (available.has(id)) {
+          next.add(id);
+        }
+      });
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [lists]);
 
   const handleDownload = async (list: DeliveryList, mode: "excel" | "images") => {
     const key = `${list.id}:${mode}`;
@@ -408,6 +472,65 @@ export default function ProductDeliveryPage() {
     }
   };
 
+  const handleDeleteSelectedLists = useCallback(async () => {
+    const listIds = Array.from(selectedListIds);
+    if (listIds.length === 0 || isApplyingAction) return;
+    setIsApplyingAction(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/product-delivery/digideal/lists", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listIds }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { deletedIds?: string[]; failedIds?: string[]; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === "string" && payload.error.trim()
+            ? payload.error
+            : t("products.lists.deleteError")
+        );
+      }
+
+      const deletedIds = Array.isArray(payload?.deletedIds)
+        ? payload.deletedIds
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        : listIds;
+      const deletedIdSet = new Set(deletedIds);
+
+      setLists((prev) => prev.filter((list) => !deletedIdSet.has(list.id)));
+      setSelectedListIds(new Set());
+
+      if (previewList && deletedIdSet.has(previewList.id)) {
+        setPreviewList(null);
+        setPreviewItems([]);
+        setPreviewError(null);
+      }
+
+      const failedIds = Array.isArray(payload?.failedIds)
+        ? payload.failedIds
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        : [];
+      if (failedIds.length > 0) {
+        setError(t("products.lists.deleteError"));
+        await loadLists();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsApplyingAction(false);
+    }
+  }, [selectedListIds, isApplyingAction, previewList, loadLists, t]);
+
+  const allSelected = lists.length > 0 && lists.every((list) => selectedListIds.has(list.id));
+  const someSelected = lists.some((list) => selectedListIds.has(list.id));
+  const selectAllState = allSelected ? true : someSelected ? "mixed" : false;
+  const hasSelection = selectedListIds.size > 0;
+
   const previewTitle = useMemo(() => {
     if (!previewList) return t("digidealDelivery.preview.button");
     return `${t("digidealDelivery.preview.title")} - ${previewList.name}`;
@@ -421,7 +544,38 @@ export default function ProductDeliveryPage() {
       </div>
 
       <Card className={styles.tableCard}>
-        <Text className={styles.tableTitle}>{t("digidealDelivery.partner.digideal")}</Text>
+        <div className={styles.tableHeaderRow}>
+          <Text className={styles.tableTitle}>{t("digidealDelivery.partner.digideal")}</Text>
+          <div className={styles.tableActions}>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  appearance={hasSelection ? "primary" : "outline"}
+                  disabled={!hasSelection || isApplyingAction}
+                >
+                  {t("products.actions.label")}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuItem
+                    disabled={!hasSelection || isApplyingAction}
+                    onClick={() => {
+                      void handleDeleteSelectedLists();
+                    }}
+                  >
+                    {t("common.delete")}
+                  </MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+            <Text className={styles.selectionCount}>
+              {t("products.selection.selectedCount", {
+                count: selectedListIds.size,
+              })}
+            </Text>
+          </div>
+        </div>
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
         {isLoading ? (
           <Spinner label={t("products.loading")} />
@@ -431,6 +585,7 @@ export default function ProductDeliveryPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHeaderCell className={styles.sellerCol}>Seller</TableHeaderCell>
                 <TableHeaderCell className={styles.imageExplorerCol}>
                   {t("digidealDelivery.table.imageExplorer")}
                 </TableHeaderCell>
@@ -449,6 +604,23 @@ export default function ProductDeliveryPage() {
                 <TableHeaderCell className={styles.downloadsCol}>
                   {t("digidealDelivery.table.downloads")}
                 </TableHeaderCell>
+                <TableHeaderCell className={styles.selectCol}>
+                  <div className={styles.selectCheckboxWrap}>
+                    <Checkbox
+                      aria-label={t("common.selectAll")}
+                      checked={selectAllState}
+                      disabled={isLoading || lists.length === 0}
+                      className={styles.selectCheckbox}
+                      onChange={(_, data) => {
+                        if (data.checked === true) {
+                          setSelectedListIds(new Set(lists.map((list) => list.id)));
+                          return;
+                        }
+                        setSelectedListIds(new Set());
+                      }}
+                    />
+                  </div>
+                </TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -456,6 +628,7 @@ export default function ProductDeliveryPage() {
                 const deckImages = (list.preview_images ?? []).slice(0, 5);
                 return (
                   <TableRow key={list.id}>
+                    <TableCell className={styles.sellerCol}>DigiDeal</TableCell>
                     <TableCell className={styles.imageExplorerCol}>
                       {deckImages.length === 0 ? (
                         <div className={styles.queueDeckPlaceholder}>
@@ -555,6 +728,28 @@ export default function ProductDeliveryPage() {
                         >
                           {t("digidealDelivery.download.imagesZip")}
                         </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className={styles.selectCol}>
+                      <div className={styles.selectCheckboxWrap}>
+                        <Checkbox
+                          checked={selectedListIds.has(list.id)}
+                          aria-label={t("common.selectItem", {
+                            item: list.name || t("common.notAvailable"),
+                          })}
+                          className={styles.selectCheckbox}
+                          onChange={(_, data) => {
+                            setSelectedListIds((prev) => {
+                              const next = new Set(prev);
+                              if (data.checked === true) {
+                                next.add(list.id);
+                              } else {
+                                next.delete(list.id);
+                              }
+                              return next;
+                            });
+                          }}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

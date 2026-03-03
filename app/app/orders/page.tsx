@@ -194,6 +194,8 @@ type EmailTemplatePreview = {
   };
 };
 
+type OrdersEmailDialogMode = "partner_only" | "delivery_letsdeal";
+
 const useStyles = makeStyles({
   page: {
     display: "flex",
@@ -1248,7 +1250,15 @@ const ORDER_EMAIL_BCC_OPTIONS = [
   "support@letsdeal.se",
   "support@letsdeal.no",
 ] as const;
+const ORDER_EMAIL_DIALOG_MODE = {
+  PARTNER_ONLY: "partner_only",
+  DELIVERY_LETSDEAL: "delivery_letsdeal",
+} as const;
 const ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS = [
+  {
+    key: "none",
+    labelKey: "orders.email.partnerReceiver.none",
+  },
   {
     key: "letsdeal_se",
     labelKey: "orders.email.partnerReceiver.letsdealSe",
@@ -1355,6 +1365,9 @@ export default function OrdersPage() {
     {}
   );
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailDialogMode, setEmailDialogMode] = useState<OrdersEmailDialogMode>(
+    ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY
+  );
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateOption[]>([]);
   const [emailSenders, setEmailSenders] = useState<EmailSenderOption[]>([]);
   const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState("");
@@ -1724,8 +1737,11 @@ export default function OrdersPage() {
     const sentAt = String(row.latest_notification_sent_at ?? "").trim();
     return Boolean(name || sentAt);
   };
-  const openEmailDialog = async () => {
+  const openEmailDialog = async (
+    mode: OrdersEmailDialogMode = ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY
+  ) => {
     if (selectedRows.length === 0) return;
+    setEmailDialogMode(mode);
     setEmailDialogOpen(true);
     setEmailDialogLoading(true);
     setEmailDialogError(null);
@@ -1782,6 +1798,7 @@ export default function OrdersPage() {
   };
   const closeEmailDialog = () => {
     setEmailDialogOpen(false);
+    setEmailDialogMode(ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY);
     setEmailDialogLoading(false);
     setEmailPreviewLoading(false);
     setEmailDialogError(null);
@@ -1921,8 +1938,15 @@ export default function OrdersPage() {
     }
   };
   const handleSendEmails = async () => {
-    if (!selectedEmailTemplate || !selectedEmailSender || selectedRows.length === 0) return;
-    if (!selectedEmailPartnerReceiver) {
+    const isPartnerOnlyMode =
+      emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY;
+    if (!selectedEmailSender || selectedRows.length === 0) return;
+    if (isPartnerOnlyMode && !selectedEmailTemplate) return;
+    if (
+      isPartnerOnlyMode &&
+      (!selectedEmailPartnerReceiver ||
+        selectedEmailPartnerReceiver.key === "none")
+    ) {
       setEmailDialogError("A partner receiver is required.");
       return;
     }
@@ -1930,20 +1954,25 @@ export default function OrdersPage() {
     setEmailDialogError(null);
     setEmailDialogInfo(null);
     try {
+      const requestBody: Record<string, unknown> = {
+        ids: selectedRows.map((row) => row.id),
+        mode: emailDialogMode,
+        senderEmail: selectedEmailSender.email,
+        senderName: selectedEmailSender.name ?? undefined,
+        bccEmails: selectedEmailBcc,
+      };
+      if (isPartnerOnlyMode) {
+        requestBody.templateId = selectedEmailTemplate?.template_id;
+        requestBody.subjectTemplate = emailSubjectTemplateDraft;
+        requestBody.bodyTemplate = emailBodyTemplateDraft;
+        requestBody.macros = selectedEmailMacroKeys;
+        requestBody.partnerReceiverKey = selectedEmailPartnerReceiver?.key;
+      }
+
       const response = await fetch("/api/orders/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ids: selectedRows.map((row) => row.id),
-          templateId: selectedEmailTemplate.template_id,
-          subjectTemplate: emailSubjectTemplateDraft,
-          bodyTemplate: emailBodyTemplateDraft,
-          macros: selectedEmailMacroKeys,
-          senderEmail: selectedEmailSender.email,
-          senderName: selectedEmailSender.name ?? undefined,
-          bccEmails: selectedEmailBcc,
-          partnerReceiverKey: selectedEmailPartnerReceiver.key,
-        }),
+        body: JSON.stringify(requestBody),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -1959,7 +1988,7 @@ export default function OrdersPage() {
         : [];
       const fallbackNotificationName =
         String(payload?.notification_name ?? "").trim() ||
-        selectedEmailTemplate.name ||
+        selectedEmailTemplate?.name ||
         "Notification sent";
       const fallbackNotificationSentAt = String(
         payload?.notification_sent_at ?? ""
@@ -2007,7 +2036,12 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    if (!emailDialogOpen || !selectedEmailTemplate || !previewOrderRow) {
+    if (
+      !emailDialogOpen ||
+      emailDialogMode !== ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY ||
+      !selectedEmailTemplate ||
+      !previewOrderRow
+    ) {
       setEmailPreview(null);
       setEmailPreviewLoading(false);
       return;
@@ -2120,6 +2154,7 @@ export default function OrdersPage() {
     detailsById,
     emailBodyTemplateDraft,
     emailDialogOpen,
+    emailDialogMode,
     emailSubjectTemplateDraft,
     previewOrderRow,
     selectedEmailSenderSignature,
@@ -2128,15 +2163,24 @@ export default function OrdersPage() {
   ]);
 
   useEffect(() => {
-    if (!emailDialogOpen) return;
-    if (!selectedEmailTemplate) {
+    if (
+      !emailDialogOpen ||
+      emailDialogMode !== ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY ||
+      !selectedEmailTemplate
+    ) {
       setEmailSubjectTemplateDraft("");
       setEmailBodyTemplateDraft("");
       return;
     }
     setEmailSubjectTemplateDraft(selectedEmailTemplate.subject_template ?? "");
     setEmailBodyTemplateDraft(selectedEmailTemplate.body_template ?? "");
-  }, [emailDialogOpen, emailTemplates, selectedEmailTemplate, selectedEmailTemplateId]);
+  }, [
+    emailDialogMode,
+    emailDialogOpen,
+    emailTemplates,
+    selectedEmailTemplate,
+    selectedEmailTemplateId,
+  ]);
 
   useEffect(() => {
     if (!urlStateReady) return;
@@ -3115,14 +3159,24 @@ export default function OrdersPage() {
               </MenuPopover>
             </Menu>
             {hasSelection ? (
-              <Button
-                appearance="primary"
-                onClick={() => {
-                  void openEmailDialog();
-                }}
-              >
-                {t("orders.email.button")}
-              </Button>
+              <>
+                <Button
+                  appearance="primary"
+                  onClick={() => {
+                    void openEmailDialog(ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY);
+                  }}
+                >
+                  {t("orders.email.button")}
+                </Button>
+                <Button
+                  appearance="secondary"
+                  onClick={() => {
+                    void openEmailDialog(ORDER_EMAIL_DIALOG_MODE.DELIVERY_LETSDEAL);
+                  }}
+                >
+                  {t("orders.delivery.button")}
+                </Button>
+              </>
             ) : null}
             <Button
               appearance="outline"
@@ -4257,7 +4311,11 @@ export default function OrdersPage() {
       >
         <DialogSurface className={styles.emailDialog}>
           <DialogBody>
-            <DialogTitle>{t("orders.email.dialogTitle")}</DialogTitle>
+            <DialogTitle>
+              {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.DELIVERY_LETSDEAL
+                ? t("orders.delivery.dialogTitle")
+                : t("orders.email.dialogTitle")}
+            </DialogTitle>
             <DialogContent className={styles.emailDialogBody}>
               {emailDialogLoading ? (
                 <Spinner size="tiny" />
@@ -4267,7 +4325,8 @@ export default function OrdersPage() {
                     <Text className={styles.emailSelectionMeta}>
                       {t("orders.email.selectionCount", { count: selectedRows.length })}
                     </Text>
-                    {previewOrderRow ? (
+                    {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY &&
+                    previewOrderRow ? (
                       <Text className={styles.emailSelectionMeta}>
                         {t("orders.email.previewCustomer", {
                           order: previewOrderRow.order_number ?? previewOrderRow.id,
@@ -4277,30 +4336,32 @@ export default function OrdersPage() {
                     ) : null}
                   </div>
                   <div className={styles.resendMetaRow}>
-                    <Field label={t("orders.email.templateLabel")}>
-                      <Dropdown
-                        value={selectedEmailTemplate?.name ?? ""}
-                        selectedOptions={
-                          selectedEmailTemplateId ? [selectedEmailTemplateId] : []
-                        }
-                        placeholder={t("orders.email.templatePlaceholder")}
-                        onOptionSelect={(_, data) => {
-                          setSelectedEmailTemplateId(String(data.optionValue ?? ""));
-                          setEmailDialogInfo(null);
-                          setEmailDialogError(null);
-                        }}
-                      >
-                        {emailTemplates.map((template) => (
-                          <Option
-                            key={template.template_id}
-                            value={template.template_id}
-                            text={template.name}
-                          >
-                            {template.name}
-                          </Option>
-                        ))}
-                      </Dropdown>
-                    </Field>
+                    {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY ? (
+                      <Field label={t("orders.email.templateLabel")}>
+                        <Dropdown
+                          value={selectedEmailTemplate?.name ?? ""}
+                          selectedOptions={
+                            selectedEmailTemplateId ? [selectedEmailTemplateId] : []
+                          }
+                          placeholder={t("orders.email.templatePlaceholder")}
+                          onOptionSelect={(_, data) => {
+                            setSelectedEmailTemplateId(String(data.optionValue ?? ""));
+                            setEmailDialogInfo(null);
+                            setEmailDialogError(null);
+                          }}
+                        >
+                          {emailTemplates.map((template) => (
+                            <Option
+                              key={template.template_id}
+                              value={template.template_id}
+                              text={template.name}
+                            >
+                              {template.name}
+                            </Option>
+                          ))}
+                        </Dropdown>
+                      </Field>
+                    ) : null}
                     <Field label={t("orders.email.senderLabel")}>
                       <Dropdown
                         value={
@@ -4352,42 +4413,46 @@ export default function OrdersPage() {
                         ))}
                       </Dropdown>
                     </Field>
-                    <Field label={t("orders.email.partnerReceiverLabel")}>
-                      <Dropdown
-                        value={
-                          selectedEmailPartnerReceiver
-                            ? t(selectedEmailPartnerReceiver.labelKey)
-                            : ""
-                        }
-                        selectedOptions={
-                          selectedEmailPartnerReceiverKey
-                            ? [selectedEmailPartnerReceiverKey]
-                            : []
-                        }
-                        placeholder={t("orders.email.partnerReceiverPlaceholder")}
-                        onOptionSelect={(_, data) => {
-                          setSelectedEmailPartnerReceiverKey(
-                            String(data.optionValue ?? "")
-                          );
-                          setEmailDialogInfo(null);
-                          setEmailDialogError(null);
-                        }}
-                      >
-                        {ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS.map((receiver) => (
-                          <Option
-                            key={receiver.key}
-                            value={receiver.key}
-                            text={t(receiver.labelKey)}
-                          >
-                            {t(receiver.labelKey)}
-                          </Option>
-                        ))}
-                      </Dropdown>
-                    </Field>
+                    {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY ? (
+                      <Field label={t("orders.email.partnerReceiverLabel")}>
+                        <Dropdown
+                          value={
+                            selectedEmailPartnerReceiver
+                              ? t(selectedEmailPartnerReceiver.labelKey)
+                              : ""
+                          }
+                          selectedOptions={
+                            selectedEmailPartnerReceiverKey
+                              ? [selectedEmailPartnerReceiverKey]
+                              : []
+                          }
+                          placeholder={t("orders.email.partnerReceiverPlaceholder")}
+                          onOptionSelect={(_, data) => {
+                            setSelectedEmailPartnerReceiverKey(
+                              String(data.optionValue ?? "")
+                            );
+                            setEmailDialogInfo(null);
+                            setEmailDialogError(null);
+                          }}
+                        >
+                          {ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS.map((receiver) => (
+                            <Option
+                              key={receiver.key}
+                              value={receiver.key}
+                              text={t(receiver.labelKey)}
+                            >
+                              {t(receiver.labelKey)}
+                            </Option>
+                          ))}
+                        </Dropdown>
+                      </Field>
+                    ) : null}
                   </div>
 
                   <Text className={styles.emailSelectionMeta}>
-                    {t("orders.email.sendpulseNote")}
+                    {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.DELIVERY_LETSDEAL
+                      ? t("orders.delivery.modeHelp")
+                      : t("orders.email.sendpulseNote")}
                   </Text>
 
                   {emailDialogError ? (
@@ -4397,94 +4462,126 @@ export default function OrdersPage() {
                     <Text className={styles.emailInfoText}>{emailDialogInfo}</Text>
                   ) : null}
 
-                  <div className={styles.emailSection}>
-                    <Text weight="semibold">{t("orders.email.editorTitle")}</Text>
-                    <Text className={styles.emailSelectionMeta}>
-                      {t("orders.email.editorHint")}
-                    </Text>
-                    <Field label={t("orders.email.editorSubjectLabel")}>
-                      <Input
-                        value={emailSubjectTemplateDraft}
-                        onChange={(_, data) => {
-                          setEmailSubjectTemplateDraft(data.value);
-                          setEmailDialogInfo(null);
-                          setEmailDialogError(null);
-                        }}
-                      />
-                    </Field>
-                    <Field label={t("orders.email.editorBodyLabel")}>
-                      <Textarea
-                        value={emailBodyTemplateDraft}
-                        onChange={(_, data) => {
-                          setEmailBodyTemplateDraft(data.value);
-                          setEmailDialogInfo(null);
-                          setEmailDialogError(null);
-                        }}
-                        className={styles.emailTemplateEditor}
-                        resize="vertical"
-                      />
-                    </Field>
-                  </div>
-
-                  <div className={styles.emailSection}>
-                    <Text weight="semibold">{t("orders.email.previewTitle")}</Text>
-                    <div className={styles.emailPreviewCard}>
-                      <div className={styles.emailPreviewHeader}>
+                  {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY ? (
+                    <>
+                      <div className={styles.emailSection}>
+                        <Text weight="semibold">{t("orders.email.editorTitle")}</Text>
                         <Text className={styles.emailSelectionMeta}>
-                          {t("orders.email.previewSubjectLabel")}
+                          {t("orders.email.editorHint")}
                         </Text>
-                        <Text weight="semibold">
-                          {emailPreview?.rendered_subject ||
-                            t("orders.email.previewSubjectEmpty")}
-                        </Text>
-                        {emailPreview?.macro_resolution?.missingRequiredMacros?.length ? (
-                          <Text className={styles.errorText}>
-                            {t("orders.email.previewMissingMacros", {
-                              macros: emailPreview.macro_resolution.missingRequiredMacros
-                                .map((macro) => `{{${macro}}}`)
-                                .join(", "),
-                            })}
-                          </Text>
-                        ) : null}
-                      </div>
-                      <div className={styles.emailPreviewBody}>
-                        {emailPreviewLoading ? (
-                          <Spinner size="tiny" />
-                        ) : (
-                          <div
-                            dangerouslySetInnerHTML={{
-                              __html: emailPreview?.rendered_body || "",
+                        <Field label={t("orders.email.editorSubjectLabel")}>
+                          <Input
+                            value={emailSubjectTemplateDraft}
+                            onChange={(_, data) => {
+                              setEmailSubjectTemplateDraft(data.value);
+                              setEmailDialogInfo(null);
+                              setEmailDialogError(null);
                             }}
                           />
-                        )}
+                        </Field>
+                        <Field label={t("orders.email.editorBodyLabel")}>
+                          <Textarea
+                            value={emailBodyTemplateDraft}
+                            onChange={(_, data) => {
+                              setEmailBodyTemplateDraft(data.value);
+                              setEmailDialogInfo(null);
+                              setEmailDialogError(null);
+                            }}
+                            className={styles.emailTemplateEditor}
+                            resize="vertical"
+                          />
+                        </Field>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className={styles.emailSection}>
-                    <Text className={styles.emailSelectionMeta}>
-                      {t("orders.email.macrosUsed")}
-                    </Text>
-                    <div className={styles.emailMacroBadges}>
-                      {selectedEmailMacroKeys.length > 0 ? (
-                        selectedEmailMacroKeys.map((macro) => (
-                          <Badge key={macro} appearance="tint" shape="rounded">
-                            {`{{${macro}}}`}
-                          </Badge>
-                        ))
-                      ) : (
+                      <div className={styles.emailSection}>
+                        <Text weight="semibold">{t("orders.email.previewTitle")}</Text>
+                        <div className={styles.emailPreviewCard}>
+                          <div className={styles.emailPreviewHeader}>
+                            <Text className={styles.emailSelectionMeta}>
+                              {t("orders.email.previewSubjectLabel")}
+                            </Text>
+                            <Text weight="semibold">
+                              {emailPreview?.rendered_subject ||
+                                t("orders.email.previewSubjectEmpty")}
+                            </Text>
+                            {emailPreview?.macro_resolution?.missingRequiredMacros
+                              ?.length ? (
+                              <Text className={styles.errorText}>
+                                {t("orders.email.previewMissingMacros", {
+                                  macros:
+                                    emailPreview.macro_resolution.missingRequiredMacros
+                                      .map((macro) => `{{${macro}}}`)
+                                      .join(", "),
+                                })}
+                              </Text>
+                            ) : null}
+                          </div>
+                          <div className={styles.emailPreviewBody}>
+                            {emailPreviewLoading ? (
+                              <Spinner size="tiny" />
+                            ) : (
+                              <div
+                                dangerouslySetInnerHTML={{
+                                  __html: emailPreview?.rendered_body || "",
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={styles.emailSection}>
                         <Text className={styles.emailSelectionMeta}>
-                          {t("orders.email.noMacros")}
+                          {t("orders.email.macrosUsed")}
                         </Text>
-                      )}
+                        <div className={styles.emailMacroBadges}>
+                          {selectedEmailMacroKeys.length > 0 ? (
+                            selectedEmailMacroKeys.map((macro) => (
+                              <Badge key={macro} appearance="tint" shape="rounded">
+                                {`{{${macro}}}`}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Text className={styles.emailSelectionMeta}>
+                              {t("orders.email.noMacros")}
+                            </Text>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.emailSection}>
+                      <Text weight="semibold">{t("orders.delivery.rulesTitle")}</Text>
+                      <Text className={styles.emailSelectionMeta}>
+                        {t("orders.delivery.rule.normal", {
+                          template: "se_support_deliveryconfirm_normal",
+                        })}
+                      </Text>
+                      <Text className={styles.emailSelectionMeta}>
+                        {t("orders.delivery.rule.shortDelay", {
+                          template: "se_support_deliveryconfirm_shortdelay",
+                        })}
+                      </Text>
+                      <Text className={styles.emailSelectionMeta}>
+                        {t("orders.delivery.rule.longDelay", {
+                          template: "se_support_deliveryconfirm_longdelay",
+                        })}
+                      </Text>
+                      <Text className={styles.emailSelectionMeta}>
+                        {t("orders.delivery.rule.partner", {
+                          template: "en_order_partner_tracking",
+                        })}
+                      </Text>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
             </DialogContent>
             <DialogActions className={styles.emailDialogActions}>
               <Text className={styles.emailSelectionMeta}>
-                {t("orders.email.sendSummary", { count: selectedRows.length })}
+                {emailDialogMode === ORDER_EMAIL_DIALOG_MODE.DELIVERY_LETSDEAL
+                  ? t("orders.delivery.sendSummary", { count: selectedRows.length })
+                  : t("orders.email.sendSummary", { count: selectedRows.length })}
               </Text>
               <div className={styles.emailActionGroup}>
                 <Button appearance="secondary" onClick={closeEmailDialog}>
@@ -4496,16 +4593,20 @@ export default function OrdersPage() {
                   disabled={
                     isSendingEmails ||
                     emailDialogLoading ||
-                    !selectedEmailTemplate ||
                     !selectedEmailSender ||
-                    !selectedEmailPartnerReceiver ||
+                    (emailDialogMode === ORDER_EMAIL_DIALOG_MODE.PARTNER_ONLY &&
+                      (!selectedEmailTemplate ||
+                        !selectedEmailPartnerReceiver ||
+                        selectedEmailPartnerReceiver.key === "none")) ||
                     selectedRows.length === 0
                   }
                 >
                   {isSendingEmails ? (
                     <Spinner size="tiny" />
                   ) : (
-                    t("orders.email.actions.send")
+                    emailDialogMode === ORDER_EMAIL_DIALOG_MODE.DELIVERY_LETSDEAL
+                      ? t("orders.delivery.actions.send")
+                      : t("orders.email.actions.send")
                   )}
                 </Button>
               </div>

@@ -116,6 +116,14 @@ type DeckHoverPreview = {
   y: number;
 };
 
+type QueueKeywordHoverPreview = {
+  fileName: string;
+  index: number;
+  proxyUrl: string;
+  x: number;
+  y: number;
+};
+
 const toImageProxyUrl = (
   rawUrl: string | null | undefined,
   options?: { width?: number; height?: number }
@@ -263,6 +271,15 @@ const useStyles = makeStyles({
   chromeViewProductsButton: {
     whiteSpace: "nowrap",
     minWidth: "148px",
+    backgroundColor: `${tokens.colorNeutralBackground1} !important`,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground1,
+    "&:hover": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+    "&:active": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
   },
   chromeBadge: {
     minWidth: "140px",
@@ -350,10 +367,10 @@ const useStyles = makeStyles({
     paddingInline: "10px",
     borderRadius: "999px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "#fff6cc",
     color: tokens.colorNeutralForeground1,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -363,12 +380,6 @@ const useStyles = makeStyles({
     WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
-  },
-  queueKeywordsFile: {
-    color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
-    wordBreak: "break-all",
   },
   queueKeywordsLoading: {
     color: tokens.colorNeutralForeground3,
@@ -391,6 +402,24 @@ const useStyles = makeStyles({
     objectFit: "contain",
     display: "block",
     backgroundColor: tokens.colorNeutralBackground2,
+  },
+  queueKeywordHoverPreview: {
+    position: "fixed",
+    width: "75px",
+    height: "75px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow8,
+    overflow: "hidden",
+    pointerEvents: "none",
+    zIndex: 2000,
+  },
+  queueKeywordHoverImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
   },
   previewDialog: {
     maxWidth: "1180px",
@@ -814,6 +843,8 @@ export default function BulkProcessingPage() {
   const [deckHoverPreview, setDeckHoverPreview] = useState<DeckHoverPreview | null>(
     null
   );
+  const [queueKeywordHoverPreview, setQueueKeywordHoverPreview] =
+    useState<QueueKeywordHoverPreview | null>(null);
   const [autoAssignFailedNames, setAutoAssignFailedNames] = useState<Set<string>>(
     new Set()
   );
@@ -2139,21 +2170,67 @@ export default function BulkProcessingPage() {
                               className={styles.queueKeywordBadgeList}
                               title={keywordItems.join(", ")}
                             >
-                              {keywordItems.map((item, index) => (
-                                <span
-                                  key={`${entry.name}-keyword-${index}`}
-                                  className={styles.queueKeywordBadge}
-                                >
-                                  {item}
-                                </span>
-                              ))}
+                              {keywordItems.map((item, index) => {
+                                const previewItem =
+                                  (queuePreviewByFile[entry.name] ?? []).find(
+                                    (candidate) => candidate.index === index
+                                  ) ?? (queuePreviewByFile[entry.name] ?? [])[index];
+                                const badgeHoverUrl = toImageProxyUrl(
+                                  previewItem?.imageUrl,
+                                  {
+                                    width: 75,
+                                    height: 75,
+                                  }
+                                );
+                                return (
+                                  <span
+                                    key={`${entry.name}-keyword-${index}`}
+                                    className={styles.queueKeywordBadge}
+                                    onMouseEnter={(ev) => {
+                                      if (!badgeHoverUrl) return;
+                                      setQueueKeywordHoverPreview({
+                                        fileName: entry.name,
+                                        index,
+                                        proxyUrl: badgeHoverUrl,
+                                        x: ev.clientX,
+                                        y: ev.clientY,
+                                      });
+                                    }}
+                                    onMouseMove={(ev) => {
+                                      setQueueKeywordHoverPreview((prev) => {
+                                        if (!prev) return prev;
+                                        if (
+                                          prev.fileName !== entry.name ||
+                                          prev.index !== index
+                                        ) {
+                                          return prev;
+                                        }
+                                        return { ...prev, x: ev.clientX, y: ev.clientY };
+                                      });
+                                    }}
+                                    onMouseLeave={() => {
+                                      setQueueKeywordHoverPreview((prev) => {
+                                        if (!prev) return prev;
+                                        if (
+                                          prev.fileName !== entry.name ||
+                                          prev.index !== index
+                                        ) {
+                                          return prev;
+                                        }
+                                        return null;
+                                      });
+                                    }}
+                                  >
+                                    {item}
+                                  </span>
+                                );
+                              })}
                             </div>
                           ) : (
                             <Text size={300} className={styles.queueKeywordsMain}>
                               -
                             </Text>
                           )}
-                          <Text className={styles.queueKeywordsFile}>{entry.name}</Text>
                         </div>
                       );
                     })()}
@@ -2426,6 +2503,22 @@ export default function BulkProcessingPage() {
             }
             alt=""
             className={styles.queueZoomImage}
+          />
+        </div>
+      ) : null}
+
+      {queueKeywordHoverPreview ? (
+        <div
+          className={styles.queueKeywordHoverPreview}
+          style={{
+            left: `${queueKeywordHoverPreview.x + 16}px`,
+            top: `${Math.max(16, queueKeywordHoverPreview.y - 38)}px`,
+          }}
+        >
+          <img
+            src={queueKeywordHoverPreview.proxyUrl}
+            alt=""
+            className={styles.queueKeywordHoverImage}
           />
         </div>
       ) : null}

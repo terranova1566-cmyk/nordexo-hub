@@ -2758,12 +2758,14 @@ const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<
   letsdeal: "2026-02-20T00:00:00.000Z",
   offerilla: "2026-02-20T00:00:00.000Z",
 };
+const AUTO_SUPPLIER_LOOKUP_PROVIDERS = new Set(["digideal"]);
 const SUPPLIER_AUTOMATION_PROVIDERS = new Set(["digideal", "letsdeal", "offerilla"]);
 const AUTO_SUPPLIER_RETRY_TICK_MS = 60_000;
-const AUTO_SUPPLIER_RETRY_BASE_DELAY_MS = 90_000;
-const AUTO_SUPPLIER_RETRY_MAX_DELAY_MS = 15 * 60_000;
-const AUTO_SUPPLIER_MAX_ATTEMPTS = 20;
-const AUTO_SUPPLIER_MAX_ITEMS_PER_CYCLE = 6;
+const AUTO_SUPPLIER_RETRY_BASE_DELAY_MS = 5 * 60_000;
+const AUTO_SUPPLIER_RETRY_MAX_DELAY_MS = 60 * 60_000;
+const AUTO_SUPPLIER_RETRY_HOURLY_AFTER_ATTEMPTS = 2;
+const AUTO_SUPPLIER_TARGET_COUNT = 10;
+const AUTO_SUPPLIER_MAX_ITEMS_PER_CYCLE = 1;
 
 export default function DigidealCampaignsPage() {
   const styles = useStyles();
@@ -3714,7 +3716,7 @@ export default function DigidealCampaignsPage() {
   }, [attemptAutoPickDigidealVariant, isAdmin, items, provider, variantsDialogOpen, variantsTarget]);
 
   useEffect(() => {
-    if (provider !== "digideal") return;
+    if (!AUTO_SUPPLIER_LOOKUP_PROVIDERS.has(provider)) return;
     const timer = window.setInterval(() => {
       setAutoSupplierRetryTick((prev) => prev + 1);
     }, AUTO_SUPPLIER_RETRY_TICK_MS);
@@ -3722,13 +3724,16 @@ export default function DigidealCampaignsPage() {
   }, [provider]);
 
   useEffect(() => {
-    if (provider !== "digideal") return;
+    if (!AUTO_SUPPLIER_LOOKUP_PROVIDERS.has(provider)) return;
     if (!ENABLE_AUTO_SUPPLIER_LOOKUP) return;
     if (!isAdmin) return;
     if (bulkFindingSuppliers) return;
 
     const nextRetryDelayMs = (attempts: number) => {
       const safeAttempts = Math.max(1, attempts);
+      if (safeAttempts >= AUTO_SUPPLIER_RETRY_HOURLY_AFTER_ATTEMPTS) {
+        return AUTO_SUPPLIER_RETRY_MAX_DELAY_MS;
+      }
       return Math.min(
         AUTO_SUPPLIER_RETRY_MAX_DELAY_MS,
         AUTO_SUPPLIER_RETRY_BASE_DELAY_MS * safeAttempts
@@ -3760,8 +3765,9 @@ export default function DigidealCampaignsPage() {
         typeof item.supplier_count === "number" && Number.isFinite(item.supplier_count)
           ? Number(item.supplier_count)
           : null;
-      const hasSuggestions = supplierCount !== null && supplierCount > 0;
-      if (hasSuggestions) {
+      const hasSufficientSuggestions =
+        supplierCount !== null && supplierCount >= AUTO_SUPPLIER_TARGET_COUNT;
+      if (hasSufficientSuggestions) {
         autoSupplierSearchStateRef.current.delete(productId);
         return false;
       }
@@ -3769,7 +3775,6 @@ export default function DigidealCampaignsPage() {
 
       const retryState = autoSupplierSearchStateRef.current.get(productId);
       if (!retryState) return true;
-      if (retryState.attempts >= AUTO_SUPPLIER_MAX_ATTEMPTS) return false;
       return nowMs >= retryState.nextRetryAt;
     }).slice(0, AUTO_SUPPLIER_MAX_ITEMS_PER_CYCLE);
 
@@ -3819,7 +3824,7 @@ export default function DigidealCampaignsPage() {
             );
           }
 
-          if (typeof offerCount === "number" && offerCount > 0) {
+          if (typeof offerCount === "number" && offerCount >= AUTO_SUPPLIER_TARGET_COUNT) {
             autoSupplierSearchStateRef.current.delete(productId);
           } else {
             const prevState = autoSupplierSearchStateRef.current.get(productId);
@@ -5439,6 +5444,7 @@ export default function DigidealCampaignsPage() {
         const params = new URLSearchParams({
           provider,
           product_id: item.product_id,
+          refresh: "1",
         });
         const imageUrls = normalizeImageUrls(item.image_urls);
         const imageUrl = item.primary_image_url || imageUrls[0] || null;

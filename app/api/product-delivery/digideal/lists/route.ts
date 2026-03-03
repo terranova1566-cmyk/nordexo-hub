@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { getThumbnailUrl } from "@/lib/product-media";
 import {
   DIGIDEAL_DELIVERY_LIST_PREFIX,
+  isDigiDealDeliveryListName,
   toDisplayDigiDealDeliveryListName,
   toStoredDigiDealDeliveryListName,
 } from "@/lib/product-delivery/digideal";
@@ -30,6 +31,17 @@ const resolveThumbnail = async (product: ProductImageRow) => {
   const imageUrls = await loadImageUrls(product.image_folder, { size: "thumb" });
   if (imageUrls.length > 0) return imageUrls[0];
   return getThumbnailUrl({ images: product.images }, null);
+};
+
+const normalizeIds = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as string[];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    )
+  );
 };
 
 export async function GET() {
@@ -167,5 +179,85 @@ export async function POST(request: Request) {
       created_at: data.created_at,
       item_count: 0,
     },
+  });
+}
+
+export async function DELETE(request: Request) {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let payload: { listId?: string; listIds?: unknown };
+  try {
+    payload = (await request.json()) as { listId?: string; listIds?: unknown };
+  } catch {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  const explicitListId = String(payload?.listId ?? "").trim();
+  const listIds = normalizeIds(payload?.listIds);
+  if (explicitListId) {
+    listIds.unshift(explicitListId);
+  }
+  const requestedIds = Array.from(new Set(listIds.filter(Boolean)));
+  if (requestedIds.length === 0) {
+    return NextResponse.json({ error: "Missing listIds." }, { status: 400 });
+  }
+
+  const { data: ownedRowsRaw, error: ownedRowsError } = await supabase
+    .from("product_manager_wishlists")
+    .select("id, name")
+    .eq("user_id", user.id)
+    .in("id", requestedIds);
+
+  if (ownedRowsError) {
+    return NextResponse.json({ error: ownedRowsError.message }, { status: 500 });
+  }
+
+  const ownedRows = (ownedRowsRaw ?? []) as Pick<DeliveryListRow, "id" | "name">[];
+  const validDeleteIds = ownedRows
+    .filter((row) => isDigiDealDeliveryListName(String(row.name ?? "")))
+    .map((row) => String(row.id ?? "").trim())
+    .filter(Boolean);
+
+  if (validDeleteIds.length === 0) {
+    return NextResponse.json({ error: "No matching delivery lists found." }, { status: 404 });
+  }
+
+  const { error: deleteItemsError } = await supabase
+    .from("product_manager_wishlist_items")
+    .delete()
+    .in("wishlist_id", validDeleteIds);
+
+  if (deleteItemsError) {
+    return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
+  }
+
+  const { data: deletedRows, error: deleteListsError } = await supabase
+    .from("product_manager_wishlists")
+    .delete()
+    .eq("user_id", user.id)
+    .in("id", validDeleteIds)
+    .select("id");
+
+  if (deleteListsError) {
+    return NextResponse.json({ error: deleteListsError.message }, { status: 500 });
+  }
+
+  const deletedIds = (deletedRows ?? [])
+    .map((row) => String((row as { id?: unknown }).id ?? "").trim())
+    .filter(Boolean);
+  const deletedIdSet = new Set(deletedIds);
+  const failedIds = requestedIds.filter((id) => !deletedIdSet.has(id));
+
+  return NextResponse.json({
+    ok: true,
+    deletedIds,
+    failedIds,
   });
 }

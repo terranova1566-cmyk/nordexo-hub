@@ -10,12 +10,16 @@ const PRODUCT_SELECT_WITH_IDENTICAL = `${PRODUCT_SELECT_BASE}, identical_spu`;
 
 const isMissingIdenticalSpuColumn = (message: string) =>
   message.toLowerCase().includes("identical_spu");
+const isMissingStackTable = (message: string) =>
+  message.toLowerCase().includes("discovery_product_stack_items");
+const isMissingHiddenGlobalTable = (message: string) =>
+  message.toLowerCase().includes("discovery_hidden_products_global");
 
 type ProviderKey = "cdon" | "fyndiq";
 const ALL_PROVIDERS: ProviderKey[] = ["cdon", "fyndiq"];
 
 type DiscoveryItem = {
-  provider: ProviderKey;
+  provider: ProviderKey | "stack";
   product_id: string;
   title: string | null;
   identical_spu: string | null;
@@ -55,6 +59,27 @@ type DiscoveryItem = {
   reviews: number | null;
   delivery_time: string | null;
   wishlist_names: string[];
+  stack_id: string | null;
+  is_stack_card: boolean;
+  stack_size: number | null;
+  stack_provider_label: string | null;
+  stack_member_items: Array<{ provider: ProviderKey; product_id: string }>;
+  stack_price_max: number | null;
+  stack_has_trending: boolean;
+  stack_sort_sold_today: number | null;
+  stack_sort_sold_7d: number | null;
+  stack_sort_sold_all_time: number | null;
+  stack_sort_trending_score: number | null;
+};
+
+const DISCOVERY_TREND = {
+  newProductDays: 10,
+  newHotSoldToday: 8,
+  newHotSold7d: 18,
+  accelMinSoldToday: 6,
+  accelRatioVsPrev6Avg: 2.5,
+  stagnantPrev6DailyMax: 1,
+  stagnantSpikeSoldToday: 8,
 };
 
 type ProductionStatusSnapshot = {
@@ -121,6 +146,142 @@ const formatInValues = (values: string[]) =>
   values
     .map((value) => `"${value.replace(/\"/g, '""')}"`)
     .join(",");
+
+const IN_FILTER_CHUNK_SIZE = 200;
+
+const toUniqueStrings = (values: Array<string | number>) =>
+  Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+const chunkArray = <T,>(values: T[], size: number) => {
+  const normalizedSize = Math.max(1, Math.floor(size));
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += normalizedSize) {
+    chunks.push(values.slice(index, index + normalizedSize));
+  }
+  return chunks;
+};
+
+const numeric = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+};
+
+const nullableNumeric = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isDiscoveryItemTrending = (item: DiscoveryItem) => {
+  const soldToday = Math.max(0, numeric(item.sold_today));
+  const sold7d = Math.max(0, numeric(item.sold_7d));
+  if (soldToday <= 0 && sold7d <= 0) {
+    return false;
+  }
+
+  const firstSeenTs = item.first_seen_at ? Date.parse(item.first_seen_at) : Number.NaN;
+  const ageDays = Number.isFinite(firstSeenTs)
+    ? Math.max(0, (Date.now() - firstSeenTs) / 86_400_000)
+    : null;
+
+  const isNewAndHot =
+    ageDays !== null &&
+    ageDays <= DISCOVERY_TREND.newProductDays &&
+    (soldToday >= DISCOVERY_TREND.newHotSoldToday ||
+      sold7d >= DISCOVERY_TREND.newHotSold7d);
+
+  const previousSixDaysSales = Math.max(0, sold7d - soldToday);
+  const previousSixDaysDailyAvg = previousSixDaysSales / 6;
+  const isAccelerating =
+    soldToday >= DISCOVERY_TREND.accelMinSoldToday &&
+    (previousSixDaysDailyAvg <= 0
+      ? soldToday >= DISCOVERY_TREND.accelMinSoldToday
+      : soldToday >= previousSixDaysDailyAvg * DISCOVERY_TREND.accelRatioVsPrev6Avg);
+  const wasStagnantThenSpiked =
+    previousSixDaysDailyAvg <= DISCOVERY_TREND.stagnantPrev6DailyMax &&
+    soldToday >= DISCOVERY_TREND.stagnantSpikeSoldToday;
+
+  return isNewAndHot || isAccelerating || wasStagnantThenSpiked;
+};
+
+const mapProductToDiscoveryItem = (product: Record<string, unknown>): DiscoveryItem => ({
+  provider: String(product.provider ?? "").trim().toLowerCase() as ProviderKey,
+  product_id: String(product.product_id ?? ""),
+  title: firstString(product.title) ?? null,
+  identical_spu: firstString(product.identical_spu) ?? null,
+  product_url: firstString(product.product_url) ?? null,
+  image_url: firstString(product.image_url) ?? null,
+  image_local_path: firstString(product.image_local_path) ?? null,
+  image_local_url: firstString(product.image_local_url) ?? null,
+  source_url: firstString(product.source_url) ?? null,
+  last_price: nullableNumeric(product.last_price),
+  last_previous_price: nullableNumeric(product.last_previous_price),
+  last_reviews: nullableNumeric(product.last_reviews),
+  last_delivery_time: firstString(product.last_delivery_time) ?? null,
+  taxonomy_l1: firstString(product.taxonomy_l1) ?? null,
+  taxonomy_l2: firstString(product.taxonomy_l2) ?? null,
+  taxonomy_l3: firstString(product.taxonomy_l3) ?? null,
+  taxonomy_path: firstString(product.taxonomy_path) ?? null,
+  taxonomy_confidence: nullableNumeric(product.taxonomy_confidence),
+  taxonomy_updated_at: firstString(product.taxonomy_updated_at) ?? null,
+  first_seen_at: firstString(product.first_seen_at) ?? null,
+  last_seen_at: firstString(product.last_seen_at) ?? null,
+  scrape_date: firstString(product.scrape_date) ?? null,
+  sold_today: Number(product.sold_today ?? 0),
+  sold_7d: Number(product.sold_7d ?? 0),
+  sold_all_time: Number(product.sold_all_time ?? 0),
+  trending_score: Number(product.trending_score ?? 0),
+  liked: false,
+  removed: false,
+  in_production: false,
+  production_status: null,
+  production_status_updated_at: null,
+  production_status_spu_assigned_at: null,
+  production_status_started_at: null,
+  production_status_done_at: null,
+  production_assigned_spu: null,
+  price: nullableNumeric(product.price) ?? nullableNumeric(product.last_price),
+  previous_price:
+    nullableNumeric(product.previous_price) ??
+    nullableNumeric(product.last_previous_price),
+  reviews: nullableNumeric(product.reviews) ?? nullableNumeric(product.last_reviews),
+  delivery_time:
+    firstString(product.delivery_time) ??
+    firstString(product.last_delivery_time) ??
+    null,
+  wishlist_names: [],
+  stack_id: null,
+  is_stack_card: false,
+  stack_size: null,
+  stack_provider_label: null,
+  stack_member_items: [],
+  stack_price_max: null,
+  stack_has_trending: false,
+  stack_sort_sold_today: null,
+  stack_sort_sold_7d: null,
+  stack_sort_sold_all_time: null,
+  stack_sort_trending_score: null,
+});
+
+const sortNumeric = (item: DiscoveryItem, field: "sold_today" | "sold_7d" | "sold_all_time" | "trending_score") => {
+  if (!item.is_stack_card) {
+    return numeric(item[field]);
+  }
+  if (field === "sold_today") return numeric(item.stack_sort_sold_today);
+  if (field === "sold_7d") return numeric(item.stack_sort_sold_7d);
+  if (field === "sold_all_time") return numeric(item.stack_sort_sold_all_time);
+  return numeric(item.stack_sort_trending_score);
+};
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabase();
@@ -214,6 +375,10 @@ export async function GET(request: NextRequest) {
   const showOnlyLinked = showOnlyTokens.includes("linked");
   const showOnlyWishlisted = showOnlyTokens.includes("wishlist");
   const showOnlyProduction = showOnlyTokens.includes("production");
+  const stacksParam = (searchParams.get("stacks") ?? "all").trim().toLowerCase();
+  const showOnlyStacks = stacksParam === "only";
+  const stackIdParam = searchParams.get("stackId");
+  const stackId = stackIdParam ? stackIdParam.trim() : "";
 
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
   const pageSize = Math.min(
@@ -430,8 +595,6 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    const numberValue = (value: number | null | undefined) =>
-      typeof value === "number" && Number.isFinite(value) ? value : 0;
     const dateValue = (value: string | null | undefined) => {
       if (!value) return 0;
       const parsed = Date.parse(value);
@@ -443,26 +606,28 @@ export async function GET(request: NextRequest) {
         switch (sort) {
           case "sold_today":
             return (
-              numberValue(b.sold_today) - numberValue(a.sold_today) ||
-              numberValue(b.sold_7d) - numberValue(a.sold_7d) ||
+              sortNumeric(b, "sold_today") - sortNumeric(a, "sold_today") ||
+              sortNumeric(b, "sold_7d") - sortNumeric(a, "sold_7d") ||
               dateValue(b.last_seen_at) - dateValue(a.last_seen_at)
             );
           case "sold_all_time":
             return (
-              numberValue(b.sold_all_time) - numberValue(a.sold_all_time) ||
+              sortNumeric(b, "sold_all_time") -
+                sortNumeric(a, "sold_all_time") ||
               dateValue(b.last_seen_at) - dateValue(a.last_seen_at)
             );
           case "trending":
             return (
-              numberValue(b.trending_score) - numberValue(a.trending_score) ||
-              numberValue(b.sold_7d) - numberValue(a.sold_7d) ||
+              sortNumeric(b, "trending_score") -
+                sortNumeric(a, "trending_score") ||
+              sortNumeric(b, "sold_7d") - sortNumeric(a, "sold_7d") ||
               dateValue(b.last_seen_at) - dateValue(a.last_seen_at)
             );
           case "sold_7d":
           default:
             return (
-              numberValue(b.sold_7d) - numberValue(a.sold_7d) ||
-              numberValue(b.sold_today) - numberValue(a.sold_today) ||
+              sortNumeric(b, "sold_7d") - sortNumeric(a, "sold_7d") ||
+              sortNumeric(b, "sold_today") - sortNumeric(a, "sold_today") ||
               dateValue(b.last_seen_at) - dateValue(a.last_seen_at)
             );
         }
@@ -470,13 +635,94 @@ export async function GET(request: NextRequest) {
       return items;
     };
 
+    const fetchProviderProductsByIds = async (
+      providerKey: ProviderKey,
+      rawProductIds: Array<string | number>,
+      options?: { applySorting?: boolean }
+    ) => {
+      const productIds = toUniqueStrings(rawProductIds);
+      if (productIds.length === 0) return [] as Record<string, unknown>[];
+
+      const runChunk = async (idsChunk: string[], select: string) => {
+        let providerQuery = supabase
+          .from("discovery_products")
+          .select(select)
+          .eq("provider", providerKey)
+          .in("product_id", idsChunk);
+        providerQuery = applyFilters(providerQuery);
+        if (options?.applySorting) {
+          providerQuery = applySort(providerQuery);
+        }
+        return await providerQuery;
+      };
+
+      const rows: Record<string, unknown>[] = [];
+      for (const idsChunk of chunkArray(productIds, IN_FILTER_CHUNK_SIZE)) {
+        let { data: providerItems, error: providerError } = await runChunk(
+          idsChunk,
+          PRODUCT_SELECT_WITH_IDENTICAL
+        );
+        if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
+          ({ data: providerItems, error: providerError } = await runChunk(
+            idsChunk,
+            PRODUCT_SELECT_BASE
+          ));
+        }
+        if (providerError) throw new Error(providerError.message);
+        rows.push(
+          ...((providerItems ?? []) as unknown[]).map(
+            (item) => (item ?? {}) as Record<string, unknown>
+          )
+        );
+      }
+      return rows;
+    };
+
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
     let products: any[] = [];
     let totalCount: number | null = null;
-    const useClientPagination = Boolean(wishlistId) || Boolean(allowedProductIds);
+    const useClientPagination =
+      Boolean(wishlistId) || Boolean(allowedProductIds) || Boolean(stackId);
 
-    if (wishlistId) {
+    if (stackId) {
+      const { data: stackRows, error: stackError } = await supabase
+        .from("discovery_product_stack_items")
+        .select("provider, product_id")
+        .eq("stack_id", stackId);
+
+      if (stackError) {
+        if (isMissingStackTable(stackError.message)) {
+          return NextResponse.json({ items: [], page, pageSize, total: 0 });
+        }
+        throw new Error(stackError.message);
+      }
+
+      const byProvider = new Map<ProviderKey, string[]>();
+      (
+        (stackRows ?? []) as Array<{ provider: string; product_id: string }>
+      ).forEach((row) => {
+        const providerKey = String(row.provider ?? "").trim().toLowerCase() as ProviderKey;
+        if (providerKey !== "cdon" && providerKey !== "fyndiq") return;
+        if (filterProviders && !providers.includes(providerKey)) return;
+        const productId = String(row.product_id ?? "").trim();
+        if (!productId) return;
+        const list = byProvider.get(providerKey) ?? [];
+        list.push(productId);
+        byProvider.set(providerKey, list);
+      });
+
+      for (const [providerKey, productIds] of byProvider.entries()) {
+        if (productIds.length === 0) continue;
+        const providerItems = await fetchProviderProductsByIds(
+          providerKey,
+          productIds
+        );
+        products = products.concat(providerItems);
+      }
+
+      totalCount = products.length;
+    } else if (wishlistId) {
       const { data: wishlistItems, error: wishlistError } = await supabase
         .from("discovery_wishlist_items")
         .select("provider, product_id")
@@ -506,27 +752,11 @@ export async function GET(request: NextRequest) {
 
       for (const [providerKey, productIds] of byProvider.entries()) {
         if (productIds.length === 0) continue;
-        const runProviderQuery = async (select: string) => {
-          let providerQuery = supabase
-            .from("discovery_products")
-            .select(select)
-            .eq("provider", providerKey)
-            .in("product_id", productIds);
-          providerQuery = applyFilters(providerQuery);
-          return await providerQuery;
-        };
-
-        let { data: providerItems, error: providerError } = await runProviderQuery(
-          PRODUCT_SELECT_WITH_IDENTICAL
+        const providerItems = await fetchProviderProductsByIds(
+          providerKey,
+          productIds
         );
-        if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
-          ({ data: providerItems, error: providerError } = await runProviderQuery(
-            PRODUCT_SELECT_BASE
-          ));
-        }
-        if (providerError) throw new Error(providerError.message);
-
-        products = products.concat(providerItems ?? []);
+        products = products.concat(providerItems);
       }
       totalCount = products.length;
     } else if (allowedProductIds) {
@@ -534,28 +764,12 @@ export async function GET(request: NextRequest) {
         if (filterProviders && !providers.includes(providerKey)) continue;
         const productIds = Array.from(idSet);
         if (productIds.length === 0) continue;
-        const runProviderQuery = async (select: string) => {
-          let providerQuery = supabase
-            .from("discovery_products")
-            .select(select)
-            .eq("provider", providerKey)
-            .in("product_id", productIds);
-          providerQuery = applyFilters(providerQuery);
-          providerQuery = applySort(providerQuery);
-          return await providerQuery;
-        };
-
-        let { data: providerItems, error: providerError } = await runProviderQuery(
-          PRODUCT_SELECT_WITH_IDENTICAL
+        const providerItems = await fetchProviderProductsByIds(
+          providerKey,
+          productIds,
+          { applySorting: true }
         );
-        if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
-          ({ data: providerItems, error: providerError } = await runProviderQuery(
-            PRODUCT_SELECT_BASE
-          ));
-        }
-        if (providerError) throw new Error(providerError.message);
-
-        products = products.concat(providerItems ?? []);
+        products = products.concat(providerItems);
       }
 
       totalCount = products.length;
@@ -571,7 +785,9 @@ export async function GET(request: NextRequest) {
 
         query = applyFilters(query);
         query = applySort(query);
-        query = query.range(from, to);
+        if (!useClientPagination) {
+          query = query.range(from, to);
+        }
         return query;
       };
 
@@ -588,50 +804,12 @@ export async function GET(request: NextRequest) {
     }
 
     let merged: DiscoveryItem[] =
-      products?.map((product) => ({
-        provider: product.provider as ProviderKey,
-        product_id: product.product_id,
-        title: product.title ?? null,
-        identical_spu: product.identical_spu ?? null,
-        product_url: product.product_url ?? null,
-        image_url: product.image_url ?? null,
-        image_local_path: product.image_local_path ?? null,
-        image_local_url: product.image_local_url ?? null,
-        source_url: product.source_url ?? null,
-        last_price: product.last_price ?? null,
-        last_previous_price: product.last_previous_price ?? null,
-        last_reviews: product.last_reviews ?? null,
-        last_delivery_time: product.last_delivery_time ?? null,
-        taxonomy_l1: product.taxonomy_l1 ?? null,
-        taxonomy_l2: product.taxonomy_l2 ?? null,
-        taxonomy_l3: product.taxonomy_l3 ?? null,
-        taxonomy_path: product.taxonomy_path ?? null,
-        taxonomy_confidence: product.taxonomy_confidence ?? null,
-        taxonomy_updated_at: product.taxonomy_updated_at ?? null,
-        first_seen_at: product.first_seen_at ?? null,
-        last_seen_at: product.last_seen_at ?? null,
-        scrape_date: product.scrape_date ?? null,
-        sold_today: Number(product.sold_today ?? 0),
-        sold_7d: Number(product.sold_7d ?? 0),
-        sold_all_time: Number(product.sold_all_time ?? 0),
-        trending_score: Number(product.trending_score ?? 0),
-        liked: false,
-        removed: false,
-        in_production: false,
-        production_status: null,
-        production_status_updated_at: null,
-        production_status_spu_assigned_at: null,
-        production_status_started_at: null,
-        production_status_done_at: null,
-        production_assigned_spu: null,
-        wishlist_names: [],
-        price: product.price ?? product.last_price ?? null,
-        previous_price: product.previous_price ?? product.last_previous_price ?? null,
-        reviews: product.reviews ?? product.last_reviews ?? null,
-        delivery_time: product.delivery_time ?? product.last_delivery_time ?? null,
-      })) ?? [];
+      products?.map((product) =>
+        mapProductToDiscoveryItem(product as Record<string, unknown>)
+      ) ?? [];
 
     const actionMap = new Map<string, { liked: boolean; removed: boolean }>();
+    const hiddenGlobalSet = new Set<string>();
     const wishlistMap = new Map<string, string[]>();
     const productionSet = new Set<string>();
     const productionStatusMap = new Map<string, ProductionStatusSnapshot>();
@@ -645,40 +823,70 @@ export async function GET(request: NextRequest) {
     if (merged.length > 0) {
       const byProvider = new Map<ProviderKey, string[]>();
       merged.forEach((item) => {
+        if (item.provider !== "cdon" && item.provider !== "fyndiq") return;
         const list = byProvider.get(item.provider) ?? [];
         list.push(item.product_id);
         byProvider.set(item.provider, list);
       });
 
       for (const [providerKey, productIds] of byProvider.entries()) {
-        const { data: actions } = await supabase
-          .from("discovery_product_actions")
-          .select("product_id, provider, liked, removed")
-          .eq("user_id", user.id)
-          .eq("provider", providerKey)
-          .in("product_id", productIds);
+        const uniqueProductIds = toUniqueStrings(productIds);
+        for (const productIdsChunk of chunkArray(
+          uniqueProductIds,
+          IN_FILTER_CHUNK_SIZE
+        )) {
+          const { data: actions, error: actionsError } = await supabase
+            .from("discovery_product_actions")
+            .select("product_id, provider, liked, removed")
+            .eq("user_id", user.id)
+            .eq("provider", providerKey)
+            .in("product_id", productIdsChunk);
+          if (actionsError) {
+            throw new Error(actionsError.message);
+          }
 
-        actions?.forEach((action) => {
-          actionMap.set(`${providerKey}:${action.product_id}`, {
-            liked: Boolean(action.liked),
-            removed: Boolean(action.removed),
+          actions?.forEach((action) => {
+            actionMap.set(`${providerKey}:${action.product_id}`, {
+              liked: Boolean(action.liked),
+              removed: Boolean(action.removed),
+            });
           });
-        });
 
-        const { data: productionItems, error: productionError } = await supabase
-          .from("discovery_production_items")
-          .select("product_id, provider")
-          .eq("user_id", user.id)
-          .eq("provider", providerKey)
-          .in("product_id", productIds);
+          const { data: globalHiddenRows, error: globalHiddenError } = await supabase
+            .from("discovery_hidden_products_global")
+            .select("product_id, provider")
+            .eq("provider", providerKey)
+            .in("product_id", productIdsChunk);
 
-        if (productionError) {
-          throw new Error(productionError.message);
+          if (globalHiddenError) {
+            if (!isMissingHiddenGlobalTable(globalHiddenError.message)) {
+              // Keep discovery usable even if this optional global-hide lookup fails.
+              console.error(
+                "[discovery] global hidden lookup failed:",
+                globalHiddenError.message
+              );
+            }
+          } else {
+            globalHiddenRows?.forEach((row) => {
+              hiddenGlobalSet.add(`${providerKey}:${row.product_id}`);
+            });
+          }
+
+          const { data: productionItems, error: productionError } = await supabase
+            .from("discovery_production_items")
+            .select("product_id, provider")
+            .eq("user_id", user.id)
+            .eq("provider", providerKey)
+            .in("product_id", productIdsChunk);
+
+          if (productionError) {
+            throw new Error(productionError.message);
+          }
+
+          productionItems?.forEach((row) => {
+            productionSet.add(`${providerKey}:${row.product_id}`);
+          });
         }
-
-        productionItems?.forEach((row) => {
-          productionSet.add(`${providerKey}:${row.product_id}`);
-        });
       }
 
       const { data: userWishlists, error: wishlistError } = await supabase
@@ -698,26 +906,32 @@ export async function GET(request: NextRequest) {
         });
 
         for (const [providerKey, productIds] of byProvider.entries()) {
-          const { data: wishlistItems, error: wishlistItemsError } = await supabase
-            .from("discovery_wishlist_items")
-            .select("wishlist_id, product_id, provider")
-            .eq("provider", providerKey)
-            .in("product_id", productIds)
-            .in("wishlist_id", wishlistIds);
+          const uniqueProductIds = toUniqueStrings(productIds);
+          for (const productIdsChunk of chunkArray(
+            uniqueProductIds,
+            IN_FILTER_CHUNK_SIZE
+          )) {
+            const { data: wishlistItems, error: wishlistItemsError } = await supabase
+              .from("discovery_wishlist_items")
+              .select("wishlist_id, product_id, provider")
+              .eq("provider", providerKey)
+              .in("product_id", productIdsChunk)
+              .in("wishlist_id", wishlistIds);
 
-          if (wishlistItemsError) {
-            throw new Error(wishlistItemsError.message);
-          }
-
-          wishlistItems?.forEach((row) => {
-            const listName = wishlistNameById.get(row.wishlist_id);
-            if (!listName) return;
-            const key = `${providerKey}:${row.product_id}`;
-            const existing = wishlistMap.get(key) ?? [];
-            if (!existing.includes(listName)) {
-              wishlistMap.set(key, [...existing, listName]);
+            if (wishlistItemsError) {
+              throw new Error(wishlistItemsError.message);
             }
-          });
+
+            wishlistItems?.forEach((row) => {
+              const listName = wishlistNameById.get(row.wishlist_id);
+              if (!listName) return;
+              const key = `${providerKey}:${row.product_id}`;
+              const existing = wishlistMap.get(key) ?? [];
+              if (!existing.includes(listName)) {
+                wishlistMap.set(key, [...existing, listName]);
+              }
+            });
+          }
         }
       }
 
@@ -728,86 +942,99 @@ export async function GET(request: NextRequest) {
         );
 
         if (providersForStatus.length > 0 && productIds.length > 0) {
-          const [{ data: statusRows, error: statusError }, { data: spuRows, error: spuError }] =
-            await Promise.all([
+          const uniqueProductIds = toUniqueStrings(productIds);
+          for (const productIdsChunk of chunkArray(
+            uniqueProductIds,
+            IN_FILTER_CHUNK_SIZE
+          )) {
+            const [
+              { data: statusRows, error: statusError },
+              { data: spuRows, error: spuError },
+            ] = await Promise.all([
               adminClient
                 .from("discovery_production_status")
                 .select(
                   "provider, product_id, status, updated_at, spu_assigned_at, production_started_at, production_done_at"
                 )
                 .in("provider", providersForStatus)
-                .in("product_id", productIds),
+                .in("product_id", productIdsChunk),
               adminClient
                 .from("discovery_production_item_spus")
                 .select("provider, product_id, spu, assigned_at")
                 .in("provider", providersForStatus)
-                .in("product_id", productIds),
+                .in("product_id", productIdsChunk),
             ]);
 
-          if (statusError) {
-            throw new Error(statusError.message);
-          }
-          if (spuError) {
-            throw new Error(spuError.message);
-          }
+            if (statusError) {
+              throw new Error(statusError.message);
+            }
+            if (spuError) {
+              throw new Error(spuError.message);
+            }
 
-          (
-            statusRows as
-              | Array<{
-                  provider: string;
-                  product_id: string;
-                  status?: string | null;
-                  updated_at?: string | null;
-                  spu_assigned_at?: string | null;
-                  production_started_at?: string | null;
-                  production_done_at?: string | null;
-                }>
-              | null
-          )?.forEach((row) => {
-            productionStatusMap.set(keyOf(row.provider, row.product_id), {
-              status: firstString(row.status) ?? null,
-              updated_at: firstString(row.updated_at) ?? null,
-              spu_assigned_at: firstString(row.spu_assigned_at) ?? null,
-              production_started_at: firstString(row.production_started_at) ?? null,
-              production_done_at: firstString(row.production_done_at) ?? null,
+            (
+              statusRows as
+                | Array<{
+                    provider: string;
+                    product_id: string;
+                    status?: string | null;
+                    updated_at?: string | null;
+                    spu_assigned_at?: string | null;
+                    production_started_at?: string | null;
+                    production_done_at?: string | null;
+                  }>
+                | null
+            )?.forEach((row) => {
+              productionStatusMap.set(keyOf(row.provider, row.product_id), {
+                status: firstString(row.status) ?? null,
+                updated_at: firstString(row.updated_at) ?? null,
+                spu_assigned_at: firstString(row.spu_assigned_at) ?? null,
+                production_started_at: firstString(row.production_started_at) ?? null,
+                production_done_at: firstString(row.production_done_at) ?? null,
+              });
             });
-          });
 
-          (
-            spuRows as
-              | Array<{
-                  provider: string;
-                  product_id: string;
-                  spu?: string | null;
-                  assigned_at?: string | null;
-                }>
-              | null
-          )?.forEach((row) => {
-            const key = keyOf(row.provider, row.product_id);
-            const nextSpu = firstString(row.spu);
-            if (!nextSpu) return;
-            const nextAssignedAt = firstString(row.assigned_at);
-            const existing = productionSpuMap.get(key);
-            if (!existing) {
-              productionSpuMap.set(key, {
-                spu: nextSpu,
-                assigned_at: nextAssignedAt ?? null,
-              });
-              return;
-            }
-            const existingTs = existing.assigned_at ? Date.parse(existing.assigned_at) : 0;
-            const nextTs = nextAssignedAt ? Date.parse(nextAssignedAt) : 0;
-            if (nextTs >= existingTs) {
-              productionSpuMap.set(key, {
-                spu: nextSpu,
-                assigned_at: nextAssignedAt ?? null,
-              });
-            }
-          });
+            (
+              spuRows as
+                | Array<{
+                    provider: string;
+                    product_id: string;
+                    spu?: string | null;
+                    assigned_at?: string | null;
+                  }>
+                | null
+            )?.forEach((row) => {
+              const key = keyOf(row.provider, row.product_id);
+              const nextSpu = firstString(row.spu);
+              if (!nextSpu) return;
+              const nextAssignedAt = firstString(row.assigned_at);
+              const existing = productionSpuMap.get(key);
+              if (!existing) {
+                productionSpuMap.set(key, {
+                  spu: nextSpu,
+                  assigned_at: nextAssignedAt ?? null,
+                });
+                return;
+              }
+              const existingTs = existing.assigned_at
+                ? Date.parse(existing.assigned_at)
+                : 0;
+              const nextTs = nextAssignedAt ? Date.parse(nextAssignedAt) : 0;
+              if (nextTs >= existingTs) {
+                productionSpuMap.set(key, {
+                  spu: nextSpu,
+                  assigned_at: nextAssignedAt ?? null,
+                });
+              }
+            });
+          }
         }
       }
 
       merged = merged.filter((item) => {
+        if (hiddenGlobalSet.has(`${item.provider}:${item.product_id}`)) {
+          return false;
+        }
         const action = actionMap.get(`${item.provider}:${item.product_id}`);
         return !action?.removed;
       });
@@ -851,8 +1078,395 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    if (merged.length > 0) {
+      const byProvider = new Map<ProviderKey, string[]>();
+      merged.forEach((item) => {
+        if (item.provider !== "cdon" && item.provider !== "fyndiq") return;
+        const list = byProvider.get(item.provider) ?? [];
+        list.push(item.product_id);
+        byProvider.set(item.provider, list);
+      });
+
+      const stackByItemKey = new Map<string, string>();
+      for (const [providerKey, productIds] of byProvider.entries()) {
+        const uniqueProductIds = toUniqueStrings(productIds);
+        if (uniqueProductIds.length === 0) continue;
+        for (const productIdsChunk of chunkArray(
+          uniqueProductIds,
+          IN_FILTER_CHUNK_SIZE
+        )) {
+          const { data: stackRows, error: stackError } = await supabase
+            .from("discovery_product_stack_items")
+            .select("provider, product_id, stack_id")
+            .eq("provider", providerKey)
+            .in("product_id", productIdsChunk);
+          if (stackError) {
+            if (isMissingStackTable(stackError.message)) {
+              continue;
+            }
+            throw new Error(stackError.message);
+          }
+          (
+            stackRows as
+              | Array<{ provider: string; product_id: string; stack_id: string }>
+              | null
+          )?.forEach((row) => {
+            const normalizedStackId = String(row.stack_id ?? "").trim();
+            if (!normalizedStackId) return;
+            stackByItemKey.set(
+              `${row.provider}:${row.product_id}`,
+              normalizedStackId
+            );
+          });
+        }
+      }
+
+      merged = merged.map((item) => ({
+        ...item,
+        stack_id: stackByItemKey.get(`${item.provider}:${item.product_id}`) ?? null,
+      }));
+    }
+
+    if (stackId) {
+      merged = merged.filter((item) => item.stack_id === stackId);
+    } else {
+      const stackGroups = new Map<string, DiscoveryItem[]>();
+      merged.forEach((item) => {
+        if (!item.stack_id) return;
+        const group = stackGroups.get(item.stack_id) ?? [];
+        group.push(item);
+        stackGroups.set(item.stack_id, group);
+      });
+
+      if (stackGroups.size > 0) {
+        const mergedItemLookup = new Map<string, DiscoveryItem>();
+        merged.forEach((item) => {
+          if (item.provider !== "cdon" && item.provider !== "fyndiq") return;
+          mergedItemLookup.set(`${item.provider}:${item.product_id}`, item);
+        });
+
+        const stackIds = Array.from(stackGroups.keys());
+        const fullStackMembersById = new Map<
+          string,
+          Array<{ provider: ProviderKey; product_id: string }>
+        >();
+        const memberIdsByProvider = new Map<ProviderKey, Set<string>>();
+
+        const uniqueStackIds = toUniqueStrings(stackIds);
+        for (const stackIdsChunk of chunkArray(uniqueStackIds, IN_FILTER_CHUNK_SIZE)) {
+          const { data: fullStackRows, error: fullStackRowsError } = await supabase
+            .from("discovery_product_stack_items")
+            .select("provider, product_id, stack_id")
+            .in("stack_id", stackIdsChunk);
+          if (fullStackRowsError && !isMissingStackTable(fullStackRowsError.message)) {
+            throw new Error(fullStackRowsError.message);
+          }
+
+          (
+            (fullStackRows ?? []) as Array<{
+              provider: string;
+              product_id: string;
+              stack_id: string;
+            }>
+          ).forEach((row) => {
+            const provider = String(row.provider ?? "").trim().toLowerCase() as ProviderKey;
+            if (provider !== "cdon" && provider !== "fyndiq") return;
+            const productId = String(row.product_id ?? "").trim();
+            const stackKey = String(row.stack_id ?? "").trim();
+            if (!productId || !stackKey) return;
+            const members = fullStackMembersById.get(stackKey) ?? [];
+            members.push({ provider, product_id: productId });
+            fullStackMembersById.set(stackKey, members);
+            if (!mergedItemLookup.has(`${provider}:${productId}`)) {
+              const providerIds = memberIdsByProvider.get(provider) ?? new Set<string>();
+              providerIds.add(productId);
+              memberIdsByProvider.set(provider, providerIds);
+            }
+          });
+        }
+
+        const fetchedStackItems = new Map<string, DiscoveryItem>();
+        for (const [providerKey, productIdsSet] of memberIdsByProvider.entries()) {
+          const productIds = toUniqueStrings(Array.from(productIdsSet));
+          if (productIds.length === 0) continue;
+          const runProviderQuery = async (select: string) => {
+            const rows: Record<string, unknown>[] = [];
+            for (const productIdsChunk of chunkArray(
+              productIds,
+              IN_FILTER_CHUNK_SIZE
+            )) {
+              const { data, error } = await supabase
+                .from("discovery_products")
+                .select(select)
+                .eq("provider", providerKey)
+                .in("product_id", productIdsChunk);
+              if (error) {
+                return { data: null, error };
+              }
+              rows.push(
+                ...((data ?? []) as unknown[]).map(
+                  (item) => (item ?? {}) as Record<string, unknown>
+                )
+              );
+            }
+            return { data: rows, error: null };
+          };
+
+          let { data: providerItems, error: providerError } = await runProviderQuery(
+            PRODUCT_SELECT_WITH_IDENTICAL
+          );
+          if (providerError && isMissingIdenticalSpuColumn(providerError.message)) {
+            ({ data: providerItems, error: providerError } = await runProviderQuery(
+              PRODUCT_SELECT_BASE
+            ));
+          }
+          if (providerError) throw new Error(providerError.message);
+
+          ((providerItems ?? []) as unknown[]).forEach((product) => {
+            const mapped = mapProductToDiscoveryItem(
+              (product ?? {}) as Record<string, unknown>
+            );
+            fetchedStackItems.set(`${mapped.provider}:${mapped.product_id}`, mapped);
+          });
+        }
+
+        const memberKeysToReplace = new Set<string>();
+        const stackCards: DiscoveryItem[] = [];
+
+        stackGroups.forEach((matchedMembers, stackKey) => {
+          const fullRefs = fullStackMembersById.get(stackKey) ?? [];
+          const seenMemberKeys = new Set<string>();
+          const members =
+            fullRefs.length > 0
+              ? fullRefs
+                  .map((ref) => {
+                    const key = `${ref.provider}:${ref.product_id}`;
+                    if (seenMemberKeys.has(key)) return null;
+                    seenMemberKeys.add(key);
+                    return mergedItemLookup.get(key) ?? fetchedStackItems.get(key) ?? null;
+                  })
+                  .filter((member): member is DiscoveryItem => Boolean(member))
+              : matchedMembers;
+
+          if (members.length < 2) {
+            return;
+          }
+
+          matchedMembers.forEach((member) => {
+            memberKeysToReplace.add(`${member.provider}:${member.product_id}`);
+          });
+
+          const providerSet = new Set<string>();
+          members.forEach((member) => {
+            if (member.provider === "cdon" || member.provider === "fyndiq") {
+              providerSet.add(member.provider.toUpperCase());
+            }
+          });
+
+          const pickTimestamp = (value: string | null | undefined) => {
+            if (!value) return Number.NaN;
+            const parsed = Date.parse(value);
+            return Number.isFinite(parsed) ? parsed : Number.NaN;
+          };
+
+          let latestSeen: string | null = null;
+          let latestSeenTs = Number.NEGATIVE_INFINITY;
+          let firstSeen: string | null = null;
+          let firstSeenTs = Number.POSITIVE_INFINITY;
+          let minPrice = Number.POSITIVE_INFINITY;
+          let maxPrice = Number.NEGATIVE_INFINITY;
+          let minRating = Number.POSITIVE_INFINITY;
+          let ratingFound = false;
+          let sumSoldToday = 0;
+          let sumSold7d = 0;
+          let sumSoldAll = 0;
+          let sortSoldToday = 0;
+          let sortSold7d = 0;
+          let sortSoldAll = 0;
+          let sortTrending = 0;
+          let stackHasTrending = false;
+
+          members.forEach((member) => {
+            const lastSeenTs = pickTimestamp(member.last_seen_at);
+            if (Number.isFinite(lastSeenTs) && lastSeenTs > latestSeenTs) {
+              latestSeenTs = lastSeenTs;
+              latestSeen = member.last_seen_at;
+            }
+
+            const firstSeenMemberTs = pickTimestamp(member.first_seen_at);
+            if (Number.isFinite(firstSeenMemberTs) && firstSeenMemberTs < firstSeenTs) {
+              firstSeenTs = firstSeenMemberTs;
+              firstSeen = member.first_seen_at;
+            }
+
+            const memberPrice = numeric(member.price ?? member.last_price);
+            minPrice = Math.min(minPrice, memberPrice);
+            maxPrice = Math.max(maxPrice, memberPrice);
+
+            const memberRating = member.reviews ?? member.last_reviews;
+            const ratingNumeric = numeric(memberRating);
+            if (
+              typeof memberRating === "number" ||
+              (typeof memberRating === "string" && String(memberRating).trim())
+            ) {
+              minRating = Math.min(minRating, ratingNumeric);
+              ratingFound = true;
+            }
+
+            const soldToday = numeric(member.sold_today);
+            const sold7d = numeric(member.sold_7d);
+            const soldAll = numeric(member.sold_all_time);
+            const trending = numeric(member.trending_score);
+            sumSoldToday += soldToday;
+            sumSold7d += sold7d;
+            sumSoldAll += soldAll;
+            sortSoldToday = Math.max(sortSoldToday, soldToday);
+            sortSold7d = Math.max(sortSold7d, sold7d);
+            sortSoldAll = Math.max(sortSoldAll, soldAll);
+            sortTrending = Math.max(sortTrending, trending);
+            if (!stackHasTrending && isDiscoveryItemTrending(member)) {
+              stackHasTrending = true;
+            }
+          });
+
+          const representative =
+            members.find((member) => member.title) ??
+            members.find((member) => member.image_local_url || member.image_url) ??
+            members[0];
+
+          const memberRefs = members
+            .filter(
+              (member): member is DiscoveryItem & { provider: ProviderKey } =>
+                member.provider === "cdon" || member.provider === "fyndiq"
+            )
+            .map((member) => ({
+              provider: member.provider,
+              product_id: member.product_id,
+            }));
+
+          const providerLabel =
+            providerSet.size > 1
+              ? "STACK"
+              : providerSet.size === 1
+                ? Array.from(providerSet)[0]
+                : "Stack";
+
+          const linkedMembers = members
+            .map((member) => ({
+              member,
+              spu: String(member.identical_spu ?? "").trim(),
+            }))
+            .filter((entry) => Boolean(entry.spu))
+            .sort((a, b) => {
+              const sold7dDiff =
+                numeric(b.member.sold_7d) - numeric(a.member.sold_7d);
+              if (sold7dDiff !== 0) return sold7dDiff;
+              const soldTodayDiff =
+                numeric(b.member.sold_today) - numeric(a.member.sold_today);
+              if (soldTodayDiff !== 0) return soldTodayDiff;
+              const soldAllDiff =
+                numeric(b.member.sold_all_time) - numeric(a.member.sold_all_time);
+              if (soldAllDiff !== 0) return soldAllDiff;
+              const trendingDiff =
+                numeric(b.member.trending_score) - numeric(a.member.trending_score);
+              if (trendingDiff !== 0) return trendingDiff;
+              return pickTimestamp(b.member.last_seen_at) - pickTimestamp(a.member.last_seen_at);
+            });
+          const stackLinkedSpu = linkedMembers[0]?.spu ?? null;
+
+          const stackCard: DiscoveryItem = {
+            ...representative,
+            provider: "stack",
+            product_id: stackKey,
+            title:
+              representative.title ??
+              members.find((member) => member.title)?.title ??
+              `Stack (${members.length})`,
+            identical_spu: stackLinkedSpu,
+            product_url: null,
+            source_url: null,
+            sold_today: Math.max(0, Math.round(sumSoldToday)),
+            sold_7d: Math.max(0, Math.round(sumSold7d)),
+            sold_all_time: Math.max(0, Math.round(sumSoldAll)),
+            trending_score: sortTrending,
+            price:
+              Number.isFinite(minPrice) && minPrice !== Number.POSITIVE_INFINITY
+                ? minPrice
+                : null,
+            previous_price: null,
+            last_previous_price: null,
+            reviews: ratingFound ? minRating : null,
+            last_reviews: ratingFound ? minRating : null,
+            last_seen_at: latestSeen,
+            first_seen_at: firstSeen,
+            liked: false,
+            removed: false,
+            in_production: false,
+            production_status: null,
+            production_status_updated_at: null,
+            production_status_spu_assigned_at: null,
+            production_status_started_at: null,
+            production_status_done_at: null,
+            production_assigned_spu: null,
+            wishlist_names: [],
+            stack_id: stackKey,
+            is_stack_card: true,
+            stack_size: members.length,
+            stack_provider_label: providerLabel,
+            stack_member_items: memberRefs,
+            stack_price_max:
+              Number.isFinite(maxPrice) && maxPrice !== Number.NEGATIVE_INFINITY
+                ? maxPrice
+                : null,
+            stack_has_trending: stackHasTrending,
+            stack_sort_sold_today: sortSoldToday,
+            stack_sort_sold_7d: sortSold7d,
+            stack_sort_sold_all_time: sortSoldAll,
+            stack_sort_trending_score: sortTrending,
+          };
+
+          stackCards.push(stackCard);
+        });
+
+        if (stackCards.length > 0) {
+          merged = merged
+            .filter(
+              (item) =>
+                !memberKeysToReplace.has(`${item.provider}:${item.product_id}`)
+            )
+            .concat(stackCards);
+        }
+      }
+
+      const addedFromTs = addedFrom ? Date.parse(addedFrom) : Number.NaN;
+      const updatedFromTs = updatedFrom ? Date.parse(updatedFrom) : Number.NaN;
+      if (Number.isFinite(addedFromTs) || Number.isFinite(updatedFromTs)) {
+        merged = merged.filter((item) => {
+          if (!item.is_stack_card) return true;
+          if (Number.isFinite(addedFromTs)) {
+            const firstSeenTs = item.first_seen_at ? Date.parse(item.first_seen_at) : Number.NaN;
+            if (!Number.isFinite(firstSeenTs) || firstSeenTs < addedFromTs) {
+              return false;
+            }
+          }
+          if (Number.isFinite(updatedFromTs)) {
+            const lastSeenTs = item.last_seen_at ? Date.parse(item.last_seen_at) : Number.NaN;
+            if (!Number.isFinite(lastSeenTs) || lastSeenTs < updatedFromTs) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+    }
+
+    if (showOnlyStacks && !stackId) {
+      merged = merged.filter((item) => item.is_stack_card);
+    }
+
+    sortItems(merged);
+
     if (useClientPagination) {
-      sortItems(merged);
       const total = merged.length;
       const paged = merged.slice(from, to + 1);
       return NextResponse.json({
@@ -870,6 +1484,7 @@ export async function GET(request: NextRequest) {
       total: totalCount ?? merged.length,
     });
   } catch (err) {
+    console.error("[discovery] GET failed:", (err as Error).message);
     return NextResponse.json(
       { error: (err as Error).message },
       { status: 500 }

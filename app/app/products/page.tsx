@@ -14,6 +14,7 @@ import {
   Image,
   Input,
   Menu,
+  MenuDivider,
   MenuItem,
   MenuList,
   MenuPopover,
@@ -374,6 +375,15 @@ const useStyles = makeStyles({
       backgroundColor: "#fff2bf",
     },
   },
+  tableRowSelectable: {
+    cursor: "pointer",
+  },
+  tableRowSelected: {
+    backgroundColor: "#eaf4ff",
+    "&:hover": {
+      backgroundColor: "#eaf4ff",
+    },
+  },
   statusBadge: {
     fontSize: tokens.fontSizeBase100,
     lineHeight: tokens.lineHeightBase100,
@@ -393,9 +403,9 @@ const useStyles = makeStyles({
     color: "#8a6d00",
   },
   statusBadgeActive: {
-    backgroundColor: "#f3f2f1",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    color: tokens.colorNeutralForeground2,
+    backgroundColor: "#e8f6ea",
+    border: "1px solid #86b98d",
+    color: "#2e6b36",
   },
   deliveryBadgeDigiDeal: {
     backgroundColor: "#deecff",
@@ -707,7 +717,7 @@ const useStyles = makeStyles({
     lineHeight: tokens.lineHeightBase100,
     fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
-      backgroundColor: tokens.colorNeutralBackground1,
+      backgroundColor: tokens.colorNeutralBackground2,
       opacity: 1,
     },
     "&:disabled": {
@@ -717,25 +727,6 @@ const useStyles = makeStyles({
   },
   listSaveButton: {
     paddingInline: "10px",
-  },
-  removeButton: {
-    minWidth: "28px",
-    width: "28px",
-    height: "28px",
-    padding: 0,
-    borderRadius: "6px",
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-    color: tokens.colorNeutralForeground2,
-    "&:hover": {
-      backgroundColor: tokens.colorNeutralBackground1,
-      opacity: 1,
-      color: tokens.colorStatusDangerBorder1,
-    },
-    "&:disabled": {
-      backgroundColor: tokens.colorNeutralBackground1,
-      opacity: 1,
-    },
   },
   selectCheckbox: {
     "& .fui-Checkbox__indicator": {
@@ -779,7 +770,7 @@ const useStyles = makeStyles({
     textDecorationLine: "none",
     "&:hover": {
       textDecorationLine: "none",
-      backgroundColor: tokens.colorNeutralBackground1,
+      backgroundColor: tokens.colorNeutralBackground2,
       opacity: 1,
     },
   },
@@ -800,7 +791,7 @@ const useStyles = makeStyles({
     opacity: 1,
     "&:hover": {
       textDecorationLine: "none",
-      backgroundColor: tokens.colorNeutralBackground1,
+      backgroundColor: tokens.colorNeutralBackground2,
       opacity: 1,
     },
   },
@@ -809,6 +800,29 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStrokeDisabled}`,
     cursor: "not-allowed",
     pointerEvents: "none",
+  },
+  wishlistMenuItemInList: {
+    backgroundColor: "#e9f7ec",
+    color: "#1f6f3b",
+    opacity: 1,
+    "&:hover": {
+      backgroundColor: "#e9f7ec",
+    },
+    "&:active": {
+      backgroundColor: "#e9f7ec",
+    },
+  },
+  wishlistMenuItemRow: {
+    width: "100%",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+  },
+  wishlistMenuCheck: {
+    color: "#1f6f3b",
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: 1,
   },
   selectionActions: {
     display: "flex",
@@ -821,6 +835,11 @@ const useStyles = makeStyles({
     selectors: {
       "&:not(:disabled)": {
         border: `1px solid ${tokens.colorNeutralStroke1}`,
+        backgroundColor: tokens.colorNeutralBackground1,
+        color: tokens.colorNeutralForeground1,
+      },
+      "&:not(:disabled):hover": {
+        backgroundColor: tokens.colorNeutralBackground2,
       },
     },
   },
@@ -835,12 +854,15 @@ const useStyles = makeStyles({
     paddingTop: "12px",
   },
   deliveryDialog: {
-    width: "min(720px, 96vw)",
+    width: "min(864px, 96vw)",
   },
   deliveryDialogBody: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "10px",
+  },
+  deliveryDialogSubtitle: {
+    marginTop: "-4px",
   },
   deliveryListTableWrap: {
     maxHeight: "360px",
@@ -855,6 +877,23 @@ const useStyles = makeStyles({
   },
   deliveryCreateInput: {
     flex: 1,
+  },
+  deliveryListRowSelectable: {
+    cursor: "pointer",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+  },
+  deliveryListRowSelected: {
+    backgroundColor: "#eaf4ff",
+    "&:hover": {
+      backgroundColor: "#eaf4ff",
+    },
+  },
+  deliveryDialogActions: {
+    justifyContent: "flex-end",
+    gap: "8px",
+    marginTop: "4px",
   },
 });
 
@@ -882,6 +921,7 @@ type ProductListItem = {
   latest_exported_at: string | null;
   published_channels?: string[];
   delivery_partners?: string[];
+  wishlist_ids?: string[];
   thumbnail_url?: string | null;
   small_image_url?: string | null;
   price_min?: number | null;
@@ -1058,28 +1098,6 @@ const buildProductHref = (id: string, spu: string | null | undefined) => {
   return `/app/products/${id}`;
 };
 
-const TrashIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    aria-hidden="true"
-    focusable="false"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path stroke="none" d="M0 0h24v24H0z" />
-    <path d="M4 7l16 0" />
-    <path d="M10 11l0 6" />
-    <path d="M14 11l0 6" />
-    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-  </svg>
-);
-
 function ProductsPageInner() {
   const styles = useStyles();
   const router = useRouter();
@@ -1146,6 +1164,9 @@ function ProductsPageInner() {
   const [deliveryLists, setDeliveryLists] = useState<DigiDealDeliveryList[]>([]);
   const [deliveryListsLoading, setDeliveryListsLoading] = useState(false);
   const [deliveryListsError, setDeliveryListsError] = useState<string | null>(null);
+  const [selectedDeliveryListId, setSelectedDeliveryListId] = useState<string | null>(
+    null
+  );
   const [deliveryNewListName, setDeliveryNewListName] = useState("");
   const [isCreatingDeliveryList, setIsCreatingDeliveryList] = useState(false);
   const [addingDeliveryListId, setAddingDeliveryListId] = useState<string | null>(null);
@@ -1157,6 +1178,13 @@ function ProductsPageInner() {
   const [isApplyingAction, setIsApplyingAction] = useState(false);
   const isRestoringRef = useRef(false);
   const loadRequestRef = useRef(0);
+  const lastSelectedRowIndexRef = useRef<number | null>(null);
+  const shiftPressedRef = useRef(false);
+  const clearSelection = useCallback(() => {
+    setSelectedRows(new Set());
+    lastSelectedRowIndexRef.current = null;
+    setDeleteSelectionDialogOpen(false);
+  }, []);
   const searchParams = useSearchParams();
   const urlSearch = searchParams.toString();
 
@@ -1454,6 +1482,7 @@ function ProductsPageInner() {
       const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
       if (uniqueProductIds.length === 0) return;
       setDeliveryTargetProductIds(uniqueProductIds);
+      setSelectedDeliveryListId(null);
       setDeliveryNewListName("");
       setDeliveryDialogOpen(true);
       void fetchDeliveryLists();
@@ -1478,15 +1507,30 @@ function ProductsPageInner() {
         if (!response.ok) {
           throw new Error(await readResponseError(response, t("products.delivery.errorAdd")));
         }
+        setProducts((prev) =>
+          prev.map((product) => {
+            if (!deliveryTargetProductIds.includes(product.id)) return product;
+            const partners = Array.isArray(product.delivery_partners)
+              ? product.delivery_partners
+              : [];
+            if (partners.includes("digideal")) return product;
+            return {
+              ...product,
+              delivery_partners: [...partners, "digideal"],
+            };
+          })
+        );
         await fetchDeliveryLists();
         setDeliveryDialogOpen(false);
+        setSelectedDeliveryListId(null);
+        clearSelection();
       } catch (err) {
         setError((err as Error).message);
       } finally {
         setAddingDeliveryListId(null);
       }
     },
-    [deliveryTargetProductIds, fetchDeliveryLists, t]
+    [deliveryTargetProductIds, fetchDeliveryLists, t, clearSelection]
   );
 
   const createDeliveryList = useCallback(
@@ -1506,8 +1550,21 @@ function ProductsPageInner() {
             await readResponseError(response, t("products.delivery.errorCreate"))
           );
         }
+        const payload = await response.json().catch(() => null);
+        const createdListId =
+          payload &&
+          typeof payload === "object" &&
+          typeof (payload as { item?: { id?: unknown } }).item?.id === "string"
+            ? ((payload as { item: { id: string } }).item.id as string)
+            : null;
+        if (createdListId) {
+          setSelectedDeliveryListId(createdListId);
+        }
         await fetchDeliveryLists();
         setDeliveryNewListName("");
+        if (createdListId) {
+          setSelectedDeliveryListId(createdListId);
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -1516,6 +1573,26 @@ function ProductsPageInner() {
     },
     [deliveryNewListName, fetchDeliveryLists, t]
   );
+
+  const saveSelectedDeliveryList = useCallback(() => {
+    if (!selectedDeliveryListId) return;
+    void addItemsToDeliveryList(selectedDeliveryListId);
+  }, [selectedDeliveryListId, addItemsToDeliveryList]);
+
+  useEffect(() => {
+    if (!selectedDeliveryListId) return;
+    // During list creation/refresh, keep the current selection to avoid
+    // clearing a just-created list before the refreshed dataset lands.
+    if (isCreatingDeliveryList || deliveryListsLoading) return;
+    if (!deliveryLists.some((list) => list.id === selectedDeliveryListId)) {
+      setSelectedDeliveryListId(null);
+    }
+  }, [
+    deliveryLists,
+    selectedDeliveryListId,
+    isCreatingDeliveryList,
+    deliveryListsLoading,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1804,6 +1881,57 @@ function ProductsPageInner() {
       ].filter((column) => normalizedMarkets.includes(column.key)),
     [normalizedMarkets]
   );
+  const hasShiftKey = useCallback((event: unknown) => {
+    const candidate = event as {
+      shiftKey?: boolean;
+      nativeEvent?: { shiftKey?: boolean };
+    };
+    return Boolean(candidate.shiftKey ?? candidate.nativeEvent?.shiftKey);
+  }, []);
+  const isInteractiveRowTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(
+      target.closest(
+        "a,button,input,textarea,select,label,[role='button'],[role='menuitem'],[data-no-row-select='true']"
+      )
+    );
+  }, []);
+  const applyRowSelection = useCallback(
+    (rowIndex: number, checked: boolean, shiftKey: boolean) => {
+      setSelectedRows((prev) => {
+        const next = new Set(prev);
+        const row = products[rowIndex];
+        if (!row) return prev;
+        const anchorIndex = lastSelectedRowIndexRef.current;
+        const useRange =
+          shiftKey &&
+          anchorIndex !== null &&
+          anchorIndex >= 0 &&
+          anchorIndex < products.length;
+
+        if (useRange) {
+          const start = Math.min(anchorIndex, rowIndex);
+          const end = Math.max(anchorIndex, rowIndex);
+          for (let i = start; i <= end; i += 1) {
+            const rangeRow = products[i];
+            if (!rangeRow) continue;
+            if (checked) {
+              next.add(rangeRow.id);
+            } else {
+              next.delete(rangeRow.id);
+            }
+          }
+        } else if (checked) {
+          next.add(row.id);
+        } else {
+          next.delete(row.id);
+        }
+        return next;
+      });
+      lastSelectedRowIndexRef.current = rowIndex;
+    },
+    [products]
+  );
   const allSelected =
     products.length > 0 && products.every((product) => selectedRows.has(product.id));
   const someSelected = products.some((product) => selectedRows.has(product.id));
@@ -1813,6 +1941,36 @@ function ProductsPageInner() {
     [products, selectedRows]
   );
   const hasSelection = selectedItems.length > 0;
+
+  useEffect(() => {
+    lastSelectedRowIndexRef.current = null;
+  }, [products]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        shiftPressedRef.current = true;
+      }
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        shiftPressedRef.current = false;
+      }
+    };
+    const handleWindowBlur = () => {
+      shiftPressedRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasSelection) {
@@ -1847,8 +2005,24 @@ function ProductsPageInner() {
         }
         throw new Error(message);
       }
+      setProducts((prev) =>
+        prev.map((product) => {
+          if (!productIds.includes(product.id)) return product;
+          const existing = Array.isArray(product.wishlist_ids)
+            ? product.wishlist_ids
+            : [];
+          if (existing.includes(wishlistId)) return product;
+          return {
+            ...product,
+            wishlist_ids: [...existing, wishlistId],
+          };
+        })
+      );
       if (wishlistName) {
         await fetchWishlists();
+      }
+      if (selectedRows.size > 0) {
+        clearSelection();
       }
     } catch (err) {
       setError((err as Error).message);
@@ -1916,8 +2090,7 @@ function ProductsPageInner() {
         setTotal((prev) => Math.max(0, prev - deletedIds.size));
       }
 
-      setSelectedRows(new Set());
-      setDeleteSelectionDialogOpen(false);
+      clearSelection();
 
       if (failed.length > 0) {
         const preview = failed
@@ -2003,7 +2176,7 @@ function ProductsPageInner() {
         );
       }
 
-      setSelectedRows(new Set());
+      clearSelection();
 
       if (failedRows.length > 0) {
         const preview = failedRows
@@ -2021,23 +2194,6 @@ function ProductsPageInner() {
       setError((err as Error).message);
     } finally {
       setIsApplyingAction(false);
-    }
-  };
-
-  const removeFromAllWishlists = async (productId: string) => {
-    setError(null);
-    try {
-      const response = await fetch("/api/products/wishlists/items", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId }),
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || t("products.lists.deleteError"));
-      }
-    } catch (err) {
-      setError((err as Error).message);
     }
   };
 
@@ -2086,7 +2242,7 @@ function ProductsPageInner() {
 
   const rows = useMemo(
     () =>
-      products.map((product) => {
+      products.map((product, rowIndex) => {
         const title = product.title ?? product.spu;
         const thumb = product.thumbnail_url ?? getThumbnailUrl(product, null);
         const preview = product.small_image_url ?? thumb;
@@ -2133,6 +2289,16 @@ function ProductsPageInner() {
           ? product.delivery_partners
           : [];
         const hasDigiDealDelivery = deliveryPartners.includes("digideal");
+        const productWishlistIds = Array.isArray(product.wishlist_ids)
+          ? product.wishlist_ids
+          : [];
+        const productWishlistIdSet = new Set(productWishlistIds);
+        const wishlistsAlreadyIn = wishlists.filter((list) =>
+          productWishlistIdSet.has(list.id)
+        );
+        const wishlistsAvailable = wishlists.filter(
+          (list) => !productWishlistIdSet.has(list.id)
+        );
         const publishedChannels = sortPublishedChannels(
           Array.isArray(product.published_channels)
             ? product.published_channels.filter((value) => Boolean(value))
@@ -2169,7 +2335,19 @@ function ProductsPageInner() {
         return (
           <TableRow
             key={product.id}
-            className={isReEditing ? styles.tableRowReEditing : undefined}
+            className={mergeClasses(
+              styles.tableRowSelectable,
+              isSelected ? styles.tableRowSelected : undefined,
+              isReEditing ? styles.tableRowReEditing : undefined
+            )}
+            onClick={(event) => {
+              if (isInteractiveRowTarget(event.target)) return;
+              applyRowSelection(
+                rowIndex,
+                !isSelected,
+                event.shiftKey || shiftPressedRef.current
+              );
+            }}
           >
             <TableCell className={styles.imageCol}>
               {thumb ? (
@@ -2400,15 +2578,34 @@ function ProductsPageInner() {
                       ) : wishlists.length === 0 ? (
                         <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
                       ) : (
-                        wishlists.map((list) => (
-                          <MenuItem
-                            key={list.id}
-                            onClick={() => saveProductToWishlist(product.id, list.id)}
-                          >
-                            {list.name}
-                          </MenuItem>
-                        ))
+                        <>
+                          {wishlistsAlreadyIn.map((list) => (
+                            <MenuItem
+                              key={list.id}
+                              disabled
+                              className={styles.wishlistMenuItemInList}
+                            >
+                              <span className={styles.wishlistMenuItemRow}>
+                                <span>{list.name}</span>
+                                <span className={styles.wishlistMenuCheck}>✓</span>
+                              </span>
+                            </MenuItem>
+                          ))}
+                          {wishlistsAlreadyIn.length > 0 &&
+                          wishlistsAvailable.length > 0 ? (
+                            <MenuDivider />
+                          ) : null}
+                          {wishlistsAvailable.map((list) => (
+                            <MenuItem
+                              key={list.id}
+                              onClick={() => saveProductToWishlist(product.id, list.id)}
+                            >
+                              {list.name}
+                            </MenuItem>
+                          ))}
+                        </>
                       )}
+                      <MenuDivider />
                       <MenuItem
                         onClick={() => {
                           setPendingSaveProductIds([product.id]);
@@ -2423,18 +2620,6 @@ function ProductsPageInner() {
                     </MenuList>
                   </MenuPopover>
                 </Menu>
-                <Button
-                  appearance="outline"
-                  size="small"
-                  className={mergeClasses(
-                    styles.tableActionButton,
-                    styles.removeButton
-                  )}
-                  icon={<TrashIcon />}
-                  aria-label={t("products.removeItem", { title })}
-                  title={t("products.removeFromListsHint")}
-                  onClick={() => removeFromAllWishlists(product.id)}
-                />
               </div>
             </TableCell>
             <TableCell>
@@ -2497,16 +2682,13 @@ function ProductsPageInner() {
                   checked={isSelected}
                   aria-label={t("common.selectItem", { item: title })}
                   className={styles.selectCheckbox}
-                  onChange={(_, data) => {
-                    setSelectedRows((prev) => {
-                      const next = new Set(prev);
-                      if (data.checked === true) {
-                        next.add(product.id);
-                      } else {
-                        next.delete(product.id);
-                      }
-                      return next;
-                    });
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event, data) => {
+                    applyRowSelection(
+                      rowIndex,
+                      data.checked === true,
+                      hasShiftKey(event) || shiftPressedRef.current
+                    );
                   }}
                 />
               </div>
@@ -2524,8 +2706,10 @@ function ProductsPageInner() {
       wishlistsLoading,
       wishlistsError,
       saveProductToWishlist,
-      removeFromAllWishlists,
       openDeliveryDialog,
+      isInteractiveRowTarget,
+      applyRowSelection,
+      hasShiftKey,
     ]
   );
 
@@ -3013,51 +3197,52 @@ function ProductsPageInner() {
                       appearance={hasSelection ? "primary" : "outline"}
                       disabled={!hasSelection || isSavingSelection || isApplyingAction}
                     >
-                      {t("common.save")}
-                    </Button>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList>
-                      {wishlistsLoading ? (
-                        <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
-                      ) : wishlistsError ? (
-                        <MenuItem disabled>{wishlistsError}</MenuItem>
-                      ) : wishlists.length === 0 ? (
-                        <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
-                      ) : (
-                        wishlists.map((list) => (
-                          <MenuItem
-                            key={list.id}
-                            onClick={() =>
-                              saveSelectedToWishlist(list.id, list.name)
-                            }
-                          >
-                            {list.name}
-                          </MenuItem>
-                        ))
-                      )}
-                      <MenuItem
-                        onClick={() => {
-                          setPendingSaveProductIds(null);
-                          setNewListDialogOpen(true);
-                        }}
-                      >
-                        {t("products.lists.new")}
-                      </MenuItem>
-                    </MenuList>
-                  </MenuPopover>
-                </Menu>
-                <Menu>
-                  <MenuTrigger disableButtonEnhancement>
-                    <Button
-                      appearance="outline"
-                      disabled={!hasSelection || isSavingSelection || isApplyingAction}
-                    >
                       {t("products.actions.label")}
                     </Button>
                   </MenuTrigger>
                     <MenuPopover>
                       <MenuList>
+                        <Menu positioning="after-top">
+                          <MenuTrigger disableButtonEnhancement>
+                            <MenuItem
+                              disabled={!hasSelection || isSavingSelection || isApplyingAction}
+                              hasSubmenu
+                            >
+                              {t("common.save")}
+                            </MenuItem>
+                          </MenuTrigger>
+                          <MenuPopover>
+                            <MenuList>
+                              {wishlistsLoading ? (
+                                <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
+                              ) : wishlistsError ? (
+                                <MenuItem disabled>{wishlistsError}</MenuItem>
+                              ) : wishlists.length === 0 ? (
+                                <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
+                              ) : (
+                                wishlists.map((list) => (
+                                  <MenuItem
+                                    key={list.id}
+                                    onClick={() =>
+                                      saveSelectedToWishlist(list.id, list.name)
+                                    }
+                                  >
+                                    {list.name}
+                                  </MenuItem>
+                                ))
+                              )}
+                              <MenuItem
+                                onClick={() => {
+                                  setPendingSaveProductIds(null);
+                                  setNewListDialogOpen(true);
+                                }}
+                              >
+                                {t("products.lists.new")}
+                              </MenuItem>
+                            </MenuList>
+                          </MenuPopover>
+                        </Menu>
+                        <MenuDivider />
                         <MenuItem
                           disabled={!hasSelection || isApplyingAction}
                           onClick={() => void handleSendSelectedToReEdit()}
@@ -3107,7 +3292,7 @@ function ProductsPageInner() {
                 </Menu>
                 <Button
                   appearance="outline"
-                  onClick={() => setSelectedRows(new Set())}
+                  onClick={clearSelection}
                   disabled={!hasSelection || isApplyingAction}
                   className={styles.unselectButton}
                 >
@@ -3171,6 +3356,7 @@ function ProductsPageInner() {
                       } else {
                         setSelectedRows(new Set());
                       }
+                      lastSelectedRowIndexRef.current = null;
                     }}
                   />
                 </div>
@@ -3272,13 +3458,14 @@ function ProductsPageInner() {
             setDeliveryTargetProductIds([]);
             setDeliveryNewListName("");
             setDeliveryListsError(null);
+            setSelectedDeliveryListId(null);
           }
         }}
       >
         <DialogSurface className={styles.deliveryDialog}>
           <DialogBody className={styles.deliveryDialogBody}>
             <DialogTitle>{t("products.delivery.dialogTitle")}</DialogTitle>
-            <Text size={200}>
+            <Text size={200} className={styles.deliveryDialogSubtitle}>
               {t("products.delivery.dialogBody", {
                 count: deliveryTargetProductIds.length,
               })}
@@ -3293,43 +3480,43 @@ function ProductsPageInner() {
                     <TableHeaderCell>{t("products.delivery.table.name")}</TableHeaderCell>
                     <TableHeaderCell>{t("products.delivery.table.items")}</TableHeaderCell>
                     <TableHeaderCell>{t("products.delivery.table.created")}</TableHeaderCell>
-                    <TableHeaderCell>{t("products.delivery.table.action")}</TableHeaderCell>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {deliveryListsLoading ? (
                     <TableRow>
-                      <TableCell colSpan={4}>
+                      <TableCell colSpan={3}>
                         <Spinner size="tiny" label={t("products.delivery.loading")} />
                       </TableCell>
                     </TableRow>
                   ) : deliveryLists.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>{t("products.delivery.table.empty")}</TableCell>
+                      <TableCell colSpan={3}>{t("products.delivery.table.empty")}</TableCell>
                     </TableRow>
                   ) : (
                     deliveryLists.map((list) => (
-                      <TableRow key={list.id}>
+                      <TableRow
+                        key={list.id}
+                        className={mergeClasses(
+                          styles.deliveryListRowSelectable,
+                          selectedDeliveryListId === list.id
+                            ? styles.deliveryListRowSelected
+                            : undefined
+                        )}
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => setSelectedDeliveryListId(list.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedDeliveryListId(list.id);
+                          }
+                        }}
+                      >
                         <TableCell>{list.name}</TableCell>
                         <TableCell>{list.item_count ?? 0}</TableCell>
                         <TableCell>
                           {formatDateTime(list.created_at) || t("common.notAvailable")}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            appearance="outline"
-                            size="small"
-                            disabled={
-                              addingDeliveryListId === list.id ||
-                              isCreatingDeliveryList ||
-                              deliveryTargetProductIds.length === 0
-                            }
-                            onClick={() => {
-                              void addItemsToDeliveryList(list.id);
-                            }}
-                          >
-                            {t("products.delivery.add")}
-                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -3352,13 +3539,25 @@ function ProductsPageInner() {
                   }}
                   disabled={!deliveryNewListName.trim() || isCreatingDeliveryList}
                 >
-                  {t("common.ok")}
+                  {t("products.lists.new")}
                 </Button>
               </div>
             </Field>
-            <DialogActions>
-              <Button appearance="subtle" onClick={() => setDeliveryDialogOpen(false)}>
+            <DialogActions className={styles.deliveryDialogActions}>
+              <Button appearance="outline" onClick={() => setDeliveryDialogOpen(false)}>
                 {t("common.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={saveSelectedDeliveryList}
+                disabled={
+                  !selectedDeliveryListId ||
+                  isCreatingDeliveryList ||
+                  deliveryTargetProductIds.length === 0 ||
+                  addingDeliveryListId !== null
+                }
+              >
+                {addingDeliveryListId ? t("common.loading") : t("products.delivery.saveToList")}
               </Button>
             </DialogActions>
           </DialogBody>

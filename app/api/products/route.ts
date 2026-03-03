@@ -38,6 +38,17 @@ type ProductRow = {
   nordic_partner_enabled: boolean | null;
 };
 
+type WishlistJoinRow = {
+  id?: string | null;
+  name?: string | null;
+};
+
+type ProductWishlistItemRow = {
+  product_id?: string | null;
+  wishlist_id?: string | null;
+  product_manager_wishlists?: WishlistJoinRow | WishlistJoinRow[] | null;
+};
+
 type DraftWorkflowRow = {
   draft_spu: string | null;
   draft_source: string | null;
@@ -1080,24 +1091,28 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
   }
 
   const deliveryPartnerMap = new Map<string, Set<string>>();
+  const productWishlistMap = new Map<string, Set<string>>();
   if (productIds.length > 0) {
     const { data: deliveryRows, error: deliveryError } = await supabase
       .from("product_manager_wishlist_items")
-      .select("product_id, product_manager_wishlists(name)")
+      .select("product_id, wishlist_id, product_manager_wishlists(id,name)")
       .in("product_id", productIds);
 
     if (deliveryError) {
       return NextResponse.json({ error: deliveryError.message }, { status: 500 });
     }
 
-    (deliveryRows ?? []).forEach((row) => {
+    (deliveryRows ?? []).forEach((rawRow) => {
+      const row = rawRow as ProductWishlistItemRow;
       const productId = String(row.product_id ?? "").trim();
       if (!productId) return;
-      const wishlistData = row.product_manager_wishlists as
-        | { name?: string | null }
-        | Array<{ name?: string | null }>
-        | null
-        | undefined;
+      const wishlistId = String(row.wishlist_id ?? "").trim();
+      if (wishlistId) {
+        const wishlists = productWishlistMap.get(productId) ?? new Set<string>();
+        wishlists.add(wishlistId);
+        productWishlistMap.set(productId, wishlists);
+      }
+      const wishlistData = row.product_manager_wishlists;
       const wishlistName = Array.isArray(wishlistData)
         ? wishlistData[0]?.name
         : wishlistData?.name;
@@ -1159,6 +1174,9 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
         ),
         delivery_partners: Array.from(
           deliveryPartnerMap.get(product.id) ?? new Set<string>()
+        ),
+        wishlist_ids: Array.from(
+          productWishlistMap.get(product.id) ?? new Set<string>()
         ),
         thumbnail_url: thumbnailUrl,
         small_image_url: smallUrl ?? null,

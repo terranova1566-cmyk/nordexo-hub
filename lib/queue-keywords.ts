@@ -13,7 +13,7 @@ export type QueueKeywordResult = {
 
 const KEYWORD_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_keyword_cache");
 const PREVIEW_TITLE_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_preview_table_cache");
-const KEYWORD_CACHE_VERSION = 9;
+const KEYWORD_CACHE_VERSION = 10;
 
 const TITLE_KEYS = [
   "title_1688",
@@ -124,6 +124,12 @@ const cleanTitle = (value: string) =>
     .replace(/\s{2,}/g, " ")
     .trim();
 
+const clampToKeywordWords = (value: string, maxWords = 2) => {
+  const words = cleanTitle(value).split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  return words.slice(0, Math.max(1, maxWords)).join(" ");
+};
+
 const extractReadableChineseTitle = (readable: unknown) => {
   const raw = asText(readable);
   if (!raw) return "";
@@ -201,6 +207,7 @@ const normalizeKeywords = (input: unknown, maxCount: number) => {
       const wordBoundary = clipped.replace(/\s+\S*$/, "").trim();
       keyword = (wordBoundary || clipped.slice(0, maxLabelLength)).trim();
     }
+    keyword = clampToKeywordWords(keyword, 2);
     if (!keyword) continue;
     out.push(keyword);
     if (out.length >= limit) break;
@@ -224,24 +231,24 @@ const normalizeSingleEnglishKeyword = (raw: string) => {
     { pattern: /(verktyg|tool|organizer|holder)/i, label: "Tool Accessory" },
   ];
   for (const mapping of directMappings) {
-    if (mapping.pattern.test(value)) return mapping.label;
+    if (mapping.pattern.test(value)) return clampToKeywordWords(mapping.label, 2);
   }
   if (hasLatin(value) && !containsChinese(value)) {
-    return toTitleCase(value.toLowerCase());
+    return clampToKeywordWords(toTitleCase(value.toLowerCase()), 2);
   }
 
-  if (/耳|otoscope|ear/i.test(value)) return "Ear Cleaner";
-  if (/狗|猫|宠物|paw|pet/i.test(value)) return "Pet Accessory";
-  if (/包|袋|bag/i.test(value)) return "Bag";
+  if (/耳|otoscope|ear/i.test(value)) return clampToKeywordWords("Ear Cleaner", 2);
+  if (/狗|猫|宠物|paw|pet/i.test(value)) return clampToKeywordWords("Pet Accessory", 2);
+  if (/包|袋|bag/i.test(value)) return clampToKeywordWords("Bag", 2);
   if (/检测|一氧化碳|气体|报警|detector|carbon monoxide|\bco\b/i.test(value)) {
-    return "Gas Detector";
+    return clampToKeywordWords("Gas Detector", 2);
   }
-  if (/剪|修|刨|剃|trimmer|groom/i.test(value)) return "Grooming Tool";
-  if (/指甲|美甲|nail/i.test(value)) return "Nail Tool";
-  if (/工具|tool|organizer|holder/i.test(value)) return "Tool Accessory";
-  if (/玩具|陀螺|spinner|toy/i.test(value)) return "Toy";
-  if (/灯|照明|light/i.test(value)) return "Light";
-  if (/相机|摄像|camera/i.test(value)) return "Camera Tool";
+  if (/剪|修|刨|剃|trimmer|groom/i.test(value)) return clampToKeywordWords("Grooming Tool", 2);
+  if (/指甲|美甲|nail/i.test(value)) return clampToKeywordWords("Nail Tool", 2);
+  if (/工具|tool|organizer|holder/i.test(value)) return clampToKeywordWords("Tool Accessory", 2);
+  if (/玩具|陀螺|spinner|toy/i.test(value)) return clampToKeywordWords("Toy", 2);
+  if (/灯|照明|light/i.test(value)) return clampToKeywordWords("Light", 2);
+  if (/相机|摄像|camera/i.test(value)) return clampToKeywordWords("Camera Tool", 2);
 
   return "";
 };
@@ -300,9 +307,9 @@ const deriveFallbackKeywordFromTitle = (title: string) => {
           !LATIN_STOP_WORDS.has(token) &&
           !/^\d+$/.test(token)
       )
-      .slice(0, 3);
+      .slice(0, 2);
     if (tokenized.length) {
-      return toTitleCase(tokenized.join(" "));
+      return clampToKeywordWords(toTitleCase(tokenized.join(" ")), 2);
     }
   }
 
@@ -328,7 +335,7 @@ const fallbackKeywordForTitle = (title: string, index: number) => {
     .replace(/\s{2,}/g, " ")
     .trim()
     .slice(0, 28);
-  if (direct) return direct;
+  if (direct) return clampToKeywordWords(direct, 2);
   return `Product ${index + 1}`;
 };
 
@@ -352,7 +359,8 @@ const mergeEnglishKeywords = (
     }
 
     const title = titles[index] ?? "";
-    out.push(fallbackKeywordForTitle(title, index));
+    const fallback = clampToKeywordWords(fallbackKeywordForTitle(title, index), 2);
+    out.push(fallback || `Product ${index + 1}`);
   }
 
   return out;
@@ -384,7 +392,7 @@ const requestOpenAiKeywords = async (titles: string[], maxCount: number) => {
     `Return exactly ${limit} short ENGLISH working product titles.`,
     "Rules:",
     "1) Each title must describe what the product is (noun-focused), not usage or marketing text.",
-    "2) Keep each title concise and reusable (2-8 words).",
+    "2) Each title must be 1-2 words only.",
     "3) One title per input title, preserve title order.",
     "4) Output must be English only.",
     `5) Return exactly ${limit} titles.`,

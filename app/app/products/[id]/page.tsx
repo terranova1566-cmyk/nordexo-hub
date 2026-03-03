@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -15,11 +16,12 @@ import {
   Input,
   Textarea,
   Menu,
-  MenuItem,
-  MenuList,
   MenuPopover,
   MenuTrigger,
   MessageBar,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Spinner,
   Tab,
   TabList,
@@ -84,6 +86,25 @@ const useStyles = makeStyles({
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: "12px",
+  },
+  infoSecondaryRow: {
+    marginTop: "12px",
+    paddingTop: "12px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  infoValue: {
+    fontSize: tokens.fontSizeBase300,
+    color: tokens.colorNeutralForeground1,
+    overflowWrap: "anywhere",
+  },
+  supplierLink: {
+    color: tokens.colorBrandForeground1,
+    textDecorationLine: "none",
+    overflowWrap: "anywhere",
+    wordBreak: "break-all",
+    "&:hover": {
+      textDecorationLine: "underline",
+    },
   },
   metaLabel: {
     color: tokens.colorNeutralForeground3,
@@ -239,29 +260,6 @@ const useStyles = makeStyles({
   codeBlockEmpty: {
     color: tokens.colorNeutralForeground3,
   },
-  saveControls: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  listSaveButton: {
-    borderRadius: "6px",
-    fontWeight: tokens.fontWeightSemibold,
-    paddingInline: "16px",
-  },
-  removeButton: {
-    minWidth: "32px",
-    height: "32px",
-    padding: 0,
-    borderRadius: "999px",
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    color: tokens.colorNeutralForeground2,
-    "&:hover": {
-      color: tokens.colorBrandForeground1,
-      backgroundColor: "transparent",
-      border: `1px solid ${tokens.colorBrandStroke1}`,
-    },
-  },
   variantImageHeader: {
     width: "52px",
   },
@@ -296,6 +294,34 @@ const useStyles = makeStyles({
     gap: "12px",
     flexWrap: "wrap",
   },
+  dataSectionToggle: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    border: "none",
+    backgroundColor: "transparent",
+    padding: 0,
+    margin: 0,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  dataSectionToggleRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    flexShrink: 0,
+  },
+  dataSectionEmptyBadge: {
+    color: tokens.colorNeutralForeground3,
+  },
+  dataSectionChevron: {
+    fontFamily: tokens.fontFamilyMonospace,
+    color: tokens.colorNeutralForeground2,
+    minWidth: "10px",
+    textAlign: "center",
+  },
   dataTableHeader: {
     display: "flex",
     alignItems: "center",
@@ -308,16 +334,113 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "6px",
   },
+  dataTableActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
   dataScrollButton: {
     minWidth: "32px",
     height: "32px",
     paddingInline: 0,
     borderRadius: "999px",
   },
+  columnMenuButton: {
+    minHeight: "32px",
+    paddingInline: "10px",
+    whiteSpace: "nowrap",
+  },
+  columnMenuList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    padding: "10px 12px",
+    maxHeight: "340px",
+    overflowY: "auto",
+    minWidth: "240px",
+  },
+  columnMenuCheckbox: {
+    "& .fui-Checkbox__label": {
+      fontSize: tokens.fontSizeBase200,
+    },
+  },
   dataGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
     gap: "16px",
+  },
+  dataWideField: {
+    gridColumn: "1 / -1",
+  },
+  taxonomyTrigger: {
+    justifyContent: "space-between",
+    width: "100%",
+    textAlign: "left",
+    fontWeight: tokens.fontWeightRegular,
+  },
+  taxonomyPopover: {
+    padding: "12px",
+    width: "min(840px, calc(100vw - 48px))",
+    maxWidth: "100%",
+  },
+  taxonomySearch: {
+    marginBottom: "10px",
+  },
+  taxonomyColumns: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "12px",
+    alignItems: "start",
+    "@media (max-width: 960px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  taxonomyColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxHeight: "360px",
+    overflowY: "auto",
+    paddingRight: "8px",
+  },
+  taxonomyColumnTitle: {
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground2,
+  },
+  taxonomyItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "4px 6px",
+    borderRadius: "6px",
+    width: "100%",
+    boxSizing: "border-box",
+    backgroundColor: "transparent",
+    transition: "background-color 0.12s ease",
+  },
+  taxonomyItemInteractive: {
+    cursor: "pointer",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground2,
+    },
+    "&:focus-visible": {
+      outline: `2px solid ${tokens.colorBrandStroke1}`,
+      outlineOffset: "1px",
+    },
+  },
+  taxonomyItemSelected: {
+    backgroundColor: tokens.colorNeutralBackground3,
+  },
+  taxonomyItemText: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground1,
+  },
+  taxonomyActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "8px",
+    marginTop: "12px",
   },
   dataTableWrap: {
     overflowX: "auto",
@@ -483,10 +606,27 @@ type ProductResponse = {
   }>;
 };
 
-type Wishlist = {
-  id: string;
+type CategoryNode = {
   name: string;
+  children: CategoryNode[];
 };
+
+type TaxonomySelection = {
+  l1: string | null;
+  l2: string | null;
+  l3: string | null;
+};
+
+type ProductDataSectionKey =
+  | "supplier"
+  | "catalog"
+  | "collections"
+  | "media"
+  | "status"
+  | "legacy"
+  | "variantIdentity"
+  | "pricing"
+  | "metafields";
 
 type InternalProductForm = {
   supplier_1688_url: string;
@@ -501,10 +641,6 @@ type InternalProductForm = {
   google_taxonomy_l2: string;
   google_taxonomy_l3: string;
   product_categorizer_keywords: string;
-  option1_name: string;
-  option2_name: string;
-  option3_name: string;
-  option4_name: string;
   image_folder: string;
   images: string;
   video_files: string;
@@ -572,6 +708,55 @@ type InternalMetafieldForm = {
   value: string;
 };
 
+type VariantIdentityColumnKey =
+  | "sku_norm"
+  | "sku_bak"
+  | "option1"
+  | "option2"
+  | "option3"
+  | "option4"
+  | "option_combined_zh"
+  | "option1_zh"
+  | "option2_zh"
+  | "option3_zh"
+  | "option4_zh"
+  | "variation_color_se"
+  | "variation_size_se"
+  | "variation_other_se"
+  | "variation_amount_se"
+  | "short_title_zh"
+  | "barcode"
+  | "variant_image_url";
+
+type VariantPricingColumnKey =
+  | "supplier_name"
+  | "supplier_location"
+  | "shipping_name_en"
+  | "shipping_name_zh"
+  | "shipping_class"
+  | "weight"
+  | "purchase_price_cny"
+  | "cost"
+  | "price"
+  | "compare_at_price"
+  | "b2b_dropship_price_se"
+  | "b2b_dropship_price_no"
+  | "b2b_dropship_price_dk"
+  | "b2b_dropship_price_fi"
+  | "taxable"
+  | "tax_code"
+  | "hs_code"
+  | "country_of_origin"
+  | "category_code_fq"
+  | "category_code_ld"
+  | "inventory_quantity";
+
+type VariantColumnConfig<K extends string> = {
+  key: K;
+  label: string;
+  readOnly?: boolean;
+};
+
 type DescriptionForm = {
   short_title: string;
   subtitle: string;
@@ -627,28 +812,6 @@ const buildGoogleTaxonomyLabel = (product: ProductResponse["product"]) => {
   return secondaryPath || null;
 };
 
-const TrashIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    width="16"
-    height="16"
-    aria-hidden="true"
-    focusable="false"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path stroke="none" d="M0 0h24v24H0z" />
-    <path d="M4 7l16 0" />
-    <path d="M10 11l0 6" />
-    <path d="M14 11l0 6" />
-    <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-    <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-  </svg>
-);
-
 export default function ProductDetailPage() {
   const styles = useStyles();
   const params = useParams<{ id?: string | string[]; spu?: string | string[] }>();
@@ -677,12 +840,6 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("variants");
-  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [wishlistsLoading, setWishlistsLoading] = useState(true);
-  const [wishlistsError, setWishlistsError] = useState<string | null>(null);
-  const [newListName, setNewListName] = useState("");
-  const [newListDialogOpen, setNewListDialogOpen] = useState(false);
-  const [isSavingList, setIsSavingList] = useState(false);
   const [internalProduct, setInternalProduct] = useState<InternalProductForm>({
     supplier_1688_url: "",
     product_type: "",
@@ -696,10 +853,6 @@ export default function ProductDetailPage() {
     google_taxonomy_l2: "",
     google_taxonomy_l3: "",
     product_categorizer_keywords: "",
-    option1_name: "",
-    option2_name: "",
-    option3_name: "",
-    option4_name: "",
     image_folder: "",
     images: "",
     video_files: "",
@@ -721,9 +874,42 @@ export default function ProductDetailPage() {
   const [internalMetafields, setInternalMetafields] = useState<
     InternalMetafieldForm[]
   >([]);
+  const [visibleIdentityEmptyColumns, setVisibleIdentityEmptyColumns] = useState<
+    Set<VariantIdentityColumnKey>
+  >(new Set());
+  const [visiblePricingEmptyColumns, setVisiblePricingEmptyColumns] = useState<
+    Set<VariantPricingColumnKey>
+  >(new Set());
   const [isSavingInternal, setIsSavingInternal] = useState(false);
   const [internalSaveError, setInternalSaveError] = useState<string | null>(null);
   const [internalSaveSuccess, setInternalSaveSuccess] = useState(false);
+  const [taxonomyPopoverOpen, setTaxonomyPopoverOpen] = useState(false);
+  const [taxonomySearch, setTaxonomySearch] = useState("");
+  const [taxonomyCategories, setTaxonomyCategories] = useState<CategoryNode[]>([]);
+  const [taxonomyCategoriesLoading, setTaxonomyCategoriesLoading] = useState(true);
+  const [taxonomyCategoriesError, setTaxonomyCategoriesError] = useState<string | null>(
+    null
+  );
+  const [taxonomyDraft, setTaxonomyDraft] = useState<TaxonomySelection>({
+    l1: null,
+    l2: null,
+    l3: null,
+  });
+  const [taxonomyActiveL1, setTaxonomyActiveL1] = useState<string | null>(null);
+  const [taxonomyActiveL2, setTaxonomyActiveL2] = useState<string | null>(null);
+  const [collapsedDataSections, setCollapsedDataSections] = useState<
+    Record<ProductDataSectionKey, boolean>
+  >({
+    supplier: false,
+    catalog: false,
+    collections: false,
+    media: false,
+    status: false,
+    legacy: false,
+    variantIdentity: false,
+    pricing: false,
+    metafields: false,
+  });
   const [descriptionDraft, setDescriptionDraft] = useState<DescriptionForm | null>(
     null
   );
@@ -742,6 +928,336 @@ export default function ProductDetailPage() {
   const [aiPreviewActive, setAiPreviewActive] = useState(false);
   const [aiSnapshot, setAiSnapshot] = useState<DescriptionForm | null>(null);
   const resolvedProductId = data?.product?.id ?? routeProductParam;
+
+  const variantIdentityColumns = useMemo<
+    VariantColumnConfig<VariantIdentityColumnKey>[]
+  >(
+    () => [
+      {
+        key: "sku_norm",
+        label: t("productDetail.data.variantSkuNorm"),
+        readOnly: true,
+      },
+      { key: "sku_bak", label: t("productDetail.data.variantSkuBak") },
+      { key: "option1", label: t("productDetail.data.option1") },
+      { key: "option2", label: t("productDetail.data.option2") },
+      { key: "option3", label: t("productDetail.data.option3") },
+      { key: "option4", label: t("productDetail.data.option4") },
+      {
+        key: "option_combined_zh",
+        label: t("productDetail.data.optionCombinedZh"),
+      },
+      { key: "option1_zh", label: t("productDetail.data.option1Zh") },
+      { key: "option2_zh", label: t("productDetail.data.option2Zh") },
+      { key: "option3_zh", label: t("productDetail.data.option3Zh") },
+      { key: "option4_zh", label: t("productDetail.data.option4Zh") },
+      {
+        key: "variation_color_se",
+        label: t("productDetail.data.variationColorSe"),
+      },
+      {
+        key: "variation_size_se",
+        label: t("productDetail.data.variationSizeSe"),
+      },
+      {
+        key: "variation_other_se",
+        label: t("productDetail.data.variationOtherSe"),
+      },
+      {
+        key: "variation_amount_se",
+        label: t("productDetail.data.variationAmountSe"),
+      },
+      { key: "short_title_zh", label: t("productDetail.data.shortTitleZh") },
+      { key: "barcode", label: t("productDetail.data.barcode") },
+      { key: "variant_image_url", label: t("productDetail.data.variantImage") },
+    ],
+    [t]
+  );
+
+  const variantPricingColumns = useMemo<
+    VariantColumnConfig<VariantPricingColumnKey>[]
+  >(
+    () => [
+      { key: "supplier_name", label: t("productDetail.data.variantSupplier") },
+      {
+        key: "supplier_location",
+        label: t("productDetail.data.variantSupplierLocation"),
+      },
+      { key: "shipping_name_en", label: t("productDetail.data.shippingName") },
+      { key: "shipping_name_zh", label: t("productDetail.data.shippingNameZh") },
+      { key: "shipping_class", label: t("productDetail.data.shippingClass") },
+      { key: "weight", label: t("productDetail.data.weight") },
+      {
+        key: "purchase_price_cny",
+        label: t("productDetail.data.purchasePriceCny"),
+      },
+      { key: "cost", label: t("productDetail.data.cost") },
+      { key: "price", label: t("productDetail.data.price") },
+      { key: "compare_at_price", label: t("productDetail.data.compareAtPrice") },
+      { key: "b2b_dropship_price_se", label: t("productDetail.data.b2bSe") },
+      { key: "b2b_dropship_price_no", label: t("productDetail.data.b2bNo") },
+      { key: "b2b_dropship_price_dk", label: t("productDetail.data.b2bDk") },
+      { key: "b2b_dropship_price_fi", label: t("productDetail.data.b2bFi") },
+      { key: "taxable", label: t("productDetail.data.taxable") },
+      { key: "tax_code", label: t("productDetail.data.taxCode") },
+      { key: "hs_code", label: t("productDetail.data.hsCode") },
+      {
+        key: "country_of_origin",
+        label: t("productDetail.data.countryOfOrigin"),
+      },
+      { key: "category_code_fq", label: t("productDetail.data.categoryCodeFq") },
+      { key: "category_code_ld", label: t("productDetail.data.categoryCodeLd") },
+      { key: "inventory_quantity", label: t("productDetail.data.inventoryQty") },
+    ],
+    [t]
+  );
+
+  const identityColumnsWithData = useMemo(() => {
+    const out = new Set<VariantIdentityColumnKey>();
+    variantIdentityColumns.forEach((column) => {
+      const hasData = internalVariants.some(
+        (variant) => variant[column.key].trim().length > 0
+      );
+      if (hasData) out.add(column.key);
+    });
+    return out;
+  }, [internalVariants, variantIdentityColumns]);
+
+  const pricingColumnsWithData = useMemo(() => {
+    const out = new Set<VariantPricingColumnKey>();
+    variantPricingColumns.forEach((column) => {
+      const hasData = internalVariants.some(
+        (variant) => variant[column.key].trim().length > 0
+      );
+      if (hasData) out.add(column.key);
+    });
+    return out;
+  }, [internalVariants, variantPricingColumns]);
+
+  const visibleIdentityColumns = useMemo(
+    () =>
+      variantIdentityColumns.filter(
+        (column) =>
+          identityColumnsWithData.has(column.key) ||
+          visibleIdentityEmptyColumns.has(column.key)
+      ),
+    [variantIdentityColumns, identityColumnsWithData, visibleIdentityEmptyColumns]
+  );
+
+  const visiblePricingColumns = useMemo(
+    () =>
+      variantPricingColumns.filter(
+        (column) =>
+          pricingColumnsWithData.has(column.key) ||
+          visiblePricingEmptyColumns.has(column.key)
+      ),
+    [variantPricingColumns, pricingColumnsWithData, visiblePricingEmptyColumns]
+  );
+
+  const taxonomySummary = useMemo(() => {
+    const parts = [
+      internalProduct.google_taxonomy_l1,
+      internalProduct.google_taxonomy_l2,
+      internalProduct.google_taxonomy_l3,
+    ]
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    return parts.length > 0 ? parts.join(" > ") : t("discovery.categories.all");
+  }, [
+    internalProduct.google_taxonomy_l1,
+    internalProduct.google_taxonomy_l2,
+    internalProduct.google_taxonomy_l3,
+    t,
+  ]);
+
+  const taxonomySearchNormalized = taxonomySearch.trim().toLowerCase();
+  const taxonomyTokens = useMemo(
+    () => taxonomySearchNormalized.split(/\s+/).filter(Boolean),
+    [taxonomySearchNormalized]
+  );
+  const taxonomyMatchesSearch = useCallback(
+    (value: string) => {
+      if (taxonomyTokens.length === 0) return true;
+      const normalized = value.toLowerCase();
+      return taxonomyTokens.some((token) => normalized.includes(token));
+    },
+    [taxonomyTokens]
+  );
+
+  const filteredTaxonomyCategories = useMemo(() => {
+    if (taxonomyTokens.length === 0) return taxonomyCategories;
+    return taxonomyCategories.filter((l1) => {
+      if (taxonomyMatchesSearch(l1.name)) return true;
+      return (l1.children ?? []).some((l2) => {
+        if (taxonomyMatchesSearch(l2.name)) return true;
+        return (l2.children ?? []).some((l3) => taxonomyMatchesSearch(l3.name));
+      });
+    });
+  }, [taxonomyCategories, taxonomyTokens.length, taxonomyMatchesSearch]);
+
+  const filteredTaxonomyL2Nodes = useMemo(() => {
+    const l1Node = filteredTaxonomyCategories.find(
+      (node) => node.name === taxonomyActiveL1
+    );
+    const nodes = l1Node?.children ?? [];
+    if (taxonomyTokens.length === 0) return nodes;
+    return nodes.filter(
+      (l2) =>
+        taxonomyMatchesSearch(l2.name) ||
+        (l2.children ?? []).some((l3) => taxonomyMatchesSearch(l3.name))
+    );
+  }, [
+    filteredTaxonomyCategories,
+    taxonomyActiveL1,
+    taxonomyTokens.length,
+    taxonomyMatchesSearch,
+  ]);
+
+  const filteredTaxonomyL3Nodes = useMemo(() => {
+    const l1Node = filteredTaxonomyCategories.find(
+      (node) => node.name === taxonomyActiveL1
+    );
+    const l2Node = (l1Node?.children ?? []).find(
+      (child) => child.name === taxonomyActiveL2
+    );
+    const nodes = l2Node?.children ?? [];
+    if (taxonomyTokens.length === 0) return nodes;
+    return nodes.filter((l3) => taxonomyMatchesSearch(l3.name));
+  }, [
+    filteredTaxonomyCategories,
+    taxonomyActiveL1,
+    taxonomyActiveL2,
+    taxonomyTokens.length,
+    taxonomyMatchesSearch,
+  ]);
+
+  const hasTextValue = useCallback((value: string) => value.trim().length > 0, []);
+
+  const hasSupplierSectionData = useMemo(
+    () =>
+      [
+        internalProduct.supplier_1688_url,
+        internalProduct.brand,
+        internalProduct.vendor,
+      ].some(hasTextValue),
+    [internalProduct.supplier_1688_url, internalProduct.brand, internalProduct.vendor, hasTextValue]
+  );
+  const hasCatalogSectionData = useMemo(
+    () =>
+      [
+        internalProduct.product_type,
+        internalProduct.tags,
+        internalProduct.shopify_category_name,
+        internalProduct.shopify_category_path,
+        internalProduct.shopify_category_id,
+        internalProduct.google_taxonomy_l1,
+        internalProduct.google_taxonomy_l2,
+        internalProduct.google_taxonomy_l3,
+        internalProduct.product_categorizer_keywords,
+      ].some(hasTextValue),
+    [
+      internalProduct.product_type,
+      internalProduct.tags,
+      internalProduct.shopify_category_name,
+      internalProduct.shopify_category_path,
+      internalProduct.shopify_category_id,
+      internalProduct.google_taxonomy_l1,
+      internalProduct.google_taxonomy_l2,
+      internalProduct.google_taxonomy_l3,
+      internalProduct.product_categorizer_keywords,
+      hasTextValue,
+    ]
+  );
+  const hasCollectionsSectionData = useMemo(
+    () =>
+      [
+        internalProduct.shopify_collection_handles,
+        internalProduct.shopify_collection_ids,
+        internalProduct.shopify_tingelo_category_keys,
+        internalProduct.shopify_tingelo_sync,
+        internalProduct.nordic_partner_enabled,
+      ].some(hasTextValue),
+    [
+      internalProduct.shopify_collection_handles,
+      internalProduct.shopify_collection_ids,
+      internalProduct.shopify_tingelo_category_keys,
+      internalProduct.shopify_tingelo_sync,
+      internalProduct.nordic_partner_enabled,
+      hasTextValue,
+    ]
+  );
+  const hasMediaSectionData = useMemo(
+    () =>
+      [
+        internalProduct.image_folder,
+        internalProduct.images,
+        internalProduct.video_files,
+      ].some(hasTextValue),
+    [
+      internalProduct.image_folder,
+      internalProduct.images,
+      internalProduct.video_files,
+      hasTextValue,
+    ]
+  );
+  const hasStatusSectionData = useMemo(
+    () =>
+      [
+        internalProduct.is_blocked,
+        internalProduct.blocked_at,
+        internalProduct.blocked_by,
+      ].some(hasTextValue),
+    [
+      internalProduct.is_blocked,
+      internalProduct.blocked_at,
+      internalProduct.blocked_by,
+      hasTextValue,
+    ]
+  );
+  const hasLegacySectionData = useMemo(
+    () =>
+      [
+        internalProduct.legacy_title_sv,
+        internalProduct.legacy_description_sv,
+        internalProduct.legacy_bullets_sv,
+      ].some(hasTextValue),
+    [
+      internalProduct.legacy_title_sv,
+      internalProduct.legacy_description_sv,
+      internalProduct.legacy_bullets_sv,
+      hasTextValue,
+    ]
+  );
+  const hasMetafieldsSectionData = useMemo(
+    () => internalMetafields.some((field) => hasTextValue(field.value)),
+    [internalMetafields, hasTextValue]
+  );
+  const hasVariantIdentitySectionData = useMemo(
+    () => internalVariants.length > 0,
+    [internalVariants]
+  );
+  const hasVariantPricingSectionData = useMemo(
+    () => internalVariants.length > 0,
+    [internalVariants]
+  );
+
+  const supplierLinkHref = useMemo(() => {
+    const raw = internalProduct.supplier_1688_url.trim();
+    if (!raw) return null;
+    try {
+      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const parsed = new URL(href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }, [internalProduct.supplier_1688_url]);
+
+  useEffect(() => {
+    setVisibleIdentityEmptyColumns(new Set());
+    setVisiblePricingEmptyColumns(new Set());
+  }, [resolvedProductId]);
 
   const loadProduct = useCallback(
     async (signal?: AbortSignal) => {
@@ -781,28 +1297,34 @@ export default function ProductDetailPage() {
     return () => controller.abort();
   }, [loadProduct]);
 
-  const fetchWishlists = async (signal?: AbortSignal) => {
-    setWishlistsLoading(true);
-    setWishlistsError(null);
-    try {
-      const response = await fetch("/api/products/wishlists", { signal });
-      if (!response.ok) {
-        throw new Error(t("products.lists.error"));
-      }
-      const payload = await response.json();
-      setWishlists(Array.isArray(payload.items) ? payload.items : []);
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        setWishlistsError((err as Error).message);
-      }
-    } finally {
-      setWishlistsLoading(false);
-    }
-  };
-
   useEffect(() => {
     const controller = new AbortController();
-    fetchWishlists(controller.signal);
+    const loadTaxonomyCategories = async () => {
+      setTaxonomyCategoriesLoading(true);
+      setTaxonomyCategoriesError(null);
+      try {
+        const response = await fetch("/api/digideal/categories?provider=digideal", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "Failed to load categories.");
+        }
+        const payload = (await response.json()) as { categories?: CategoryNode[] };
+        setTaxonomyCategories(payload.categories ?? []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setTaxonomyCategoriesError(
+          err instanceof Error ? err.message : "Failed to load categories."
+        );
+        setTaxonomyCategories([]);
+      } finally {
+        setTaxonomyCategoriesLoading(false);
+      }
+    };
+
+    loadTaxonomyCategories();
+
     return () => controller.abort();
   }, []);
 
@@ -864,7 +1386,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!data) return;
     const product = data.product;
-    setInternalProduct({
+    const nextInternalProduct: InternalProductForm = {
       supplier_1688_url: toText(product.supplier_1688_url),
       product_type: toText(product.product_type),
       brand: toText(product.brand),
@@ -877,10 +1399,6 @@ export default function ProductDetailPage() {
       google_taxonomy_l2: toText(product.google_taxonomy_l2),
       google_taxonomy_l3: toText(product.google_taxonomy_l3),
       product_categorizer_keywords: toText(product.product_categorizer_keywords),
-      option1_name: toText(product.option1_name),
-      option2_name: toText(product.option2_name),
-      option3_name: toText(product.option3_name),
-      option4_name: toText(product.option4_name),
       image_folder: toText(product.image_folder),
       images: toText(product.images),
       video_files: toText(product.video_files),
@@ -895,10 +1413,10 @@ export default function ProductDetailPage() {
       legacy_title_sv: toText(product.legacy_title_sv),
       legacy_description_sv: toText(product.legacy_description_sv),
       legacy_bullets_sv: toText(product.legacy_bullets_sv),
-    });
+    };
+    setInternalProduct(nextInternalProduct);
 
-    setInternalVariants(
-      data.variants.map((variant) => ({
+    const nextInternalVariants = data.variants.map((variant) => ({
         id: variant.id,
         sku: variant.sku,
         sku_norm: toText(variant.sku_norm),
@@ -940,17 +1458,61 @@ export default function ProductDetailPage() {
         category_code_fq: toText(variant.category_code_fq),
         category_code_ld: toText(variant.category_code_ld),
         taxable: toText(variant.taxable),
-      }))
-    );
+      }));
+    setInternalVariants(nextInternalVariants);
 
-    setInternalMetafields(
-      (data.internal_metafields ?? []).map((field) => ({
+    const nextInternalMetafields = (data.internal_metafields ?? []).map((field) => ({
         id: field.id,
         key: field.key,
         namespace: field.namespace,
         value: toText(field.value),
-      }))
-    );
+      }));
+    setInternalMetafields(nextInternalMetafields);
+
+    const hasAny = (values: string[]) => values.some((value) => value.trim().length > 0);
+    setCollapsedDataSections({
+      supplier: !hasAny([
+        nextInternalProduct.supplier_1688_url,
+        nextInternalProduct.brand,
+        nextInternalProduct.vendor,
+      ]),
+      catalog: !hasAny([
+        nextInternalProduct.product_type,
+        nextInternalProduct.tags,
+        nextInternalProduct.shopify_category_name,
+        nextInternalProduct.shopify_category_path,
+        nextInternalProduct.shopify_category_id,
+        nextInternalProduct.google_taxonomy_l1,
+        nextInternalProduct.google_taxonomy_l2,
+        nextInternalProduct.google_taxonomy_l3,
+        nextInternalProduct.product_categorizer_keywords,
+      ]),
+      collections: !hasAny([
+        nextInternalProduct.shopify_collection_handles,
+        nextInternalProduct.shopify_collection_ids,
+        nextInternalProduct.shopify_tingelo_category_keys,
+        nextInternalProduct.shopify_tingelo_sync,
+        nextInternalProduct.nordic_partner_enabled,
+      ]),
+      media: !hasAny([
+        nextInternalProduct.image_folder,
+        nextInternalProduct.images,
+        nextInternalProduct.video_files,
+      ]),
+      status: !hasAny([
+        nextInternalProduct.is_blocked,
+        nextInternalProduct.blocked_at,
+        nextInternalProduct.blocked_by,
+      ]),
+      legacy: !hasAny([
+        nextInternalProduct.legacy_title_sv,
+        nextInternalProduct.legacy_description_sv,
+        nextInternalProduct.legacy_bullets_sv,
+      ]),
+      variantIdentity: nextInternalVariants.length === 0,
+      pricing: nextInternalVariants.length === 0,
+      metafields: !nextInternalMetafields.some((field) => field.value.trim().length > 0),
+    });
 
     const descriptionHtml = data.product.description_html ?? "";
     const normalizedMain = descriptionHtml ? normalizeHtml(descriptionHtml) : "";
@@ -974,67 +1536,110 @@ export default function ProductDetailPage() {
     setAiSnapshot(null);
   }, [data]);
 
-  const saveProductToWishlist = async (wishlistId: string) => {
-    if (!resolvedProductId) {
-      setError(t("productDetail.error.load"));
-      return;
-    }
-    setIsSavingList(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/products/wishlists/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wishlistId,
-          items: [{ product_id: resolvedProductId }],
-        }),
-      });
-      if (!response.ok) {
-        let message = t("products.lists.saveError");
-        try {
-          const payload = await response.json();
-          if (payload?.error) message = payload.error;
-        } catch {
-          // ignore parse failures
-        }
-        throw new Error(message);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsSavingList(false);
-    }
-  };
-
-  const createWishlist = async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    const response = await fetch("/api/products/wishlists", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: trimmed }),
-    });
-    if (!response.ok) {
-      let message = t("products.lists.createError");
-      try {
-        const payload = await response.json();
-        if (payload?.error) message = payload.error;
-      } catch {
-        // ignore parse failures
-      }
-      throw new Error(message);
-    }
-    const payload = await response.json();
-    return payload.item as Wishlist;
-  };
-
   const updateInternalProduct = (
     field: keyof InternalProductForm,
     value: string
   ) => {
     setInternalProduct((prev) => ({ ...prev, [field]: value }));
   };
+
+  const toggleDataSection = (section: ProductDataSectionKey) => {
+    setCollapsedDataSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
+  const selectTaxonomyL1 = (value: string) => {
+    setTaxonomyActiveL1(value);
+    setTaxonomyActiveL2(null);
+    setTaxonomyDraft({ l1: value, l2: null, l3: null });
+  };
+
+  const selectTaxonomyL2 = (value: string) => {
+    if (!taxonomyActiveL1) return;
+    setTaxonomyActiveL2(value);
+    setTaxonomyDraft({ l1: taxonomyActiveL1, l2: value, l3: null });
+  };
+
+  const selectTaxonomyL3 = (value: string) => {
+    if (!taxonomyActiveL1 || !taxonomyActiveL2) return;
+    setTaxonomyDraft({
+      l1: taxonomyActiveL1,
+      l2: taxonomyActiveL2,
+      l3: value,
+    });
+  };
+
+  const clearTaxonomySelection = () => {
+    setTaxonomyDraft({ l1: null, l2: null, l3: null });
+    updateInternalProduct("google_taxonomy_l1", "");
+    updateInternalProduct("google_taxonomy_l2", "");
+    updateInternalProduct("google_taxonomy_l3", "");
+    setTaxonomyPopoverOpen(false);
+  };
+
+  const applyTaxonomyDraft = () => {
+    updateInternalProduct("google_taxonomy_l1", taxonomyDraft.l1 ?? "");
+    updateInternalProduct("google_taxonomy_l2", taxonomyDraft.l2 ?? "");
+    updateInternalProduct("google_taxonomy_l3", taxonomyDraft.l3 ?? "");
+    setTaxonomyPopoverOpen(false);
+  };
+
+  useEffect(() => {
+    if (!taxonomyPopoverOpen) return;
+    const l1 = internalProduct.google_taxonomy_l1.trim() || null;
+    const l2 = internalProduct.google_taxonomy_l2.trim() || null;
+    const l3 = internalProduct.google_taxonomy_l3.trim() || null;
+    setTaxonomySearch("");
+    setTaxonomyDraft({ l1, l2, l3 });
+    setTaxonomyActiveL1(l1);
+    setTaxonomyActiveL2(l2);
+  }, [
+    taxonomyPopoverOpen,
+    internalProduct.google_taxonomy_l1,
+    internalProduct.google_taxonomy_l2,
+    internalProduct.google_taxonomy_l3,
+  ]);
+
+  useEffect(() => {
+    if (filteredTaxonomyCategories.length === 0) {
+      setTaxonomyActiveL1(null);
+      return;
+    }
+    setTaxonomyActiveL1((prev) => {
+      if (
+        taxonomyDraft.l1 &&
+        filteredTaxonomyCategories.some((node) => node.name === taxonomyDraft.l1)
+      ) {
+        return taxonomyDraft.l1;
+      }
+      if (prev && filteredTaxonomyCategories.some((node) => node.name === prev)) {
+        return prev;
+      }
+      return filteredTaxonomyCategories[0].name;
+    });
+  }, [filteredTaxonomyCategories, taxonomyDraft.l1]);
+
+  useEffect(() => {
+    if (filteredTaxonomyL2Nodes.length === 0) {
+      setTaxonomyActiveL2(null);
+      return;
+    }
+    setTaxonomyActiveL2((prev) => {
+      if (
+        taxonomyDraft.l1 === taxonomyActiveL1 &&
+        taxonomyDraft.l2 &&
+        filteredTaxonomyL2Nodes.some((node) => node.name === taxonomyDraft.l2)
+      ) {
+        return taxonomyDraft.l2;
+      }
+      if (prev && filteredTaxonomyL2Nodes.some((node) => node.name === prev)) {
+        return prev;
+      }
+      return filteredTaxonomyL2Nodes[0].name;
+    });
+  }, [filteredTaxonomyL2Nodes, taxonomyActiveL1, taxonomyDraft.l1, taxonomyDraft.l2]);
 
   const updateInternalVariant = (
     id: string,
@@ -1046,6 +1651,36 @@ export default function ProductDetailPage() {
         variant.id === id ? { ...variant, [field]: value } : variant
       )
     );
+  };
+
+  const toggleIdentityEmptyColumn = (
+    key: VariantIdentityColumnKey,
+    checked: boolean
+  ) => {
+    setVisibleIdentityEmptyColumns((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const togglePricingEmptyColumn = (
+    key: VariantPricingColumnKey,
+    checked: boolean
+  ) => {
+    setVisiblePricingEmptyColumns((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
   };
 
   const updateInternalMetafield = (id: string, value: string) => {
@@ -1235,6 +1870,7 @@ export default function ProductDetailPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          recalculate_b2c: true,
           product: {
             supplier_1688_url: internalProduct.supplier_1688_url,
             product_type: internalProduct.product_type,
@@ -1249,10 +1885,6 @@ export default function ProductDetailPage() {
             google_taxonomy_l3: internalProduct.google_taxonomy_l3,
             product_categorizer_keywords:
               internalProduct.product_categorizer_keywords,
-            option1_name: internalProduct.option1_name,
-            option2_name: internalProduct.option2_name,
-            option3_name: internalProduct.option3_name,
-            option4_name: internalProduct.option4_name,
             image_folder: internalProduct.image_folder,
             images: internalProduct.images,
             video_files: internalProduct.video_files,
@@ -1336,45 +1968,6 @@ export default function ProductDetailPage() {
       setInternalSaveError((err as Error).message);
     } finally {
       setIsSavingInternal(false);
-    }
-  };
-
-  const handleCreateWishlist = async () => {
-    if (!newListName.trim()) return;
-    setIsSavingList(true);
-    setError(null);
-    try {
-      const created = await createWishlist(newListName);
-      if (!created) return;
-      setWishlists((prev) => [created, ...prev]);
-      setNewListName("");
-      setNewListDialogOpen(false);
-      await saveProductToWishlist(created.id);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsSavingList(false);
-    }
-  };
-
-  const removeFromAllWishlists = async () => {
-    if (!resolvedProductId) {
-      setError(t("productDetail.error.load"));
-      return;
-    }
-    setError(null);
-    try {
-      const response = await fetch("/api/products/wishlists/items", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: resolvedProductId }),
-      });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || t("products.lists.deleteError"));
-      }
-    } catch (err) {
-      setError((err as Error).message);
     }
   };
 
@@ -1536,6 +2129,13 @@ export default function ProductDetailPage() {
   const { product, variants, latest_exported_at: latestExport } = data;
   const title = product.title ?? product.spu;
   const taxonomyCategory = buildGoogleTaxonomyLabel(product);
+  const headerTaxonomyValue = [
+    internalProduct.google_taxonomy_l1.trim(),
+    internalProduct.google_taxonomy_l2.trim(),
+    internalProduct.google_taxonomy_l3.trim(),
+  ]
+    .filter(Boolean)
+    .join(" > ");
 
   return (
     <div className={styles.layout}>
@@ -1571,45 +2171,6 @@ export default function ProductDetailPage() {
                 </div>
               ) : null}
             </div>
-            <div className={styles.saveControls}>
-              <Menu>
-                <MenuTrigger disableButtonEnhancement>
-                  <Button appearance="outline" className={styles.listSaveButton}>
-                    {t("common.save")}
-                  </Button>
-                </MenuTrigger>
-                <MenuPopover>
-                  <MenuList>
-                    {wishlistsLoading ? (
-                      <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
-                    ) : wishlistsError ? (
-                      <MenuItem disabled>{wishlistsError}</MenuItem>
-                    ) : wishlists.length === 0 ? (
-                      <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
-                    ) : (
-                      wishlists.map((list) => (
-                        <MenuItem
-                          key={list.id}
-                          onClick={() => saveProductToWishlist(list.id)}
-                        >
-                          {list.name}
-                        </MenuItem>
-                      ))
-                    )}
-                    <MenuItem onClick={() => setNewListDialogOpen(true)}>
-                      {t("products.lists.new")}
-                    </MenuItem>
-                  </MenuList>
-                </MenuPopover>
-              </Menu>
-              <Button
-                appearance="subtle"
-                className={styles.removeButton}
-                icon={<TrashIcon />}
-                aria-label={t("products.removeItem", { title })}
-                onClick={removeFromAllWishlists}
-              />
-            </div>
           </div>
 
           <Divider />
@@ -1627,37 +2188,63 @@ export default function ProductDetailPage() {
           <div className={styles.infoRow}>
             <div>
               <Text size={200} className={styles.metaLabel}>
-                {t("productDetail.meta.sku", { value: product.spu })}
+                {t("common.sku")}
+              </Text>
+              <Text className={styles.infoValue}>
+                {product.spu || t("common.notAvailable")}
               </Text>
             </div>
             <div>
               <Text size={200} className={styles.metaLabel}>
-                {t("productDetail.meta.brand", {
-                  value: product.brand ?? t("common.notAvailable"),
-                })}
+                {t("productDetail.data.brand")}
+              </Text>
+              <Text className={styles.infoValue}>
+                {internalProduct.brand.trim() || t("common.notAvailable")}
               </Text>
             </div>
             <div>
               <Text size={200} className={styles.metaLabel}>
-                {t("productDetail.meta.vendor", {
-                  value: product.vendor ?? t("common.notAvailable"),
-                })}
+                {t("productDetail.data.vendor")}
+              </Text>
+              <Text className={styles.infoValue}>
+                {internalProduct.vendor.trim() || t("common.notAvailable")}
               </Text>
             </div>
             <div>
               <Text size={200} className={styles.metaLabel}>
-                {t("productDetail.meta.category", {
-                  value: taxonomyCategory ?? t("common.notAvailable"),
-                })}
+                Category
+              </Text>
+              <Text className={styles.infoValue}>
+                {headerTaxonomyValue || taxonomyCategory || t("common.notAvailable")}
               </Text>
             </div>
             <div>
               <Text size={200} className={styles.metaLabel}>
-                {t("productDetail.meta.updated", {
-                  value: formatDate(product.updated_at),
-                })}
+                Updated
+              </Text>
+              <Text className={styles.infoValue}>
+                {formatDate(product.updated_at)}
               </Text>
             </div>
+          </div>
+          <div className={styles.infoSecondaryRow}>
+            <Text size={200} className={styles.metaLabel}>
+              Supplier
+            </Text>
+            {supplierLinkHref ? (
+              <a
+                href={supplierLinkHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.supplierLink}
+              >
+                {internalProduct.supplier_1688_url.trim()}
+              </a>
+            ) : (
+              <Text className={styles.infoValue}>
+                {internalProduct.supplier_1688_url.trim() || t("common.notAvailable")}
+              </Text>
+            )}
           </div>
         </Card>
 
@@ -1930,42 +2517,73 @@ export default function ProductDetailPage() {
                 </MessageBar>
               ) : null}
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.supplier")}
-                </Text>
-                <div className={styles.dataGrid}>
-                  <Field label={t("productDetail.data.supplier1688")}>
-                    <Input
-                      value={internalProduct.supplier_1688_url}
-                      onChange={(_, data) =>
-                        updateInternalProduct("supplier_1688_url", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.brand")}>
-                    <Input
-                      value={internalProduct.brand}
-                      onChange={(_, data) =>
-                        updateInternalProduct("brand", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.vendor")}>
-                    <Input
-                      value={internalProduct.vendor}
-                      onChange={(_, data) =>
-                        updateInternalProduct("vendor", data.value)
-                      }
-                    />
-                  </Field>
-                </div>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("supplier")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.supplier")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasSupplierSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.supplier ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.supplier ? (
+                  <div className={styles.dataGrid}>
+                    <Field label={t("productDetail.data.supplier1688")}>
+                      <Input
+                        value={internalProduct.supplier_1688_url}
+                        onChange={(_, data) =>
+                          updateInternalProduct("supplier_1688_url", data.value)
+                        }
+                      />
+                    </Field>
+                    <Field label={t("productDetail.data.brand")}>
+                      <Input
+                        value={internalProduct.brand}
+                        onChange={(_, data) =>
+                          updateInternalProduct("brand", data.value)
+                        }
+                      />
+                    </Field>
+                    <Field label={t("productDetail.data.vendor")}>
+                      <Input
+                        value={internalProduct.vendor}
+                        onChange={(_, data) =>
+                          updateInternalProduct("vendor", data.value)
+                        }
+                      />
+                    </Field>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.catalog")}
-                </Text>
-                <div className={styles.dataGrid}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("catalog")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.catalog")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasCatalogSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.catalog ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.catalog ? (
+                  <div className={styles.dataGrid}>
                   <Field label={t("productDetail.data.productType")}>
                     <Input
                       value={internalProduct.product_type}
@@ -2015,29 +2633,167 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                  <Field label={t("productDetail.data.googleTaxonomyL1")}>
-                    <Input
-                      value={internalProduct.google_taxonomy_l1}
-                      onChange={(_, data) =>
-                        updateInternalProduct("google_taxonomy_l1", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.googleTaxonomyL2")}>
-                    <Input
-                      value={internalProduct.google_taxonomy_l2}
-                      onChange={(_, data) =>
-                        updateInternalProduct("google_taxonomy_l2", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.googleTaxonomyL3")}>
-                    <Input
-                      value={internalProduct.google_taxonomy_l3}
-                      onChange={(_, data) =>
-                        updateInternalProduct("google_taxonomy_l3", data.value)
-                      }
-                    />
+                  <Field
+                    label={t("productDetail.data.googleTaxonomyL1")}
+                    className={styles.dataWideField}
+                  >
+                    <Popover
+                      open={taxonomyPopoverOpen}
+                      onOpenChange={(_, data) => setTaxonomyPopoverOpen(data.open)}
+                      positioning={{
+                        position: "below",
+                        align: "start",
+                        offset: { mainAxis: 6 },
+                      }}
+                    >
+                      <PopoverTrigger disableButtonEnhancement>
+                        <Button appearance="outline" className={styles.taxonomyTrigger}>
+                          {taxonomySummary}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverSurface className={styles.taxonomyPopover}>
+                        {taxonomyCategoriesLoading ? (
+                          <Spinner label={t("discovery.categories.loading")} />
+                        ) : taxonomyCategoriesError ? (
+                          <MessageBar intent="error">{taxonomyCategoriesError}</MessageBar>
+                        ) : taxonomyCategories.length === 0 ? (
+                          <Text>{t("discovery.categories.empty")}</Text>
+                        ) : (
+                          <>
+                            <Input
+                              value={taxonomySearch}
+                              onChange={(_, data) => setTaxonomySearch(data.value)}
+                              placeholder={t("discovery.categories.searchPlaceholder")}
+                              className={styles.taxonomySearch}
+                            />
+                            <div className={styles.taxonomyColumns}>
+                              <div className={styles.taxonomyColumn}>
+                                <Text className={styles.taxonomyColumnTitle}>
+                                  {t("discovery.categories.level1")}
+                                </Text>
+                                {filteredTaxonomyCategories.map((l1) => {
+                                  const selected = taxonomyDraft.l1 === l1.name;
+                                  return (
+                                    <div
+                                      key={l1.name}
+                                      className={mergeClasses(
+                                        styles.taxonomyItem,
+                                        styles.taxonomyItemInteractive,
+                                        selected ? styles.taxonomyItemSelected : undefined
+                                      )}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => selectTaxonomyL1(l1.name)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                          event.preventDefault();
+                                          selectTaxonomyL1(l1.name);
+                                        }
+                                      }}
+                                    >
+                                      <Checkbox
+                                        checked={selected}
+                                        aria-label={t("common.selectItem", { item: l1.name })}
+                                        onChange={() => selectTaxonomyL1(l1.name)}
+                                        onClick={(event) => event.stopPropagation()}
+                                      />
+                                      <span className={styles.taxonomyItemText}>{l1.name}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className={styles.taxonomyColumn}>
+                                <Text className={styles.taxonomyColumnTitle}>
+                                  {t("discovery.categories.level2")}
+                                </Text>
+                                {filteredTaxonomyL2Nodes.map((l2) => {
+                                  const selected =
+                                    taxonomyDraft.l1 === taxonomyActiveL1 &&
+                                    taxonomyDraft.l2 === l2.name;
+                                  return (
+                                    <div
+                                      key={l2.name}
+                                      className={mergeClasses(
+                                        styles.taxonomyItem,
+                                        styles.taxonomyItemInteractive,
+                                        selected ? styles.taxonomyItemSelected : undefined
+                                      )}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => selectTaxonomyL2(l2.name)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                          event.preventDefault();
+                                          selectTaxonomyL2(l2.name);
+                                        }
+                                      }}
+                                    >
+                                      <Checkbox
+                                        checked={selected}
+                                        aria-label={t("common.selectItem", { item: l2.name })}
+                                        onChange={() => selectTaxonomyL2(l2.name)}
+                                        onClick={(event) => event.stopPropagation()}
+                                      />
+                                      <span className={styles.taxonomyItemText}>{l2.name}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className={styles.taxonomyColumn}>
+                                <Text className={styles.taxonomyColumnTitle}>
+                                  {t("discovery.categories.level3")}
+                                </Text>
+                                {filteredTaxonomyL3Nodes.map((l3) => {
+                                  const selected =
+                                    taxonomyDraft.l1 === taxonomyActiveL1 &&
+                                    taxonomyDraft.l2 === taxonomyActiveL2 &&
+                                    taxonomyDraft.l3 === l3.name;
+                                  return (
+                                    <div
+                                      key={l3.name}
+                                      className={mergeClasses(
+                                        styles.taxonomyItem,
+                                        styles.taxonomyItemInteractive,
+                                        selected ? styles.taxonomyItemSelected : undefined
+                                      )}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => selectTaxonomyL3(l3.name)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                          event.preventDefault();
+                                          selectTaxonomyL3(l3.name);
+                                        }
+                                      }}
+                                    >
+                                      <Checkbox
+                                        checked={selected}
+                                        aria-label={t("common.selectItem", { item: l3.name })}
+                                        onChange={() => selectTaxonomyL3(l3.name)}
+                                        onClick={(event) => event.stopPropagation()}
+                                      />
+                                      <span className={styles.taxonomyItemText}>{l3.name}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <div className={styles.taxonomyActions}>
+                          {internalProduct.google_taxonomy_l1 ||
+                          internalProduct.google_taxonomy_l2 ||
+                          internalProduct.google_taxonomy_l3 ? (
+                            <Button appearance="subtle" onClick={clearTaxonomySelection}>
+                              {t("common.clear")}
+                            </Button>
+                          ) : null}
+                          <Button appearance="primary" onClick={applyTaxonomyDraft}>
+                            {t("common.done")}
+                          </Button>
+                        </div>
+                      </PopoverSurface>
+                    </Popover>
                   </Field>
                   <Field label={t("productDetail.data.categorizerKeywords")}>
                     <Textarea
@@ -2050,46 +2806,30 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                  <Field label={t("productDetail.data.option1Name")}>
-                    <Input
-                      value={internalProduct.option1_name}
-                      onChange={(_, data) =>
-                        updateInternalProduct("option1_name", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.option2Name")}>
-                    <Input
-                      value={internalProduct.option2_name}
-                      onChange={(_, data) =>
-                        updateInternalProduct("option2_name", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.option3Name")}>
-                    <Input
-                      value={internalProduct.option3_name}
-                      onChange={(_, data) =>
-                        updateInternalProduct("option3_name", data.value)
-                      }
-                    />
-                  </Field>
-                  <Field label={t("productDetail.data.option4Name")}>
-                    <Input
-                      value={internalProduct.option4_name}
-                      onChange={(_, data) =>
-                        updateInternalProduct("option4_name", data.value)
-                      }
-                    />
-                  </Field>
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.collections")}
-                </Text>
-                <div className={styles.dataGrid}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("collections")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.collections")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasCollectionsSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.collections ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.collections ? (
+                  <div className={styles.dataGrid}>
                   <Field label={t("productDetail.data.shopifyCollectionHandles")}>
                     <Textarea
                       value={internalProduct.shopify_collection_handles}
@@ -2145,14 +2885,30 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.media")}
-                </Text>
-                <div className={styles.dataGrid}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("media")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.media")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasMediaSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.media ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.media ? (
+                  <div className={styles.dataGrid}>
                   <Field label={t("productDetail.data.imageFolder")}>
                     <Input
                       value={internalProduct.image_folder}
@@ -2177,14 +2933,30 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.status")}
-                </Text>
-                <div className={styles.dataGrid}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("status")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.status")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasStatusSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.status ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.status ? (
+                  <div className={styles.dataGrid}>
                   <Field label={t("productDetail.data.isBlocked")}>
                     <Input
                       value={internalProduct.is_blocked}
@@ -2209,14 +2981,30 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.legacy")}
-                </Text>
-                <div className={styles.dataGrid}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("legacy")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.legacy")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasLegacySectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.legacy ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.legacy ? (
+                  <div className={styles.dataGrid}>
                   <Field label={t("productDetail.data.legacyTitleSv")}>
                     <Textarea
                       value={internalProduct.legacy_title_sv}
@@ -2247,31 +3035,91 @@ export default function ProductDetailPage() {
                       }
                     />
                   </Field>
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("variantIdentity")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.variantIdentity")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasVariantIdentitySectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.variantIdentity ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.variantIdentity ? (
+                  <>
                 <div className={styles.dataTableHeader}>
-                  <Text weight="semibold">
-                    {t("productDetail.data.section.variantIdentity")}
-                  </Text>
-                  <div className={styles.dataScrollControls}>
-                    <Button
-                      appearance="subtle"
-                      className={styles.dataScrollButton}
-                      onClick={() => scrollTable(variantIdentityTableRef, "left")}
-                      aria-label="Scroll left"
-                    >
-                      {"<"}
-                    </Button>
-                    <Button
-                      appearance="subtle"
-                      className={styles.dataScrollButton}
-                      onClick={() => scrollTable(variantIdentityTableRef, "right")}
-                      aria-label="Scroll right"
-                    >
-                      {">"}
-                    </Button>
+                  <div className={styles.dataTableActions}>
+                    <Menu>
+                      <MenuTrigger disableButtonEnhancement>
+                        <Button
+                          appearance="subtle"
+                          size="small"
+                          className={styles.columnMenuButton}
+                        >
+                          Select Columns
+                        </Button>
+                      </MenuTrigger>
+                      <MenuPopover>
+                        <div className={styles.columnMenuList}>
+                          <Checkbox
+                            label={t("productDetail.data.variantSku")}
+                            checked
+                            disabled
+                            className={styles.columnMenuCheckbox}
+                          />
+                          {variantIdentityColumns.map((column) => {
+                            const autoVisible = identityColumnsWithData.has(column.key);
+                            const checked =
+                              autoVisible || visibleIdentityEmptyColumns.has(column.key);
+                            return (
+                              <Checkbox
+                                key={column.key}
+                                label={column.label}
+                                checked={checked}
+                                className={styles.columnMenuCheckbox}
+                                onChange={(_, data) => {
+                                  if (autoVisible) return;
+                                  toggleIdentityEmptyColumn(
+                                    column.key,
+                                    Boolean(data.checked)
+                                  );
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </MenuPopover>
+                    </Menu>
+                    <div className={styles.dataScrollControls}>
+                      <Button
+                        appearance="subtle"
+                        className={styles.dataScrollButton}
+                        onClick={() => scrollTable(variantIdentityTableRef, "left")}
+                        aria-label="Scroll left"
+                      >
+                        {"<"}
+                      </Button>
+                      <Button
+                        appearance="subtle"
+                        className={styles.dataScrollButton}
+                        onClick={() => scrollTable(variantIdentityTableRef, "right")}
+                        aria-label="Scroll right"
+                      >
+                        {">"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className={styles.dataTableWrap} ref={variantIdentityTableRef}>
@@ -2284,24 +3132,11 @@ export default function ProductDetailPage() {
                         <TableHeaderCell className={styles.dataStickyLeftHeaderCell}>
                           {t("productDetail.data.variantSku")}
                         </TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variantSkuNorm")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variantSkuBak")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option1")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option2")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option3")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option4")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.optionCombinedZh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option1Zh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option2Zh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option3Zh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.option4Zh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variationColorSe")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variationSizeSe")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variationOtherSe")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variationAmountSe")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.shortTitleZh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.barcode")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variantImage")}</TableHeaderCell>
+                        {visibleIdentityColumns.map((column) => (
+                          <TableHeaderCell key={`identity-header-${column.key}`}>
+                            {column.label}
+                          </TableHeaderCell>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -2310,281 +3145,116 @@ export default function ProductDetailPage() {
                           <TableCell className={styles.dataStickyLeftCell}>
                             {variant.sku}
                           </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.sku_norm}
-                              size="small"
-                              className={styles.dataInput}
-                              readOnly
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.sku_bak}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "sku_bak",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option1}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option1",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option2}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option2",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option3}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option3",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option4}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option4",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option_combined_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option_combined_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option1_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option1_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option2_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option2_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option3_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option3_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.option4_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "option4_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.variation_color_se}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "variation_color_se",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.variation_size_se}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "variation_size_se",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.variation_other_se}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "variation_other_se",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.variation_amount_se}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "variation_amount_se",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.short_title_zh}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "short_title_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.barcode}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "barcode",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.variant_image_url}
-                              size="small"
-                              className={styles.dataInput}
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "variant_image_url",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
+                          {visibleIdentityColumns.map((column) => (
+                            <TableCell key={`identity-cell-${variant.id}-${column.key}`}>
+                              <Input
+                                value={variant[column.key]}
+                                size="small"
+                                className={styles.dataInput}
+                                readOnly={column.readOnly}
+                                onChange={
+                                  column.readOnly
+                                    ? undefined
+                                    : (_, data) =>
+                                        updateInternalVariant(
+                                          variant.id,
+                                          column.key,
+                                          data.value
+                                        )
+                                }
+                              />
+                            </TableCell>
+                          ))}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                  </>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("pricing")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.pricing")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasVariantPricingSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
+                      </Text>
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.pricing ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.pricing ? (
+                  <>
                 <div className={styles.dataTableHeader}>
-                  <Text weight="semibold">
-                    {t("productDetail.data.section.pricing")}
-                  </Text>
-                  <div className={styles.dataScrollControls}>
-                    <Button
-                      appearance="subtle"
-                      className={styles.dataScrollButton}
-                      onClick={() => scrollTable(variantPricingTableRef, "left")}
-                      aria-label="Scroll left"
-                    >
-                      {"<"}
-                    </Button>
-                    <Button
-                      appearance="subtle"
-                      className={styles.dataScrollButton}
-                      onClick={() => scrollTable(variantPricingTableRef, "right")}
-                      aria-label="Scroll right"
-                    >
-                      {">"}
-                    </Button>
+                  <div className={styles.dataTableActions}>
+                    <Menu>
+                      <MenuTrigger disableButtonEnhancement>
+                        <Button
+                          appearance="subtle"
+                          size="small"
+                          className={styles.columnMenuButton}
+                        >
+                          Select Columns
+                        </Button>
+                      </MenuTrigger>
+                      <MenuPopover>
+                        <div className={styles.columnMenuList}>
+                          <Checkbox
+                            label={t("productDetail.data.variantSku")}
+                            checked
+                            disabled
+                            className={styles.columnMenuCheckbox}
+                          />
+                          {variantPricingColumns.map((column) => {
+                            const autoVisible = pricingColumnsWithData.has(column.key);
+                            const checked =
+                              autoVisible || visiblePricingEmptyColumns.has(column.key);
+                            return (
+                              <Checkbox
+                                key={column.key}
+                                label={column.label}
+                                checked={checked}
+                                className={styles.columnMenuCheckbox}
+                                onChange={(_, data) => {
+                                  if (autoVisible) return;
+                                  togglePricingEmptyColumn(
+                                    column.key,
+                                    Boolean(data.checked)
+                                  );
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </MenuPopover>
+                    </Menu>
+                    <div className={styles.dataScrollControls}>
+                      <Button
+                        appearance="subtle"
+                        className={styles.dataScrollButton}
+                        onClick={() => scrollTable(variantPricingTableRef, "left")}
+                        aria-label="Scroll left"
+                      >
+                        {"<"}
+                      </Button>
+                      <Button
+                        appearance="subtle"
+                        className={styles.dataScrollButton}
+                        onClick={() => scrollTable(variantPricingTableRef, "right")}
+                        aria-label="Scroll right"
+                      >
+                        {">"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className={styles.dataTableWrap} ref={variantPricingTableRef}>
@@ -2597,29 +3267,11 @@ export default function ProductDetailPage() {
                         <TableHeaderCell className={styles.dataStickyLeftHeaderCell}>
                           {t("productDetail.data.variantSku")}
                         </TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.variantSupplier")}</TableHeaderCell>
-                        <TableHeaderCell>
-                          {t("productDetail.data.variantSupplierLocation")}
-                        </TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.shippingName")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.shippingNameZh")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.shippingClass")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.weight")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.purchasePriceCny")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.cost")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.price")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.compareAtPrice")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.b2bSe")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.b2bNo")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.b2bDk")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.b2bFi")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.taxable")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.taxCode")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.hsCode")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.countryOfOrigin")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.categoryCodeFq")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.categoryCodeLd")}</TableHeaderCell>
-                        <TableHeaderCell>{t("productDetail.data.inventoryQty")}</TableHeaderCell>
+                        {visiblePricingColumns.map((column) => (
+                          <TableHeaderCell key={`pricing-header-${column.key}`}>
+                            {column.label}
+                          </TableHeaderCell>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -2628,333 +3280,73 @@ export default function ProductDetailPage() {
                           <TableCell className={styles.dataStickyLeftCell}>
                             {variant.sku}
                           </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.supplier_name}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "supplier_name",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.supplier_location}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "supplier_location",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.shipping_name_en}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "shipping_name_en",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.shipping_name_zh}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "shipping_name_zh",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.shipping_class}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "shipping_class",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.weight}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "weight",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.purchase_price_cny}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "purchase_price_cny",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.cost}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "cost",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.price}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "price",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.compare_at_price}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "compare_at_price",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.b2b_dropship_price_se}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "b2b_dropship_price_se",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.b2b_dropship_price_no}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "b2b_dropship_price_no",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.b2b_dropship_price_dk}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "b2b_dropship_price_dk",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.b2b_dropship_price_fi}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "b2b_dropship_price_fi",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.taxable}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "taxable",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.tax_code}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "tax_code",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.hs_code}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "hs_code",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.country_of_origin}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "country_of_origin",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.category_code_fq}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "category_code_fq",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.category_code_ld}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "category_code_ld",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={variant.inventory_quantity}
-                              className={styles.dataInput}
-                              size="small"
-                              onChange={(_, data) =>
-                                updateInternalVariant(
-                                  variant.id,
-                                  "inventory_quantity",
-                                  data.value
-                                )
-                              }
-                            />
-                          </TableCell>
+                          {visiblePricingColumns.map((column) => (
+                            <TableCell key={`pricing-cell-${variant.id}-${column.key}`}>
+                              <Input
+                                value={variant[column.key]}
+                                className={styles.dataInput}
+                                size="small"
+                                onChange={(_, data) =>
+                                  updateInternalVariant(
+                                    variant.id,
+                                    column.key,
+                                    data.value
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          ))}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                  </>
+                ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <Text weight="semibold">
-                  {t("productDetail.data.section.metafields")}
-                </Text>
-                {internalMetafields.length === 0 ? (
-                  <Text size={200}>
-                    {t("productDetail.data.metafieldsEmpty")}
-                  </Text>
-                ) : (
-                  internalMetafields.map((field) => (
-                    <div key={field.id} className={styles.dataMetaRow}>
-                      <Text className={styles.dataMetaKey} size={200}>
-                        {field.namespace
-                          ? `${field.namespace}.${field.key}`
-                          : field.key}
+                <button
+                  type="button"
+                  className={styles.dataSectionToggle}
+                  onClick={() => toggleDataSection("metafields")}
+                >
+                  <Text weight="semibold">{t("productDetail.data.section.metafields")}</Text>
+                  <div className={styles.dataSectionToggleRight}>
+                    {!hasMetafieldsSectionData ? (
+                      <Text size={200} className={styles.dataSectionEmptyBadge}>
+                        Empty
                       </Text>
-                      <Textarea
-                        value={field.value}
-                        className={styles.dataMetaValue}
-                        onChange={(_, data) =>
-                          updateInternalMetafield(field.id, data.value)
-                        }
-                      />
-                    </div>
-                  ))
-                )}
+                    ) : null}
+                    <Text size={200} className={styles.dataSectionChevron}>
+                      {collapsedDataSections.metafields ? ">" : "v"}
+                    </Text>
+                  </div>
+                </button>
+                {!collapsedDataSections.metafields ? (
+                  internalMetafields.length === 0 ? (
+                    <Text size={200}>
+                      {t("productDetail.data.metafieldsEmpty")}
+                    </Text>
+                  ) : (
+                    internalMetafields.map((field) => (
+                      <div key={field.id} className={styles.dataMetaRow}>
+                        <Text className={styles.dataMetaKey} size={200}>
+                          {field.namespace
+                            ? `${field.namespace}.${field.key}`
+                            : field.key}
+                        </Text>
+                        <Textarea
+                          value={field.value}
+                          className={styles.dataMetaValue}
+                          onChange={(_, data) =>
+                            updateInternalMetafield(field.id, data.value)
+                          }
+                        />
+                      </div>
+                    ))
+                  )
+                ) : null}
               </div>
 
               <div className={styles.dataSectionHeader}>
@@ -2975,37 +3367,6 @@ export default function ProductDetailPage() {
           ) : null}
         </Card>
       </div>
-
-      <Dialog
-        open={newListDialogOpen}
-        onOpenChange={(_, data) => setNewListDialogOpen(data.open)}
-      >
-        <DialogSurface>
-          <DialogBody>
-            <DialogTitle>{t("products.lists.createTitle")}</DialogTitle>
-            <Field label={t("products.lists.nameLabel")}>
-              <Input
-                value={newListName}
-                onChange={(_, data) => setNewListName(data.value)}
-                placeholder={t("products.lists.namePlaceholder")}
-              />
-            </Field>
-            <DialogActions>
-              <Button appearance="subtle" onClick={() => setNewListDialogOpen(false)}>
-                {t("common.cancel")}
-              </Button>
-              <Button
-                appearance="primary"
-                onClick={handleCreateWishlist}
-                disabled={!newListName.trim() || isSavingList}
-              >
-                {isSavingList ? t("common.loading") : t("products.lists.new")}
-              </Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
-
       <Dialog
         open={isRegenerateDialogOpen}
         onOpenChange={(_, data) => {

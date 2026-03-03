@@ -1392,6 +1392,11 @@
       "context": "Orders send email partner receiver placeholder"
     },
     {
+      "key": "orders.email.partnerReceiver.none",
+      "text": "None",
+      "context": "Orders send email partner receiver none option"
+    },
+    {
       "key": "orders.email.partnerReceiver.letsdealSe",
       "text": "LetsDeal SE",
       "context": "Orders send email partner receiver option"
@@ -1480,6 +1485,56 @@
       "key": "orders.email.actions.send",
       "text": "Send via SendPulse",
       "context": "Orders send email dialog send button"
+    },
+    {
+      "key": "orders.delivery.button",
+      "text": "Delivery Emails - LetsDeal",
+      "context": "Orders action button for LetsDeal delivery email flow"
+    },
+    {
+      "key": "orders.delivery.dialogTitle",
+      "text": "Delivery Emails - LetsDeal",
+      "context": "Orders delivery email dialog title"
+    },
+    {
+      "key": "orders.delivery.modeHelp",
+      "text": "Sends customer delivery confirmation by delay bucket and optionally informs LetsDeal partner by country.",
+      "context": "Orders delivery mode helper text"
+    },
+    {
+      "key": "orders.delivery.rulesTitle",
+      "text": "Template rules",
+      "context": "Orders delivery mode rules section title"
+    },
+    {
+      "key": "orders.delivery.rule.normal",
+      "text": "0-8 days after purchase (using Date Shipped): {template}",
+      "context": "Orders delivery mode normal-delay template rule"
+    },
+    {
+      "key": "orders.delivery.rule.shortDelay",
+      "text": "9-13 days after purchase (using Date Shipped): {template}",
+      "context": "Orders delivery mode short-delay template rule"
+    },
+    {
+      "key": "orders.delivery.rule.longDelay",
+      "text": "14+ days after purchase (using Date Shipped): {template}",
+      "context": "Orders delivery mode long-delay template rule"
+    },
+    {
+      "key": "orders.delivery.rule.partner",
+      "text": "Also send to partner template {template} for SE/NO orders only when delay is 0-13 days.",
+      "context": "Orders delivery mode partner-template rule"
+    },
+    {
+      "key": "orders.delivery.sendSummary",
+      "text": "Will process {count} order(s) with delivery rules.",
+      "context": "Orders delivery mode summary text"
+    },
+    {
+      "key": "orders.delivery.actions.send",
+      "text": "Send Delivery Emails",
+      "context": "Orders delivery mode send button"
     },
     {
       "key": "orders.empty",
@@ -4132,6 +4187,11 @@
       "context": "Products deliver dialog add button"
     },
     {
+      "key": "products.delivery.saveToList",
+      "text": "Save to List",
+      "context": "Products deliver dialog save button"
+    },
+    {
       "key": "products.delivery.createLabel",
       "text": "Create new list",
       "context": "Products deliver dialog create section label"
@@ -5415,6 +5475,21 @@
       "key": "discovery.filters.pageSizeValue",
       "text": "{size} / page",
       "context": "Discovery page size value"
+    },
+    {
+      "key": "discovery.filters.stacks",
+      "text": "Stacks",
+      "context": "Discovery filter label"
+    },
+    {
+      "key": "discovery.filters.stacksAll",
+      "text": "All products",
+      "context": "Discovery stacks filter option to show all products"
+    },
+    {
+      "key": "discovery.filters.stacksOnly",
+      "text": "Show only stacks",
+      "context": "Discovery stacks filter option to show stack cards only"
     },
     {
       "key": "discovery.sort.soldToday",
@@ -8020,6 +8095,61 @@
       "key": "nav.offerillaDealsManager",
       "text": "Offerilla",
       "context": "Deals menu item"
+    },
+    {
+      "key": "discovery.selection.action",
+      "text": "Action",
+      "context": "Discovery selection action menu trigger"
+    },
+    {
+      "key": "discovery.selection.saveToList",
+      "text": "Save to list",
+      "context": "Discovery selection action submenu label"
+    },
+    {
+      "key": "discovery.selection.hideFromView",
+      "text": "Hide from view",
+      "context": "Discovery selection action to hide selected products"
+    },
+    {
+      "key": "discovery.selection.sentToProduction",
+      "text": "Sent to production",
+      "context": "Discovery selection action to send selected products to production"
+    },
+    {
+      "key": "discovery.stack.seeStack",
+      "text": "See Stack",
+      "context": "Discovery stacked card button to open stack view"
+    },
+    {
+      "key": "discovery.stack.backToAll",
+      "text": "Back to all",
+      "context": "Discovery stack view button to return to all products"
+    },
+    {
+      "key": "discovery.stack.backToAllCount",
+      "text": "C-All ({count})",
+      "context": "Discovery stack view button to return to all products with stack count"
+    },
+    {
+      "key": "discovery.stack.stackProducts",
+      "text": "Stack products",
+      "context": "Discovery action menu option to stack selected products"
+    },
+    {
+      "key": "discovery.stack.removeFromStack",
+      "text": "Remove from stack",
+      "context": "Discovery action menu option to remove selected items from stack"
+    },
+    {
+      "key": "discovery.stack.stacking",
+      "text": "Stacking...",
+      "context": "Discovery action menu stack in progress label"
+    },
+    {
+      "key": "discovery.stack.removing",
+      "text": "Removing...",
+      "context": "Discovery action menu remove from stack in progress label"
     }
   ]
 }
