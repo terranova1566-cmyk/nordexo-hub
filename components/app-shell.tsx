@@ -359,7 +359,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     [pathname]
   );
 
-  const canAccessB2B = Boolean(userId) || isAdmin || isB2BInternal;
+  const canAccessB2B = isAdmin || isB2BInternal;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

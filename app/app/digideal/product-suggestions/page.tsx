@@ -665,6 +665,17 @@ const useStyles = makeStyles({
     paddingTop: "20px",
     paddingBottom: "20px",
   },
+  tableLoadingStateCell: {
+    paddingTop: "0",
+    paddingBottom: "0",
+  },
+  tableLoadingStateInner: {
+    minHeight: "240px",
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   selectCol: {
     width: "52px",
     minWidth: "52px",
@@ -3131,6 +3142,22 @@ export default function DigiDealProductSuggestionsPage() {
         const offers = Array.isArray(payload?.offers)
           ? (payload.offers as SupplierOffer[])
           : [];
+        const selectedRow =
+          payload?.selected && typeof payload.selected === "object"
+            ? (payload.selected as Record<string, unknown>)
+            : null;
+        const selectedOffer =
+          selectedRow?.selected_offer && typeof selectedRow.selected_offer === "object"
+            ? (selectedRow.selected_offer as Record<string, unknown>)
+            : null;
+        const payloadStatusFromOffer = normalizePayloadStatus(
+          selectedOffer?._production_payload_status
+        );
+        const payloadStatusFromResponse = normalizePayloadStatus(payload?.payload_fetch_status);
+        const payloadStatus =
+          payloadStatusFromOffer || payloadStatusFromResponse || null;
+        const payloadError = toText(selectedOffer?._production_payload_error) || null;
+        const payloadFileName = toText(selectedOffer?._production_payload_file_name) || null;
 
         setItems((prev) =>
           prev.map((entry) =>
@@ -3142,6 +3169,20 @@ export default function DigiDealProductSuggestionsPage() {
                     offerCount: offers.length,
                     offers,
                   },
+                  selection: selectedRow
+                    ? {
+                        selected_offer_id:
+                          toText(selectedRow.selected_offer_id) || entry.selection?.selected_offer_id || null,
+                        selected_detail_url:
+                          toText(selectedRow.selected_detail_url) ||
+                          entry.selection?.selected_detail_url ||
+                          null,
+                        selected_offer: selectedOffer || entry.selection?.selected_offer || null,
+                        payload_status: payloadStatus,
+                        payload_error: payloadError,
+                        payload_file_name: payloadFileName,
+                      }
+                    : entry.selection,
                 }
               : entry
           )
@@ -3220,6 +3261,7 @@ export default function DigiDealProductSuggestionsPage() {
             provider: PROVIDER,
             product_id: item.id,
           });
+          params.set("skipTranslation", "1");
           const response = await fetch(`/api/production/suppliers/variants?${params.toString()}`);
           const payload = await response.json().catch(() => null);
           if (!response.ok) {
@@ -4669,6 +4711,7 @@ export default function DigiDealProductSuggestionsPage() {
   }, [items, loadItems]);
 
   useEffect(() => {
+    if (!isAdminViewer) return;
     if (supplierTranslateBusyRef.current) return;
 
     const candidate = items.find((item) => {
@@ -4718,7 +4761,7 @@ export default function DigiDealProductSuggestionsPage() {
         window.clearTimeout(timeoutId);
         supplierTranslateBusyRef.current = false;
       });
-  }, [items, loadItems]);
+  }, [isAdminViewer, items, loadItems]);
 
   useEffect(() => {
     if (!offerDialogOpen || !offerDialogItem?.id) return;
@@ -5502,8 +5545,16 @@ export default function DigiDealProductSuggestionsPage() {
             {filteredItems.length === 0 ? (
               isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className={styles.tableStateCell}>
-                    <Spinner label="Loading products" />
+                  <TableCell
+                    colSpan={11}
+                    className={mergeClasses(
+                      styles.tableStateCell,
+                      styles.tableLoadingStateCell
+                    )}
+                  >
+                    <div className={styles.tableLoadingStateInner}>
+                      <Spinner label="Loading products" />
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (

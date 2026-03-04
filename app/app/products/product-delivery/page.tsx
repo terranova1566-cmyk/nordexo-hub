@@ -37,6 +37,8 @@ type DeliveryList = {
   created_at: string | null;
   item_count: number;
   preview_images?: string[];
+  preview_items?: DeliveryListMediaItem[];
+  batch_content?: DeliveryListMediaItem[];
 };
 
 type DeliveryListPreviewItem = {
@@ -47,6 +49,13 @@ type DeliveryListPreviewItem = {
   price_max: number | null;
 };
 
+type DeliveryListMediaItem = {
+  product_id: string;
+  title: string | null;
+  image_url: string | null;
+  hover_image_url: string | null;
+};
+
 type DeckHoverPreview = {
   listId: string;
   index: number;
@@ -54,6 +63,17 @@ type DeckHoverPreview = {
   x: number;
   y: number;
 };
+
+type QueueKeywordHoverPreview = {
+  listId: string;
+  index: number;
+  src: string;
+  x: number;
+  y: number;
+};
+
+type ExportDataset = "partner" | "all";
+type ImageExportMode = "all" | "original";
 
 const useStyles = makeStyles({
   layout: {
@@ -92,36 +112,36 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
   },
-  selectionCount: {
-    color: tokens.colorNeutralForeground3,
-    fontSize: tokens.fontSizeBase100,
-  },
   sellerCol: {
-    width: "120px",
-    minWidth: "120px",
+    width: "110px",
+    minWidth: "110px",
   },
   imageExplorerCol: {
     width: "190px",
     minWidth: "190px",
   },
+  batchContentCol: {
+    minWidth: "240px",
+    maxWidth: "320px",
+  },
   titleCol: {
-    minWidth: "260px",
+    maxWidth: "44ch",
   },
   dateCol: {
     width: "170px",
     minWidth: "170px",
   },
   itemsCol: {
-    width: "120px",
-    minWidth: "120px",
+    width: "76px",
+    minWidth: "76px",
   },
   previewCol: {
-    width: "120px",
-    minWidth: "120px",
+    width: "92px",
+    minWidth: "92px",
   },
   downloadsCol: {
-    width: "290px",
-    minWidth: "290px",
+    width: "228px",
+    minWidth: "228px",
   },
   selectCol: {
     width: "56px",
@@ -181,6 +201,43 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase100,
   },
+  queueKeywordsWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  queueKeywordBadgeList: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignContent: "flex-start",
+    gap: "6px",
+    maxHeight: "50px",
+    overflow: "hidden",
+  },
+  queueKeywordBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    maxWidth: "100%",
+    minHeight: "22px",
+    paddingInline: "10px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#fff6cc",
+    color: tokens.colorNeutralForeground1,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  queueKeywordsMain: {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+  },
   queueZoomPreview: {
     position: "fixed",
     width: "300px",
@@ -199,6 +256,24 @@ const useStyles = makeStyles({
     objectFit: "contain",
     display: "block",
     backgroundColor: tokens.colorNeutralBackground2,
+  },
+  queueKeywordHoverPreview: {
+    position: "fixed",
+    width: "75px",
+    height: "75px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow8,
+    overflow: "hidden",
+    pointerEvents: "none",
+    zIndex: 2000,
+  },
+  queueKeywordHoverImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
   },
   actionWhiteButton: {
     backgroundColor: tokens.colorNeutralBackground1,
@@ -329,9 +404,12 @@ export default function ProductDeliveryPage() {
   const { t } = useI18n();
   const [lists, setLists] = useState<DeliveryList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyDownloads, setBusyDownloads] = useState<Set<string>>(new Set());
   const [deckHoverPreview, setDeckHoverPreview] = useState<DeckHoverPreview | null>(null);
+  const [queueKeywordHoverPreview, setQueueKeywordHoverPreview] =
+    useState<QueueKeywordHoverPreview | null>(null);
   const [previewList, setPreviewList] = useState<DeliveryList | null>(null);
   const [previewItems, setPreviewItems] = useState<DeliveryListPreviewItem[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -362,6 +440,25 @@ export default function ProductDeliveryPage() {
   }, [loadLists]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/settings/profile", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!isMounted) return;
+        setIsAdminUser(Boolean(payload?.is_admin));
+      } catch {
+        // keep default partner visibility if profile lookup fails
+      }
+    };
+    void loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setSelectedListIds((prev) => {
       if (prev.size === 0) return prev;
       const available = new Set(lists.map((list) => list.id));
@@ -376,36 +473,57 @@ export default function ProductDeliveryPage() {
     });
   }, [lists]);
 
-  const handleDownload = async (list: DeliveryList, mode: "excel" | "images") => {
-    const key = `${list.id}:${mode}`;
+  const buildDownloadKey = (
+    listId: string,
+    mode: "excel" | "images",
+    option: ExportDataset | ImageExportMode
+  ) => `${listId}:${mode}:${option}`;
+
+  const handleDownload = async (
+    list: DeliveryList,
+    options:
+      | { mode: "excel"; dataset: ExportDataset }
+      | { mode: "images"; imageMode: ImageExportMode }
+  ) => {
+    const option = options.mode === "excel" ? options.dataset : options.imageMode;
+    const key = buildDownloadKey(list.id, options.mode, option);
     setBusyDownloads((prev) => new Set(prev).add(key));
     setError(null);
     try {
-      const endpoint = mode === "excel" ? "/api/exports/digideal" : "/api/exports/digideal/images";
+      const endpoint =
+        options.mode === "excel" ? "/api/exports/digideal" : "/api/exports/digideal/images";
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          mode === "excel"
+          options.mode === "excel"
             ? {
                 listId: list.id,
                 name: list.name,
                 market: "SE",
-                dataset: "all",
+                dataset: options.dataset,
               }
             : {
                 listId: list.id,
                 name: list.name,
-                imageMode: "all",
+                imageMode: options.imageMode,
               }
         ),
       });
       if (!response.ok) {
         throw new Error(await extractErrorMessage(response, t("products.lists.exportError")));
       }
+      const fallbackFileName =
+        options.mode === "excel"
+          ? options.dataset === "all"
+            ? "digideal_delivery_complete_data.xlsx"
+            : "digideal_delivery_partner_data.xlsx"
+          : options.imageMode === "all"
+            ? "digideal_delivery_images_full.zip"
+            : "digideal_delivery_images_standard.zip";
       await triggerFileDownload(
         response,
-        mode === "excel" ? "digideal_delivery_all.xlsx" : "digideal_delivery_images.zip"
+        fallbackFileName
       );
     } catch (err) {
       setError((err as Error).message);
@@ -535,6 +653,14 @@ export default function ProductDeliveryPage() {
     if (!previewList) return t("digidealDelivery.preview.button");
     return `${t("digidealDelivery.preview.title")} - ${previewList.name}`;
   }, [previewList, t]);
+  const titleColumnWidth = useMemo(() => {
+    const widestTitleLength = lists.reduce((maxWidth, list) => {
+      const currentLength = (list.name ?? "").trim().length;
+      return Math.max(maxWidth, currentLength);
+    }, 0);
+    const widthCh = Math.max(22, Math.min(44, widestTitleLength + 2));
+    return `${widthCh}ch`;
+  }, [lists]);
 
   return (
     <div className={styles.layout}>
@@ -569,11 +695,6 @@ export default function ProductDeliveryPage() {
                 </MenuList>
               </MenuPopover>
             </Menu>
-            <Text className={styles.selectionCount}>
-              {t("products.selection.selectedCount", {
-                count: selectedListIds.size,
-              })}
-            </Text>
           </div>
         </div>
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
@@ -585,12 +706,18 @@ export default function ProductDeliveryPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className={styles.sellerCol}>Seller</TableHeaderCell>
                 <TableHeaderCell className={styles.imageExplorerCol}>
                   {t("digidealDelivery.table.imageExplorer")}
                 </TableHeaderCell>
-                <TableHeaderCell className={styles.titleCol}>
+                <TableHeaderCell className={styles.sellerCol}>Partner</TableHeaderCell>
+                <TableHeaderCell
+                  className={styles.titleCol}
+                  style={{ width: titleColumnWidth, minWidth: titleColumnWidth }}
+                >
                   {t("digidealDelivery.table.title")}
+                </TableHeaderCell>
+                <TableHeaderCell className={styles.batchContentCol}>
+                  {t("digidealDelivery.table.batchContent")}
                 </TableHeaderCell>
                 <TableHeaderCell className={styles.dateCol}>
                   {t("digidealDelivery.table.createdAt")}
@@ -625,18 +752,41 @@ export default function ProductDeliveryPage() {
             </TableHeader>
             <TableBody>
               {lists.map((list) => {
-                const deckImages = (list.preview_images ?? []).slice(0, 5);
+                const legacyDeckItems = (list.preview_images ?? []).map((imageUrl, index) => ({
+                  product_id: `legacy-${list.id}-${index}`,
+                  title: null,
+                  image_url: imageUrl,
+                  hover_image_url: imageUrl,
+                }));
+                const deckItems = (
+                  list.preview_items && list.preview_items.length > 0
+                    ? list.preview_items
+                    : legacyDeckItems
+                )
+                  .filter((item) => Boolean(item.image_url))
+                  .slice(0, 5);
+                const batchContentItems = (list.batch_content ?? []).slice(0, 8);
+                const excelAllKey = buildDownloadKey(list.id, "excel", "all");
+                const excelPartnerKey = buildDownloadKey(list.id, "excel", "partner");
+                const imageAllKey = buildDownloadKey(list.id, "images", "all");
+                const imageStandardKey = buildDownloadKey(list.id, "images", "original");
+                const excelBusy =
+                  busyDownloads.has(excelAllKey) || busyDownloads.has(excelPartnerKey);
+                const imagesBusy =
+                  busyDownloads.has(imageAllKey) || busyDownloads.has(imageStandardKey);
                 return (
                   <TableRow key={list.id}>
-                    <TableCell className={styles.sellerCol}>DigiDeal</TableCell>
                     <TableCell className={styles.imageExplorerCol}>
-                      {deckImages.length === 0 ? (
+                      {deckItems.length === 0 ? (
                         <div className={styles.queueDeckPlaceholder}>
                           {t("common.notAvailable")}
                         </div>
                       ) : (
                         <div className={styles.queueDeckWrap}>
-                          {deckImages.map((imageUrl, index) => {
+                          {deckItems.map((item, index) => {
+                            const imageUrl = item.image_url;
+                            if (!imageUrl) return null;
+                            const hoverImageUrl = item.hover_image_url || imageUrl;
                             const isHovered =
                               deckHoverPreview?.listId === list.id &&
                               deckHoverPreview?.index === index;
@@ -652,7 +802,7 @@ export default function ProductDeliveryPage() {
                                   setDeckHoverPreview({
                                     listId: list.id,
                                     index,
-                                    src: imageUrl,
+                                    src: hoverImageUrl,
                                     x: ev.clientX,
                                     y: ev.clientY,
                                   });
@@ -683,8 +833,68 @@ export default function ProductDeliveryPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className={styles.titleCol}>
+                    <TableCell className={styles.sellerCol}>DigiDeal</TableCell>
+                    <TableCell
+                      className={styles.titleCol}
+                      style={{ width: titleColumnWidth, minWidth: titleColumnWidth }}
+                    >
                       {list.name || t("common.notAvailable")}
+                    </TableCell>
+                    <TableCell className={styles.batchContentCol}>
+                      <div className={styles.queueKeywordsWrap}>
+                        {batchContentItems.length > 0 ? (
+                          <div
+                            className={styles.queueKeywordBadgeList}
+                            title={batchContentItems
+                              .map((item) => item.title || t("common.notAvailable"))
+                              .join(", ")}
+                          >
+                            {batchContentItems.map((item, index) => {
+                              const hoverSrc = item.hover_image_url || item.image_url;
+                              return (
+                                <span
+                                  key={`${list.id}-batch-content-${item.product_id}-${index}`}
+                                  className={styles.queueKeywordBadge}
+                                  onMouseEnter={(ev) => {
+                                    if (!hoverSrc) return;
+                                    setQueueKeywordHoverPreview({
+                                      listId: list.id,
+                                      index,
+                                      src: hoverSrc,
+                                      x: ev.clientX,
+                                      y: ev.clientY,
+                                    });
+                                  }}
+                                  onMouseMove={(ev) => {
+                                    setQueueKeywordHoverPreview((prev) => {
+                                      if (!prev) return prev;
+                                      if (prev.listId !== list.id || prev.index !== index) {
+                                        return prev;
+                                      }
+                                      return { ...prev, x: ev.clientX, y: ev.clientY };
+                                    });
+                                  }}
+                                  onMouseLeave={() => {
+                                    setQueueKeywordHoverPreview((prev) => {
+                                      if (!prev) return prev;
+                                      if (prev.listId !== list.id || prev.index !== index) {
+                                        return prev;
+                                      }
+                                      return null;
+                                    });
+                                  }}
+                                >
+                                  {item.title || t("common.notAvailable")}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <Text size={200} className={styles.queueKeywordsMain}>
+                            -
+                          </Text>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className={styles.dateCol}>
                       {formatDateTime(list.created_at) || t("common.notAvailable")}
@@ -706,28 +916,117 @@ export default function ProductDeliveryPage() {
                     </TableCell>
                     <TableCell className={styles.downloadsCol}>
                       <div className={styles.downloadsActions}>
-                        <Button
-                          appearance="outline"
-                          size="small"
-                          className={styles.actionWhiteButton}
-                          disabled={busyDownloads.has(`${list.id}:excel`)}
-                          onClick={() => {
-                            void handleDownload(list, "excel");
-                          }}
-                        >
-                          {t("digidealDelivery.download.completeExcel")}
-                        </Button>
-                        <Button
-                          appearance="outline"
-                          size="small"
-                          className={styles.actionWhiteButton}
-                          disabled={busyDownloads.has(`${list.id}:images`)}
-                          onClick={() => {
-                            void handleDownload(list, "images");
-                          }}
-                        >
-                          {t("digidealDelivery.download.imagesZip")}
-                        </Button>
+                        {isAdminUser ? (
+                          <Menu>
+                            <MenuTrigger disableButtonEnhancement>
+                              <Button
+                                appearance="outline"
+                                size="small"
+                                className={styles.actionWhiteButton}
+                                disabled={excelBusy}
+                              >
+                                {t("digidealDelivery.download.excelFile")}
+                              </Button>
+                            </MenuTrigger>
+                            <MenuPopover>
+                              <MenuList>
+                                <MenuItem
+                                  disabled={busyDownloads.has(excelPartnerKey)}
+                                  onClick={() => {
+                                    void handleDownload(list, {
+                                      mode: "excel",
+                                      dataset: "partner",
+                                    });
+                                  }}
+                                >
+                                  {t("digidealDelivery.download.partnerData")}
+                                </MenuItem>
+                                <MenuItem
+                                  disabled={busyDownloads.has(excelAllKey)}
+                                  onClick={() => {
+                                    void handleDownload(list, {
+                                      mode: "excel",
+                                      dataset: "all",
+                                    });
+                                  }}
+                                >
+                                  {t("digidealDelivery.download.completeData")}
+                                </MenuItem>
+                              </MenuList>
+                            </MenuPopover>
+                          </Menu>
+                        ) : (
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.actionWhiteButton}
+                            disabled={excelBusy}
+                            onClick={() => {
+                              void handleDownload(list, {
+                                mode: "excel",
+                                dataset: "partner",
+                              });
+                            }}
+                          >
+                            {t("digidealDelivery.download.excelFile")}
+                          </Button>
+                        )}
+
+                        {isAdminUser ? (
+                          <Menu>
+                            <MenuTrigger disableButtonEnhancement>
+                              <Button
+                                appearance="outline"
+                                size="small"
+                                className={styles.actionWhiteButton}
+                                disabled={imagesBusy}
+                              >
+                                {t("digidealDelivery.download.images")}
+                              </Button>
+                            </MenuTrigger>
+                            <MenuPopover>
+                              <MenuList>
+                                <MenuItem
+                                  disabled={busyDownloads.has(imageStandardKey)}
+                                  onClick={() => {
+                                    void handleDownload(list, {
+                                      mode: "images",
+                                      imageMode: "original",
+                                    });
+                                  }}
+                                >
+                                  {t("digidealDelivery.download.standardImages")}
+                                </MenuItem>
+                                <MenuItem
+                                  disabled={busyDownloads.has(imageAllKey)}
+                                  onClick={() => {
+                                    void handleDownload(list, {
+                                      mode: "images",
+                                      imageMode: "all",
+                                    });
+                                  }}
+                                >
+                                  {t("digidealDelivery.download.fullImageSet")}
+                                </MenuItem>
+                              </MenuList>
+                            </MenuPopover>
+                          </Menu>
+                        ) : (
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.actionWhiteButton}
+                            disabled={imagesBusy}
+                            onClick={() => {
+                              void handleDownload(list, {
+                                mode: "images",
+                                imageMode: "original",
+                              });
+                            }}
+                          >
+                            {t("digidealDelivery.download.images")}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className={styles.selectCol}>
@@ -769,6 +1068,22 @@ export default function ProductDeliveryPage() {
           }}
         >
           <img src={deckHoverPreview.src} alt="" className={styles.queueZoomImage} />
+        </div>
+      ) : null}
+
+      {queueKeywordHoverPreview ? (
+        <div
+          className={styles.queueKeywordHoverPreview}
+          style={{
+            left: `${queueKeywordHoverPreview.x + 16}px`,
+            top: `${Math.max(16, queueKeywordHoverPreview.y - 38)}px`,
+          }}
+        >
+          <img
+            src={queueKeywordHoverPreview.src}
+            alt=""
+            className={styles.queueKeywordHoverImage}
+          />
         </div>
       ) : null}
 
@@ -814,7 +1129,7 @@ export default function ProductDeliveryPage() {
                       </TableHeaderCell>
                       <TableHeaderCell>{t("digidealDelivery.preview.table.title")}</TableHeaderCell>
                       <TableHeaderCell className={styles.previewPriceCell}>
-                        {t("digidealDelivery.preview.table.priceRange")}
+                        {t("digidealDelivery.preview.table.b2bPriceRange")}
                       </TableHeaderCell>
                       <TableHeaderCell className={styles.previewActionCell}>
                         {t("digidealDelivery.preview.table.actions")}

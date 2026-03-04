@@ -850,6 +850,7 @@ export default function BulkProcessingPage() {
   );
   const autoAssignRunningRef = useRef(false);
   const queuePreviewRequestRef = useRef<Set<string>>(new Set());
+  const queuePreviewExpandedRef = useRef<Set<string>>(new Set());
   const queueKeywordRequestRef = useRef<Set<string>>(new Set());
   const preloadedImageUrlsRef = useRef<Set<string>>(new Set());
   const preloadedImageElementsRef = useRef<Map<string, HTMLImageElement>>(
@@ -904,7 +905,7 @@ export default function BulkProcessingPage() {
         const next: Record<string, ExtractorPreviewItem[]> = {};
         nextItems.forEach((item) => {
           const deck = Array.isArray(item.deckItems)
-            ? item.deckItems.filter((entry) => Boolean(entry?.imageUrl)).slice(0, 5)
+            ? item.deckItems.filter((entry) => Boolean(entry?.imageUrl))
             : [];
           next[item.name] = deck as ExtractorPreviewItem[];
         });
@@ -1028,6 +1029,9 @@ export default function BulkProcessingPage() {
   useEffect(() => {
     const allowed = new Set(productionQueueFiles.map((entry) => entry.name));
     const knownFileNames = new Set(extractorFiles.map((entry) => entry.name));
+    queuePreviewExpandedRef.current = new Set(
+      [...queuePreviewExpandedRef.current].filter((name) => allowed.has(name))
+    );
     setQueuePreviewByFile((prev) => {
       const next = Object.entries(prev).filter(([name]) => allowed.has(name));
       if (next.length === Object.keys(prev).length) return prev;
@@ -1057,14 +1061,23 @@ export default function BulkProcessingPage() {
   useEffect(() => {
     let cancelled = false;
     const pending = productionQueueFiles.filter(
-      (entry) =>
-        entry.deckItems === undefined &&
-        !queuePreviewByFile[entry.name] &&
-        !queuePreviewRequestRef.current.has(entry.name)
+      (entry) => {
+        if (queuePreviewRequestRef.current.has(entry.name)) return false;
+        const currentItems = queuePreviewByFile[entry.name];
+        if (!currentItems) return true;
+
+        const keywordCount = (queueKeywordItemsByFile[entry.name] ?? []).length;
+        if (keywordCount <= currentItems.length) return false;
+        if (queuePreviewExpandedRef.current.has(entry.name)) return false;
+        return true;
+      }
     );
     if (!pending.length) return () => void 0;
 
     pending.forEach((entry) => {
+      if (queuePreviewByFile[entry.name]) {
+        queuePreviewExpandedRef.current.add(entry.name);
+      }
       queuePreviewRequestRef.current.add(entry.name);
       setQueuePreviewLoadingByFile((prev) => ({ ...prev, [entry.name]: true }));
     });
@@ -1108,7 +1121,7 @@ export default function BulkProcessingPage() {
     return () => {
       cancelled = true;
     };
-  }, [productionQueueFiles, queuePreviewByFile]);
+  }, [productionQueueFiles, queuePreviewByFile, queueKeywordItemsByFile]);
 
   useEffect(() => {
     let cancelled = false;

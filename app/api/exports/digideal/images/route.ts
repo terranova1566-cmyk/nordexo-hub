@@ -84,6 +84,10 @@ export async function POST(request: Request) {
     listId = null;
   }
 
+  if (!isAdmin && imageMode === "all") {
+    imageMode = "original";
+  }
+
   if (imageMode !== "all" && imageMode !== "original") {
     return NextResponse.json(
       { error: "Unsupported image export mode." },

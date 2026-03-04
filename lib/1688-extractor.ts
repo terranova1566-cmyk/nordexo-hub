@@ -443,6 +443,10 @@ export const listExtractorFiles = (): ExtractorFileSummary[] => {
       // are managed via supplier selection metadata, not this incoming bucket.
       if (lower.startsWith("production_supplier_")) return false;
       if (lower.startsWith("production_supplier_manual_")) return false;
+      // Extension product suggestion payloads are imported directly into
+      // Product Suggestions and should not show up in Incoming Products.
+      if (lower.startsWith("product_suggestions_")) return false;
+      if (lower.startsWith("product_suggestion_")) return false;
       return true;
     });
 

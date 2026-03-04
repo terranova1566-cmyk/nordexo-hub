@@ -124,6 +124,221 @@ const toPriceNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const toWeightGrams = (value) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, ".").toLowerCase();
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match?.[0]) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  if (/kg|公斤|千克/i.test(normalized)) return Math.round(num * 1000);
+  if (/g|克/i.test(normalized)) return Math.round(num);
+  if (normalized.includes(".") && num <= 20) return Math.round(num * 1000);
+  return Math.round(num);
+};
+
+const normalizeImageUrl = (value) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  if (raw.startsWith("//")) return `https:${raw}`;
+  return raw;
+};
+
+const buildVariantCachePayloadFromItem = ({
+  item,
+  payloadFilePath,
+  cachedAt,
+}) => {
+  const row =
+    item && typeof item === "object" ? item : {};
+  const variations =
+    row.variations && typeof row.variations === "object"
+      ? row.variations
+      : {};
+  const combosRaw = Array.isArray(variations.combos) ? variations.combos : [];
+  const combos = combosRaw.map((entry, index) => {
+    const combo = entry && typeof entry === "object" ? entry : {};
+    const t1 = firstString(combo.t1);
+    const t2 = firstString(combo.t2);
+    const t3 = firstString(combo.t3);
+    const t1Zh = firstString(combo.t1_zh, combo.t1Zh, hasCjk(t1) ? t1 : "");
+    const t2Zh = firstString(combo.t2_zh, combo.t2Zh, hasCjk(t2) ? t2 : "");
+    const t3Zh = firstString(combo.t3_zh, combo.t3Zh, hasCjk(t3) ? t3 : "");
+    const t1En = firstString(combo.t1_en, combo.t1En, !hasCjk(t1) ? t1 : "");
+    const t2En = firstString(combo.t2_en, combo.t2En, !hasCjk(t2) ? t2 : "");
+    const t3En = firstString(combo.t3_en, combo.t3En, !hasCjk(t3) ? t3 : "");
+
+    const imageFull = normalizeImageUrl(
+      firstString(
+        combo.image_full_url,
+        combo.imageFullUrl,
+        combo.image_zoom_url,
+        combo.imageZoomUrl,
+        combo.image_url,
+        combo.imageUrl,
+        combo.img,
+        combo.image
+      )
+    );
+    const imageThumb = normalizeImageUrl(
+      firstString(
+        combo.image_thumb_url,
+        combo.imageThumbUrl,
+        combo.image_url,
+        combo.imageUrl,
+        combo.img,
+        combo.image,
+        imageFull
+      )
+    );
+    const imageZoom = normalizeImageUrl(
+      firstString(combo.image_zoom_url, combo.imageZoomUrl, imageFull, imageThumb)
+    );
+
+    const priceRaw = firstString(
+      combo.price_raw,
+      combo.priceRaw,
+      combo.price_text,
+      combo.priceText,
+      combo.sku_price,
+      combo.skuPrice,
+      combo.sale_price,
+      combo.salePrice,
+      combo.price
+    );
+    const price =
+      toPriceNumber(combo.price) ?? toPriceNumber(priceRaw);
+
+    const detailWeight =
+      combo.details && typeof combo.details === "object"
+        ? firstString(combo.details.weight, combo.details["重量"])
+        : "";
+    const weightRaw = firstString(
+      combo.weight_raw,
+      combo.weightRaw,
+      combo.weight,
+      combo.weight_grams,
+      combo.weightGrams,
+      combo.sku_weight,
+      combo.skuWeight,
+      detailWeight
+    );
+    const weightGrams = toWeightGrams(weightRaw);
+
+    const comboIndex =
+      Number.isInteger(Number(combo.index)) && Number(combo.index) >= 0
+        ? Number(combo.index)
+        : index;
+
+    return {
+      index: comboIndex,
+      t1,
+      t2,
+      t3,
+      t1_zh: t1Zh || undefined,
+      t1_en: t1En || undefined,
+      t2_zh: t2Zh || undefined,
+      t2_en: t2En || undefined,
+      t3_zh: t3Zh || undefined,
+      t3_en: t3En || undefined,
+      image_url: imageFull || imageThumb || undefined,
+      image_thumb_url: imageThumb || imageFull || undefined,
+      image_zoom_url: imageZoom || imageFull || imageThumb || undefined,
+      image_full_url: imageFull || imageThumb || undefined,
+      price_raw: priceRaw,
+      price: Number.isFinite(Number(price)) ? Number(price) : null,
+      weight_raw: weightRaw || undefined,
+      weight_grams: Number.isFinite(Number(weightGrams))
+        ? Number(weightGrams)
+        : null,
+    };
+  });
+
+  const galleryImages = [];
+  const seenGallery = new Set();
+  const pushGallery = (fullCandidate, thumbCandidate = "") => {
+    const full = normalizeImageUrl(fullCandidate);
+    const thumb = normalizeImageUrl(thumbCandidate) || full;
+    if (!full || !isHttpUrl(full)) return;
+    const key = `${full}::${thumb}`;
+    if (seenGallery.has(key)) return;
+    seenGallery.add(key);
+    galleryImages.push({
+      thumb_url: thumb,
+      full_url: full,
+      url: thumb,
+      url_full: full,
+    });
+  };
+
+  pushGallery(row.main_image_1688, row.main_image_1688);
+
+  const imageRows = Array.isArray(row.image_urls_1688) ? row.image_urls_1688 : [];
+  imageRows.forEach((entry) => {
+    if (typeof entry === "string") {
+      pushGallery(entry, entry);
+      return;
+    }
+    if (!entry || typeof entry !== "object") return;
+    pushGallery(
+      firstString(
+        entry.url_full,
+        entry.full_url,
+        entry.url,
+        entry.image_url,
+        entry.imageUrl,
+        entry.src,
+        entry.image
+      ),
+      firstString(
+        entry.thumb_url,
+        entry.thumbnail,
+        entry.thumb,
+        entry.url,
+        entry.image_url,
+        entry.imageUrl,
+        entry.src,
+        entry.image
+      )
+    );
+  });
+
+  const variantRows = Array.isArray(row.variant_images_1688) ? row.variant_images_1688 : [];
+  variantRows.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    pushGallery(
+      firstString(entry.url_full, entry.full_url, entry.url, entry.image_url),
+      firstString(entry.url, entry.thumb_url, entry.thumb, entry.image_url)
+    );
+  });
+
+  combos.forEach((combo) => {
+    pushGallery(combo.image_full_url || combo.image_zoom_url || combo.image_url, combo.image_thumb_url || combo.image_url);
+  });
+
+  const weightReview =
+    row.weight_review_1688 && typeof row.weight_review_1688 === "object"
+      ? row.weight_review_1688
+      : null;
+
+  if (combos.length === 0 && galleryImages.length === 0 && !weightReview) {
+    return null;
+  }
+
+  return {
+    cached_at: firstString(cachedAt) || new Date().toISOString(),
+    payload_file_path: firstString(payloadFilePath) || null,
+    available_count: combos.length,
+    type1_label: firstString(variations.type1Label),
+    type2_label: firstString(variations.type2Label),
+    type3_label: firstString(variations.type3Label),
+    combos,
+    gallery_images: galleryImages.slice(0, 160),
+    weight_review: weightReview,
+  };
+};
+
 const enrichVariantWeightsFromReadableText = (payload) => {
   if (!payload || typeof payload !== "object") return payload;
   const extracted =
@@ -639,17 +854,6 @@ const translateVariantCombosBestEffort = async (payload) => {
 
   if (toTranslate.length === 0) return applyUpdated();
 
-  const titles = toTranslate.slice(0, 50);
-  const prompt = [
-    "Translate this title to English, maximum 80 characters.",
-    "Focus on product nouns and function; remove filler words.",
-    "Return JSON only.",
-    'Return format: { "items": [ { "source": "...", "english_title": "..." } ] }',
-    "",
-    "Titles:",
-    ...titles.map((title, index) => `${index + 1}. ${title}`),
-  ].join("\n");
-
   const models = Array.from(
     new Set(
       [
@@ -665,51 +869,80 @@ const translateVariantCombosBestEffort = async (payload) => {
     )
   );
 
-  let parsed = null;
-  for (const model of models) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
-    try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) continue;
-      const data = await response.json().catch(() => null);
-      parsed = parseJsonFromText(asText(data?.choices?.[0]?.message?.content));
-      if (parsed) break;
-    } catch {
-      // try next model
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
+  const maxItemsRaw = Number(process.env.SUPPLIER_VARIANT_TRANSLATE_MAX_ITEMS || "180");
+  const batchSizeRaw = Number(process.env.SUPPLIER_VARIANT_TRANSLATE_BATCH_SIZE || "30");
+  const budgetMsRaw = Number(process.env.SUPPLIER_VARIANT_TRANSLATE_BUDGET_MS || "70000");
+  const maxItems = Number.isFinite(maxItemsRaw) ? Math.max(20, Math.min(300, Math.trunc(maxItemsRaw))) : 180;
+  const batchSize = Number.isFinite(batchSizeRaw) ? Math.max(10, Math.min(60, Math.trunc(batchSizeRaw))) : 30;
+  const budgetMs = Number.isFinite(budgetMsRaw) ? Math.max(15000, Math.trunc(budgetMsRaw)) : 70000;
+  const titles = toTranslate.slice(0, maxItems);
   const translatedMap = new Map();
-  const rows = Array.isArray(parsed?.items) ? parsed.items : [];
-  for (const row of rows) {
-    const source = firstString(row?.source);
-    const english = firstString(
-      row?.english_title,
-      row?.englishTitle,
-      row?.title_en,
-      row?.translation,
-      row?.english
-    ).slice(0, 80);
-    if (!source || !english) continue;
-    translatedMap.set(source, english);
-    translatedMap.set(normalizeVariantTextKey(source), english);
-    variantTranslationCache.set(source, english);
-    variantTranslationCache.set(normalizeVariantTextKey(source), english);
+  const startedAt = Date.now();
+
+  const requestBatch = async (batchTitles) => {
+    const prompt = [
+      "Translate this title to English, maximum 80 characters.",
+      "Focus on product nouns and function; remove filler words.",
+      "Return JSON only.",
+      'Return format: { "items": [ { "source": "...", "english_title": "..." } ] }',
+      "",
+      "Titles:",
+      ...batchTitles.map((title, index) => `${index + 1}. ${title}`),
+    ].join("\n");
+
+    let parsed = null;
+    for (const model of models) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+          signal: controller.signal,
+        });
+        if (!response.ok) continue;
+        const data = await response.json().catch(() => null);
+        parsed = parseJsonFromText(asText(data?.choices?.[0]?.message?.content));
+        if (parsed) break;
+      } catch {
+        // try next model
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return parsed;
+  };
+
+  for (let start = 0; start < titles.length; start += batchSize) {
+    if (Date.now() - startedAt > budgetMs) break;
+    const batchTitles = titles.slice(start, start + batchSize);
+    if (batchTitles.length === 0) break;
+    const parsed = await requestBatch(batchTitles);
+    const rows = Array.isArray(parsed?.items) ? parsed.items : [];
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx += 1) {
+      const row = rows[rowIdx];
+      const source = firstString(row?.source, batchTitles[rowIdx]);
+      const english = firstString(
+        row?.english_title,
+        row?.englishTitle,
+        row?.title_en,
+        row?.translation,
+        row?.english
+      ).slice(0, 80);
+      if (!source || !english) continue;
+      translatedMap.set(source, english);
+      translatedMap.set(normalizeVariantTextKey(source), english);
+      variantTranslationCache.set(source, english);
+      variantTranslationCache.set(normalizeVariantTextKey(source), english);
+    }
   }
 
   if (translatedMap.size > 0) {
@@ -1893,7 +2126,13 @@ const main = async () => {
   if (!selectionMatches(latestSelection, selection)) return;
 
   const readyAt = new Date().toISOString();
-  const readyOffer = withPayloadMeta(latestSelection?.selected_offer, {
+  const variantCachePayload = buildVariantCachePayloadFromItem({
+    item,
+    payloadFilePath: saved.filePath,
+    cachedAt: readyAt,
+  });
+
+  const readyOfferWithMeta = withPayloadMeta(latestSelection?.selected_offer, {
     status: "ready",
     source: "auto",
     error: null,
@@ -1909,6 +2148,16 @@ const main = async () => {
     competitorError: competitor.error,
     weightReview: finalWeightReview,
   });
+  const readyOffer =
+    variantCachePayload && typeof variantCachePayload === "object"
+      ? {
+          ...(readyOfferWithMeta || {}),
+          _production_variant_cache: variantCachePayload,
+          _production_variant_available_count: Number(
+            variantCachePayload.available_count
+          ),
+        }
+      : readyOfferWithMeta;
   await updateSelectionOffer(admin, provider, productId, readyOffer);
 };
 

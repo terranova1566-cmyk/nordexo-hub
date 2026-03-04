@@ -1,8 +1,10 @@
 import path from "path";
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
+import { spawn } from "child_process";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
+import { buildPublicUrl } from "@/lib/public-files";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -14,7 +16,7 @@ const TEMPLATE_PATH = path.join(
   "export_template_digideal.xlsx"
 );
 const EXPORT_DIR = path.join(process.cwd(), "exports", "digideal");
-const IMAGE_ZIP_BASE = "http://resources.gadgetbay.com/images/zip";
+const DIGIDEAL_STANDARD_ZIP_PREFIX = "digideal-standard-images";
 
 const PRODUCT_META_KEYS = [
   "description_short",
@@ -87,6 +89,14 @@ const ALL_DATA_HEADERS = [
 
 type B2BMarket = (typeof B2B_MARKETS)[number];
 type ExportDataset = "partner" | "all";
+type StandardImageZipJobEntry = {
+  spu: string;
+  imageFolder: string | null;
+  token: string;
+  relativePath: string;
+  originalName: string;
+  createdBy: string | null;
+};
 type OptionBucket = {
   amount: string;
   color: string;
@@ -145,6 +155,55 @@ const normalizeDataset = (value: unknown): ExportDataset => {
     .toLowerCase();
   if (normalized === "all" || normalized === "full") return "all";
   return "partner";
+};
+
+const normalizeSpu = (value: unknown) => String(value ?? "").trim().toUpperCase();
+
+const sanitizeSpuSegment = (spu: string) => {
+  const sanitized = normalizeSpu(spu)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return sanitized || "unknown";
+};
+
+const buildStandardImageZipToken = (spu: string) =>
+  `${DIGIDEAL_STANDARD_ZIP_PREFIX}-${sanitizeSpuSegment(spu)}-v1`;
+
+const buildStandardImageZipRelativePath = (spu: string) =>
+  path.posix.join(
+    "partner-images",
+    "digideal",
+    sanitizeSpuSegment(spu),
+    "standard-images.zip"
+  );
+
+const queueStandardImageZipRefresh = (entries: StandardImageZipJobEntry[]) => {
+  if (entries.length === 0) return;
+  void (async () => {
+    try {
+      const payloadPath = path.join(
+        "/tmp",
+        `digideal-standard-zips-${Date.now()}-${randomUUID().slice(0, 8)}.json`
+      );
+      await fs.writeFile(payloadPath, JSON.stringify({ entries }), "utf8");
+
+      const scriptPath = path.join(
+        process.cwd(),
+        "scripts",
+        "refresh-digideal-standard-image-zips.mjs"
+      );
+
+      const child = spawn(process.execPath, [scriptPath, "--payload", payloadPath], {
+        detached: true,
+        stdio: "ignore",
+        env: process.env,
+      });
+      child.unref();
+    } catch {
+      // keep export flow resilient
+    }
+  })();
 };
 
 const buildPartnerWorkbook = async (rows: ExportCell[][]) => {
@@ -235,6 +294,10 @@ export async function POST(request: Request) {
     dataset = "partner";
   }
 
+  if (!isAdmin && dataset === "all") {
+    dataset = "partner";
+  }
+
   const allowedMarkets = new Set(B2B_MARKETS);
   if (!allowedMarkets.has(requestedMarket as B2BMarket)) {
     return NextResponse.json({ error: "Unsupported market." }, { status: 400 });
@@ -319,7 +382,7 @@ export async function POST(request: Request) {
   let productQuery = supabase
     .from("catalog_products")
     .select(
-      "id, spu, title, subtitle, description_html, supplier_1688_url, option1_name, option2_name, option3_name, option4_name, nordic_partner_enabled"
+      "id, spu, title, subtitle, description_html, supplier_1688_url, image_folder, option1_name, option2_name, option3_name, option4_name, nordic_partner_enabled"
     )
     .in("id", productIds);
 
@@ -332,6 +395,27 @@ export async function POST(request: Request) {
   if (productError) {
     return NextResponse.json({ error: productError.message }, { status: 500 });
   }
+
+  const standardZipBySpu = new Map<string, string>();
+  const standardZipJobs: StandardImageZipJobEntry[] = [];
+
+  (products ?? []).forEach((product) => {
+    const normalizedSpu = normalizeSpu(product.spu);
+    if (!normalizedSpu || standardZipBySpu.has(normalizedSpu)) return;
+    const token = buildStandardImageZipToken(normalizedSpu);
+    const relativePath = buildStandardImageZipRelativePath(normalizedSpu);
+    standardZipBySpu.set(normalizedSpu, buildPublicUrl(token));
+    standardZipJobs.push({
+      spu: normalizedSpu,
+      imageFolder: product.image_folder ?? null,
+      token,
+      relativePath,
+      originalName: `${normalizedSpu}-standard-images.zip`,
+      createdBy: user.id ?? null,
+    });
+  });
+
+  queueStandardImageZipRefresh(standardZipJobs);
 
   const { data: variants, error: variantError } = await supabase
     .from("catalog_variants")
@@ -468,6 +552,8 @@ export async function POST(request: Request) {
   const allRows: ExportCell[][] = [];
 
   (products ?? []).forEach((product) => {
+    const normalizedSpu = normalizeSpu(product.spu);
+    const imageZipUrl = normalizedSpu ? (standardZipBySpu.get(normalizedSpu) ?? "") : "";
     const productVariants = variantsByProduct.get(product.id) ?? [];
     const descriptionShortRaw = pickMetaValue(product.id, "description_short") ?? "";
     const descriptionExtendedRaw =
@@ -594,7 +680,7 @@ export async function POST(request: Request) {
         specsList,
         b2bPrice ?? "",
         1000,
-        `${IMAGE_ZIP_BASE}/${product.spu}.zip`,
+        imageZipUrl,
       ]);
 
       allRows.push([
@@ -617,7 +703,7 @@ export async function POST(request: Request) {
         specsList,
         b2bPrice ?? "",
         1000,
-        `${IMAGE_ZIP_BASE}/${product.spu}.zip`,
+        imageZipUrl,
         product.supplier_1688_url ?? "",
         variant.purchase_price_cny ?? "",
         variant.weight ?? "",

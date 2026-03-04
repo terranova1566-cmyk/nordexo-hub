@@ -198,7 +198,7 @@ const getAdminClient = () => {
   });
 };
 
-async function requireAdmin() {
+async function requireSignedIn() {
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -210,6 +210,17 @@ async function requireAdmin() {
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
+
+  return { ok: true as const, user, supabase };
+}
+
+async function requireAdmin() {
+  const auth = await requireSignedIn();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const { supabase, user } = auth;
 
   const { data: settings, error: settingsError } = await supabase
     .from("partner_user_settings")
@@ -231,7 +242,7 @@ async function requireAdmin() {
     };
   }
 
-  return { ok: true as const, user };
+  return { ok: true as const, user, supabase };
 }
 
 const buildFallbackRecord = (
@@ -353,7 +364,7 @@ const createImageSuggestion = async (
 };
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireSignedIn();
   if (!auth.ok) return auth.response;
 
   const adminClient = getAdminClient();

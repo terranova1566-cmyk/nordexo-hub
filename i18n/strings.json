@@ -6587,6 +6587,11 @@
       "context": "DigiDeal product delivery table header"
     },
     {
+      "key": "digidealDelivery.table.batchContent",
+      "text": "Batch Content",
+      "context": "DigiDeal product delivery table header"
+    },
+    {
       "key": "digidealDelivery.table.itemCount",
       "text": "Items",
       "context": "DigiDeal product delivery table header"
@@ -6618,13 +6623,43 @@
     },
     {
       "key": "digidealDelivery.download.completeExcel",
-      "text": "Complete Excel",
+      "text": "Complete Data",
       "context": "DigiDeal delivery complete excel download button"
     },
     {
       "key": "digidealDelivery.download.imagesZip",
-      "text": "Images ZIP",
+      "text": "Image zip file",
       "context": "DigiDeal delivery images zip download button"
+    },
+    {
+      "key": "digidealDelivery.download.excelFile",
+      "text": "Excel file",
+      "context": "DigiDeal delivery excel download button"
+    },
+    {
+      "key": "digidealDelivery.download.images",
+      "text": "Images",
+      "context": "DigiDeal delivery image download button"
+    },
+    {
+      "key": "digidealDelivery.download.completeData",
+      "text": "Complete Data",
+      "context": "DigiDeal delivery complete data export menu item"
+    },
+    {
+      "key": "digidealDelivery.download.partnerData",
+      "text": "Partner Data",
+      "context": "DigiDeal delivery partner data export menu item"
+    },
+    {
+      "key": "digidealDelivery.download.fullImageSet",
+      "text": "Full Set",
+      "context": "DigiDeal delivery full image export menu item"
+    },
+    {
+      "key": "digidealDelivery.download.standardImages",
+      "text": "Standard Images",
+      "context": "DigiDeal delivery standard image export menu item"
     },
     {
       "key": "digidealDelivery.preview.button",
@@ -6659,6 +6694,11 @@
     {
       "key": "digidealDelivery.preview.table.priceRange",
       "text": "Price Range",
+      "context": "DigiDeal delivery preview table header"
+    },
+    {
+      "key": "digidealDelivery.preview.table.b2bPriceRange",
+      "text": "B2B Price Range",
       "context": "DigiDeal delivery preview table header"
     },
     {

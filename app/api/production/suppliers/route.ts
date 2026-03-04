@@ -709,6 +709,147 @@ const findOffer = (offers: Offer[], offerId: string, detailUrl?: string | null) 
   return null;
 };
 
+const loadSupplierSelectionRow = async (
+  adminClient: any,
+  provider: string,
+  productId: string
+) => {
+  const { data, error } = await adminClient
+    .from("discovery_production_supplier_selection")
+    .select(
+      "provider, product_id, selected_offer_id, selected_detail_url, selected_offer, selected_at, selected_by, updated_at"
+    )
+    .eq("provider", provider)
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[api/production/suppliers] selection lookup failed", {
+      provider,
+      productId,
+      error: error.message,
+    });
+    return null;
+  }
+  return data ?? null;
+};
+
+const hasSelectedSupplierRecord = (selection: unknown) => {
+  if (!selection || typeof selection !== "object") return false;
+  const row = selection as Record<string, unknown>;
+  const selectedOfferId = asOfferText(row.selected_offer_id);
+  const selectedDetailUrl = asOfferText(row.selected_detail_url);
+  if (selectedOfferId || selectedDetailUrl) return true;
+  const selectedOffer =
+    row.selected_offer && typeof row.selected_offer === "object"
+      ? (row.selected_offer as Record<string, unknown>)
+      : null;
+  if (!selectedOffer) return false;
+  return Boolean(toOfferId(selectedOffer as Offer) || canonical1688OfferUrl(selectedOffer as Offer));
+};
+
+const pickTopOfferForAutoSelection = (offers: Offer[]) => {
+  if (!Array.isArray(offers) || offers.length === 0) return null;
+  for (const offer of offers) {
+    if (!offer || typeof offer !== "object") continue;
+    const offerId = toOfferId(offer);
+    const detailUrl = canonical1688OfferUrl(offer);
+    if (!offerId && !detailUrl) continue;
+    return detailUrl ? ({ ...offer, detailUrl } as Offer) : ({ ...offer } as Offer);
+  }
+  return null;
+};
+
+const autoSelectTopOfferAndQueuePayloadBestEffort = async (
+  adminClient: any,
+  provider: string,
+  productId: string,
+  offers: Offer[],
+  selectedBy: string | null
+) => {
+  try {
+    const existingSelection = await loadSupplierSelectionRow(
+      adminClient,
+      provider,
+      productId
+    );
+    if (hasSelectedSupplierRecord(existingSelection)) {
+      return { selected: existingSelection, payloadFetchStatus: null as string | null };
+    }
+
+    const topOffer = pickTopOfferForAutoSelection(offers);
+    if (!topOffer) return { selected: null, payloadFetchStatus: null as string | null };
+
+    const selectedOfferId = toOfferId(topOffer) || null;
+    const selectedDetailUrl = canonical1688OfferUrl(topOffer) || null;
+    const selectedAt = new Date().toISOString();
+    const selectedOffer = withPayloadFetchingState(topOffer, selectedAt);
+
+    const { data: selectionRow, error: upsertError } = await adminClient
+      .from("discovery_production_supplier_selection")
+      .upsert(
+        {
+          provider,
+          product_id: productId,
+          selected_offer_id: selectedOfferId,
+          selected_detail_url: selectedDetailUrl,
+          selected_offer: selectedOffer,
+          selected_at: selectedAt,
+          selected_by: selectedBy || null,
+          updated_at: selectedAt,
+        },
+        { onConflict: "provider,product_id" }
+      )
+      .select(
+        "provider, product_id, selected_offer_id, selected_detail_url, selected_offer, selected_at, selected_by, updated_at"
+      )
+      .maybeSingle();
+
+    if (upsertError) {
+      console.warn("[api/production/suppliers] auto-select upsert failed", {
+        provider,
+        productId,
+        error: upsertError.message,
+      });
+      return { selected: null, payloadFetchStatus: null as string | null };
+    }
+
+    const workerStarted = spawnSupplierPayloadWorkerBestEffort(provider, productId);
+    if (workerStarted) {
+      return { selected: selectionRow ?? null, payloadFetchStatus: "fetching" as const };
+    }
+
+    const failedAt = new Date().toISOString();
+    const failedOffer = {
+      ...(selectedOffer as any),
+      _production_payload_status: "failed",
+      _production_payload_error: "Unable to start background 1688 fetch job.",
+      _production_payload_updated_at: failedAt,
+    } as Offer;
+
+    const { data: failedRow } = await adminClient
+      .from("discovery_production_supplier_selection")
+      .update({
+        selected_offer: failedOffer,
+        updated_at: failedAt,
+      })
+      .eq("provider", provider)
+      .eq("product_id", productId)
+      .select(
+        "provider, product_id, selected_offer_id, selected_detail_url, selected_offer, selected_at, selected_by, updated_at"
+      )
+      .maybeSingle();
+
+    return { selected: failedRow ?? selectionRow ?? null, payloadFetchStatus: "failed" as const };
+  } catch (error) {
+    console.warn("[api/production/suppliers] auto-select failed", {
+      provider,
+      productId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { selected: null, payloadFetchStatus: null as string | null };
+  }
+};
+
 const pickImageUrlFromItem = (
   request: Request,
   item: {
@@ -833,7 +974,23 @@ export async function GET(request: NextRequest) {
         productId,
         normalizedOffers
       );
-      const selected = selectionRow ?? null;
+      let selected = selectionRow ?? null;
+      let payloadFetchStatus: string | null = null;
+      if (
+        provider === PARTNER_SUGGESTION_PROVIDER &&
+        !hasSelectedSupplierRecord(selected) &&
+        normalizedOffers.length > 0
+      ) {
+        const autoSelected = await autoSelectTopOfferAndQueuePayloadBestEffort(
+          adminClient,
+          provider,
+          productId,
+          normalizedOffers,
+          auth.user.id
+        );
+        if (autoSelected.selected) selected = autoSelected.selected;
+        payloadFetchStatus = autoSelected.payloadFetchStatus;
+      }
       return NextResponse.json({
         provider,
         product_id: productId,
@@ -842,6 +999,7 @@ export async function GET(request: NextRequest) {
         offer_count: normalizedOffers.length,
         input,
         selected,
+        payload_fetch_status: payloadFetchStatus,
         locked_supplier_url: lockedSupplierUrl,
       });
     }
@@ -989,7 +1147,23 @@ export async function GET(request: NextRequest) {
     normalizedOffers
   );
 
-  const selected = selectionRow ?? null;
+  let selected = selectionRow ?? null;
+  let payloadFetchStatus: string | null = null;
+  if (
+    provider === PARTNER_SUGGESTION_PROVIDER &&
+    !hasSelectedSupplierRecord(selected) &&
+    normalizedOffers.length > 0
+  ) {
+    const autoSelected = await autoSelectTopOfferAndQueuePayloadBestEffort(
+      adminClient,
+      provider,
+      productId,
+      normalizedOffers,
+      auth.user.id
+    );
+    if (autoSelected.selected) selected = autoSelected.selected;
+    payloadFetchStatus = autoSelected.payloadFetchStatus;
+  }
 
   return NextResponse.json({
     provider,
@@ -999,6 +1173,7 @@ export async function GET(request: NextRequest) {
     offer_count: normalizedOffers.length,
     input,
     selected,
+    payload_fetch_status: payloadFetchStatus,
     locked_supplier_url: lockedSupplierUrl,
   });
 }

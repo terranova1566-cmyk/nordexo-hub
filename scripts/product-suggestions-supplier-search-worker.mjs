@@ -24,6 +24,10 @@ const DEFAULT_PROVIDER = "partner_suggestions";
 const DEFAULT_PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL || process.env.HUB_PUBLIC_URL || "https://hub.nordexo.se";
 const MAX_OFFERS = 10;
+const TARGET_OFFERS = 10;
+const SEARCH_MAX_ATTEMPTS = 6;
+const SEARCH_RETRY_BASE_MS = 700;
+const SEARCH_RETRY_MAX_MS = 7000;
 
 const asText = (value) =>
   value === null || value === undefined ? "" : String(value).trim();
@@ -678,12 +682,49 @@ const processSuggestion = async (adminClient, provider, suggestionId) => {
 
   let searchResult = null;
   let lastError = "";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    searchResult = runImageSearchByFile(localImagePath, MAX_OFFERS);
-    if (searchResult.ok) break;
-    lastError = asText(searchResult.error) || "1688 image search failed.";
-    if (!isRetriableSearchError(lastError)) break;
-    await sleep(500 * (attempt + 1));
+  let bestPayload = null;
+  let bestOfferCount = 0;
+  for (let attempt = 0; attempt < SEARCH_MAX_ATTEMPTS; attempt += 1) {
+    const nextResult = runImageSearchByFile(localImagePath, MAX_OFFERS);
+    if (!nextResult.ok) {
+      lastError = asText(nextResult.error) || "1688 image search failed.";
+      if (!isRetriableSearchError(lastError)) break;
+      if (attempt >= SEARCH_MAX_ATTEMPTS - 1) break;
+      const waitMs = Math.min(
+        SEARCH_RETRY_BASE_MS * (attempt + 1),
+        SEARCH_RETRY_MAX_MS
+      );
+      await sleep(waitMs);
+      continue;
+    }
+
+    const offerCount = Array.isArray(nextResult?.payload?.offers)
+      ? nextResult.payload.offers.length
+      : 0;
+    if (offerCount > bestOfferCount) {
+      bestOfferCount = offerCount;
+      bestPayload = nextResult.payload;
+    }
+
+    if (offerCount >= TARGET_OFFERS) {
+      searchResult = nextResult;
+      break;
+    }
+
+    if (attempt >= SEARCH_MAX_ATTEMPTS - 1) {
+      searchResult = nextResult;
+      break;
+    }
+
+    const waitMs = Math.min(
+      SEARCH_RETRY_BASE_MS * (attempt + 1),
+      SEARCH_RETRY_MAX_MS
+    );
+    await sleep(waitMs);
+  }
+
+  if (!searchResult && bestPayload) {
+    searchResult = { ok: true, payload: bestPayload };
   }
 
   if (!searchResult || !searchResult.ok) {
