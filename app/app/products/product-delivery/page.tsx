@@ -9,12 +9,16 @@ import {
   DialogBody,
   DialogSurface,
   DialogTitle,
+  Dropdown,
+  Field,
+  Input,
   Menu,
   MenuItem,
   MenuList,
   MenuPopover,
   MenuTrigger,
   MessageBar,
+  Option,
   Spinner,
   Table,
   TableBody,
@@ -34,8 +38,18 @@ import { formatCurrency, formatDateTime } from "@/lib/format";
 type DeliveryList = {
   id: string;
   name: string;
+  partner?: string | null;
   created_at: string | null;
   item_count: number;
+  letsdeal_status?: {
+    total: number;
+    completed: number;
+    queued: number;
+    running: number;
+    failed: number;
+    pending: number;
+    ready: boolean;
+  } | null;
   preview_images?: string[];
   preview_items?: DeliveryListMediaItem[];
   batch_content?: DeliveryListMediaItem[];
@@ -43,6 +57,7 @@ type DeliveryList = {
 
 type DeliveryListPreviewItem = {
   product_id: string;
+  spu: string | null;
   title: string;
   image_url: string | null;
   price_min: number | null;
@@ -72,8 +87,24 @@ type QueueKeywordHoverPreview = {
   y: number;
 };
 
-type ExportDataset = "partner" | "all";
+type ExportDataset = "partner" | "all" | "letsdeal";
 type ImageExportMode = "all" | "original";
+type DeliveryPartner = "digideal" | "letsdeal";
+
+const DELIVERY_PARTNER_OPTIONS: Array<{ value: DeliveryPartner | "all"; label: string }> = [
+  { value: "all", label: "All partners" },
+  { value: "digideal", label: "DigiDeal.se" },
+  { value: "letsdeal", label: "LetsDeal" },
+];
+
+const normalizeDeliveryPartner = (value: string | null | undefined): DeliveryPartner => {
+  return String(value ?? "").trim().toLowerCase() === "letsdeal"
+    ? "letsdeal"
+    : "digideal";
+};
+
+const deliveryPartnerLabel = (value: string | null | undefined) =>
+  normalizeDeliveryPartner(value) === "letsdeal" ? "LetsDeal" : "DigiDeal.se";
 
 const useStyles = makeStyles({
   layout: {
@@ -83,29 +114,49 @@ const useStyles = makeStyles({
   },
   header: {
     display: "flex",
-    flexDirection: "column",
-    gap: "4px",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: "12px",
+    flexWrap: "wrap",
   },
   title: {
     fontSize: tokens.fontSizeHero700,
     fontWeight: tokens.fontWeightSemibold,
   },
-  subtitle: {
-    color: tokens.colorNeutralForeground3,
+  controlsBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    padding: "10px 12px",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  controlsLeft: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  controlsRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    marginLeft: "auto",
+  },
+  controlsSearch: {
+    width: "280px",
+    minWidth: "220px",
+  },
+  controlsFilter: {
+    width: "170px",
+    minWidth: "150px",
   },
   tableCard: {
     padding: "16px",
     borderRadius: "var(--app-radius)",
-  },
-  tableTitle: {
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  tableHeaderRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    justifyContent: "space-between",
-    marginBottom: "12px",
   },
   tableActions: {
     display: "inline-flex",
@@ -134,6 +185,20 @@ const useStyles = makeStyles({
   itemsCol: {
     width: "76px",
     minWidth: "76px",
+  },
+  itemsBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "28px",
+    height: "22px",
+    paddingInline: "8px",
+    borderRadius: "999px",
+    backgroundColor: tokens.colorBrandBackgroundHover,
+    color: tokens.colorNeutralForegroundOnBrand,
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: tokens.lineHeightBase200,
   },
   previewCol: {
     width: "92px",
@@ -292,21 +357,63 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
   },
+  compactMenuPopover: {
+    "& .fui-MenuList": {
+      minWidth: "148px",
+      paddingBlock: "2px",
+    },
+  },
+  compactMenuItem: {
+    minHeight: "28px",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    paddingBlock: "4px",
+    paddingInline: "10px",
+  },
+  menuButtonLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  menuButtonChevron: {
+    width: 0,
+    height: 0,
+    borderLeft: "4px solid transparent",
+    borderRight: "4px solid transparent",
+    borderTop: "5px solid currentColor",
+    marginTop: "2px",
+  },
   previewDialog: {
     maxWidth: "1080px",
     width: "min(1080px, 96vw)",
+  },
+  duplicateDialog: {
+    maxWidth: "520px",
+    width: "min(520px, 96vw)",
   },
   previewBody: {
     display: "flex",
     flexDirection: "column",
     gap: "12px",
   },
+  duplicateForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  dialogActionsEnd: {
+    justifyContent: "flex-end",
+  },
   previewMeta: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: "8px",
+    gap: "10px",
+  },
+  previewSearch: {
+    width: "320px",
+    maxWidth: "100%",
   },
   previewTableWrap: {
     maxHeight: "520px",
@@ -318,6 +425,10 @@ const useStyles = makeStyles({
   previewImageCell: {
     width: "90px",
     minWidth: "90px",
+  },
+  previewSpuCell: {
+    width: "130px",
+    minWidth: "130px",
   },
   previewThumb: {
     width: "64px",
@@ -346,8 +457,32 @@ const useStyles = makeStyles({
     width: "120px",
     minWidth: "120px",
   },
+  previewRowCell: {
+    paddingBlock: "8px",
+    verticalAlign: "middle",
+  },
   previewDeleteButton: {
     color: tokens.colorPaletteRedForeground1,
+  },
+  previewSaveButton: {
+    backgroundColor: "#0b63b2",
+    border: "1px solid #0b63b2",
+    color: "#ffffff",
+    "&:hover": {
+      backgroundColor: "#09579b",
+      border: "1px solid #09579b",
+      color: "#ffffff",
+    },
+    "&:active": {
+      backgroundColor: "#084d89",
+      border: "1px solid #084d89",
+      color: "#ffffff",
+    },
+    "&:disabled": {
+      backgroundColor: tokens.colorNeutralBackground3,
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      color: tokens.colorNeutralForeground3,
+    },
   },
 });
 
@@ -406,15 +541,25 @@ export default function ProductDeliveryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listSearchInput, setListSearchInput] = useState("");
+  const [listSearch, setListSearch] = useState("");
+  const [partnerFilter, setPartnerFilter] = useState<"all" | DeliveryPartner>("all");
   const [busyDownloads, setBusyDownloads] = useState<Set<string>>(new Set());
   const [deckHoverPreview, setDeckHoverPreview] = useState<DeckHoverPreview | null>(null);
   const [queueKeywordHoverPreview, setQueueKeywordHoverPreview] =
     useState<QueueKeywordHoverPreview | null>(null);
   const [previewList, setPreviewList] = useState<DeliveryList | null>(null);
   const [previewItems, setPreviewItems] = useState<DeliveryListPreviewItem[]>([]);
+  const [previewSearch, setPreviewSearch] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [previewDeletedProductIds, setPreviewDeletedProductIds] = useState<Set<string>>(new Set());
+  const [isSavingPreview, setIsSavingPreview] = useState(false);
+  const [duplicateSourceList, setDuplicateSourceList] = useState<DeliveryList | null>(null);
+  const [duplicateTitle, setDuplicateTitle] = useState("");
+  const [duplicatePartner, setDuplicatePartner] = useState("digideal");
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [isDuplicatingList, setIsDuplicatingList] = useState(false);
   const [selectedListIds, setSelectedListIds] = useState<Set<string>>(new Set());
   const [isApplyingAction, setIsApplyingAction] = useState(false);
 
@@ -422,7 +567,18 @@ export default function ProductDeliveryPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/product-delivery/digideal/lists");
+      const params = new URLSearchParams();
+      if (partnerFilter !== "all") {
+        params.set("partner", partnerFilter);
+      }
+      if (listSearch) {
+        params.set("q", listSearch);
+      }
+      const response = await fetch(
+        `/api/product-delivery/digideal/lists${
+          params.toString() ? `?${params.toString()}` : ""
+        }`
+      );
       if (!response.ok) {
         throw new Error(await extractErrorMessage(response, t("products.lists.error")));
       }
@@ -433,7 +589,14 @@ export default function ProductDeliveryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [t]);
+  }, [listSearch, partnerFilter, t]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setListSearch(listSearchInput.trim());
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [listSearchInput]);
 
   useEffect(() => {
     void loadLists();
@@ -517,6 +680,8 @@ export default function ProductDeliveryPage() {
         options.mode === "excel"
           ? options.dataset === "all"
             ? "digideal_delivery_complete_data.xlsx"
+            : options.dataset === "letsdeal"
+              ? "letsdeal_delivery_data.xlsx"
             : "digideal_delivery_partner_data.xlsx"
           : options.imageMode === "all"
             ? "digideal_delivery_images_full.zip"
@@ -562,33 +727,100 @@ export default function ProductDeliveryPage() {
   const openPreview = async (list: DeliveryList) => {
     setPreviewList(list);
     setPreviewItems([]);
+    setPreviewSearch("");
+    setPreviewDeletedProductIds(new Set());
+    setPreviewError(null);
     await loadPreviewItems(list.id);
   };
 
-  const handleRemoveFromPreview = async (productId: string) => {
-    if (!previewList || !productId || deletingProductId) return;
-    setDeletingProductId(productId);
+  const closePreviewDialog = useCallback(() => {
+    setPreviewList(null);
+    setPreviewItems([]);
+    setPreviewSearch("");
+    setPreviewError(null);
+    setPreviewLoading(false);
+    setPreviewDeletedProductIds(new Set());
+    setIsSavingPreview(false);
+  }, []);
+
+  const handleRemoveFromPreview = (productId: string) => {
+    if (!productId || isSavingPreview) return;
+    setPreviewItems((prev) => prev.filter((item) => item.product_id !== productId));
+    setPreviewDeletedProductIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
+  };
+
+  const handleSaveAndClosePreview = useCallback(async () => {
+    if (!previewList || isSavingPreview) return;
+    const deletedIds = Array.from(previewDeletedProductIds);
+    if (deletedIds.length === 0) {
+      closePreviewDialog();
+      return;
+    }
+
+    setIsSavingPreview(true);
     setPreviewError(null);
     try {
-      const response = await fetch("/api/product-delivery/digideal/lists/items", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          listId: previewList.id,
-          productId,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, t("products.lists.deleteError")));
+      for (const productId of deletedIds) {
+        const response = await fetch("/api/product-delivery/digideal/lists/items", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listId: previewList.id,
+            productId,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await extractErrorMessage(response, t("products.lists.deleteError")));
+        }
       }
-      setPreviewItems((prev) => prev.filter((item) => item.product_id !== productId));
       await loadLists();
+      closePreviewDialog();
     } catch (err) {
       setPreviewError((err as Error).message);
-    } finally {
-      setDeletingProductId(null);
+      setIsSavingPreview(false);
     }
-  };
+  }, [closePreviewDialog, isSavingPreview, loadLists, previewDeletedProductIds, previewList, t]);
+
+  const filteredPreviewItems = useMemo(() => {
+    const query = previewSearch.trim().toLowerCase();
+    if (!query) return previewItems;
+    return previewItems.filter((item) =>
+      String(item.title ?? "")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [previewItems, previewSearch]);
+
+  const hasPreviewChanges = previewDeletedProductIds.size > 0;
+
+  const previewSummary = useMemo(() => {
+    if (!previewList) return "";
+    const count = previewItems.length;
+    const dateLabel = formatDateTime(previewList.created_at) || t("common.notAvailable");
+    return `${count} / / ${dateLabel}`;
+  }, [previewItems.length, previewList, t]);
+
+  const previewTitle = useMemo(() => {
+    if (!previewList) return t("digidealDelivery.preview.button");
+    return `${t("digidealDelivery.preview.title")} - ${previewList.name}`;
+  }, [previewList, t]);
+
+  const previewPartnerLabel = previewList ? deliveryPartnerLabel(previewList.partner) : "";
+
+  const previewSaveDisabled = isSavingPreview || !hasPreviewChanges;
+
+  const previewSearchResultEmpty =
+    !previewLoading && previewItems.length > 0 && filteredPreviewItems.length === 0;
+
+  const previewDeleteDisabled = isSavingPreview;
+
+  const previewDialogTitle = previewList
+    ? `${previewTitle} (${previewPartnerLabel})`
+    : previewTitle;
 
   const handleDeleteSelectedLists = useCallback(async () => {
     const listIds = Array.from(selectedListIds);
@@ -623,9 +855,7 @@ export default function ProductDeliveryPage() {
       setSelectedListIds(new Set());
 
       if (previewList && deletedIdSet.has(previewList.id)) {
-        setPreviewList(null);
-        setPreviewItems([]);
-        setPreviewError(null);
+        closePreviewDialog();
       }
 
       const failedIds = Array.isArray(payload?.failedIds)
@@ -642,17 +872,18 @@ export default function ProductDeliveryPage() {
     } finally {
       setIsApplyingAction(false);
     }
-  }, [selectedListIds, isApplyingAction, previewList, loadLists, t]);
+  }, [selectedListIds, isApplyingAction, previewList, closePreviewDialog, loadLists, t]);
 
   const allSelected = lists.length > 0 && lists.every((list) => selectedListIds.has(list.id));
   const someSelected = lists.some((list) => selectedListIds.has(list.id));
   const selectAllState = allSelected ? true : someSelected ? "mixed" : false;
   const hasSelection = selectedListIds.size > 0;
-
-  const previewTitle = useMemo(() => {
-    if (!previewList) return t("digidealDelivery.preview.button");
-    return `${t("digidealDelivery.preview.title")} - ${previewList.name}`;
-  }, [previewList, t]);
+  const selectedListForDuplicate = useMemo(() => {
+    if (selectedListIds.size !== 1) return null;
+    const [selectedId] = Array.from(selectedListIds);
+    if (!selectedId) return null;
+    return lists.find((list) => list.id === selectedId) ?? null;
+  }, [lists, selectedListIds]);
   const titleColumnWidth = useMemo(() => {
     const widestTitleLength = lists.reduce((maxWidth, list) => {
       const currentLength = (list.name ?? "").trim().length;
@@ -661,42 +892,128 @@ export default function ProductDeliveryPage() {
     const widthCh = Math.max(22, Math.min(44, widestTitleLength + 2));
     return `${widthCh}ch`;
   }, [lists]);
+  const duplicatePartnerLabel = deliveryPartnerLabel(duplicatePartner);
+
+  const openDuplicateDialog = useCallback(() => {
+    if (!selectedListForDuplicate) return;
+    setDuplicateSourceList(selectedListForDuplicate);
+    setDuplicateTitle(selectedListForDuplicate.name ?? "");
+    setDuplicatePartner(normalizeDeliveryPartner(selectedListForDuplicate.partner));
+    setDuplicateError(null);
+  }, [selectedListForDuplicate]);
+
+  const handleDuplicateList = useCallback(async () => {
+    if (!duplicateSourceList || isDuplicatingList) return;
+    const normalizedTitle = duplicateTitle.trim();
+    if (!normalizedTitle) {
+      setDuplicateError("Title is required.");
+      return;
+    }
+    setDuplicateError(null);
+    setError(null);
+    setIsDuplicatingList(true);
+    try {
+      const response = await fetch("/api/product-delivery/digideal/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedTitle,
+          sourceListId: duplicateSourceList.id,
+          partner: duplicatePartner,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, t("products.lists.error")));
+      }
+      await loadLists();
+      setDuplicateSourceList(null);
+      setDuplicateError(null);
+      setDuplicateTitle("");
+    } catch (err) {
+      setDuplicateError((err as Error).message);
+    } finally {
+      setIsDuplicatingList(false);
+    }
+  }, [
+    duplicatePartner,
+    duplicateSourceList,
+    duplicateTitle,
+    isDuplicatingList,
+    loadLists,
+    t,
+  ]);
 
   return (
     <div className={styles.layout}>
       <div className={styles.header}>
         <Text className={styles.title}>{t("digidealDelivery.title")}</Text>
-        <Text className={styles.subtitle}>{t("digidealDelivery.subtitle")}</Text>
+      </div>
+
+      <div className={styles.controlsBar}>
+        <div className={styles.controlsLeft}>
+          <Input
+            className={styles.controlsSearch}
+            value={listSearchInput}
+            onChange={(_, data) => setListSearchInput(data.value)}
+            placeholder="Search SPU, SKU or product title"
+          />
+          <Dropdown
+            className={styles.controlsFilter}
+            value={
+              DELIVERY_PARTNER_OPTIONS.find((option) => option.value === partnerFilter)?.label ??
+              DELIVERY_PARTNER_OPTIONS[0].label
+            }
+            selectedOptions={[partnerFilter]}
+            onOptionSelect={(_, data) => {
+              const next =
+                String(data.optionValue ?? "all").trim().toLowerCase() === "letsdeal"
+                  ? "letsdeal"
+                  : String(data.optionValue ?? "all").trim().toLowerCase() === "digideal"
+                    ? "digideal"
+                    : "all";
+              setPartnerFilter(next);
+            }}
+          >
+            {DELIVERY_PARTNER_OPTIONS.map((option) => (
+              <Option key={option.value} value={option.value} text={option.label}>
+                {option.label}
+              </Option>
+            ))}
+          </Dropdown>
+        </div>
+        <div className={styles.controlsRight}>
+          <Menu>
+            <MenuTrigger disableButtonEnhancement>
+              <Button
+                appearance={hasSelection ? "primary" : "outline"}
+                disabled={!hasSelection || isApplyingAction}
+              >
+                {t("products.actions.label")}
+              </Button>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
+                <MenuItem
+                  disabled={!selectedListForDuplicate || isApplyingAction || isDuplicatingList}
+                  onClick={openDuplicateDialog}
+                >
+                  Duplicate
+                </MenuItem>
+                <MenuItem
+                  disabled={!hasSelection || isApplyingAction}
+                  onClick={() => {
+                    void handleDeleteSelectedLists();
+                  }}
+                >
+                  {t("common.delete")}
+                </MenuItem>
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+        </div>
       </div>
 
       <Card className={styles.tableCard}>
-        <div className={styles.tableHeaderRow}>
-          <Text className={styles.tableTitle}>{t("digidealDelivery.partner.digideal")}</Text>
-          <div className={styles.tableActions}>
-            <Menu>
-              <MenuTrigger disableButtonEnhancement>
-                <Button
-                  appearance={hasSelection ? "primary" : "outline"}
-                  disabled={!hasSelection || isApplyingAction}
-                >
-                  {t("products.actions.label")}
-                </Button>
-              </MenuTrigger>
-              <MenuPopover>
-                <MenuList>
-                  <MenuItem
-                    disabled={!hasSelection || isApplyingAction}
-                    onClick={() => {
-                      void handleDeleteSelectedLists();
-                    }}
-                  >
-                    {t("common.delete")}
-                  </MenuItem>
-                </MenuList>
-              </MenuPopover>
-            </Menu>
-          </div>
-        </div>
         {error ? <MessageBar intent="error">{error}</MessageBar> : null}
         {isLoading ? (
           <Spinner label={t("products.loading")} />
@@ -768,10 +1085,15 @@ export default function ProductDeliveryPage() {
                 const batchContentItems = (list.batch_content ?? []).slice(0, 8);
                 const excelAllKey = buildDownloadKey(list.id, "excel", "all");
                 const excelPartnerKey = buildDownloadKey(list.id, "excel", "partner");
+                const excelLetsdealKey = buildDownloadKey(list.id, "excel", "letsdeal");
                 const imageAllKey = buildDownloadKey(list.id, "images", "all");
                 const imageStandardKey = buildDownloadKey(list.id, "images", "original");
+                const isLetsdealList = normalizeDeliveryPartner(list.partner) === "letsdeal";
+                const letsdealReady = Boolean(list.letsdeal_status?.ready);
                 const excelBusy =
-                  busyDownloads.has(excelAllKey) || busyDownloads.has(excelPartnerKey);
+                  busyDownloads.has(excelAllKey) ||
+                  busyDownloads.has(excelPartnerKey) ||
+                  busyDownloads.has(excelLetsdealKey);
                 const imagesBusy =
                   busyDownloads.has(imageAllKey) || busyDownloads.has(imageStandardKey);
                 return (
@@ -833,7 +1155,9 @@ export default function ProductDeliveryPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className={styles.sellerCol}>DigiDeal</TableCell>
+                    <TableCell className={styles.sellerCol}>
+                      {deliveryPartnerLabel(list.partner)}
+                    </TableCell>
                     <TableCell
                       className={styles.titleCol}
                       style={{ width: titleColumnWidth, minWidth: titleColumnWidth }}
@@ -900,7 +1224,7 @@ export default function ProductDeliveryPage() {
                       {formatDateTime(list.created_at) || t("common.notAvailable")}
                     </TableCell>
                     <TableCell className={styles.itemsCol}>
-                      {list.item_count ?? 0}
+                      <span className={styles.itemsBadge}>{list.item_count ?? 0}</span>
                     </TableCell>
                     <TableCell className={styles.previewCol}>
                       <Button
@@ -925,12 +1249,16 @@ export default function ProductDeliveryPage() {
                                 className={styles.actionWhiteButton}
                                 disabled={excelBusy}
                               >
-                                {t("digidealDelivery.download.excelFile")}
+                                <span className={styles.menuButtonLabel}>
+                                  {t("digidealDelivery.download.excelFile")}
+                                  <span className={styles.menuButtonChevron} aria-hidden />
+                                </span>
                               </Button>
                             </MenuTrigger>
-                            <MenuPopover>
+                            <MenuPopover className={styles.compactMenuPopover}>
                               <MenuList>
                                 <MenuItem
+                                  className={styles.compactMenuItem}
                                   disabled={busyDownloads.has(excelPartnerKey)}
                                   onClick={() => {
                                     void handleDownload(list, {
@@ -942,6 +1270,7 @@ export default function ProductDeliveryPage() {
                                   {t("digidealDelivery.download.partnerData")}
                                 </MenuItem>
                                 <MenuItem
+                                  className={styles.compactMenuItem}
                                   disabled={busyDownloads.has(excelAllKey)}
                                   onClick={() => {
                                     void handleDownload(list, {
@@ -952,6 +1281,22 @@ export default function ProductDeliveryPage() {
                                 >
                                   {t("digidealDelivery.download.completeData")}
                                 </MenuItem>
+                                {isLetsdealList ? (
+                                  <MenuItem
+                                    className={styles.compactMenuItem}
+                                    disabled={
+                                      busyDownloads.has(excelLetsdealKey) || !letsdealReady
+                                    }
+                                    onClick={() => {
+                                      void handleDownload(list, {
+                                        mode: "excel",
+                                        dataset: "letsdeal",
+                                      });
+                                    }}
+                                  >
+                                    {t("digidealDelivery.download.letsdealData")}
+                                  </MenuItem>
+                                ) : null}
                               </MenuList>
                             </MenuPopover>
                           </Menu>
@@ -960,11 +1305,11 @@ export default function ProductDeliveryPage() {
                             appearance="outline"
                             size="small"
                             className={styles.actionWhiteButton}
-                            disabled={excelBusy}
+                            disabled={excelBusy || (isLetsdealList && !letsdealReady)}
                             onClick={() => {
                               void handleDownload(list, {
                                 mode: "excel",
-                                dataset: "partner",
+                                dataset: isLetsdealList ? "letsdeal" : "partner",
                               });
                             }}
                           >
@@ -981,12 +1326,16 @@ export default function ProductDeliveryPage() {
                                 className={styles.actionWhiteButton}
                                 disabled={imagesBusy}
                               >
-                                {t("digidealDelivery.download.images")}
+                                <span className={styles.menuButtonLabel}>
+                                  {t("digidealDelivery.download.images")}
+                                  <span className={styles.menuButtonChevron} aria-hidden />
+                                </span>
                               </Button>
                             </MenuTrigger>
-                            <MenuPopover>
+                            <MenuPopover className={styles.compactMenuPopover}>
                               <MenuList>
                                 <MenuItem
+                                  className={styles.compactMenuItem}
                                   disabled={busyDownloads.has(imageStandardKey)}
                                   onClick={() => {
                                     void handleDownload(list, {
@@ -998,6 +1347,7 @@ export default function ProductDeliveryPage() {
                                   {t("digidealDelivery.download.standardImages")}
                                 </MenuItem>
                                 <MenuItem
+                                  className={styles.compactMenuItem}
                                   disabled={busyDownloads.has(imageAllKey)}
                                   onClick={() => {
                                     void handleDownload(list, {
@@ -1091,27 +1441,22 @@ export default function ProductDeliveryPage() {
         open={Boolean(previewList)}
         onOpenChange={(_, data) => {
           if (!data.open) {
-            setPreviewList(null);
-            setPreviewItems([]);
-            setPreviewError(null);
-            setPreviewLoading(false);
-            setDeletingProductId(null);
+            closePreviewDialog();
           }
         }}
       >
         <DialogSurface className={styles.previewDialog}>
           <DialogBody className={styles.previewBody}>
-            <DialogTitle>{previewTitle}</DialogTitle>
+            <DialogTitle>{previewDialogTitle}</DialogTitle>
             {previewList ? (
               <div className={styles.previewMeta}>
-                <Text size={200}>
-                  {t("digidealDelivery.preview.productCount", {
-                    count: previewItems.length,
-                  })}
-                </Text>
-                <Text size={200}>
-                  {formatDateTime(previewList.created_at) || t("common.notAvailable")}
-                </Text>
+                <Text size={200}>{previewSummary}</Text>
+                <Input
+                  className={styles.previewSearch}
+                  value={previewSearch}
+                  onChange={(_, data) => setPreviewSearch(data.value)}
+                  placeholder="Search product title"
+                />
               </div>
             ) : null}
             {previewError ? <MessageBar intent="error">{previewError}</MessageBar> : null}
@@ -1119,6 +1464,8 @@ export default function ProductDeliveryPage() {
               <Spinner label={t("digidealDelivery.preview.loading")} />
             ) : previewItems.length === 0 ? (
               <Text>{t("digidealDelivery.preview.empty")}</Text>
+            ) : previewSearchResultEmpty ? (
+              <Text>No products match the search.</Text>
             ) : (
               <div className={styles.previewTableWrap}>
                 <Table size="small">
@@ -1127,6 +1474,7 @@ export default function ProductDeliveryPage() {
                       <TableHeaderCell className={styles.previewImageCell}>
                         {t("products.table.image")}
                       </TableHeaderCell>
+                      <TableHeaderCell className={styles.previewSpuCell}>SPU</TableHeaderCell>
                       <TableHeaderCell>{t("digidealDelivery.preview.table.title")}</TableHeaderCell>
                       <TableHeaderCell className={styles.previewPriceCell}>
                         {t("digidealDelivery.preview.table.b2bPriceRange")}
@@ -1137,9 +1485,11 @@ export default function ProductDeliveryPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {previewItems.map((item) => (
+                    {filteredPreviewItems.map((item) => (
                       <TableRow key={item.product_id}>
-                        <TableCell className={styles.previewImageCell}>
+                        <TableCell
+                          className={mergeClasses(styles.previewImageCell, styles.previewRowCell)}
+                        >
                           <div className={styles.previewThumb}>
                             {item.image_url ? (
                               <img
@@ -1152,25 +1502,36 @@ export default function ProductDeliveryPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{item.title || t("common.notAvailable")}</TableCell>
-                        <TableCell className={styles.previewPriceCell}>
+                        <TableCell
+                          className={mergeClasses(styles.previewSpuCell, styles.previewRowCell)}
+                        >
+                          {item.spu || t("common.notAvailable")}
+                        </TableCell>
+                        <TableCell className={styles.previewRowCell}>
+                          {item.title || t("common.notAvailable")}
+                        </TableCell>
+                        <TableCell
+                          className={mergeClasses(styles.previewPriceCell, styles.previewRowCell)}
+                        >
                           {formatPriceRange(
                             item.price_min,
                             item.price_max,
                             t("common.notAvailable")
                           )}
                         </TableCell>
-                        <TableCell className={styles.previewActionCell}>
+                        <TableCell
+                          className={mergeClasses(styles.previewActionCell, styles.previewRowCell)}
+                        >
                           <Button
                             appearance="outline"
                             size="small"
-                            disabled={deletingProductId === item.product_id}
+                            disabled={previewDeleteDisabled}
                             className={mergeClasses(
                               styles.actionWhiteButton,
                               styles.previewDeleteButton
                             )}
                             onClick={() => {
-                              void handleRemoveFromPreview(item.product_id);
+                              handleRemoveFromPreview(item.product_id);
                             }}
                           >
                             {t("common.delete")}
@@ -1182,13 +1543,91 @@ export default function ProductDeliveryPage() {
                 </Table>
               </div>
             )}
-            <DialogActions>
+            <DialogActions className={styles.dialogActionsEnd}>
               <Button
                 appearance="outline"
                 className={styles.actionWhiteButton}
-                onClick={() => setPreviewList(null)}
+                disabled={isSavingPreview}
+                onClick={closePreviewDialog}
               >
                 {t("common.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                disabled={previewSaveDisabled}
+                className={styles.previewSaveButton}
+                onClick={() => {
+                  void handleSaveAndClosePreview();
+                }}
+              >
+                {isSavingPreview ? t("common.loading") : "Save and Close"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(duplicateSourceList)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            setDuplicateSourceList(null);
+            setDuplicateError(null);
+            setDuplicateTitle("");
+            setDuplicatePartner("digideal");
+            setIsDuplicatingList(false);
+          }
+        }}
+      >
+        <DialogSurface className={styles.duplicateDialog}>
+          <DialogBody className={styles.previewBody}>
+            <DialogTitle>Duplicate Delivery List</DialogTitle>
+            {duplicateError ? <MessageBar intent="error">{duplicateError}</MessageBar> : null}
+            <div className={styles.duplicateForm}>
+              <Field label="Partner">
+                <Dropdown
+                  value={duplicatePartnerLabel}
+                  selectedOptions={[duplicatePartner]}
+                  onOptionSelect={(_, data) => {
+                    setDuplicatePartner(String(data.optionValue ?? "digideal"));
+                  }}
+                >
+                  <Option value="digideal" text="DigiDeal.se">
+                    DigiDeal.se
+                  </Option>
+                  <Option value="letsdeal" text="LetsDeal">
+                    LetsDeal
+                  </Option>
+                </Dropdown>
+              </Field>
+              <Field label="Title">
+                <Input
+                  value={duplicateTitle}
+                  onChange={(_, data) => setDuplicateTitle(data.value)}
+                />
+              </Field>
+            </div>
+            <DialogActions className={styles.dialogActionsEnd}>
+              <Button
+                appearance="outline"
+                className={styles.actionWhiteButton}
+                disabled={isDuplicatingList}
+                onClick={() => {
+                  setDuplicateSourceList(null);
+                  setDuplicateError(null);
+                  setDuplicateTitle("");
+                }}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                disabled={isDuplicatingList}
+                onClick={() => {
+                  void handleDuplicateList();
+                }}
+              >
+                {isDuplicatingList ? t("common.loading") : "Duplicate"}
               </Button>
             </DialogActions>
           </DialogBody>

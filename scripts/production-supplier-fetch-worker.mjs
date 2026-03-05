@@ -153,8 +153,10 @@ const buildVariantCachePayloadFromItem = ({
   const row =
     item && typeof item === "object" ? item : {};
   const variations =
-    row.variations && typeof row.variations === "object"
-      ? row.variations
+    row.variations_enriched_1688 && typeof row.variations_enriched_1688 === "object"
+      ? row.variations_enriched_1688
+      : row.variations && typeof row.variations === "object"
+        ? row.variations
       : {};
   const combosRaw = Array.isArray(variations.combos) ? variations.combos : [];
   const combos = combosRaw.map((entry, index) => {
@@ -858,7 +860,6 @@ const translateVariantCombosBestEffort = async (payload) => {
     new Set(
       [
         process.env.SUPPLIER_VARIANT_TRANSLATE_MODEL,
-        "gpt-4o-mini",
         process.env.SUPPLIER_TRANSLATE_MODEL,
         process.env.OPENAI_EDIT_MODEL,
         "gpt-5-mini",

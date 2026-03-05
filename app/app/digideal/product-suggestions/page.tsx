@@ -710,8 +710,8 @@ const useStyles = makeStyles({
     boxSizing: "border-box",
   },
   productCol: {
-    minWidth: "320px",
-    width: "22%",
+    minWidth: "384px",
+    width: "26%",
   },
   sourceDataCol: {
     minWidth: "130px",
@@ -2177,6 +2177,32 @@ const normalizePayloadStatus = (value: unknown) => {
 const normalizeSuggestionReviewStatus = (value: unknown): SuggestionReviewStatus =>
   toText(value).toLowerCase() === "unqualified" ? "unqualified" : "new";
 
+const parseFilenameFromContentDisposition = (value: unknown) => {
+  const raw = toText(value);
+  if (!raw) return "";
+
+  const utf8Match = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).replace(/[\\/:*?"<>|]+/g, "-");
+    } catch {
+      return utf8Match[1].replace(/[\\/:*?"<>|]+/g, "-");
+    }
+  }
+
+  const quotedMatch = raw.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].replace(/[\\/:*?"<>|]+/g, "-");
+  }
+
+  const plainMatch = raw.match(/filename=([^;]+)/i);
+  if (plainMatch?.[1]) {
+    return plainMatch[1].trim().replace(/^["']|["']$/g, "").replace(/[\\/:*?"<>|]+/g, "-");
+  }
+
+  return "";
+};
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
@@ -2616,6 +2642,7 @@ const getSuggestionStatusSnapshot = (item: SuggestionItem): SuggestionStatusSnap
   const queueStatus = queueStatusRaw.replace(/\s+/g, "_").replace(/-/g, "_");
 
   const spuAssignedAt = toText(item.productionStatus?.spu_assigned_at) || null;
+  const assignedSpu = toText(item.production_assigned_spu);
   const productionStartedAt = toText(item.productionStatus?.production_started_at) || null;
   const productionDoneAt = toText(item.productionStatus?.production_done_at) || null;
   const statusUpdatedAt = toText(item.productionStatus?.updated_at) || null;
@@ -2635,6 +2662,7 @@ const getSuggestionStatusSnapshot = (item: SuggestionItem): SuggestionStatusSnap
     Boolean(
       productionStartedAt ||
         spuAssignedAt ||
+        assignedSpu ||
         queueStatus === "production_started" ||
         queueStatus === "spu_assigned" ||
         queueStatus === "queued_for_production" ||
@@ -2772,6 +2800,7 @@ export default function DigiDealProductSuggestionsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isSendingToProduction, setIsSendingToProduction] = useState(false);
+  const [isExportingUnqualified, setIsExportingUnqualified] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -4343,10 +4372,22 @@ export default function DigiDealProductSuggestionsPage() {
       }, 0),
     [itemById, selectedItemIds]
   );
+  const selectedUnqualifiedCount = useMemo(
+    () =>
+      selectedItemIds.reduce((count, id) => {
+        const item = itemById.get(id);
+        if (!item) return count;
+        return count + (normalizeSuggestionReviewStatus(item.reviewStatus) === "unqualified" ? 1 : 0);
+      }, 0),
+    [itemById, selectedItemIds]
+  );
   const canSendSelectedToProduction =
     selectedItemIds.length > 0 &&
     selectedEligibleCount === selectedItemIds.length &&
     selectedIneligibleCount === 0;
+  const canExportSelectedUnqualified =
+    selectedItemIds.length > 0 &&
+    selectedUnqualifiedCount === selectedItemIds.length;
   const selectedVisibleCount = useMemo(
     () => visibleItemIds.filter((id) => selectedIdSet.has(id)).length,
     [selectedIdSet, visibleItemIds]
@@ -4457,6 +4498,95 @@ export default function DigiDealProductSuggestionsPage() {
     },
     [selectedItemIds]
   );
+
+  const exportSelectedUnqualified = useCallback(async () => {
+    if (selectedItemIds.length === 0) {
+      setError("Select unqualified products to export.");
+      return;
+    }
+
+    const selectedRows = selectedItemIds
+      .map((id) => itemById.get(id))
+      .filter((entry): entry is SuggestionItem => Boolean(entry));
+    if (selectedRows.length === 0) {
+      setError("Unable to find selected products.");
+      return;
+    }
+    const hasNonUnqualified = selectedRows.some(
+      (item) => normalizeSuggestionReviewStatus(item.reviewStatus) !== "unqualified"
+    );
+    if (hasNonUnqualified) {
+      setError("Export Unqualified only works when every selected row is Unqualified.");
+      return;
+    }
+
+    const rows = selectedRows.map((item) => {
+      const taxonomyPath = toText(
+        item.googleTaxonomy?.path ||
+          [item.googleTaxonomy?.l1, item.googleTaxonomy?.l2, item.googleTaxonomy?.l3]
+            .map((entry) => toText(entry))
+            .filter(Boolean)
+            .join(" > ")
+      );
+      return {
+        id: item.id,
+        review_status: normalizeSuggestionReviewStatus(item.reviewStatus),
+        thumbnail_url:
+          toText(item.mainImageUrl) ||
+          toText(item.externalData?.mainImageUrl) ||
+          toText(item.externalData?.rawMainImageUrl) ||
+          null,
+        title:
+          toText(item.title) ||
+          toText(item.externalData?.title) ||
+          toText(item.externalData?.rawTitle) ||
+          item.id,
+        source_url: getSuggestionSourceProductUrl(item) || null,
+        created_at: toText(item.createdAt) || null,
+        taxonomy_path: taxonomyPath || "",
+      };
+    });
+
+    setIsExportingUnqualified(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/digideal/product-suggestions/export-unqualified", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(toText(payload?.error) || "Failed to export unqualified products.");
+      }
+
+      const blob = await response.blob();
+      if (!blob.size) {
+        throw new Error("The export file is empty.");
+      }
+      const disposition = response.headers.get("Content-Disposition");
+      const fallbackName = `Unqualified Products_${new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:T]/g, "-")}.xlsx`;
+      const filename = parseFilenameFromContentDisposition(disposition) || fallbackName;
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+
+      setMessage(`Exported ${rows.length} unqualified product(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export unqualified products.");
+    } finally {
+      setIsExportingUnqualified(false);
+    }
+  }, [itemById, selectedItemIds]);
 
   const sendSelectedToProduction = useCallback(async () => {
     if (selectedItemIds.length === 0) {
@@ -5429,7 +5559,8 @@ export default function DigiDealProductSuggestionsPage() {
                     selectedItemIds.length > 0 &&
                     !isUpdatingStatus &&
                     !isDeleting &&
-                    !isSendingToProduction
+                    !isSendingToProduction &&
+                    !isExportingUnqualified
                       ? styles.actionsButtonActive
                       : undefined
                   }
@@ -5437,7 +5568,8 @@ export default function DigiDealProductSuggestionsPage() {
                     selectedItemIds.length === 0 ||
                     isUpdatingStatus ||
                     isDeleting ||
-                    isSendingToProduction
+                    isSendingToProduction ||
+                    isExportingUnqualified
                   }
                 >
                   <span className={styles.actionsButtonContent}>
@@ -5448,6 +5580,8 @@ export default function DigiDealProductSuggestionsPage() {
                           ? "Deleting..."
                           : isSendingToProduction
                             ? "Sending..."
+                            : isExportingUnqualified
+                              ? "Exporting..."
                             : "Actions"}
                     </span>
                     <span className={styles.actionsButtonArrow}>▾</span>
@@ -5462,7 +5596,8 @@ export default function DigiDealProductSuggestionsPage() {
                       !canSendSelectedToProduction ||
                       isSendingToProduction ||
                       isDeleting ||
-                      isUpdatingStatus
+                      isUpdatingStatus ||
+                      isExportingUnqualified
                     }
                     onClick={() => {
                       void sendSelectedToProduction();
@@ -5471,7 +5606,28 @@ export default function DigiDealProductSuggestionsPage() {
                     {isSendingToProduction ? "Sending..." : "Send to Production"}
                   </MenuItem>
                   <MenuItem
-                    disabled={selectedItemIds.length === 0 || isDeleting || isUpdatingStatus}
+                    disabled={
+                      selectedItemIds.length === 0 ||
+                      !canExportSelectedUnqualified ||
+                      isExportingUnqualified ||
+                      isSendingToProduction ||
+                      isDeleting ||
+                      isUpdatingStatus
+                    }
+                    onClick={() => {
+                      void exportSelectedUnqualified();
+                    }}
+                  >
+                    {isExportingUnqualified ? "Exporting..." : "Export Unqualified"}
+                  </MenuItem>
+                  <MenuItem
+                    disabled={
+                      selectedItemIds.length === 0 ||
+                      isDeleting ||
+                      isUpdatingStatus ||
+                      isSendingToProduction ||
+                      isExportingUnqualified
+                    }
                     onClick={() => {
                       void deleteSelectedSuggestions();
                     }}
@@ -5480,14 +5636,27 @@ export default function DigiDealProductSuggestionsPage() {
                   </MenuItem>
                   <Menu positioning="after-top">
                     <MenuTrigger disableButtonEnhancement>
-                      <MenuItem hasSubmenu disabled={isUpdatingStatus || isDeleting}>
+                      <MenuItem
+                        hasSubmenu
+                        disabled={
+                          isUpdatingStatus ||
+                          isDeleting ||
+                          isSendingToProduction ||
+                          isExportingUnqualified
+                        }
+                      >
                         Change Status
                       </MenuItem>
                     </MenuTrigger>
                     <MenuPopover>
                       <MenuList>
                         <MenuItem
-                          disabled={isUpdatingStatus || isDeleting}
+                          disabled={
+                            isUpdatingStatus ||
+                            isDeleting ||
+                            isSendingToProduction ||
+                            isExportingUnqualified
+                          }
                           onClick={() => {
                             void updateSelectedSuggestionStatus("new");
                           }}
@@ -5495,7 +5664,12 @@ export default function DigiDealProductSuggestionsPage() {
                           New
                         </MenuItem>
                         <MenuItem
-                          disabled={isUpdatingStatus || isDeleting}
+                          disabled={
+                            isUpdatingStatus ||
+                            isDeleting ||
+                            isSendingToProduction ||
+                            isExportingUnqualified
+                          }
                           onClick={() => {
                             void updateSelectedSuggestionStatus("unqualified");
                           }}
@@ -5589,7 +5763,7 @@ export default function DigiDealProductSuggestionsPage() {
                 );
                 const displayTitleFull =
                   selectedOfferTitleEn || toText(item.title) || selectedOfferTitleAny || item.id;
-                const displayTitle = truncateTitleText(displayTitleFull, 40);
+                const displayTitle = truncateTitleText(displayTitleFull, 48);
                 const taxonomyPath = toText(
                   item.googleTaxonomy?.path ||
                     [item.googleTaxonomy?.l1, item.googleTaxonomy?.l2, item.googleTaxonomy?.l3]

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getThumbnailUrl } from "@/lib/product-media";
-import { isDigiDealDeliveryListName } from "@/lib/product-delivery/digideal";
+import {
+  isDeliveryListName,
+  resolveDeliveryPartnerFromListName,
+} from "@/lib/product-delivery/digideal";
+import {
+  enqueueLetsdealDeliveryJobs,
+  spawnLetsdealDeliveryWorker,
+} from "@/lib/product-delivery/letsdeal-jobs";
 import { loadImageUrls } from "@/lib/server-images";
 
 type AddDeliveryItemsPayload = {
@@ -86,10 +93,14 @@ const resolveOwnedDeliveryList = async (
   if (!listRow) {
     return { ok: false as const, status: 404, error: "List not found." };
   }
-  if (!isDigiDealDeliveryListName(listRow.name)) {
+  if (!isDeliveryListName(listRow.name)) {
     return { ok: false as const, status: 400, error: "Invalid delivery list." };
   }
-  return { ok: true as const, listId: listRow.id };
+  const partner = resolveDeliveryPartnerFromListName(listRow.name);
+  if (!partner) {
+    return { ok: false as const, status: 400, error: "Invalid delivery partner." };
+  }
+  return { ok: true as const, listId: listRow.id, partner };
 };
 
 export async function GET(request: Request) {
@@ -226,6 +237,7 @@ export async function GET(request: Request) {
       const prices = priceMap.get(productId) ?? { min: null, max: null };
       return {
         product_id: productId,
+        spu: product?.spu ?? null,
         title: product?.title ?? product?.spu ?? "Unknown product",
         image_url: product ? await resolveThumbnail(product) : null,
         price_min: prices.min,
@@ -265,6 +277,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: ownedList.error }, { status: ownedList.status });
   }
 
+  const { data: existingRowsRaw, error: existingRowsError } = await supabase
+    .from("product_manager_wishlist_items")
+    .select("product_id")
+    .eq("wishlist_id", listId)
+    .in("product_id", productIds);
+
+  if (existingRowsError) {
+    return NextResponse.json({ error: existingRowsError.message }, { status: 500 });
+  }
+
+  const existingProductIds = new Set(
+    (existingRowsRaw ?? [])
+      .map((row) => String((row as { product_id?: unknown }).product_id ?? "").trim())
+      .filter(Boolean)
+  );
+  const newlyAddedProductIds = productIds.filter((productId) => !existingProductIds.has(productId));
+
   const rows = productIds.map((productId) => ({
     wishlist_id: listId,
     product_id: productId,
@@ -280,7 +309,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ inserted: rows.length });
+  let letsdealQueueError: string | null = null;
+  if (ownedList.partner === "letsdeal") {
+    try {
+      const { data: listItemsRaw, error: listItemsError } = await supabase
+        .from("product_manager_wishlist_items")
+        .select("product_id")
+        .eq("wishlist_id", listId);
+      if (listItemsError) {
+        throw new Error(listItemsError.message);
+      }
+      const listProductIds = normalizeIds(
+        (listItemsRaw ?? []).map((row) => (row as { product_id?: unknown }).product_id)
+      );
+      const queued = await enqueueLetsdealDeliveryJobs({
+        wishlistId: listId,
+        productIds: listProductIds,
+      });
+      if (queued.total > 0) {
+        spawnLetsdealDeliveryWorker(listId);
+      }
+    } catch (error) {
+      letsdealQueueError =
+        error instanceof Error ? error.message : String(error ?? "Queue enqueue failed.");
+    }
+  }
+
+  return NextResponse.json({
+    inserted: newlyAddedProductIds.length,
+    letsdeal_queue_error: letsdealQueueError,
+  });
 }
 
 export async function DELETE(request: Request) {

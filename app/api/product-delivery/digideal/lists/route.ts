@@ -2,11 +2,19 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { getThumbnailUrl } from "@/lib/product-media";
 import {
-  DIGIDEAL_DELIVERY_LIST_PREFIX,
-  isDigiDealDeliveryListName,
-  toDisplayDigiDealDeliveryListName,
-  toStoredDigiDealDeliveryListName,
+  DeliveryPartner,
+  isDeliveryListName,
+  normalizeDeliveryPartner,
+  resolveDeliveryPartnerFromListName,
+  toDisplayDeliveryListName,
+  toStoredDeliveryListName,
 } from "@/lib/product-delivery/digideal";
+import {
+  enqueueLetsdealDeliveryJobs,
+  isMissingLetsdealDeliveryJobsTableError,
+  spawnLetsdealDeliveryWorker,
+} from "@/lib/product-delivery/letsdeal-jobs";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import { loadImageUrls } from "@/lib/server-images";
 
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
@@ -31,10 +39,31 @@ type ProductImageRow = {
   images: unknown;
 };
 
+type ProductSearchRow = {
+  id: string;
+  spu: string | null;
+  title: string | null;
+};
+
+type VariantSearchRow = {
+  product_id: string | null;
+  sku: string | null;
+};
+
 type ProductPreviewMedia = {
   title: string | null;
   image_url: string | null;
   hover_image_url: string | null;
+};
+
+type LetsdealStatusSummary = {
+  total: number;
+  completed: number;
+  queued: number;
+  running: number;
+  failed: number;
+  pending: number;
+  ready: boolean;
 };
 
 const extractTextValue = (row: Record<string, unknown>) => {
@@ -80,7 +109,7 @@ const normalizeIds = (value: unknown) => {
   );
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -90,21 +119,49 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const partnerFilterRaw = searchParams.get("partner");
+  const searchQuery = String(searchParams.get("q") ?? "")
+    .trim()
+    .toLowerCase();
+  const partnerFilter =
+    String(partnerFilterRaw ?? "").trim().toLowerCase() === "all"
+      ? null
+      : normalizeDeliveryPartner(partnerFilterRaw);
+  if (partnerFilterRaw && String(partnerFilterRaw).trim() && !partnerFilter) {
+    return NextResponse.json({ error: "Unsupported partner." }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("product_manager_wishlists")
     .select("id, name, created_at")
     .eq("user_id", user.id)
-    .like("name", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`)
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const lists = ((data ?? []) as DeliveryListRow[]).map((list) => ({
-    ...list,
-    name: toDisplayDigiDealDeliveryListName(list.name),
-  }));
+  const allDeliveryLists = ((data ?? []) as DeliveryListRow[])
+    .map((list) => {
+      const partner = resolveDeliveryPartnerFromListName(list.name);
+      if (!partner) return null;
+      return {
+        ...list,
+        name: toDisplayDeliveryListName(list.name),
+        partner,
+      };
+    })
+    .filter(
+      (
+        list
+      ): list is DeliveryListRow & {
+        partner: DeliveryPartner;
+      } => Boolean(list)
+    );
+  const lists = partnerFilter
+    ? allDeliveryLists.filter((list) => list.partner === partnerFilter)
+    : allDeliveryLists;
 
   if (lists.length === 0) {
     return NextResponse.json({ items: [] });
@@ -140,9 +197,174 @@ export async function GET() {
     }
   });
 
+  let filteredLists = lists;
+  if (searchQuery) {
+    const allProductIds = Array.from(
+      new Set(
+        Array.from(listProductsMap.values())
+          .flatMap((productIds) => productIds)
+          .filter(Boolean)
+      )
+    );
+    if (allProductIds.length === 0) {
+      filteredLists = [];
+    } else {
+      const [
+        { data: productRowsRaw, error: productRowsError },
+        { data: variantRowsRaw, error: variantRowsError },
+      ] = await Promise.all([
+        supabase
+          .from("catalog_products")
+          .select("id, spu, title")
+          .in("id", allProductIds),
+        supabase
+          .from("catalog_variants")
+          .select("product_id, sku")
+          .in("product_id", allProductIds),
+      ]);
+
+      if (productRowsError) {
+        return NextResponse.json({ error: productRowsError.message }, { status: 500 });
+      }
+      if (variantRowsError) {
+        return NextResponse.json({ error: variantRowsError.message }, { status: 500 });
+      }
+
+      const productTextById = new Map<string, string[]>();
+      ((productRowsRaw ?? []) as ProductSearchRow[]).forEach((row) => {
+        const productId = String(row.id ?? "").trim();
+        if (!productId) return;
+        const tokens = [
+          String(row.spu ?? "").trim().toLowerCase(),
+          String(row.title ?? "").trim().toLowerCase(),
+        ].filter(Boolean);
+        productTextById.set(productId, tokens);
+      });
+
+      ((variantRowsRaw ?? []) as VariantSearchRow[]).forEach((row) => {
+        const productId = String(row.product_id ?? "").trim();
+        const sku = String(row.sku ?? "")
+          .trim()
+          .toLowerCase();
+        if (!productId || !sku) return;
+        const existing = productTextById.get(productId) ?? [];
+        existing.push(sku);
+        productTextById.set(productId, existing);
+      });
+
+      const matchingProductIds = new Set<string>();
+      productTextById.forEach((tokens, productId) => {
+        if (tokens.some((token) => token.includes(searchQuery))) {
+          matchingProductIds.add(productId);
+        }
+      });
+
+      filteredLists = lists.filter((list) =>
+        (listProductsMap.get(list.id) ?? []).some((productId) =>
+          matchingProductIds.has(productId)
+        )
+      );
+    }
+  }
+
+  if (filteredLists.length === 0) {
+    return NextResponse.json({ items: [] });
+  }
+
+  const letsdealStatusByListId = new Map<string, LetsdealStatusSummary>();
+  const letsdealLists = filteredLists.filter((list) => list.partner === "letsdeal");
+  if (letsdealLists.length > 0) {
+    const letsdealListIds = letsdealLists.map((list) => list.id);
+    const letsdealProductIds = Array.from(
+      new Set(
+        letsdealLists
+          .map((list) => listProductsMap.get(list.id) ?? [])
+          .flatMap((productIds) => productIds)
+          .filter(Boolean)
+      )
+    );
+
+    const statusByListProduct = new Map<string, Map<string, string>>();
+    if (letsdealListIds.length > 0 && letsdealProductIds.length > 0) {
+      const adminClient = createAdminSupabase();
+      const { data: letsdealJobRowsRaw, error: letsdealJobError } = await adminClient
+        .from("letsdeal_delivery_jobs")
+        .select("wishlist_id, product_id, status")
+        .in("wishlist_id", letsdealListIds)
+        .in("product_id", letsdealProductIds);
+
+      if (letsdealJobError) {
+        if (!isMissingLetsdealDeliveryJobsTableError(letsdealJobError)) {
+          return NextResponse.json({ error: letsdealJobError.message }, { status: 500 });
+        }
+      } else {
+        (letsdealJobRowsRaw ?? []).forEach((row) => {
+          const raw = row as {
+            wishlist_id?: unknown;
+            product_id?: unknown;
+            status?: unknown;
+          };
+          const wishlistId = String(raw.wishlist_id ?? "").trim();
+          const productId = String(raw.product_id ?? "").trim();
+          const status = String(raw.status ?? "")
+            .trim()
+            .toLowerCase();
+          if (!wishlistId || !productId || !status) return;
+          const byProduct = statusByListProduct.get(wishlistId) ?? new Map<string, string>();
+          byProduct.set(productId, status);
+          statusByListProduct.set(wishlistId, byProduct);
+        });
+      }
+    }
+
+    letsdealLists.forEach((list) => {
+      const productIds = listProductsMap.get(list.id) ?? [];
+      const statusByProduct = statusByListProduct.get(list.id) ?? new Map<string, string>();
+      let completed = 0;
+      let queued = 0;
+      let running = 0;
+      let failed = 0;
+      let pending = 0;
+
+      productIds.forEach((productId) => {
+        const status = String(statusByProduct.get(productId) ?? "").trim().toLowerCase();
+        if (status === "completed") {
+          completed += 1;
+          return;
+        }
+        if (status === "queued") {
+          queued += 1;
+          return;
+        }
+        if (status === "running") {
+          running += 1;
+          return;
+        }
+        if (status === "failed") {
+          failed += 1;
+          return;
+        }
+        pending += 1;
+      });
+
+      const total = productIds.length;
+      const ready = total > 0 && completed === total;
+      letsdealStatusByListId.set(list.id, {
+        total,
+        completed,
+        queued,
+        running,
+        failed,
+        pending,
+        ready,
+      });
+    });
+  }
+
   const previewProductIds = Array.from(
     new Set(
-      Array.from(listProductsMap.values())
+      filteredLists
+        .map((list) => listProductsMap.get(list.id) ?? [])
         .flatMap((productIds) => productIds.slice(0, maxPreviewProducts))
         .filter(Boolean)
     )
@@ -234,7 +456,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    items: lists.map((list) => {
+    items: filteredLists.map((list) => {
       const listProductIds = listProductsMap.get(list.id) ?? [];
 
       const previewItems = listProductIds
@@ -266,6 +488,8 @@ export async function GET() {
       return {
         ...list,
         item_count: countMap.get(list.id) ?? 0,
+        letsdeal_status:
+          list.partner === "letsdeal" ? letsdealStatusByListId.get(list.id) ?? null : null,
         preview_images: previewItems
           .map((item) => item.image_url)
           .filter((value): value is string => Boolean(value)),
@@ -275,6 +499,12 @@ export async function GET() {
     }),
   });
 }
+
+type CreateDeliveryListPayload = {
+  name?: string;
+  partner?: string;
+  sourceListId?: string;
+};
 
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
@@ -286,19 +516,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let payload: { name?: string };
+  let payload: CreateDeliveryListPayload;
   try {
-    payload = (await request.json()) as { name?: string };
+    payload = (await request.json()) as CreateDeliveryListPayload;
   } catch {
     return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
   }
 
   const displayName = String(payload?.name ?? "").trim();
+  const partner = normalizeDeliveryPartner(payload?.partner ?? "digideal");
+  const sourceListId = String(payload?.sourceListId ?? "").trim();
   if (!displayName) {
     return NextResponse.json({ error: "Name is required." }, { status: 400 });
   }
+  if (!partner) {
+    return NextResponse.json({ error: "Unsupported partner." }, { status: 400 });
+  }
 
-  const storedName = toStoredDigiDealDeliveryListName(displayName);
+  if (sourceListId) {
+    const { data: sourceListRow, error: sourceListError } = await supabase
+      .from("product_manager_wishlists")
+      .select("id, name")
+      .eq("id", sourceListId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (sourceListError) {
+      return NextResponse.json({ error: sourceListError.message }, { status: 500 });
+    }
+    if (!sourceListRow) {
+      return NextResponse.json({ error: "Source list not found." }, { status: 404 });
+    }
+    if (!isDeliveryListName(String(sourceListRow.name ?? ""))) {
+      return NextResponse.json({ error: "Invalid source list." }, { status: 400 });
+    }
+  }
+
+  const storedName = toStoredDeliveryListName(displayName, partner);
   const { data, error } = await supabase
     .from("product_manager_wishlists")
     .insert({ user_id: user.id, name: storedName })
@@ -309,13 +563,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  let duplicatedItemCount = 0;
+  let duplicatedProductIds: string[] = [];
+  let letsdealQueueError: string | null = null;
+  if (sourceListId) {
+    const { data: sourceItemsRaw, error: sourceItemsError } = await supabase
+      .from("product_manager_wishlist_items")
+      .select("product_id")
+      .eq("wishlist_id", sourceListId);
+
+    if (sourceItemsError) {
+      return NextResponse.json({ error: sourceItemsError.message }, { status: 500 });
+    }
+
+    duplicatedProductIds = Array.from(
+      new Set(
+        (sourceItemsRaw ?? [])
+          .map((row) => String((row as { product_id?: unknown }).product_id ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+    duplicatedItemCount = duplicatedProductIds.length;
+
+    if (duplicatedProductIds.length > 0) {
+      const rows = duplicatedProductIds.map((productId) => ({
+        wishlist_id: data.id,
+        product_id: productId,
+      }));
+      const { error: copyError } = await supabase
+        .from("product_manager_wishlist_items")
+        .upsert(rows, {
+          onConflict: "wishlist_id,product_id",
+          ignoreDuplicates: true,
+        });
+
+      if (copyError) {
+        return NextResponse.json({ error: copyError.message }, { status: 500 });
+      }
+    }
+  }
+
+  if (partner === "letsdeal" && duplicatedProductIds.length > 0) {
+    try {
+      const queued = await enqueueLetsdealDeliveryJobs({
+        wishlistId: data.id,
+        productIds: duplicatedProductIds,
+      });
+      if (queued.total > 0) {
+        spawnLetsdealDeliveryWorker(data.id);
+      }
+    } catch (error) {
+      letsdealQueueError =
+        error instanceof Error ? error.message : String(error ?? "Queue enqueue failed.");
+    }
+  }
+
   return NextResponse.json({
     item: {
       id: data.id,
-      name: toDisplayDigiDealDeliveryListName(data.name),
+      name: toDisplayDeliveryListName(data.name),
+      partner,
       created_at: data.created_at,
-      item_count: 0,
+      item_count: duplicatedItemCount,
     },
+    letsdeal_queue_error: letsdealQueueError,
   });
 }
 
@@ -358,7 +669,7 @@ export async function DELETE(request: Request) {
 
   const ownedRows = (ownedRowsRaw ?? []) as Pick<DeliveryListRow, "id" | "name">[];
   const validDeleteIds = ownedRows
-    .filter((row) => isDigiDealDeliveryListName(String(row.name ?? "")))
+    .filter((row) => isDeliveryListName(String(row.name ?? "")))
     .map((row) => String(row.id ?? "").trim())
     .filter(Boolean);
 

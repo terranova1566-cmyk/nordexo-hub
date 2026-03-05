@@ -10,6 +10,7 @@ export const PRODUCTION_SUPPLIER_PAYLOAD_DIR =
 export type ExtractorFileSummary = {
   name: string;
   receivedAt: string;
+  updatedAt?: string;
   urlCount: number;
   productCount: number;
   missingSpuCount: number;
@@ -26,7 +27,7 @@ export type ExtractorPreviewItem = {
 };
 
 const FILE_SUMMARY_CACHE_DIR = path.join(EXTRACTOR_UPLOAD_DIR, "_summary_cache");
-const FILE_SUMMARY_CACHE_VERSION = 2;
+const FILE_SUMMARY_CACHE_VERSION = 3;
 
 type ExtractorFileSummaryCache = {
   cacheVersion: number;
@@ -397,6 +398,7 @@ export const listExtractorFiles = (): ExtractorFileSummary[] => {
         parsed?.summary &&
         typeof parsed.summary.name === "string" &&
         typeof parsed.summary.receivedAt === "string" &&
+        typeof parsed.summary.updatedAt === "string" &&
         typeof parsed.summary.urlCount === "number" &&
         typeof parsed.summary.productCount === "number" &&
         typeof parsed.summary.missingSpuCount === "number" &&
@@ -472,6 +474,7 @@ export const listExtractorFiles = (): ExtractorFileSummary[] => {
         const summary: ExtractorFileSummary = {
           name,
           receivedAt: createdAt.toISOString(),
+          updatedAt: stat.mtime.toISOString(),
           urlCount: parsed.urlCount,
           productCount: parsed.productCount,
           missingSpuCount: parsed.missingSpuCount,
@@ -503,6 +506,7 @@ export const readExtractorFile = (fileName: string) => {
   return {
     name: safeName,
     receivedAt: createdAt.toISOString(),
+    updatedAt: stat.mtime.toISOString(),
     ...parsed,
   };
 };
@@ -587,6 +591,7 @@ export const mergeExtractorFiles = (
   return {
     name: newName,
     receivedAt: createdAt,
+    updatedAt: createdAt,
     ...parseExtractorPayload(output),
   };
 };

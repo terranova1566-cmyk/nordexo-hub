@@ -459,7 +459,7 @@ const requestPreviewTitles = async (
 
   const models = Array.from(
     new Set(
-      [process.env.PREVIEW_TRANSLATE_MODEL, "gpt-4o-mini", "gpt-5-mini"]
+      [process.env.PREVIEW_TRANSLATE_MODEL, "gpt-5-mini", "gpt-5-nano"]
         .map((value) => asText(value))
         .filter(Boolean)
     )

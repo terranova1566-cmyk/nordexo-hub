@@ -75,6 +75,62 @@ const unescapeJsonUrl = (value: string) =>
     .replace(/\\u003d/g, "=")
     .replace(/\\\//g, "/");
 
+const isAmazonMediaHost = (host: string) =>
+  /(^|\.)media-amazon\.com$/i.test(String(host || "").toLowerCase());
+
+const scoreAmazonImageSuffix = (suffix: string) => {
+  const normalized = String(suffix || "").toUpperCase();
+  if (!normalized) return 600;
+
+  const numericParts = Array.from(normalized.matchAll(/(\d{2,4})/g))
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value));
+  const maxNumeric = numericParts.length > 0 ? Math.max(...numericParts) : 0;
+
+  let score = maxNumeric;
+  if (/^S?L\d+/.test(normalized) || /^U?L\d+/.test(normalized)) {
+    score += 3_000;
+  } else if (/^[SU][XY]\d+/.test(normalized)) {
+    score += 1_500;
+  } else if (/^SS\d+/.test(normalized)) {
+    score += 900;
+  } else if (/^AC_/.test(normalized)) {
+    score += 500;
+  }
+
+  if (normalized.includes("CR")) {
+    // Cropped thumbnail variants are usually lower quality.
+    score -= 150;
+  }
+
+  return score;
+};
+
+const parseAmazonMediaVariant = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    if (!isAmazonMediaHost(parsed.hostname)) return null;
+
+    const fileName = parsed.pathname.split("/").filter(Boolean).pop() ?? "";
+    const extMatch = fileName.match(/\.(jpg|jpeg|png|webp)$/i);
+    if (!extMatch) return null;
+    const ext = extMatch[0].toLowerCase() === ".jpeg" ? ".jpg" : extMatch[0].toLowerCase();
+
+    const stem = fileName.slice(0, -extMatch[0].length);
+    const suffixMatch = stem.match(/^(.*)\._([^.]+)_$/);
+    const baseStem = suffixMatch?.[1] ?? stem;
+    const suffix = suffixMatch?.[2] ?? "";
+
+    const key = `${parsed.origin}${parsed.pathname
+      .replace(fileName, `${baseStem}${ext}`)
+      .toLowerCase()}`;
+    const score = scoreAmazonImageSuffix(suffix);
+    return { key, score };
+  } catch {
+    return null;
+  }
+};
+
 const extractText = (el: any) => cleanText(asString(el?.text));
 
 const pickFirstText = (root: any, selectors: string[]) => {
@@ -160,7 +216,12 @@ const moneyFromPriceText = (priceText: string): AmazonMoney => ({
 });
 
 const extractImages = (root: any, html: string) => {
-  const out = new Set<string>();
+  const raw: string[] = [];
+  const pushRaw = (value: string) => {
+    const next = String(value || "").trim();
+    if (!next || !/^https?:\/\//i.test(next)) return;
+    raw.push(next);
+  };
 
   const landing = root.querySelector?.("img#landingImage");
   const dyn = asString(landing?.getAttribute?.("data-a-dynamic-image"));
@@ -168,7 +229,7 @@ const extractImages = (root: any, html: string) => {
     try {
       const parsed = JSON.parse(dyn) as Record<string, unknown>;
       Object.keys(parsed).forEach((u) => {
-        if (u && /^https?:\/\//i.test(u)) out.add(u);
+        pushRaw(u);
       });
     } catch {
       // ignore
@@ -178,25 +239,65 @@ const extractImages = (root: any, html: string) => {
   const oldHires =
     asString(landing?.getAttribute?.("data-old-hires")) ||
     asString(landing?.getAttribute?.("src"));
-  if (oldHires && /^https?:\/\//i.test(oldHires)) out.add(oldHires);
+  pushRaw(oldHires);
 
   const front = root.querySelector?.("img#imgBlkFront");
   const frontSrc =
     asString(front?.getAttribute?.("data-old-hires")) || asString(front?.getAttribute?.("src"));
-  if (frontSrc && /^https?:\/\//i.test(frontSrc)) out.add(frontSrc);
+  pushRaw(frontSrc);
 
   // Fallback: look for hi-res images embedded in JSON blobs.
   const blob = String(html || "");
   for (const match of blob.matchAll(/"hiRes"\s*:\s*"([^"]+)"/g)) {
     const u = unescapeJsonUrl(match[1] || "");
-    if (u && /^https?:\/\//i.test(u)) out.add(u);
+    pushRaw(u);
   }
   for (const match of blob.matchAll(/"large"\s*:\s*"([^"]+)"/g)) {
     const u = unescapeJsonUrl(match[1] || "");
-    if (u && /^https?:\/\//i.test(u)) out.add(u);
+    pushRaw(u);
   }
 
-  return Array.from(out);
+  const byKey = new Map<
+    string,
+    { groupOrder: number; candidateOrder: number; score: number; url: string }
+  >();
+  const seenRaw = new Set<string>();
+  raw.forEach((url, index) => {
+    if (seenRaw.has(url)) return;
+    seenRaw.add(url);
+
+    const parsedVariant = parseAmazonMediaVariant(url);
+    const key = parsedVariant ? `amz:${parsedVariant.key}` : `raw:${url}`;
+    const score = parsedVariant?.score ?? 0;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        groupOrder: index,
+        candidateOrder: index,
+        score,
+        url,
+      });
+      return;
+    }
+    const shouldReplace =
+      score > existing.score ||
+      (score === existing.score && url.length > existing.url.length);
+    if (shouldReplace) {
+      byKey.set(key, {
+        groupOrder: existing.groupOrder,
+        candidateOrder: index,
+        score,
+        url,
+      });
+    }
+  });
+
+  return Array.from(byKey.values())
+    .sort((a, b) => {
+      if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder;
+      return a.candidateOrder - b.candidateOrder;
+    })
+    .map((row) => row.url);
 };
 
 const extractDetails = (root: any) => {

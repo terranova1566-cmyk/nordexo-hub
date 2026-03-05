@@ -827,6 +827,7 @@ function ProductsPageInner() {
   );
   const [isSavingSelection, setIsSavingSelection] = useState(false);
   const isRestoringRef = useRef(false);
+  const skipUrlSyncRef = useRef(false);
   const searchParams = useSearchParams();
   const urlSearch = searchParams.toString();
 
@@ -1179,6 +1180,7 @@ function ProductsPageInner() {
       Math.max(1, Number(params.get("pageSize") ?? "25"))
     );
 
+    skipUrlSyncRef.current = true;
     isRestoringRef.current = true;
     setSearchInput(nextSearch);
     setSort(nextSort);
@@ -1291,6 +1293,10 @@ function ProductsPageInner() {
   ]);
 
   useEffect(() => {
+    if (skipUrlSyncRef.current) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (sort !== "updated_desc") params.set("sort", sort);

@@ -2208,7 +2208,7 @@
     },
     {
       "key": "bulkProcessing.queueIncoming.title",
-      "text": "Product processing batches",
+      "text": "Production Queue",
       "context": "Bulk processing incoming production queue files title"
     },
     {
@@ -6652,6 +6652,11 @@
       "context": "DigiDeal delivery partner data export menu item"
     },
     {
+      "key": "digidealDelivery.download.letsdealData",
+      "text": "LetsDeal Data",
+      "context": "DigiDeal delivery LetsDeal data export menu item"
+    },
+    {
       "key": "digidealDelivery.download.fullImageSet",
       "text": "Full Set",
       "context": "DigiDeal delivery full image export menu item"
@@ -8134,6 +8139,11 @@
     {
       "key": "nav.offerillaDealsManager",
       "text": "Offerilla",
+      "context": "Deals menu item"
+    },
+    {
+      "key": "nav.outspotDealsManager",
+      "text": "Outspot",
       "context": "Deals menu item"
     },
     {

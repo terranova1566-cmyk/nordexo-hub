@@ -1,4 +1,4 @@
-export type DealsProvider = "digideal" | "letsdeal" | "offerilla";
+export type DealsProvider = "digideal" | "letsdeal" | "offerilla" | "outspot";
 
 export const DEFAULT_DEALS_PROVIDER: DealsProvider = "digideal";
 
@@ -6,6 +6,7 @@ export const resolveDealsProvider = (value: unknown): DealsProvider => {
   const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (raw === "letsdeal") return "letsdeal";
   if (raw === "offerilla") return "offerilla";
+  if (raw === "outspot") return "outspot";
   return DEFAULT_DEALS_PROVIDER;
 };
 
@@ -14,7 +15,7 @@ export type DealsProviderConfig = {
   productsTable: string;
   productsSearchView: string;
   productDailyTable: string;
-  dailyCountColumn: "purchased_count" | "bought_count";
+  dailyCountColumn: "purchased_count" | "bought_count" | "sold_count";
   viewsTable: string;
   viewItemsTable: string;
   sellerCountsView: string;
@@ -50,6 +51,21 @@ export const getDealsProviderConfig = (
       viewsTable: "letsdeal_views",
       viewItemsTable: "letsdeal_view_items",
       sellerCountsView: "letsdeal_seller_counts",
+      contentAnalysisTable: null,
+      fakeSalesOffset: 0,
+    };
+  }
+
+  if (provider === "outspot") {
+    return {
+      provider,
+      productsTable: "outspot_products",
+      productsSearchView: "outspot_products_search_manager",
+      productDailyTable: "outspot_product_daily",
+      dailyCountColumn: "sold_count",
+      viewsTable: "outspot_views",
+      viewItemsTable: "outspot_view_items",
+      sellerCountsView: "outspot_seller_counts",
       contentAnalysisTable: null,
       fakeSalesOffset: 0,
     };

@@ -127,6 +127,7 @@ const sourceNames: Record<string, string> = {
   letsdeal: "LetsDeal",
   digideal: "DigiDeal",
   offerilla: "Offerilla",
+  outspot: "Outspot",
   dealsales: "DealSales",
 };
 

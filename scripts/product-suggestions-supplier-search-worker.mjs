@@ -186,10 +186,10 @@ const generateSuggestionTitleWithOpenAi = async (sourceTitle) => {
     new Set(
       [
         process.env.SUGGESTION_TITLE_MODEL,
-        "gpt-4o-mini",
+        "gpt-5-mini",
+        "gpt-5-nano",
         process.env.SUPPLIER_TRANSLATE_MODEL,
         process.env.OPENAI_EDIT_MODEL,
-        "gpt-5-mini",
       ]
         .map((entry) => asText(entry))
         .filter(Boolean)
@@ -399,7 +399,7 @@ const translateOffersBestEffort = async (offers) => {
       [
         process.env.SUPPLIER_TRANSLATE_MODEL,
         "gpt-5-mini",
-        "gpt-4o-mini",
+        "gpt-5-nano",
         process.env.OPENAI_EDIT_MODEL,
       ]
         .map((entry) => asText(entry))

@@ -2499,17 +2499,6 @@ export async function POST(request: Request) {
     nonJpgFiles?: string[];
     ignoredSubfolders?: string[];
   }> = [];
-  const variantCoverageIssues: Array<{
-    spu: string;
-    variant_dir: string | null;
-    variant_count: number;
-    var_image_file_count: number;
-    missing_variant_images: Array<{
-      variant_id: string | null;
-      sku: string | null;
-      option_combined_zh: string | null;
-    }>;
-  }> = [];
 
   for (const row of products) {
     if (!row.draft_image_folder || !row.draft_spu) continue;
@@ -2617,34 +2606,6 @@ export async function POST(request: Request) {
         row.draft_spu,
         new Set(finalTopLevelImageNames.map((name) => name.toLowerCase()))
       );
-      const variantsForSpu = allVariantsBySpu.get(row.draft_spu) ?? [];
-      const hasVariantTaggedImages = finalTopLevelImageNames.some((name) =>
-        /(?:^|[-_])VAR(?:[-_.]|$)/i.test(name)
-      );
-      const requiresVariantCoverage =
-        variantsForSpu.length > 1 &&
-        (Boolean(autoAttachVariants.variantDirName) || hasVariantTaggedImages);
-      if (requiresVariantCoverage) {
-        const missingVariantImages = variantsForSpu
-          .filter((variant) => !normalizeText(variant.draft_variant_image_url))
-          .map((variant) => ({
-            variant_id: normalizeText(variant.id),
-            sku: normalizeText(variant.draft_sku),
-            option_combined_zh: normalizeText(variant.draft_option_combined_zh),
-          }));
-        if (missingVariantImages.length > 0) {
-          variantCoverageIssues.push({
-            spu: row.draft_spu,
-            variant_dir: autoAttachVariants.variantDirName ?? null,
-            variant_count: variantsForSpu.length,
-            var_image_file_count: finalTopLevelImageNames.filter((name) =>
-              /(?:^|[-_])VAR(?:[-_.]|$)/i.test(name)
-            ).length,
-            missing_variant_images: missingVariantImages,
-          });
-        }
-      }
-
       const validation = await validateImageFolder(abs, row.draft_spu);
       if (validation.count > 0) {
         const nonJpgAfterNormalize = postEntries
@@ -2699,17 +2660,6 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (variantCoverageIssues.length > 0) {
-    return NextResponse.json(
-      {
-        error:
-          "Variant image coverage check failed. All variants must have a mapped variant image before publish.",
-        issues: variantCoverageIssues,
-      },
-      { status: 400 }
-    );
-  }
-
   const archiveResults: Array<{
     runFolder: string;
     archived: boolean;

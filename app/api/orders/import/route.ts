@@ -34,6 +34,13 @@ type ParsedOrderItem = {
   tracking_number: string;
 };
 
+const SHOPIFY_SALES_CHANNEL_IDS = new Set(["TI-SE", "WL-SE", "SK-SE"]);
+
+function isShopifySalesChannelId(value: unknown) {
+  const token = String(value ?? "").trim().toUpperCase();
+  return SHOPIFY_SALES_CHANNEL_IDS.has(token);
+}
+
 function getAdminClient() {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -328,12 +335,16 @@ export async function POST(request: Request) {
       continue;
     }
 
+    const isShopifyOrder = isShopifySalesChannelId(salesChannelId);
+    const rowOrderStatus = isShopifyOrder
+      ? ORDER_STATUS.PENDING
+      : importedOrderStatus;
     const key = `${salesChannelId}::${orderNumber}`;
 
     const existing = ordersMap.get(key) ?? {
       sales_channel_id: salesChannelId,
       order_number: orderNumber,
-      status: importedOrderStatus,
+      status: rowOrderStatus,
     };
     const normalizedSalesChannelName = normalizeOrderPlatformName({
       salesChannelName: rowData["Sales Channel Readable name"],
@@ -359,7 +370,7 @@ export async function POST(request: Request) {
     mergeField("customer_email", rowData["Customer email"]);
     const transactionDate = normalizeDateForDb(rowData["Transaction Date"]);
     const dateShipped =
-      importMode === "shipped"
+      importMode === "shipped" && !isShopifyOrder
         ? normalizeDateForDb(rowData["Date shipped"] ?? "")
         : null;
 
@@ -367,7 +378,7 @@ export async function POST(request: Request) {
     if (importMode === "shipped") {
       mergeField("date_shipped", dateShipped ?? "");
     }
-    existing.status = pickHigherPriorityOrderStatus(existing.status, importedOrderStatus);
+    existing.status = pickHigherPriorityOrderStatus(existing.status, rowOrderStatus);
     existing.raw_row = rowData;
 
     ordersMap.set(key, existing);
@@ -480,6 +491,17 @@ export async function POST(request: Request) {
   }
 
   orders.forEach((order) => {
+    const isShopifyOrder = isShopifySalesChannelId(order.sales_channel_id);
+    if (isShopifyOrder) {
+      order.date_shipped = null;
+      if (canWriteOrderStatus) {
+        order.status = ORDER_STATUS.PENDING;
+      } else {
+        delete order.status;
+      }
+      return;
+    }
+
     const key = `${order.sales_channel_id}::${order.order_number}`;
     const existingState = existingOrderStateByKey.get(key);
     const existingDateShipped = String(existingState?.date_shipped ?? "").trim();

@@ -537,7 +537,10 @@ function matchesOrdersDatasetFilters(
   return true;
 }
 
-async function findOrderIdsBySkuOrSpu(adminClient: AdminClient, query: string) {
+async function findOrderIdsBySkuSpuOrTracking(
+  adminClient: AdminClient,
+  query: string
+) {
   const like = `%${query}%`;
   const orderIdSet = new Set<string>();
 
@@ -610,6 +613,23 @@ async function findOrderIdsBySkuOrSpu(adminClient: AdminClient, query: string) {
       });
     }
   }
+
+  const { data: trackingRows, error: trackingError } = await adminClient
+    .from("order_tracking_numbers_global")
+    .select("order_id")
+    .ilike("tracking_number", like)
+    .not("order_id", "is", null);
+
+  if (trackingError) {
+    throw new Error(
+      trackingError.message || "Unable to search orders by tracking number."
+    );
+  }
+
+  (trackingRows ?? []).forEach((row) => {
+    const orderId = normalizeBigintId((row as { order_id?: unknown }).order_id);
+    if (orderId) orderIdSet.add(orderId);
+  });
 
   return Array.from(orderIdSet);
 }
@@ -737,14 +757,17 @@ export async function GET(request: Request) {
   let itemMatchedOrderIds: string[] = [];
   if (query) {
     try {
-      itemMatchedOrderIds = await findOrderIdsBySkuOrSpu(adminClient, query);
+      itemMatchedOrderIds = await findOrderIdsBySkuSpuOrTracking(
+        adminClient,
+        query
+      );
     } catch (searchError) {
       return NextResponse.json(
         {
           error:
             searchError instanceof Error
               ? searchError.message
-              : "Unable to search orders by SKU/SPU.",
+              : "Unable to search orders by SKU/SPU/tracking number.",
         },
         { status: 500 }
       );

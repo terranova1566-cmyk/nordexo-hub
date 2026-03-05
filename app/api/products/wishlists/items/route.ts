@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
-  DIGIDEAL_DELIVERY_LIST_PREFIX,
-  isDigiDealDeliveryListName,
+  isDeliveryListName,
 } from "@/lib/product-delivery/digideal";
 
 type WishlistItemPayload = {
@@ -47,7 +46,7 @@ export async function POST(request: Request) {
   if (!wishlist) {
     return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
   }
-  if (isDigiDealDeliveryListName(wishlist.name)) {
+  if (isDeliveryListName(wishlist.name)) {
     return NextResponse.json(
       { error: "Use the delivery list endpoint for this list." },
       { status: 400 }
@@ -99,15 +98,16 @@ export async function DELETE(request: Request) {
   if (!wishlistId) {
     const { data: lists, error: listsError } = await supabase
       .from("product_manager_wishlists")
-      .select("id")
-      .eq("user_id", user.id)
-      .not("name", "like", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`);
+      .select("id, name")
+      .eq("user_id", user.id);
 
     if (listsError) {
       return NextResponse.json({ error: listsError.message }, { status: 500 });
     }
 
-    const wishlistIds = (lists ?? []).map((list) => list.id);
+    const wishlistIds = (lists ?? [])
+      .filter((list) => !isDeliveryListName((list as { name?: string | null }).name))
+      .map((list) => list.id);
     if (wishlistIds.length === 0) {
       return NextResponse.json({ ok: true });
     }
@@ -139,7 +139,7 @@ export async function DELETE(request: Request) {
   if (!wishlist) {
     return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
   }
-  if (isDigiDealDeliveryListName(wishlist.name)) {
+  if (isDeliveryListName(wishlist.name)) {
     return NextResponse.json(
       { error: "Use the delivery list endpoint for this list." },
       { status: 400 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   type AiTemplatePreset,
+  createPromptModeOutputs,
   createTemplatePresetOutputs,
   createPendingAiEdit,
   listPendingAiEdits,
@@ -216,6 +217,28 @@ export async function POST(request: Request) {
         requestedBy: auth.userId,
       });
       return NextResponse.json({ ok: true, createdPaths });
+    }
+
+    if (
+      (providerRaw === "chatgpt" || providerRaw === "gemini") &&
+      (modeRaw === "template" || modeRaw === "direct") &&
+      (templatePreset === undefined || templatePreset === "standard") &&
+      outputCount > 1
+    ) {
+      const generated = await createPromptModeOutputs({
+        relativePath,
+        provider: providerRaw,
+        mode: modeRaw,
+        prompt,
+        count: outputCount,
+        templatePreset,
+        requestedBy: auth.userId,
+      });
+      return NextResponse.json({
+        ok: true,
+        createdPaths: generated.createdPaths,
+        scoreRefreshErrors: generated.scoreRefreshErrors,
+      });
     }
 
     const record = await createPendingAiEdit({

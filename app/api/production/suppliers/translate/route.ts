@@ -194,9 +194,9 @@ export async function POST(request: NextRequest) {
   const modelCandidates = Array.from(
     new Set(
       [
-        "gpt-4o-mini",
         process.env.SUPPLIER_TRANSLATE_MODEL,
         "gpt-5-mini",
+        "gpt-5-nano",
         process.env.OPENAI_EDIT_MODEL,
       ]
         .map((value) => asText(value))

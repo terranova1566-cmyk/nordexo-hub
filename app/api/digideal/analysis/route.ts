@@ -122,6 +122,20 @@ export async function GET(request: NextRequest) {
             "description_html",
             "description_text",
           ].join(",")
+      : provider === "outspot"
+        ? [
+            "product_id",
+            "title",
+            "short_name",
+            "product_slug",
+            "seller_name",
+            "status",
+            "main_image_url",
+            "gallery_image_urls",
+            "deal_url",
+            "description_html",
+            "description_text",
+          ].join(",")
         : [
             "product_id",
             "listing_title",
@@ -212,6 +226,25 @@ export async function GET(request: NextRequest) {
               null,
             product_url: (rawProduct as any).product_url ?? null,
           }
+        : provider === "outspot" && rawProduct && typeof rawProduct === "object"
+          ? {
+              ...(rawProduct as Record<string, unknown>),
+              listing_title:
+                (rawProduct as any).short_name ??
+                (rawProduct as any).title ??
+                null,
+              title_h1: (rawProduct as any).title ?? null,
+              prodno: (rawProduct as any).product_id ?? null,
+              primary_image_url: (rawProduct as any).main_image_url ?? null,
+              image_urls: Array.isArray((rawProduct as any).gallery_image_urls)
+                ? (rawProduct as any).gallery_image_urls
+                : [(rawProduct as any).main_image_url].filter(Boolean),
+              description_html:
+                (rawProduct as any).description_html ??
+                (rawProduct as any).description_text ??
+                null,
+              product_url: (rawProduct as any).deal_url ?? null,
+            }
         : rawProduct;
 
   const normalizedProduct =

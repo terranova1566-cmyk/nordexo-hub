@@ -971,7 +971,9 @@ async function loadPayloadCombos(selection: { selected_offer?: Record<string, un
     item && typeof item === "object" ? (item as Record<string, unknown>) : {};
   const structuredTableWeightLookup = buildStructuredVariantWeightLookup(itemRecord);
   const baseVariations =
-    item && typeof item === "object" ? (item as any).variations : null;
+    item && typeof item === "object"
+      ? (item as any).variations_enriched_1688 ?? (item as any).variations
+      : null;
   const variations = applyStructuredVariantTableWeights(
     baseVariations,
     structuredTableWeightLookup.byKey
@@ -1294,7 +1296,6 @@ const translateVariantCombosBestEffort = async (combos: VariantCombo[]) => {
     new Set(
       [
         process.env.SUPPLIER_VARIANT_TRANSLATE_MODEL,
-        "gpt-4o-mini",
         "gpt-5-mini",
         "gpt-5-nano",
         process.env.SUPPLIER_TRANSLATE_MODEL,

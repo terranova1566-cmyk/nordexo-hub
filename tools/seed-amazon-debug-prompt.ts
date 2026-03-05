@@ -45,7 +45,7 @@ async function main() {
     "Product Discovery / Amazon / Scrape Debug";
   const description =
     String(process.env.AMAZON_DEBUG_PROMPT_DESCRIPTION || "").trim() ||
-    "Template for gpt-4o-mini to classify Amazon scrape failures using page snippets. Returns JSON.";
+    "Template for gpt-5-mini to classify Amazon scrape failures using page snippets. Returns JSON.";
   const templateText =
     String(process.env.AMAZON_DEBUG_PROMPT_TEMPLATE || "").trim() ||
     DEFAULT_AMAZON_DEBUG_PROMPT_TEMPLATE;

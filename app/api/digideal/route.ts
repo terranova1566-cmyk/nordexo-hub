@@ -554,7 +554,7 @@ const computeEstimatedPrice = (
 const loadLastSoldAtMap = async (
   supabase: any,
   productDailyTable: string,
-  dailyCountColumn: "purchased_count" | "bought_count"
+  dailyCountColumn: "purchased_count" | "bought_count" | "sold_count"
 ) => {
   const lastSoldAt = new Map<string, string | null>();
   const chunkSize = 1000;
@@ -581,6 +581,7 @@ const loadLastSoldAtMap = async (
       scrape_date?: string | null;
       purchased_count?: number | null;
       bought_count?: number | null;
+      sold_count?: number | null;
     }>;
 
     if (rows.length === 0) break;
@@ -831,7 +832,7 @@ const resolveDealPriceFields = ({
   rawSaveKr,
   fallbackPrice,
 }: {
-  provider: "digideal" | "letsdeal" | "offerilla";
+  provider: "digideal" | "letsdeal" | "offerilla" | "outspot";
   rawPrice: number | null;
   rawOriginalPrice: number | null;
   rawDiscountPercent: number | null;
@@ -1816,6 +1817,9 @@ export async function GET(request: NextRequest) {
         price_override_updated_at: string | null;
         price_ignored: boolean;
         price_ignored_at: string | null;
+        vat_override_enabled: boolean;
+        vat_override_margin_percent: number | null;
+        vat_override_updated_at: string | null;
         extreme_ratio_confirmed: boolean;
         extreme_ratio_confirmed_at: string | null;
       }
@@ -1920,6 +1924,13 @@ export async function GET(request: NextRequest) {
               (offer as any)._digideal_price_ignored === true,
             price_ignored_at:
               toText((offer as any)._digideal_price_ignored_at) || null,
+            vat_override_enabled:
+              (offer as any)._digideal_vat_override_enabled === true,
+            vat_override_margin_percent: toNumber(
+              (offer as any)._digideal_vat_override_margin_percent
+            ),
+            vat_override_updated_at:
+              toText((offer as any)._digideal_vat_override_updated_at) || null,
             extreme_ratio_confirmed:
               (offer as any)._digideal_extreme_ratio_confirmed === true,
             extreme_ratio_confirmed_at:
@@ -2336,6 +2347,12 @@ export async function GET(request: NextRequest) {
             supplierMeta?.price_ignored ?? false,
           digideal_price_ignored_at:
             supplierMeta?.price_ignored_at ?? null,
+          digideal_vat_override_enabled:
+            supplierMeta?.vat_override_enabled ?? false,
+          digideal_vat_override_margin_percent:
+            supplierMeta?.vat_override_margin_percent ?? null,
+          digideal_vat_override_updated_at:
+            supplierMeta?.vat_override_updated_at ?? null,
           digideal_extreme_ratio_confirmed:
             supplierMeta?.extreme_ratio_confirmed ?? false,
           digideal_extreme_ratio_confirmed_at:
@@ -2566,6 +2583,9 @@ export async function PATCH(request: Request) {
     price_override_mode?: string;
     ignore_price_action?: "set" | "clear";
     extreme_ratio_action?: "confirm" | "clear";
+    vat_override_action?: "set" | "clear";
+    vat_override_enabled?: boolean;
+    vat_override_margin_percent?: number;
   };
   try {
     payload = (await request.json()) as typeof payload;
@@ -2590,6 +2610,10 @@ export async function PATCH(request: Request) {
     payload?.ignore_price_action === "set" || payload?.ignore_price_action === "clear"
       ? payload.ignore_price_action
       : null;
+  const vatOverrideAction =
+    payload?.vat_override_action === "set" || payload?.vat_override_action === "clear"
+      ? payload.vat_override_action
+      : null;
   const supplierUrl =
     typeof payload?.supplier_url === "string" ? payload.supplier_url.trim() : "";
   const normalizedSupplierUrl = supplierUrl ? normalize1688Url(supplierUrl) : "";
@@ -2599,7 +2623,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Missing product_id." }, { status: 400 });
   }
 
-  if (priceOverrideAction || extremeRatioAction || ignorePriceAction) {
+  if (priceOverrideAction || extremeRatioAction || ignorePriceAction || vatOverrideAction) {
     const { data: existingSelection, error: selectionFetchError } = await adminClient
       .from("discovery_production_supplier_selection")
       .select("selected_offer")
@@ -2661,6 +2685,19 @@ export async function PATCH(request: Request) {
       delete selectedOfferBase._digideal_price_ignored_at;
     }
 
+    if (vatOverrideAction === "set") {
+      const enabled = payload?.vat_override_enabled === true;
+      const vatMarginPercent = toNumber(payload?.vat_override_margin_percent);
+      selectedOfferBase._digideal_vat_override_enabled = enabled;
+      selectedOfferBase._digideal_vat_override_margin_percent =
+        vatMarginPercent !== null ? Number(vatMarginPercent) : null;
+      selectedOfferBase._digideal_vat_override_updated_at = nowIso;
+    } else if (vatOverrideAction === "clear") {
+      delete selectedOfferBase._digideal_vat_override_enabled;
+      delete selectedOfferBase._digideal_vat_override_margin_percent;
+      delete selectedOfferBase._digideal_vat_override_updated_at;
+    }
+
     const { data: savedSelection, error: selectionSaveError } = await adminClient
       .from("discovery_production_supplier_selection")
       .upsert(
@@ -2701,6 +2738,13 @@ export async function PATCH(request: Request) {
           savedOffer?._digideal_price_ignored === true,
         digideal_price_ignored_at:
           toText(savedOffer?._digideal_price_ignored_at) || null,
+        digideal_vat_override_enabled:
+          savedOffer?._digideal_vat_override_enabled === true,
+        digideal_vat_override_margin_percent: toNumber(
+          savedOffer?._digideal_vat_override_margin_percent
+        ),
+        digideal_vat_override_updated_at:
+          toText(savedOffer?._digideal_vat_override_updated_at) || null,
         digideal_extreme_ratio_confirmed:
           savedOffer?._digideal_extreme_ratio_confirmed === true,
         digideal_extreme_ratio_confirmed_at:

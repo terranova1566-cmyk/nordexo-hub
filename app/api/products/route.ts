@@ -3,7 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { loadImageUrls, preferImageUrlFilenameFirst } from "@/lib/server-images";
 import { loadLegacyHeroWhiteBySpu } from "@/lib/legacy-product-image-data";
 import { getProductsIndex } from "@/lib/meili";
-import { isDigiDealDeliveryListName } from "@/lib/product-delivery/digideal";
+import { resolveDeliveryPartnerFromListName } from "@/lib/product-delivery/digideal";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
@@ -1116,9 +1116,10 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       const wishlistName = Array.isArray(wishlistData)
         ? wishlistData[0]?.name
         : wishlistData?.name;
-      if (!isDigiDealDeliveryListName(wishlistName)) return;
+      const deliveryPartner = resolveDeliveryPartnerFromListName(wishlistName);
+      if (!deliveryPartner) return;
       const partners = deliveryPartnerMap.get(productId) ?? new Set<string>();
-      partners.add("digideal");
+      partners.add(deliveryPartner);
       deliveryPartnerMap.set(productId, partners);
     });
   }

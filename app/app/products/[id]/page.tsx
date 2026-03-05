@@ -307,6 +307,11 @@ const useStyles = makeStyles({
     textAlign: "left",
     cursor: "pointer",
   },
+  dataSectionToggleCompact: {
+    width: "auto",
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
   dataSectionToggleRight: {
     display: "inline-flex",
     alignItems: "center",
@@ -326,29 +331,41 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "12px",
-    flexWrap: "wrap",
+    gap: "8px",
+    flexWrap: "nowrap",
+    marginBottom: "4px",
   },
   dataScrollControls: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
   },
   dataTableActions: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "8px",
+    gap: "6px",
+    marginLeft: "auto",
+    flexShrink: 0,
   },
   dataScrollButton: {
-    minWidth: "32px",
-    height: "32px",
+    minWidth: "24px",
+    width: "24px",
+    height: "24px",
     paddingInline: 0,
-    borderRadius: "999px",
+    borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: 1,
   },
   columnMenuButton: {
-    minHeight: "32px",
-    paddingInline: "10px",
+    minHeight: "24px",
+    height: "24px",
+    paddingInline: "8px",
     whiteSpace: "nowrap",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    fontSize: tokens.fontSizeBase100,
   },
   columnMenuList: {
     display: "flex",
@@ -3040,88 +3057,92 @@ export default function ProductDetailPage() {
               </div>
 
               <div className={styles.dataSection}>
-                <button
-                  type="button"
-                  className={styles.dataSectionToggle}
-                  onClick={() => toggleDataSection("variantIdentity")}
-                >
-                  <Text weight="semibold">{t("productDetail.data.section.variantIdentity")}</Text>
-                  <div className={styles.dataSectionToggleRight}>
-                    {!hasVariantIdentitySectionData ? (
-                      <Text size={200} className={styles.dataSectionEmptyBadge}>
-                        Empty
-                      </Text>
-                    ) : null}
-                    <Text size={200} className={styles.dataSectionChevron}>
-                      {collapsedDataSections.variantIdentity ? ">" : "v"}
-                    </Text>
-                  </div>
-                </button>
-                {!collapsedDataSections.variantIdentity ? (
-                  <>
                 <div className={styles.dataTableHeader}>
-                  <div className={styles.dataTableActions}>
-                    <Menu>
-                      <MenuTrigger disableButtonEnhancement>
-                        <Button
-                          appearance="subtle"
-                          size="small"
-                          className={styles.columnMenuButton}
-                        >
-                          Select Columns
-                        </Button>
-                      </MenuTrigger>
-                      <MenuPopover>
-                        <div className={styles.columnMenuList}>
-                          <Checkbox
-                            label={t("productDetail.data.variantSku")}
-                            checked
-                            disabled
-                            className={styles.columnMenuCheckbox}
-                          />
-                          {variantIdentityColumns.map((column) => {
-                            const autoVisible = identityColumnsWithData.has(column.key);
-                            const checked =
-                              autoVisible || visibleIdentityEmptyColumns.has(column.key);
-                            return (
-                              <Checkbox
-                                key={column.key}
-                                label={column.label}
-                                checked={checked}
-                                className={styles.columnMenuCheckbox}
-                                onChange={(_, data) => {
-                                  if (autoVisible) return;
-                                  toggleIdentityEmptyColumn(
-                                    column.key,
-                                    Boolean(data.checked)
-                                  );
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </MenuPopover>
-                    </Menu>
-                    <div className={styles.dataScrollControls}>
-                      <Button
-                        appearance="subtle"
-                        className={styles.dataScrollButton}
-                        onClick={() => scrollTable(variantIdentityTableRef, "left")}
-                        aria-label="Scroll left"
-                      >
-                        {"<"}
-                      </Button>
-                      <Button
-                        appearance="subtle"
-                        className={styles.dataScrollButton}
-                        onClick={() => scrollTable(variantIdentityTableRef, "right")}
-                        aria-label="Scroll right"
-                      >
-                        {">"}
-                      </Button>
+                  <button
+                    type="button"
+                    className={mergeClasses(
+                      styles.dataSectionToggle,
+                      styles.dataSectionToggleCompact
+                    )}
+                    onClick={() => toggleDataSection("variantIdentity")}
+                  >
+                    <Text weight="semibold">{t("productDetail.data.section.variantIdentity")}</Text>
+                    <div className={styles.dataSectionToggleRight}>
+                      {!hasVariantIdentitySectionData ? (
+                        <Text size={200} className={styles.dataSectionEmptyBadge}>
+                          Empty
+                        </Text>
+                      ) : null}
+                      <Text size={200} className={styles.dataSectionChevron}>
+                        {collapsedDataSections.variantIdentity ? ">" : "v"}
+                      </Text>
                     </div>
-                  </div>
+                  </button>
+                  {!collapsedDataSections.variantIdentity ? (
+                    <div className={styles.dataTableActions}>
+                      <Menu>
+                        <MenuTrigger disableButtonEnhancement>
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.columnMenuButton}
+                          >
+                            Select Columns
+                          </Button>
+                        </MenuTrigger>
+                        <MenuPopover>
+                          <div className={styles.columnMenuList}>
+                            <Checkbox
+                              label={t("productDetail.data.variantSku")}
+                              checked
+                              disabled
+                              className={styles.columnMenuCheckbox}
+                            />
+                            {variantIdentityColumns.map((column) => {
+                              const autoVisible = identityColumnsWithData.has(column.key);
+                              const checked =
+                                autoVisible || visibleIdentityEmptyColumns.has(column.key);
+                              return (
+                                <Checkbox
+                                  key={column.key}
+                                  label={column.label}
+                                  checked={checked}
+                                  className={styles.columnMenuCheckbox}
+                                  onChange={(_, data) => {
+                                    if (autoVisible) return;
+                                    toggleIdentityEmptyColumn(
+                                      column.key,
+                                      Boolean(data.checked)
+                                    );
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </MenuPopover>
+                      </Menu>
+                      <div className={styles.dataScrollControls}>
+                        <Button
+                          appearance="outline"
+                          className={styles.dataScrollButton}
+                          onClick={() => scrollTable(variantIdentityTableRef, "left")}
+                          aria-label="Scroll left"
+                        >
+                          {"<"}
+                        </Button>
+                        <Button
+                          appearance="outline"
+                          className={styles.dataScrollButton}
+                          onClick={() => scrollTable(variantIdentityTableRef, "right")}
+                          aria-label="Scroll right"
+                        >
+                          {">"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
+                {!collapsedDataSections.variantIdentity ? (
                 <div className={styles.dataTableWrap} ref={variantIdentityTableRef}>
                   <Table
                     size="small"
@@ -3170,93 +3191,96 @@ export default function ProductDetailPage() {
                     </TableBody>
                   </Table>
                 </div>
-                  </>
                 ) : null}
               </div>
 
               <div className={styles.dataSection}>
-                <button
-                  type="button"
-                  className={styles.dataSectionToggle}
-                  onClick={() => toggleDataSection("pricing")}
-                >
-                  <Text weight="semibold">{t("productDetail.data.section.pricing")}</Text>
-                  <div className={styles.dataSectionToggleRight}>
-                    {!hasVariantPricingSectionData ? (
-                      <Text size={200} className={styles.dataSectionEmptyBadge}>
-                        Empty
-                      </Text>
-                    ) : null}
-                    <Text size={200} className={styles.dataSectionChevron}>
-                      {collapsedDataSections.pricing ? ">" : "v"}
-                    </Text>
-                  </div>
-                </button>
-                {!collapsedDataSections.pricing ? (
-                  <>
                 <div className={styles.dataTableHeader}>
-                  <div className={styles.dataTableActions}>
-                    <Menu>
-                      <MenuTrigger disableButtonEnhancement>
-                        <Button
-                          appearance="subtle"
-                          size="small"
-                          className={styles.columnMenuButton}
-                        >
-                          Select Columns
-                        </Button>
-                      </MenuTrigger>
-                      <MenuPopover>
-                        <div className={styles.columnMenuList}>
-                          <Checkbox
-                            label={t("productDetail.data.variantSku")}
-                            checked
-                            disabled
-                            className={styles.columnMenuCheckbox}
-                          />
-                          {variantPricingColumns.map((column) => {
-                            const autoVisible = pricingColumnsWithData.has(column.key);
-                            const checked =
-                              autoVisible || visiblePricingEmptyColumns.has(column.key);
-                            return (
-                              <Checkbox
-                                key={column.key}
-                                label={column.label}
-                                checked={checked}
-                                className={styles.columnMenuCheckbox}
-                                onChange={(_, data) => {
-                                  if (autoVisible) return;
-                                  togglePricingEmptyColumn(
-                                    column.key,
-                                    Boolean(data.checked)
-                                  );
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </MenuPopover>
-                    </Menu>
-                    <div className={styles.dataScrollControls}>
-                      <Button
-                        appearance="subtle"
-                        className={styles.dataScrollButton}
-                        onClick={() => scrollTable(variantPricingTableRef, "left")}
-                        aria-label="Scroll left"
-                      >
-                        {"<"}
-                      </Button>
-                      <Button
-                        appearance="subtle"
-                        className={styles.dataScrollButton}
-                        onClick={() => scrollTable(variantPricingTableRef, "right")}
-                        aria-label="Scroll right"
-                      >
-                        {">"}
-                      </Button>
+                  <button
+                    type="button"
+                    className={mergeClasses(
+                      styles.dataSectionToggle,
+                      styles.dataSectionToggleCompact
+                    )}
+                    onClick={() => toggleDataSection("pricing")}
+                  >
+                    <Text weight="semibold">{t("productDetail.data.section.pricing")}</Text>
+                    <div className={styles.dataSectionToggleRight}>
+                      {!hasVariantPricingSectionData ? (
+                        <Text size={200} className={styles.dataSectionEmptyBadge}>
+                          Empty
+                        </Text>
+                      ) : null}
+                      <Text size={200} className={styles.dataSectionChevron}>
+                        {collapsedDataSections.pricing ? ">" : "v"}
+                      </Text>
                     </div>
-                  </div>
+                  </button>
+                  {!collapsedDataSections.pricing ? (
+                    <div className={styles.dataTableActions}>
+                      <Menu>
+                        <MenuTrigger disableButtonEnhancement>
+                          <Button
+                            appearance="outline"
+                            size="small"
+                            className={styles.columnMenuButton}
+                          >
+                            Select Columns
+                          </Button>
+                        </MenuTrigger>
+                        <MenuPopover>
+                          <div className={styles.columnMenuList}>
+                            <Checkbox
+                              label={t("productDetail.data.variantSku")}
+                              checked
+                              disabled
+                              className={styles.columnMenuCheckbox}
+                            />
+                            {variantPricingColumns.map((column) => {
+                              const autoVisible = pricingColumnsWithData.has(column.key);
+                              const checked =
+                                autoVisible || visiblePricingEmptyColumns.has(column.key);
+                              return (
+                                <Checkbox
+                                  key={column.key}
+                                  label={column.label}
+                                  checked={checked}
+                                  className={styles.columnMenuCheckbox}
+                                  onChange={(_, data) => {
+                                    if (autoVisible) return;
+                                    togglePricingEmptyColumn(
+                                      column.key,
+                                      Boolean(data.checked)
+                                    );
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </MenuPopover>
+                      </Menu>
+                      <div className={styles.dataScrollControls}>
+                        <Button
+                          appearance="outline"
+                          className={styles.dataScrollButton}
+                          onClick={() => scrollTable(variantPricingTableRef, "left")}
+                          aria-label="Scroll left"
+                        >
+                          {"<"}
+                        </Button>
+                        <Button
+                          appearance="outline"
+                          className={styles.dataScrollButton}
+                          onClick={() => scrollTable(variantPricingTableRef, "right")}
+                          aria-label="Scroll right"
+                        >
+                          {">"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
+                {!collapsedDataSections.pricing ? (
                 <div className={styles.dataTableWrap} ref={variantPricingTableRef}>
                   <Table
                     size="small"
@@ -3301,7 +3325,6 @@ export default function ProductDetailPage() {
                     </TableBody>
                   </Table>
                 </div>
-                  </>
                 ) : null}
               </div>
 

@@ -169,6 +169,7 @@ const digidealMenuItems = [
   { label: "nav.digidealDealsManager", href: "/app/digideal/deals-manager" },
   { label: "nav.letsdealDealsManager", href: "/app/letsdeal/deals-manager" },
   { label: "nav.offerillaDealsManager", href: "/app/offerilla/deals-manager" },
+  { label: "nav.outspotDealsManager", href: "/app/outspot/deals-manager" },
   {
     label: "nav.digidealProductSuggestions",
     href: "/app/digideal/product-suggestions",
@@ -291,6 +292,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       pathname.startsWith("/app/digideal") ||
       pathname.startsWith("/app/letsdeal") ||
       pathname.startsWith("/app/offerilla") ||
+      pathname.startsWith("/app/outspot") ||
       pathname.startsWith("/app/digideal-campaigns"),
     [pathname]
   );

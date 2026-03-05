@@ -268,26 +268,70 @@ export async function recalculateB2BPricesForSpus(
   }
 
   const variantIds = variants.map((variant) => variant.id);
+  const b2bPriceTypesToReplace = ["b2b_calc", "b2b_fixed"];
   for (const batch of chunk(variantIds, 500)) {
     const { error: deleteError } = await adminClient
       .from("catalog_variant_prices")
       .delete()
-      .eq("price_type", "b2b_calc")
+      .in("price_type", b2bPriceTypesToReplace)
       .in("catalog_variant_id", batch);
     if (deleteError) {
       throw new Error(
-        `Unable to delete existing b2b_calc rows: ${deleteError.message}`
+        `Unable to delete existing b2b pricing rows: ${deleteError.message}`
       );
     }
   }
 
-  for (const batch of chunk(priceRows, 1000)) {
+  const allB2BPriceRows = [
+    ...priceRows,
+    ...priceRows.map((row) => ({
+      ...row,
+      price_type: "b2b_fixed",
+    })),
+  ];
+
+  for (const batch of chunk(allB2BPriceRows, 1000)) {
     if (batch.length === 0) continue;
     const { error: insertError } = await adminClient
       .from("catalog_variant_prices")
       .insert(batch);
     if (insertError) {
-      throw new Error(`Unable to insert b2b_calc rows: ${insertError.message}`);
+      throw new Error(`Unable to insert b2b pricing rows: ${insertError.message}`);
+    }
+  }
+
+  const b2bByVariant = new Map<
+    string,
+    { SE: number | null; NO: number | null; DK: number | null; FI: number | null }
+  >();
+  variants.forEach((variant) => {
+    b2bByVariant.set(variant.id, { SE: null, NO: null, DK: null, FI: null });
+  });
+  priceRows.forEach((row) => {
+    const entry = b2bByVariant.get(row.catalog_variant_id);
+    if (!entry) return;
+    const market = String(row.market || "").toUpperCase();
+    if (market === "SE") entry.SE = row.price;
+    if (market === "NO") entry.NO = row.price;
+    if (market === "DK") entry.DK = row.price;
+    if (market === "FI") entry.FI = row.price;
+  });
+
+  for (const [variantId, prices] of b2bByVariant.entries()) {
+    const { error: variantUpdateError } = await adminClient
+      .from("catalog_variants")
+      .update({
+        b2b_dropship_price_se: prices.SE,
+        b2b_dropship_price_no: prices.NO,
+        b2b_dropship_price_dk: prices.DK,
+        b2b_dropship_price_fi: prices.FI,
+        updated_at: now,
+      })
+      .eq("id", variantId);
+    if (variantUpdateError) {
+      throw new Error(
+        `Unable to sync catalog_variants B2B price columns: ${variantUpdateError.message}`
+      );
     }
   }
 

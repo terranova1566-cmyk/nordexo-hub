@@ -608,7 +608,8 @@ export const reviewSupplierWeightBestEffort = async ({
 
   const aiModelCandidates = [
     process.env.SUPPLIER_WEIGHT_REVIEW_MODEL,
-    "gpt-4o-mini",
+    "gpt-5.2",
+    "gpt-5-mini",
     "gpt-5-nano",
     process.env.SUPPLIER_TRANSLATE_MODEL,
     process.env.OPENAI_EDIT_MODEL,

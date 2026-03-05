@@ -1095,7 +1095,7 @@ const cleanExternalDataWithOpenAi = async (input: {
         "gpt-5.2",
         "gpt-5",
         "gpt-5-mini",
-        "gpt-4o-mini",
+        "gpt-5-nano",
       ]
         .map((entry) => asText(entry))
         .filter(Boolean)

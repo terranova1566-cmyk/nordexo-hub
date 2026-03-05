@@ -11,6 +11,7 @@ import {
   loadLegacyVariantLocksBySku,
 } from "@/lib/legacy-product-image-data";
 import { runMeiliIndexSpus } from "@/lib/server/meili-index";
+import { recalculateB2BPricesForSpus } from "@/lib/pricing/recalculate-b2b-spus";
 import { recalculateB2CPricesForSpus } from "@/lib/pricing/recalculate-b2c-spus";
 
 export const dynamic = "force-dynamic";
@@ -810,8 +811,10 @@ export async function PATCH(
   const metafieldsPayload = Array.isArray(payload?.metafields)
     ? payload.metafields
     : [];
-  const forceRecalculateB2C = normalizeBoolean(payload?.recalculate_b2c) === true;
-  let shouldRecalculateB2C = forceRecalculateB2C;
+  const forceRecalculatePricing =
+    normalizeBoolean(payload?.recalculate_pricing) === true ||
+    normalizeBoolean(payload?.recalculate_b2c) === true;
+  let shouldRecalculatePricing = forceRecalculatePricing;
 
   const productUpdates: Record<string, unknown> = {};
   const setProductField = (field: string, value: unknown) => {
@@ -974,12 +977,18 @@ export async function PATCH(
 
       if (Object.keys(variantUpdates).length === 0) continue;
 
-      if (
-        Object.prototype.hasOwnProperty.call(variantUpdates, "purchase_price_cny") ||
-        Object.prototype.hasOwnProperty.call(variantUpdates, "weight") ||
-        Object.prototype.hasOwnProperty.call(variantUpdates, "shipping_class")
-      ) {
-        shouldRecalculateB2C = true;
+      const shouldTriggerVariantPricingRecalc = [
+        "purchase_price_cny",
+        "weight",
+        "shipping_class",
+        "price",
+        "cost",
+        "compare_at_price",
+      ].some((field) =>
+        Object.prototype.hasOwnProperty.call(variantUpdates, field)
+      );
+      if (shouldTriggerVariantPricingRecalc) {
+        shouldRecalculatePricing = true;
       }
 
       const { error: variantError } = await adminClient
@@ -1079,7 +1088,7 @@ export async function PATCH(
 
   }
 
-  if (shouldRecalculateB2C) {
+  if (shouldRecalculatePricing) {
     const { data: productRow, error: productSpuError } = await adminClient
       .from("catalog_products")
       .select("spu")
@@ -1093,6 +1102,16 @@ export async function PATCH(
     }
     const productSpu = productRow?.spu ? String(productRow.spu).trim() : "";
     if (productSpu) {
+      try {
+        await recalculateB2BPricesForSpus(adminClient, [productSpu]);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error: `B2B pricing generation failed: ${(error as Error).message}`,
+          },
+          { status: 500 }
+        );
+      }
       try {
         await recalculateB2CPricesForSpus(adminClient, [productSpu]);
       } catch (error) {

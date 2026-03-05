@@ -228,7 +228,8 @@ export async function GET() {
     const isDealsProvider =
       provider === "digideal" ||
       provider === "letsdeal" ||
-      provider === "offerilla";
+      provider === "offerilla" ||
+      provider === "outspot";
 
     if (isDealsProvider) {
       const dealsProvider = resolveDealsProvider(provider);
@@ -984,7 +985,8 @@ export async function DELETE(request: Request) {
   if (
     normalizedProvider === "digideal" ||
     normalizedProvider === "letsdeal" ||
-    normalizedProvider === "offerilla"
+    normalizedProvider === "offerilla" ||
+    normalizedProvider === "outspot"
   ) {
     const dealsProvider = resolveDealsProvider(normalizedProvider);
     const providerConfig = getDealsProviderConfig(dealsProvider);

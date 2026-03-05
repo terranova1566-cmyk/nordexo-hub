@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   BULK_JOB_UPLOAD_DIR,
@@ -12,6 +13,20 @@ import {
 } from "@/lib/production-queue-status";
 
 export const runtime = "nodejs";
+
+const getAdminClient = () => {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceKey) return null;
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+};
 
 export async function POST(
   _request: Request,
@@ -35,6 +50,14 @@ export async function POST(
 
   if (!settings?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const adminClient = getAdminClient();
+  if (!adminClient) {
+    return NextResponse.json(
+      { error: "Server is missing Supabase credentials." },
+      { status: 500 }
+    );
   }
 
   const job = getJob(jobId);
@@ -68,7 +91,7 @@ export async function POST(
     const refs = collectProductionRefsFromPayload(parsed);
     if (refs.length > 0) {
       await upsertProductionStatuses(
-        supabase,
+        adminClient,
         refs.map((entry) => ({
           provider: entry.provider,
           product_id: entry.product_id,

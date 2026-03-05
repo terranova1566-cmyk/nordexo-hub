@@ -100,6 +100,21 @@ type CreateTemplatePresetOutputsInput = {
   requestedBy: string | null;
 };
 
+type CreatePromptModeOutputsInput = {
+  relativePath: string;
+  provider: Exclude<AiEditProvider, "zimage">;
+  mode: Extract<AiPromptMode, "template" | "direct">;
+  prompt: string;
+  count: number;
+  templatePreset?: AiTemplatePreset;
+  requestedBy: string | null;
+};
+
+type CreatePromptModeOutputsResult = {
+  createdPaths: string[];
+  scoreRefreshErrors: string[];
+};
+
 type ResolvePendingAiEditInput = {
   originalPath: string;
   decision: ResolveDecision;
@@ -125,6 +140,7 @@ const PRODUCT_COLLECTION_PROMPT_PATH = path.join(
   "prompts",
   "product-collection-image-prompt.txt"
 );
+const DIGIDEAL_MAIN_DUAL_PROMPT_ID = "B5B0Behb";
 const ZIMAGE_ROOT = "/srv/node-tools/zimage-api";
 const ZIMAGE_ENV_PATH = path.join(ZIMAGE_ROOT, ".env");
 const ZIMAGE_IMAGE_TO_IMAGE_SCRIPT_PATH = path.join(ZIMAGE_ROOT, "image_to_image.js");
@@ -329,10 +345,9 @@ const hydrateTemplateFromPromptManager = async (
   }
 
   if (templatePreset === "digideal_main_dual") {
-    // Dual mode intentionally reuses DigiDeal Main as the base prompt.
-    const value = await loadPromptTemplateFromVersions("DDMAINIM");
+    const value = await loadPromptTemplateFromVersions(DIGIDEAL_MAIN_DUAL_PROMPT_ID);
     if (value) {
-      env.DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE = value;
+      env.DIGIDEAL_MAIN_DUAL_IMAGE_PROMPT_TEMPLATE = value;
     }
     return;
   }
@@ -419,7 +434,7 @@ const resolveImagePath = (relativePath: string) => {
     throw new Error("Invalid path.");
   }
   if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) {
-    throw new Error("File not found.");
+    throw new Error(`File not found: ${normalized}`);
   }
   ensureImageFile(absolute);
   return {
@@ -1031,52 +1046,6 @@ const loadPromptTemplate = (
   }
 };
 
-const DIGIDEAL_DUAL_INPUT_RULES_TAG = "DIGIDEAL_DUAL_INPUT_RULES_V1";
-const DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG = "DIGIDEAL_SOFT_WHITE_FADE_RULES_V1";
-const DIGIDEAL_SOFT_WHITE_FADE_RULES = [
-  `<${DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG}>`,
-  "CENTER TRANSITION RULE (CRITICAL):",
-  "- Use a smooth tonal fade to pure white at the center seam.",
-  "- The transition band should be approximately 20% of the total output width.",
-  "- This is a SOFT WHITE FADE, not a blur merge, not a paint stroke, and not a textured brush effect.",
-  "- Left and right sides must each fade into white independently; do not blend side A pixels directly into side B pixels.",
-  "- Keep both sides sharp and clear outside the transition band (no foggy/smeared/gaussian-blur look).",
-  `</${DIGIDEAL_SOFT_WHITE_FADE_RULES_TAG}>`,
-].join("\n");
-
-const DIGIDEAL_DUAL_INPUT_RULES = [
-  `<${DIGIDEAL_DUAL_INPUT_RULES_TAG}>`,
-  "INPUT FORMAT OVERRIDE (CRITICAL):",
-  "You are NOT given one product image.",
-  "You are given ONE welded reference image containing TWO source images separated by a white vertical gap.",
-  "",
-  "Mapping rules:",
-  "- LEFT source side = pure product photo on white background (source of truth for product identity).",
-  "- RIGHT source side = guidance image for lifestyle/environment scene style and context.",
-  "",
-  "How to build the final output:",
-  "- Keep the original DigiDeal Main split-layout output behavior from this prompt.",
-  "- Final output must still be a two-sided hero composition: left white product side + right lifestyle side.",
-  "- The LEFT side of final output must be derived from the LEFT source side only.",
-  "- The RIGHT side of final output must be guided by the RIGHT source side only.",
-  "",
-  DIGIDEAL_SOFT_WHITE_FADE_RULES,
-  "",
-  "Strict product integrity:",
-  "- Product identity must come from LEFT source side only.",
-  "- Do not redesign or replace the product based on the RIGHT source side.",
-  "",
-  "This override is mandatory and takes precedence for input interpretation while preserving all original DigiDeal Main output-quality and composition constraints below.",
-  `</${DIGIDEAL_DUAL_INPUT_RULES_TAG}>`,
-].join("\n");
-
-const applyDigidealDualInputRulesToTemplate = (template: string) => {
-  const raw = String(template || "").trim();
-  if (!raw) return "";
-  if (raw.includes(DIGIDEAL_DUAL_INPUT_RULES_TAG)) return raw;
-  return [DIGIDEAL_DUAL_INPUT_RULES, "", raw].join("\n");
-};
-
 const looksLikeSpu = (value: string) => /^[a-z0-9]{1,8}-\d{3,}$/i.test(value);
 
 const extractSpuFromRelativePath = (relativePath: string) => {
@@ -1329,6 +1298,27 @@ const applyDigidealMainPackageToTemplate = (
     ].join("\n");
   }
   return next;
+};
+
+const applyProductDescriptionOnlyToTemplate = (
+  template: string,
+  productDescription: string
+) => {
+  const base = String(template || "").trim();
+  if (!base) return "";
+  const description = String(productDescription || "").trim();
+  const normalizedDescription = description || "Product description unavailable.";
+  const placeholderPattern = /{{\s*INSERT_PRODUCT_DESCRIPTION_HERE\s*}}/g;
+  const hasPlaceholder = placeholderPattern.test(base);
+  const replaced = base.replace(placeholderPattern, normalizedDescription);
+  if (hasPlaceholder) return replaced;
+  return [
+    "<Product_Description>",
+    normalizedDescription,
+    "</Product_Description>",
+    "",
+    replaced,
+  ].join("\n");
 };
 
 const applyAdditionalGuidanceToTemplate = (template: string, guidance: string) => {
@@ -1724,7 +1714,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
         input.templatePreset === "digideal_main"
           ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
           : input.templatePreset === "digideal_main_dual"
-            ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+            ? "DIGIDEAL_MAIN_DUAL_IMAGE_PROMPT_TEMPLATE"
             : input.templatePreset === "product_scene"
               ? "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE"
               : "PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE";
@@ -1736,11 +1726,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
             : input.templatePreset === "product_scene"
               ? ENVIORMENT_SCENE_PROMPT_PATH
               : PRODUCT_COLLECTION_PROMPT_PATH;
-      const presetTemplateRaw = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
-      const presetTemplate =
-        input.templatePreset === "digideal_main_dual"
-          ? applyDigidealDualInputRulesToTemplate(presetTemplateRaw)
-          : presetTemplateRaw;
+      const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
       if (!presetTemplate.trim()) {
         throw new Error(`Prompt template "${input.templatePreset}" is missing or empty.`);
       }
@@ -1748,10 +1734,8 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
       let digidealPkg:
         | { product_description: string; usage_environments: string[]; target_user: string }
         | null = null;
-      if (
-        input.templatePreset === "digideal_main" ||
-        input.templatePreset === "digideal_main_dual"
-      ) {
+      let dualProductDescription = "";
+      if (input.templatePreset === "digideal_main") {
         const relative = toRelativePath(originalAbsPath);
         const spu = extractSpuFromRelativePath(relative);
         const context = spu ? await loadDraftProductContext(spu) : null;
@@ -1762,6 +1746,13 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
           description,
           env: mergedEnv,
         });
+      } else if (input.templatePreset === "digideal_main_dual") {
+        const relative = toRelativePath(originalAbsPath);
+        const spu = extractSpuFromRelativePath(relative);
+        const context = spu ? await loadDraftProductContext(spu) : null;
+        const title = context?.title || spu || path.parse(originalAbsPath).name;
+        const description = String(context?.description || "").trim();
+        dualProductDescription = description || title;
       }
 
       const clampUser = (value: string | null | undefined) => {
@@ -1815,11 +1806,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
 
       const tasks = planned.map(async (row) => {
         let promptTemplateOverride = presetTemplate;
-        if (
-          (input.templatePreset === "digideal_main" ||
-            input.templatePreset === "digideal_main_dual") &&
-          digidealPkg
-        ) {
+        if (input.templatePreset === "digideal_main" && digidealPkg) {
           const envCount = digidealPkg.usage_environments?.length || 0;
           const preferredEnvironmentIndex =
             envCount > 0 ? ((row.idx - 1) % envCount) + 1 : row.idx;
@@ -1831,6 +1818,11 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
               preferredEnvironmentIndex,
             }
           );
+        } else if (input.templatePreset === "digideal_main_dual") {
+          promptTemplateOverride = applyProductDescriptionOnlyToTemplate(
+            presetTemplate,
+            dualProductDescription
+          );
         } else if (input.templatePreset === "product_scene" && count > 1) {
           promptTemplateOverride = [
             presetTemplate,
@@ -1841,6 +1833,7 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
         if (
           (input.templatePreset === "digideal_main" ||
             input.templatePreset === "digideal_main_dual" ||
+            input.templatePreset === "product_scene" ||
             input.templatePreset === "product_collection") &&
           additionalPrompt
         ) {
@@ -1928,6 +1921,106 @@ export const createTemplatePresetOutputs = (input: CreateTemplatePresetOutputsIn
     }
   });
 
+export const createPromptModeOutputs = (input: CreatePromptModeOutputsInput) =>
+  withEditQueue(async (): Promise<CreatePromptModeOutputsResult> => {
+    if (input.provider !== "chatgpt" && input.provider !== "gemini") {
+      throw new Error("Prompt mode outputs only support ChatGPT or Gemini.");
+    }
+    if (input.mode !== "template" && input.mode !== "direct") {
+      throw new Error("Prompt mode outputs only support template or direct mode.");
+    }
+    const count = Math.max(1, Math.min(3, Math.floor(Number(input.count || 1))));
+    const prompt = String(input.prompt || "").trim();
+    if (input.mode === "direct" && !prompt) {
+      throw new Error("Prompt is required in direct mode.");
+    }
+    const templatePreset: AiTemplatePreset =
+      input.mode === "template" ? input.templatePreset ?? "standard" : "standard";
+    if (input.mode === "template" && templatePreset !== "standard") {
+      throw new Error("Prompt mode multi-output supports only Standard Template.");
+    }
+
+    const { absolutePath: originalAbsPath, relativePath: originalPath } = resolveImagePath(
+      input.relativePath
+    );
+    const folderAbsPath = path.dirname(originalAbsPath);
+    const originalName = path.parse(originalAbsPath).name;
+    const modeLabel = input.mode === "direct" ? "direct" : "template";
+    const providerLabel = input.provider === "chatgpt" ? "ChatGPT" : "Gemini";
+    const stamp = formatTimestampForFilename(new Date());
+
+    const planned = Array.from({ length: count }, (_, index) => {
+      const idx = index + 1;
+      const tempBase = `.${originalName}.ai-batch-${input.provider}-${modeLabel}-${stamp}-${idx}`;
+      const tmpAbs = uniqueChildPath(folderAbsPath, tempBase, ".png");
+      return { idx, tmpAbs, finalAbs: null as string | null };
+    });
+
+    try {
+      await Promise.all(
+        planned.map(async (row) => {
+          await runImageEditScript({
+            originalAbsPath,
+            pendingAbsPath: row.tmpAbs,
+            provider: input.provider,
+            mode: input.mode,
+            prompt,
+            templatePreset,
+          });
+
+          if (!fs.existsSync(row.tmpAbs) || fs.statSync(row.tmpAbs).size <= 0) {
+            throw new Error("AI edit returned no image.");
+          }
+
+          const detectedExt = detectImageExtension(row.tmpAbs);
+          const baseName = `${originalName}-${providerLabel}-${modeLabel}-edit-${stamp}-${row.idx}`;
+          const destinationAbsPath = uniqueChildPath(folderAbsPath, baseName, detectedExt);
+          if (!moveFileWithFallback(row.tmpAbs, destinationAbsPath)) {
+            throw new Error("Unable to persist generated output.");
+          }
+          row.finalAbs = destinationAbsPath;
+        })
+      );
+
+      const finalAbsPaths = planned
+        .map((row) => row.finalAbs)
+        .filter((value): value is string => Boolean(value));
+      const createdPaths = finalAbsPaths.map((absolutePath) => toRelativePath(absolutePath));
+      const scoreRefreshErrors: string[] = [];
+
+      for (const absolutePath of finalAbsPaths) {
+        try {
+          await refreshDraftImageScoreByAbsolutePath(absolutePath);
+        } catch (err) {
+          scoreRefreshErrors.push(
+            `${path.basename(absolutePath)}: ${
+              err instanceof Error ? err.message : "score refresh failed"
+            }`
+          );
+        }
+      }
+
+      appendAiEditLog({
+        action: "prompt_outputs",
+        requested_by: input.requestedBy,
+        provider: input.provider,
+        mode: input.mode,
+        template_preset: input.mode === "template" ? templatePreset : undefined,
+        guidance_length: prompt.length,
+        original_path: originalPath,
+        created_paths: createdPaths,
+        score_refresh_errors:
+          scoreRefreshErrors.length > 0 ? scoreRefreshErrors.slice(0, 3) : undefined,
+      });
+
+      return { createdPaths, scoreRefreshErrors };
+    } finally {
+      planned.forEach((row) => {
+        removeFileQuietly(row.tmpAbs);
+      });
+    }
+  });
+
 const runImageEditScript = async (input: {
   originalAbsPath: string;
   pendingAbsPath: string;
@@ -1999,7 +2092,7 @@ const runImageEditScript = async (input: {
       templatePreset === "digideal_main"
         ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
       : templatePreset === "digideal_main_dual"
-          ? "DIGIDEAL_MAIN_IMAGE_PROMPT_TEMPLATE"
+          ? "DIGIDEAL_MAIN_DUAL_IMAGE_PROMPT_TEMPLATE"
           : templatePreset === "product_scene"
             ? "ENVIORMENT_SCENE_IMAGE_PROMPT_TEMPLATE"
             : "PRODUCT_COLLECTION_IMAGE_PROMPT_TEMPLATE";
@@ -2011,17 +2104,13 @@ const runImageEditScript = async (input: {
           : templatePreset === "product_scene"
             ? ENVIORMENT_SCENE_PROMPT_PATH
             : PRODUCT_COLLECTION_PROMPT_PATH;
-    const presetTemplateRaw = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
-    const presetTemplate =
-      templatePreset === "digideal_main_dual"
-        ? applyDigidealDualInputRulesToTemplate(presetTemplateRaw)
-        : presetTemplateRaw;
+    const presetTemplate = loadPromptTemplate(mergedEnv, presetKey, presetFallbackPath);
     if (!presetTemplate.trim()) {
       throw new Error(`Prompt template "${templatePreset}" is missing or empty.`);
     }
 
     let nextTemplate = presetTemplate;
-    if (templatePreset === "digideal_main" || templatePreset === "digideal_main_dual") {
+    if (templatePreset === "digideal_main") {
       const relative = toRelativePath(input.originalAbsPath);
       const spu = extractSpuFromRelativePath(relative);
       const context = spu ? await loadDraftProductContext(spu) : null;
@@ -2034,6 +2123,16 @@ const runImageEditScript = async (input: {
         env: mergedEnv,
       });
       nextTemplate = applyDigidealMainPackageToTemplate(nextTemplate, pkg);
+    } else if (templatePreset === "digideal_main_dual") {
+      const relative = toRelativePath(input.originalAbsPath);
+      const spu = extractSpuFromRelativePath(relative);
+      const context = spu ? await loadDraftProductContext(spu) : null;
+      const title = context?.title || spu || path.parse(input.originalAbsPath).name;
+      const description = String(context?.description || "").trim();
+      nextTemplate = applyProductDescriptionOnlyToTemplate(
+        nextTemplate,
+        description || title
+      );
     }
     if (
       (templatePreset === "digideal_main" || templatePreset === "digideal_main_dual") &&

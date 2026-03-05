@@ -110,6 +110,9 @@ type DigidealItem = {
   digideal_price_ignored_at?: string | null;
   digideal_extreme_ratio_confirmed?: boolean | null;
   digideal_extreme_ratio_confirmed_at?: string | null;
+  digideal_vat_override_enabled?: boolean | null;
+  digideal_vat_override_margin_percent?: number | null;
+  digideal_vat_override_updated_at?: string | null;
   shipping_cost: number | null;
   shipping_class?: string | null;
   estimated_rerun_price: number | null;
@@ -145,6 +148,8 @@ const DIGIDEAL_VAT_GROSS_SHARE = 0.2;
 const DIGIDEAL_PARTNER_TARGET_SHARE = 0.33;
 const DIGIDEAL_PARTNER_SOFT_FLOOR_SHARE = 0.25;
 const DIGIDEAL_PARTNER_HARD_FLOOR_SHARE = 0.2;
+const DIGIDEAL_PARTNER_TARGET_MIN_PERCENT = 30;
+const DIGIDEAL_PARTNER_TARGET_MAX_PERCENT = 33;
 const DIGIDEAL_PARTNER_MIN_PROFIT_KR = 50;
 const DIGIDEAL_MIN_MARGIN_PERCENT = 20;
 const DIGIDEAL_MAX_MARGIN_PERCENT = 50;
@@ -218,17 +223,24 @@ type PriceComputationResult = {
   displayedPrice: number | null;
   automaticPrice: number | null;
   benchmarkPrice: number | null;
+  benchmarkTotal: number | null;
   productCostKr: number | null;
   shippingCostKrCalculated: number | null;
   totalCost: number | null;
   marginPercent: number | null;
   marginKr: number | null;
   standardMarginPercent: number | null;
+  partnerProfitKr: number | null;
+  partnerProfitPercent: number | null;
+  partnerTargetHit: boolean;
   supplierToMarketRatioPercent: number | null;
   extremeRatioFlagged: boolean;
   state: PriceHealthState;
   hasOverride: boolean;
   ignored: boolean;
+  vatOverrideEnabled: boolean;
+  vatOverrideMarginPercent: number | null;
+  vatCreditKr: number | null;
 };
 
 const splitStrongQuantitySegments = (value: string) => {
@@ -1186,25 +1198,59 @@ const useStyles = makeStyles({
     },
   },
   estimatedPriceDialogSurface: {
-    width: "min(520px, 92vw)",
-    maxWidth: "min(520px, 92vw)",
+    width: "min(680px, 96vw)",
+    maxWidth: "min(680px, 96vw)",
+    minHeight: "min(760px, 92vh)",
   },
   estimatedPriceDialogContent: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
+    maxHeight: "min(680px, 78vh)",
+    overflowY: "auto",
   },
   estimatedPriceDialogMeta: {
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground2,
   },
+  estimatedPriceInspectorGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: "10px",
+    alignItems: "stretch",
+  },
+  estimatedPriceInspectorCard: {
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minHeight: "165px",
+  },
+  estimatedPriceInspectorCardTitle: {
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+  },
+  estimatedPriceInspectorKey: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+    lineHeight: tokens.lineHeightBase200,
+  },
+  estimatedPriceInspectorValueStrong: {
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+  },
   estimatedPriceDialogInputRow: {
     display: "flex",
-    alignItems: "flex-end",
+    alignItems: "center",
     gap: "8px",
+    flexWrap: "wrap",
   },
   estimatedPriceDialogInput: {
-    width: "140px",
+    width: "160px",
   },
   estimatedPriceHintText: {
     fontSize: tokens.fontSizeBase100,
@@ -2751,15 +2797,21 @@ const toArray = <T,>(value: unknown): T[] =>
 // Auto-run supplier lookup for incoming products only.
 const ENABLE_AUTO_SUPPLIER_LOOKUP = true;
 const AUTO_SUPPLIER_INCOMING_ROLLOUT_AT: Record<
-  "digideal" | "letsdeal" | "offerilla",
+  "digideal" | "letsdeal" | "offerilla" | "outspot",
   string
 > = {
   digideal: "2026-02-20T00:00:00.000Z",
   letsdeal: "2026-02-20T00:00:00.000Z",
   offerilla: "2026-02-20T00:00:00.000Z",
+  outspot: "2026-02-20T00:00:00.000Z",
 };
 const AUTO_SUPPLIER_LOOKUP_PROVIDERS = new Set(["digideal"]);
-const SUPPLIER_AUTOMATION_PROVIDERS = new Set(["digideal", "letsdeal", "offerilla"]);
+const SUPPLIER_AUTOMATION_PROVIDERS = new Set([
+  "digideal",
+  "letsdeal",
+  "offerilla",
+  "outspot",
+]);
 const AUTO_SUPPLIER_RETRY_TICK_MS = 60_000;
 const AUTO_SUPPLIER_RETRY_BASE_DELAY_MS = 5 * 60_000;
 const AUTO_SUPPLIER_RETRY_MAX_DELAY_MS = 60 * 60_000;
@@ -2775,12 +2827,16 @@ export default function DigidealCampaignsPage() {
     ? "letsdeal"
     : pathname.startsWith("/app/offerilla")
       ? "offerilla"
+      : pathname.startsWith("/app/outspot")
+        ? "outspot"
       : "digideal";
   const providerLabel =
     provider === "letsdeal"
       ? "LetsDeal"
       : provider === "offerilla"
         ? "Offerilla"
+        : provider === "outspot"
+          ? "Outspot"
         : "DigiDeal";
   const loadingCampaignsLabel =
     provider === "digideal"
@@ -2864,6 +2920,8 @@ export default function DigidealCampaignsPage() {
   const [priceDialogSaving, setPriceDialogSaving] = useState(false);
   const [priceDialogError, setPriceDialogError] = useState<string | null>(null);
   const [priceDialogIgnoreDraft, setPriceDialogIgnoreDraft] = useState(false);
+  const [priceDialogVatOverrideDraft, setPriceDialogVatOverrideDraft] = useState(false);
+  const [priceDialogVatMarginDraft, setPriceDialogVatMarginDraft] = useState("50");
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
   const [rerunComment, setRerunComment] = useState("");
   const [rerunTargetTitle, setRerunTargetTitle] = useState<string | null>(null);
@@ -3280,6 +3338,19 @@ export default function DigidealCampaignsPage() {
       const hasOverride = overridePriceRaw !== null;
       const ignored = item.digideal_price_ignored === true;
       const extremeRatioConfirmed = item.digideal_extreme_ratio_confirmed === true;
+      const vatOverrideEnabled = item.digideal_vat_override_enabled === true;
+      const vatOverrideMarginPercent =
+        typeof item.digideal_vat_override_margin_percent === "number" &&
+        Number.isFinite(item.digideal_vat_override_margin_percent)
+          ? Number(item.digideal_vat_override_margin_percent)
+          : null;
+      const vatCreditKr =
+        vatOverrideEnabled &&
+        benchmarkTotal !== null &&
+        Number.isFinite(benchmarkTotal) &&
+        benchmarkTotal > 0
+          ? benchmarkTotal * DIGIDEAL_VAT_GROSS_SHARE
+          : null;
 
       const purchaseCny =
         typeof item.purchase_price === "number" && Number.isFinite(item.purchase_price)
@@ -3341,8 +3412,15 @@ export default function DigidealCampaignsPage() {
 
       const computeMarginPercentForPrice = (price: number | null) => {
         if (price === null || totalCost === null || price <= 0) return null;
-        const pct = ((price - totalCost) / price) * 100;
+        const effectiveProfit = price - totalCost + (vatCreditKr ?? 0);
+        const pct = (effectiveProfit / price) * 100;
         return Number.isFinite(pct) ? pct : null;
+      };
+
+      const computeMarginKrForPrice = (price: number | null) => {
+        if (price === null || totalCost === null) return null;
+        const kr = price - totalCost + (vatCreditKr ?? 0);
+        return Number.isFinite(kr) ? kr : null;
       };
 
       let benchmarkPriceRaw = automaticPrice;
@@ -3395,14 +3473,30 @@ export default function DigidealCampaignsPage() {
         return computeMarginPercentForPrice(price);
       };
       const computeMarginKr = (price: number | null) => {
-        if (price === null || totalCost === null) return null;
-        const kr = price - totalCost;
-        return Number.isFinite(kr) ? kr : null;
+        return computeMarginKrForPrice(price);
       };
 
       const marginPercent = computeMarginPercent(displayedPrice);
       const marginKr = computeMarginKr(displayedPrice);
       const standardMarginPercent = computeMarginPercent(automaticPrice);
+      const partnerProfitKr =
+        benchmarkTotal !== null &&
+        displayedPrice !== null &&
+        Number.isFinite(benchmarkTotal) &&
+        benchmarkTotal > 0
+          ? benchmarkTotal * (1 - DIGIDEAL_VAT_GROSS_SHARE) - displayedPrice
+          : null;
+      const partnerProfitPercent =
+        partnerProfitKr !== null &&
+        benchmarkTotal !== null &&
+        Number.isFinite(benchmarkTotal) &&
+        benchmarkTotal > 0
+          ? (partnerProfitKr / benchmarkTotal) * 100
+          : null;
+      const partnerTargetHit =
+        partnerProfitPercent !== null &&
+        partnerProfitPercent >= DIGIDEAL_PARTNER_TARGET_MIN_PERCENT &&
+        partnerProfitPercent <= DIGIDEAL_PARTNER_TARGET_MAX_PERCENT;
       const supplierToMarketRatioPercent =
         benchmarkTotal !== null && displayedPrice !== null && benchmarkTotal > 0
           ? (displayedPrice / benchmarkTotal) * 100
@@ -3432,17 +3526,24 @@ export default function DigidealCampaignsPage() {
         displayedPrice,
         automaticPrice,
         benchmarkPrice,
+        benchmarkTotal,
         productCostKr: directCost?.productCostKr ?? null,
         shippingCostKrCalculated: directCost?.shippingCostKr ?? null,
         totalCost,
         marginPercent,
         marginKr,
         standardMarginPercent,
+        partnerProfitKr,
+        partnerProfitPercent,
+        partnerTargetHit,
         supplierToMarketRatioPercent,
         extremeRatioFlagged,
         state,
         hasOverride,
         ignored,
+        vatOverrideEnabled,
+        vatOverrideMarginPercent,
+        vatCreditKr,
       };
     },
     [pricingSeConfigSnapshot]
@@ -3454,6 +3555,8 @@ export default function DigidealCampaignsPage() {
     setPriceDialogSaving(false);
     setPriceDialogError(null);
     setPriceDialogIgnoreDraft(false);
+    setPriceDialogVatOverrideDraft(false);
+    setPriceDialogVatMarginDraft("50");
   }, [provider]);
 
   const openPriceDialog = useCallback(
@@ -3466,6 +3569,12 @@ export default function DigidealCampaignsPage() {
           : String(DIGIDEAL_MIN_MARGIN_PERCENT)
       );
       setPriceDialogIgnoreDraft(pricing.ignored === true);
+      setPriceDialogVatOverrideDraft(pricing.vatOverrideEnabled === true);
+      setPriceDialogVatMarginDraft(
+        pricing.vatOverrideMarginPercent !== null
+          ? String(Math.max(DIGIDEAL_MIN_MARGIN_PERCENT, Math.round(pricing.vatOverrideMarginPercent)))
+          : "50"
+      );
       setPriceDialogError(null);
       setPriceDialogOpen(true);
     },
@@ -3482,6 +3591,9 @@ export default function DigidealCampaignsPage() {
         mode?: string;
         ignorePriceAction?: "set" | "clear";
         extremeRatioAction?: "confirm" | "clear";
+        vatOverrideAction?: "set" | "clear";
+        vatOverrideEnabled?: boolean;
+        vatOverrideMarginPercent?: number | null;
       }
     ) => {
       const productId = String(item.product_id || "").trim();
@@ -3501,6 +3613,15 @@ export default function DigidealCampaignsPage() {
             price_override_mode: payload?.mode ?? null,
             ignore_price_action: payload?.ignorePriceAction ?? null,
             extreme_ratio_action: payload?.extremeRatioAction ?? null,
+            vat_override_action: payload?.vatOverrideAction ?? null,
+            vat_override_enabled:
+              typeof payload?.vatOverrideEnabled === "boolean"
+                ? payload.vatOverrideEnabled
+                : null,
+            vat_override_margin_percent:
+              typeof payload?.vatOverrideMarginPercent === "number"
+                ? payload.vatOverrideMarginPercent
+                : null,
           }),
         });
         const json = await response.json().catch(() => ({}));
@@ -3540,6 +3661,16 @@ export default function DigidealCampaignsPage() {
                   digideal_extreme_ratio_confirmed_at:
                     typeof next?.digideal_extreme_ratio_confirmed_at === "string"
                       ? next.digideal_extreme_ratio_confirmed_at
+                      : null,
+                  digideal_vat_override_enabled:
+                    next?.digideal_vat_override_enabled === true,
+                  digideal_vat_override_margin_percent:
+                    typeof next?.digideal_vat_override_margin_percent === "number"
+                      ? next.digideal_vat_override_margin_percent
+                      : null,
+                  digideal_vat_override_updated_at:
+                    typeof next?.digideal_vat_override_updated_at === "string"
+                      ? next.digideal_vat_override_updated_at
                       : null,
                 }
               : entry
@@ -3744,6 +3875,11 @@ export default function DigidealCampaignsPage() {
     const candidates = items.filter((item) => {
       const productId = String(item?.product_id ?? "").trim();
       if (!productId) return false;
+      const hasLinkedProduct = Boolean(String(item?.identical_spu ?? "").trim());
+      if (hasLinkedProduct) {
+        autoSupplierSearchStateRef.current.delete(productId);
+        return false;
+      }
 
       const isNordexoSeller = String(item?.seller_name ?? "")
         .trim()
@@ -4205,10 +4341,15 @@ export default function DigidealCampaignsPage() {
     return `¥${Number(value).toFixed(2)}`;
   }, []);
 
-  const normalizeOfferPrice = useCallback((value: unknown) => {
+  const normalizeOfferPrice = useCallback((value: unknown, source?: string) => {
     if (value === null || value === undefined || value === "") return null;
+    const isOldPriceSource = source === "oldPrice";
     if (typeof value === "number" && Number.isFinite(value)) {
       if (Number.isInteger(value)) {
+        if (isOldPriceSource && value >= 0) {
+          // In 1688 image-search payloads, oldPrice is returned in fen.
+          return value / 100;
+        }
         // 1688 sometimes returns "9.000" as an integer 9000 (thousandths), which would
         // incorrectly show up as 90.00 if we always divide by 100. Use a narrow heuristic
         // before applying the default /100 scaling.
@@ -4236,6 +4377,9 @@ export default function DigidealCampaignsPage() {
     const raw = Number(normalizedText);
     if (!Number.isFinite(raw)) return null;
     if (!hasDecimalSeparator && Number.isInteger(raw)) {
+      if (isOldPriceSource && raw >= 0) {
+        return raw / 100;
+      }
       if (raw >= 1000 && raw % 1000 === 0) {
         const asCents = raw / 100;
         const asMillis = raw / 1000;
@@ -4356,13 +4500,13 @@ export default function DigidealCampaignsPage() {
   const pickOfferPriceRmb = useCallback(
     (offer: SupplierOffer): string | null => {
       const candidates = [
-        (offer as any)?.price,
-        (offer as any)?.priceValue,
-        (offer as any)?.priceRmb,
-        (offer as any)?.oldPrice,
+        { value: (offer as any)?.price, source: "price" },
+        { value: (offer as any)?.priceValue, source: "priceValue" },
+        { value: (offer as any)?.priceRmb, source: "priceRmb" },
+        { value: (offer as any)?.oldPrice, source: "oldPrice" },
       ];
       for (const candidate of candidates) {
-        const normalized = normalizeOfferPrice(candidate);
+        const normalized = normalizeOfferPrice(candidate.value, candidate.source);
         if (!Number.isFinite(normalized as number)) continue;
         return formatRmb(normalized as number);
       }
@@ -4374,13 +4518,13 @@ export default function DigidealCampaignsPage() {
   const pickOfferPriceRmbNumber = useCallback(
     (offer: SupplierOffer): number | null => {
       const candidates = [
-        (offer as any)?.price,
-        (offer as any)?.priceValue,
-        (offer as any)?.priceRmb,
-        (offer as any)?.oldPrice,
+        { value: (offer as any)?.price, source: "price" },
+        { value: (offer as any)?.priceValue, source: "priceValue" },
+        { value: (offer as any)?.priceRmb, source: "priceRmb" },
+        { value: (offer as any)?.oldPrice, source: "oldPrice" },
       ];
       for (const candidate of candidates) {
-        const normalized = normalizeOfferPrice(candidate);
+        const normalized = normalizeOfferPrice(candidate.value, candidate.source);
         if (!Number.isFinite(normalized as number)) continue;
         return normalized as number;
       }
@@ -5400,6 +5544,8 @@ export default function DigidealCampaignsPage() {
 
     const needsSupplier = items.filter((item) => {
       if (!selectedIds.has(item.product_id)) return false;
+      const hasLinkedProduct = Boolean(String(item.identical_spu ?? "").trim());
+      if (hasLinkedProduct) return false;
       const isNordexoSeller = String(item.seller_name ?? "")
         .trim()
         .toLowerCase()
@@ -7418,7 +7564,9 @@ export default function DigidealCampaignsPage() {
               )
             : styles.estimatedPriceHintText;
         const isAutoSupplierProvider = SUPPLIER_AUTOMATION_PROVIDERS.has(provider);
-        const canManageSupplier = isAdmin && isAutoSupplierProvider && !isNordexo;
+        const hasLinkedProduct = Boolean(String(item.identical_spu ?? "").trim());
+        const canManageSupplier =
+          isAdmin && isAutoSupplierProvider && !isNordexo && !hasLinkedProduct;
         const hasManualSupplierData =
           item.purchase_price !== null ||
           item.weight_grams !== null ||
@@ -7432,6 +7580,7 @@ export default function DigidealCampaignsPage() {
             : null;
         const supplierHasSuggestions = supplierCount !== null && supplierCount > 0;
         const supplierFinding = supplierFindingIds.has(item.product_id);
+        const allowSupplierSearch = !hasLinkedProduct;
         const supplierPayloadStatus = supplierLocked
           ? ""
           : String(item.supplier_payload_status ?? "").trim().toLowerCase();
@@ -7459,7 +7608,7 @@ export default function DigidealCampaignsPage() {
               ? t("digideal.supplier.edit")
                 : supplierHasSuggestions && isAutoSupplierProvider
                   ? "Select Supplier"
-                  : isAutoSupplierProvider
+                  : isAutoSupplierProvider && allowSupplierSearch
                     ? "Find Supplier"
                     : t("digideal.supplier.add");
         const highlightAddSupplier =
@@ -7470,6 +7619,7 @@ export default function DigidealCampaignsPage() {
           (!isAutoSupplierProvider || !supplierHasSuggestions);
         const showDirectFindSupplierButton =
           isAutoSupplierProvider &&
+          allowSupplierSearch &&
           !supplierPayloadReady &&
           !hasManualSupplierData &&
           !supplierSelected &&
@@ -7945,12 +8095,14 @@ export default function DigidealCampaignsPage() {
                                 </MenuTrigger>
                                 <MenuPopover className={styles.compactMenuPopover}>
                                   <MenuList className={styles.compactMenuList}>
-                                    <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
-                                      <span className={styles.menuItemContent}>
-                                        <PhotoSearchIcon className={styles.menuItemIcon} />
-                                        <span>Find Supplier</span>
-                                      </span>
-                                    </MenuItem>
+                                    {allowSupplierSearch ? (
+                                      <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
+                                        <span className={styles.menuItemContent}>
+                                          <PhotoSearchIcon className={styles.menuItemIcon} />
+                                          <span>Find Supplier</span>
+                                        </span>
+                                      </MenuItem>
+                                    ) : null}
                                     <MenuItem onClick={() => openSupplierDialog(item)}>
                                       <span className={styles.menuItemContent}>
                                         <FormsIcon className={styles.menuItemIcon} />
@@ -8038,15 +8190,17 @@ export default function DigidealCampaignsPage() {
 		                        </MenuTrigger>
 	                        <MenuPopover className={styles.compactMenuPopover}>
 	                          <MenuList className={styles.compactMenuList}>
-	                            <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
-	                              <span className={styles.menuItemContent}>
-	                                <PhotoSearchIcon className={styles.menuItemIcon} />
-	                                <span>{t("digideal.supplier.imageSearch")}</span>
-	                              </span>
-	                            </MenuItem>
-	                            <MenuItem onClick={() => openSupplierDialog(item)}>
-	                              <span className={styles.menuItemContent}>
-	                                <FormsIcon className={styles.menuItemIcon} />
+                                    {allowSupplierSearch ? (
+		                              <MenuItem onClick={() => void openSupplierSearchDialog(item)}>
+		                                <span className={styles.menuItemContent}>
+		                                  <PhotoSearchIcon className={styles.menuItemIcon} />
+		                                  <span>{t("digideal.supplier.imageSearch")}</span>
+		                                </span>
+		                              </MenuItem>
+                                    ) : null}
+		                            <MenuItem onClick={() => openSupplierDialog(item)}>
+		                              <span className={styles.menuItemContent}>
+		                                <FormsIcon className={styles.menuItemIcon} />
 	                                <span>{t("digideal.supplier.manualInput")}</span>
 	                              </span>
 	                            </MenuItem>
@@ -8331,6 +8485,80 @@ export default function DigidealCampaignsPage() {
     [computePriceComputation, priceDialogTarget]
   );
 
+  const priceDialogVatPreview = useMemo(() => {
+    if (!priceDialogComputation) {
+      return {
+        targetMarginPercent: null as number | null,
+        computedPrice: null as number | null,
+        partnerProfitKr: null as number | null,
+        partnerProfitPercent: null as number | null,
+        partnerTargetHit: false,
+      };
+    }
+    const targetMarginPercentRaw = Number(priceDialogVatMarginDraft);
+    if (!Number.isFinite(targetMarginPercentRaw)) {
+      return {
+        targetMarginPercent: null,
+        computedPrice: null,
+        partnerProfitKr: null,
+        partnerProfitPercent: null,
+        partnerTargetHit: false,
+      };
+    }
+    const targetMarginPercent = Math.max(
+      DIGIDEAL_MIN_MARGIN_PERCENT,
+      Math.min(95, targetMarginPercentRaw)
+    );
+    const totalCost = priceDialogComputation.totalCost;
+    const benchmarkTotal = priceDialogComputation.benchmarkTotal;
+    if (
+      totalCost === null ||
+      totalCost <= 0 ||
+      benchmarkTotal === null ||
+      benchmarkTotal <= 0
+    ) {
+      return {
+        targetMarginPercent,
+        computedPrice: null,
+        partnerProfitKr: null,
+        partnerProfitPercent: null,
+        partnerTargetHit: false,
+      };
+    }
+
+    const vatCreditKr = benchmarkTotal * DIGIDEAL_VAT_GROSS_SHARE;
+    const divisor = 1 - targetMarginPercent / 100;
+    const computedPriceRaw =
+      Number.isFinite(divisor) && divisor > 0
+        ? (totalCost - vatCreditKr) / divisor
+        : Number.NaN;
+    const computedPrice =
+      Number.isFinite(computedPriceRaw) && computedPriceRaw > 0
+        ? Math.round(computedPriceRaw)
+        : null;
+
+    const partnerProfitKr =
+      computedPrice !== null
+        ? benchmarkTotal * (1 - DIGIDEAL_VAT_GROSS_SHARE) - computedPrice
+        : null;
+    const partnerProfitPercent =
+      partnerProfitKr !== null && benchmarkTotal > 0
+        ? (partnerProfitKr / benchmarkTotal) * 100
+        : null;
+    const partnerTargetHit =
+      partnerProfitPercent !== null &&
+      partnerProfitPercent >= DIGIDEAL_PARTNER_TARGET_MIN_PERCENT &&
+      partnerProfitPercent <= DIGIDEAL_PARTNER_TARGET_MAX_PERCENT;
+
+    return {
+      targetMarginPercent,
+      computedPrice,
+      partnerProfitKr,
+      partnerProfitPercent,
+      partnerTargetHit,
+    };
+  }, [priceDialogComputation, priceDialogVatMarginDraft]);
+
   const handleKeepCurrentPrice = useCallback(async () => {
     if (!priceDialogTarget || !priceDialogComputation) return;
     const price = priceDialogComputation.displayedPrice;
@@ -8376,6 +8604,68 @@ export default function DigidealCampaignsPage() {
     priceDialogComputation,
     priceDialogMarginDraft,
     priceDialogTarget,
+  ]);
+
+  const handleApplyVatOverride = useCallback(async () => {
+    if (!priceDialogTarget || !priceDialogComputation) return;
+
+    if (!priceDialogVatOverrideDraft) {
+      const ok = await applyPriceOverride(priceDialogTarget, "clear", {
+        vatOverrideAction: "clear",
+      });
+      if (ok) closePriceDialog();
+      return;
+    }
+
+    const targetMarginPercent = Number(priceDialogVatMarginDraft);
+    if (
+      !Number.isFinite(targetMarginPercent) ||
+      targetMarginPercent < DIGIDEAL_MIN_MARGIN_PERCENT ||
+      targetMarginPercent >= 95
+    ) {
+      setPriceDialogError(
+        `VAT override margin must be between ${DIGIDEAL_MIN_MARGIN_PERCENT}% and 95%.`
+      );
+      return;
+    }
+
+    if (priceDialogComputation.totalCost === null || priceDialogComputation.totalCost <= 0) {
+      setPriceDialogError("Missing cost basis for this product.");
+      return;
+    }
+    if (
+      priceDialogComputation.benchmarkTotal === null ||
+      priceDialogComputation.benchmarkTotal <= 0
+    ) {
+      setPriceDialogError("Missing market benchmark for VAT override.");
+      return;
+    }
+
+    const vatCredit = priceDialogComputation.benchmarkTotal * DIGIDEAL_VAT_GROSS_SHARE;
+    const divisor = 1 - targetMarginPercent / 100;
+    const computedPriceRaw = (priceDialogComputation.totalCost - vatCredit) / divisor;
+    if (!Number.isFinite(computedPriceRaw) || computedPriceRaw <= 0) {
+      setPriceDialogError("Unable to compute VAT override price.");
+      return;
+    }
+
+    const roundedPrice = Math.round(computedPriceRaw);
+    const ok = await applyPriceOverride(priceDialogTarget, "set", {
+      price: roundedPrice,
+      marginPercent: targetMarginPercent,
+      mode: "vat_override_target_margin",
+      vatOverrideAction: "set",
+      vatOverrideEnabled: true,
+      vatOverrideMarginPercent: targetMarginPercent,
+    });
+    if (ok) closePriceDialog();
+  }, [
+    applyPriceOverride,
+    closePriceDialog,
+    priceDialogComputation,
+    priceDialogTarget,
+    priceDialogVatMarginDraft,
+    priceDialogVatOverrideDraft,
   ]);
 
   const handleRollbackPriceOverride = useCallback(async () => {
@@ -8479,6 +8769,13 @@ export default function DigidealCampaignsPage() {
     if (!current || current === priceDialogTarget) return;
     setPriceDialogTarget(current);
     setPriceDialogIgnoreDraft(current.digideal_price_ignored === true);
+    setPriceDialogVatOverrideDraft(current.digideal_vat_override_enabled === true);
+    setPriceDialogVatMarginDraft(
+      typeof current.digideal_vat_override_margin_percent === "number" &&
+        Number.isFinite(current.digideal_vat_override_margin_percent)
+        ? String(Math.round(current.digideal_vat_override_margin_percent))
+        : "50"
+    );
   }, [items, priceDialogOpen, priceDialogTarget]);
 
 	  return (
@@ -9352,34 +9649,206 @@ export default function DigidealCampaignsPage() {
               ) : null}
               {priceDialogComputation ? (
                 <>
-                  <Text className={styles.estimatedPriceDialogMeta}>
-                    {`Current price: ${
-                      priceDialogComputation.displayedPrice !== null
-                        ? formatCurrency(priceDialogComputation.displayedPrice, "SEK")
-                        : "-"
-                    } | Profit: ${
-                      priceDialogComputation.marginKr !== null
-                        ? formatCurrency(priceDialogComputation.marginKr, "SEK")
-                        : "-"
-                    } (${priceDialogComputation.marginPercent !== null
-                      ? `${priceDialogComputation.marginPercent.toFixed(1)}%`
-                      : "-"})`}
-                  </Text>
-                  <Text className={styles.estimatedPriceDialogMeta}>
-                    {`Product cost: ${
-                      priceDialogComputation.productCostKr !== null
-                        ? formatCurrency(priceDialogComputation.productCostKr, "SEK")
-                        : "-"
-                    } | Shipping cost: ${
-                      priceDialogComputation.shippingCostKrCalculated !== null
-                        ? formatCurrency(priceDialogComputation.shippingCostKrCalculated, "SEK")
-                        : "-"
-                    } | Total cost: ${
-                      priceDialogComputation.totalCost !== null
-                        ? formatCurrency(priceDialogComputation.totalCost, "SEK")
-                        : "-"
-                    }`}
-                  </Text>
+                  <div className={styles.estimatedPriceInspectorGrid}>
+                    <div className={styles.estimatedPriceInspectorCard}>
+                      <Text className={styles.estimatedPriceInspectorCardTitle}>
+                        Current Pricing
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Partner price: ${
+                          priceDialogComputation.displayedPrice !== null
+                            ? formatCurrency(priceDialogComputation.displayedPrice, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Our profit: ${
+                          priceDialogComputation.marginKr !== null
+                            ? formatCurrency(priceDialogComputation.marginKr, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Our margin: ${
+                          priceDialogComputation.marginPercent !== null
+                            ? `${priceDialogComputation.marginPercent.toFixed(1)}%`
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Auto price: ${
+                          priceDialogComputation.automaticPrice !== null
+                            ? formatCurrency(priceDialogComputation.automaticPrice, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                    </div>
+
+                    <div className={styles.estimatedPriceInspectorCard}>
+                      <Text className={styles.estimatedPriceInspectorCardTitle}>
+                        Cost Basis
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Product cost: ${
+                          priceDialogComputation.productCostKr !== null
+                            ? formatCurrency(priceDialogComputation.productCostKr, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Shipping cost: ${
+                          priceDialogComputation.shippingCostKrCalculated !== null
+                            ? formatCurrency(priceDialogComputation.shippingCostKrCalculated, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Total cost: ${
+                          priceDialogComputation.totalCost !== null
+                            ? formatCurrency(priceDialogComputation.totalCost, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                    </div>
+
+                    <div className={styles.estimatedPriceInspectorCard}>
+                      <Text className={styles.estimatedPriceInspectorCardTitle}>
+                        Market & Partner
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Sales+shipping total: ${
+                          priceDialogComputation.benchmarkTotal !== null
+                            ? formatCurrency(priceDialogComputation.benchmarkTotal, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Partner profit: ${
+                          priceDialogComputation.partnerProfitKr !== null
+                            ? formatCurrency(priceDialogComputation.partnerProfitKr, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Partner margin: ${
+                          priceDialogComputation.partnerProfitPercent !== null
+                            ? `${priceDialogComputation.partnerProfitPercent.toFixed(1)}%`
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Target 30-33%: ${
+                          priceDialogComputation.partnerTargetHit ? "Hit" : "Miss"
+                        }`}
+                      </Text>
+                    </div>
+
+                    <div className={styles.estimatedPriceInspectorCard}>
+                      <Text className={styles.estimatedPriceInspectorCardTitle}>
+                        Margin Controls
+                      </Text>
+                      <div className={styles.estimatedPriceDialogInputRow}>
+                        <Field
+                          label="Keep profit at (%)"
+                          className={styles.estimatedPriceDialogInput}
+                        >
+                          <Input
+                            type="number"
+                            min={DIGIDEAL_MIN_MARGIN_PERCENT}
+                            max={95}
+                            value={priceDialogMarginDraft}
+                            onChange={(_, data) => setPriceDialogMarginDraft(data.value)}
+                          />
+                        </Field>
+                        <Button
+                          appearance="secondary"
+                          onClick={() => void handleSetMarginPrice()}
+                          disabled={priceDialogSaving}
+                        >
+                          Set Margin %
+                        </Button>
+                      </div>
+                      <Field label="Ignore Price">
+                        <Switch
+                          checked={priceDialogIgnoreDraft}
+                          onChange={(_, data) =>
+                            setPriceDialogIgnoreDraft(Boolean(data.checked))
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    <div className={styles.estimatedPriceInspectorCard}>
+                      <Text className={styles.estimatedPriceInspectorCardTitle}>
+                        VAT Override
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`VAT credit (20%): ${
+                          priceDialogComputation.benchmarkTotal !== null
+                            ? formatCurrency(
+                                priceDialogComputation.benchmarkTotal *
+                                  DIGIDEAL_VAT_GROSS_SHARE,
+                                "SEK"
+                              )
+                            : "-"
+                        }`}
+                      </Text>
+                      <Field label="Enable VAT Override">
+                        <Switch
+                          checked={priceDialogVatOverrideDraft}
+                          onChange={(_, data) =>
+                            setPriceDialogVatOverrideDraft(Boolean(data.checked))
+                          }
+                        />
+                      </Field>
+                      <div className={styles.estimatedPriceDialogInputRow}>
+                        <Field
+                          label="VAT margin target (%)"
+                          className={styles.estimatedPriceDialogInput}
+                        >
+                          <Input
+                            type="number"
+                            min={DIGIDEAL_MIN_MARGIN_PERCENT}
+                            max={95}
+                            value={priceDialogVatMarginDraft}
+                            onChange={(_, data) => setPriceDialogVatMarginDraft(data.value)}
+                          />
+                        </Field>
+                        <Button
+                          appearance="secondary"
+                          onClick={() => void handleApplyVatOverride()}
+                          disabled={priceDialogSaving}
+                        >
+                          {priceDialogVatOverrideDraft
+                            ? "Apply VAT Override"
+                            : "Disable VAT Override"}
+                        </Button>
+                      </div>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Preview partner price: ${
+                          priceDialogVatPreview.computedPrice !== null
+                            ? formatCurrency(priceDialogVatPreview.computedPrice, "SEK")
+                            : "-"
+                        }`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Preview partner profit: ${
+                          priceDialogVatPreview.partnerProfitKr !== null
+                            ? formatCurrency(priceDialogVatPreview.partnerProfitKr, "SEK")
+                            : "-"
+                        } (${
+                          priceDialogVatPreview.partnerProfitPercent !== null
+                            ? `${priceDialogVatPreview.partnerProfitPercent.toFixed(1)}%`
+                            : "-"
+                        })`}
+                      </Text>
+                      <Text className={styles.estimatedPriceInspectorKey}>
+                        {`Preview target 30-33%: ${
+                          priceDialogVatPreview.partnerTargetHit ? "Hit" : "Miss"
+                        }`}
+                      </Text>
+                    </div>
+                  </div>
                   <Text className={styles.estimatedPriceDialogMeta}>
                     {`Supplier-to-market ratio: ${
                       priceDialogComputation.supplierToMarketRatioPercent !== null
@@ -9387,37 +9856,11 @@ export default function DigidealCampaignsPage() {
                         : "-"
                     }`}
                   </Text>
-                  <Field label="Ignore Price">
-                    <Switch
-                      checked={priceDialogIgnoreDraft}
-                      onChange={(_, data) =>
-                        setPriceDialogIgnoreDraft(Boolean(data.checked))
-                      }
-                    />
-                  </Field>
                   {priceDialogComputation.extremeRatioFlagged ? (
                     <MessageBar intent="warning">
                       Extreme price ratio warning: this needs manual confirm or correction.
                     </MessageBar>
                   ) : null}
-                  <div className={styles.estimatedPriceDialogInputRow}>
-                    <Field label="Keep profit at (%)" className={styles.estimatedPriceDialogInput}>
-                      <Input
-                        type="number"
-                        min={DIGIDEAL_MIN_MARGIN_PERCENT}
-                        max={95}
-                        value={priceDialogMarginDraft}
-                        onChange={(_, data) => setPriceDialogMarginDraft(data.value)}
-                      />
-                    </Field>
-                    <Button
-                      appearance="secondary"
-                      onClick={() => void handleSetMarginPrice()}
-                      disabled={priceDialogSaving}
-                    >
-                      Set Margin %
-                    </Button>
-                  </div>
                 </>
               ) : null}
               {priceDialogError ? (

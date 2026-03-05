@@ -107,7 +107,7 @@ const maybeDiagnoseWithOpenAi = async (payload: any) => {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const model = String(process.env.AMAZON_DEBUG_MODEL || "gpt-4o-mini").trim() || "gpt-4o-mini";
+  const model = String(process.env.AMAZON_DEBUG_MODEL || "gpt-5-mini").trim() || "gpt-5-mini";
   const detail = payload?.detail ?? null;
   const debug = detail?.debug ?? null;
   if (!debug?.textSnippet && !debug?.htmlSnippet) return null;

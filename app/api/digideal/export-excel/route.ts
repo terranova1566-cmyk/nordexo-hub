@@ -201,6 +201,8 @@ export async function POST(request: Request) {
       ? "LetsDeal Export"
       : provider === "offerilla"
         ? "Offerilla Export"
+        : provider === "outspot"
+          ? "Outspot Export"
         : "DigiDeal Export";
   const sheet = workbook.addWorksheet(
     exportSheetName,

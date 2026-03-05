@@ -2589,10 +2589,15 @@ export default function ProductionPage() {
     return `¥${fixed}`;
   }, []);
 
-  const normalizeOfferPrice = useCallback((candidate: unknown): number | null => {
+  const normalizeOfferPrice = useCallback((candidate: unknown, source?: string): number | null => {
     if (candidate === null || candidate === undefined) return null;
+    const isOldPriceSource = source === "oldPrice";
     if (typeof candidate === "number" && Number.isFinite(candidate)) {
       if (Number.isInteger(candidate)) {
+        if (isOldPriceSource && candidate >= 0) {
+          // In 1688 image-search payloads, oldPrice is returned in fen.
+          return candidate / 100;
+        }
         // 1688 sometimes returns "9.000" as an integer 9000 (thousandths), which would
         // incorrectly show up as 90.00 if we always divide by 100. Use a narrow heuristic
         // before applying the default /100 scaling.
@@ -2620,6 +2625,9 @@ export default function ProductionPage() {
     const raw = Number(normalizedText);
     if (!Number.isFinite(raw)) return null;
     if (!hasDecimalSeparator && Number.isInteger(raw)) {
+      if (isOldPriceSource && raw >= 0) {
+        return raw / 100;
+      }
       if (raw >= 1000 && raw % 1000 === 0) {
         const asCents = raw / 100;
         const asMillis = raw / 1000;
@@ -2740,13 +2748,13 @@ export default function ProductionPage() {
   const pickOfferPriceRmb = useCallback(
     (offer: SupplierOffer): string | null => {
       const candidates = [
-        (offer as any)?.price,
-        (offer as any)?.priceValue,
-        (offer as any)?.priceRmb,
-        (offer as any)?.oldPrice,
+        { value: (offer as any)?.price, source: "price" },
+        { value: (offer as any)?.priceValue, source: "priceValue" },
+        { value: (offer as any)?.priceRmb, source: "priceRmb" },
+        { value: (offer as any)?.oldPrice, source: "oldPrice" },
       ];
       for (const candidate of candidates) {
-        const normalized = normalizeOfferPrice(candidate);
+        const normalized = normalizeOfferPrice(candidate.value, candidate.source);
         if (!Number.isFinite(normalized as number)) continue;
         return formatRmb(normalized as number);
       }
@@ -2757,13 +2765,13 @@ export default function ProductionPage() {
 
   const pickOfferPriceRmbNumber = useCallback((offer: SupplierOffer): number | null => {
     const candidates = [
-      (offer as any)?.price,
-      (offer as any)?.priceValue,
-      (offer as any)?.priceRmb,
-      (offer as any)?.oldPrice,
+      { value: (offer as any)?.price, source: "price" },
+      { value: (offer as any)?.priceValue, source: "priceValue" },
+      { value: (offer as any)?.priceRmb, source: "priceRmb" },
+      { value: (offer as any)?.oldPrice, source: "oldPrice" },
     ];
     for (const candidate of candidates) {
-      const normalized = normalizeOfferPrice(candidate);
+      const normalized = normalizeOfferPrice(candidate.value, candidate.source);
       if (!Number.isFinite(normalized as number)) continue;
       return normalized as number;
     }

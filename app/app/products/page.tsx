@@ -43,6 +43,7 @@ import Link from "next/link";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getThumbnailUrl } from "@/lib/product-media";
 import { useDebouncedValue } from "@/hooks/use-debounced";
+import { useShiftRangeSelection } from "@/hooks/use-shift-range-selection";
 import { useI18n } from "@/components/i18n-provider";
 
 type CategoryNode = {
@@ -412,6 +413,11 @@ const useStyles = makeStyles({
     border: "1px solid #98c4ff",
     color: "#0b4d8c",
   },
+  deliveryBadgeLetsDeal: {
+    backgroundColor: "#e8f8ef",
+    border: "1px solid #9edab3",
+    color: "#1f6a3a",
+  },
   imageCol: {
     width: "83px",
     paddingLeft: "8px",
@@ -475,23 +481,23 @@ const useStyles = makeStyles({
   dateStack: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "10px",
+    paddingBlock: "2px",
   },
   dateRow: {
-    display: "grid",
-    gridTemplateColumns: "72px 1fr",
-    columnGap: "6px",
-    alignItems: "baseline",
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
   },
   dateLabel: {
-    fontSize: tokens.fontSizeBase200,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
     color: tokens.colorNeutralForeground3,
-    lineHeight: "1.1",
   },
   dateValue: {
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground1,
-    lineHeight: "1.1",
+    lineHeight: tokens.lineHeightBase200,
   },
   dateValueRecent: {
     color: "#107c10",
@@ -952,9 +958,12 @@ type Wishlist = {
   item_count?: number;
 };
 
-type DigiDealDeliveryList = {
+type DeliveryPartner = "digideal" | "letsdeal";
+
+type DeliveryList = {
   id: string;
   name: string;
+  partner?: string | null;
   created_at: string | null;
   item_count?: number;
 };
@@ -971,6 +980,10 @@ const PUBLISHED_CHANNEL_RANK: Record<string, number> = {
   wellando: 2,
 };
 const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
+const DELIVERY_PARTNER_LABEL: Record<DeliveryPartner, string> = {
+  digideal: "DigiDeal.se",
+  letsdeal: "LetsDeal",
+};
 
 const formatPriceValue = (value: number) => priceFormatter.format(value);
 
@@ -1098,6 +1111,12 @@ const buildProductHref = (id: string, spu: string | null | undefined) => {
   return `/app/products/${id}`;
 };
 
+const normalizeDeliveryPartner = (value: string | null | undefined): DeliveryPartner => {
+  return String(value ?? "").trim().toLowerCase() === "letsdeal"
+    ? "letsdeal"
+    : "digideal";
+};
+
 function ProductsPageInner() {
   const styles = useStyles();
   const router = useRouter();
@@ -1160,8 +1179,9 @@ function ProductsPageInner() {
   const [newListName, setNewListName] = useState("");
   const [newListDialogOpen, setNewListDialogOpen] = useState(false);
   const [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false);
+  const [deliveryPartner, setDeliveryPartner] = useState<DeliveryPartner>("digideal");
   const [deliveryTargetProductIds, setDeliveryTargetProductIds] = useState<string[]>([]);
-  const [deliveryLists, setDeliveryLists] = useState<DigiDealDeliveryList[]>([]);
+  const [deliveryLists, setDeliveryLists] = useState<DeliveryList[]>([]);
   const [deliveryListsLoading, setDeliveryListsLoading] = useState(false);
   const [deliveryListsError, setDeliveryListsError] = useState<string | null>(null);
   const [selectedDeliveryListId, setSelectedDeliveryListId] = useState<string | null>(
@@ -1177,12 +1197,10 @@ function ProductsPageInner() {
   const [isSavingSelection, setIsSavingSelection] = useState(false);
   const [isApplyingAction, setIsApplyingAction] = useState(false);
   const isRestoringRef = useRef(false);
+  const skipUrlSyncRef = useRef(false);
   const loadRequestRef = useRef(0);
-  const lastSelectedRowIndexRef = useRef<number | null>(null);
-  const shiftPressedRef = useRef(false);
   const clearSelection = useCallback(() => {
     setSelectedRows(new Set());
-    lastSelectedRowIndexRef.current = null;
     setDeleteSelectionDialogOpen(false);
   }, []);
   const searchParams = useSearchParams();
@@ -1454,13 +1472,18 @@ function ProductsPageInner() {
   );
 
   const fetchDeliveryLists = useCallback(
-    async (signal?: AbortSignal) => {
+    async (partner: DeliveryPartner, signal?: AbortSignal) => {
       setDeliveryListsLoading(true);
       setDeliveryListsError(null);
       try {
-        const response = await fetch("/api/product-delivery/digideal/lists", {
+        const params = new URLSearchParams();
+        params.set("partner", partner);
+        const response = await fetch(
+          `/api/product-delivery/digideal/lists?${params.toString()}`,
+          {
           signal,
-        });
+          }
+        );
         if (!response.ok) {
           throw new Error(await readResponseError(response, t("products.delivery.errorLoad")));
         }
@@ -1478,14 +1501,15 @@ function ProductsPageInner() {
   );
 
   const openDeliveryDialog = useCallback(
-    (productIds: string[]) => {
+    (productIds: string[], partner: DeliveryPartner) => {
       const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
       if (uniqueProductIds.length === 0) return;
+      setDeliveryPartner(partner);
       setDeliveryTargetProductIds(uniqueProductIds);
       setSelectedDeliveryListId(null);
       setDeliveryNewListName("");
       setDeliveryDialogOpen(true);
-      void fetchDeliveryLists();
+      void fetchDeliveryLists(partner);
     },
     [fetchDeliveryLists]
   );
@@ -1510,17 +1534,18 @@ function ProductsPageInner() {
         setProducts((prev) =>
           prev.map((product) => {
             if (!deliveryTargetProductIds.includes(product.id)) return product;
+            const partner = deliveryPartner;
             const partners = Array.isArray(product.delivery_partners)
               ? product.delivery_partners
               : [];
-            if (partners.includes("digideal")) return product;
+            if (partners.includes(partner)) return product;
             return {
               ...product,
-              delivery_partners: [...partners, "digideal"],
+              delivery_partners: [...partners, partner],
             };
           })
         );
-        await fetchDeliveryLists();
+        await fetchDeliveryLists(deliveryPartner);
         setDeliveryDialogOpen(false);
         setSelectedDeliveryListId(null);
         clearSelection();
@@ -1530,7 +1555,7 @@ function ProductsPageInner() {
         setAddingDeliveryListId(null);
       }
     },
-    [deliveryTargetProductIds, fetchDeliveryLists, t, clearSelection]
+    [deliveryTargetProductIds, deliveryPartner, fetchDeliveryLists, t, clearSelection]
   );
 
   const createDeliveryList = useCallback(
@@ -1543,7 +1568,7 @@ function ProductsPageInner() {
         const response = await fetch("/api/product-delivery/digideal/lists", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: trimmed }),
+          body: JSON.stringify({ name: trimmed, partner: deliveryPartner }),
         });
         if (!response.ok) {
           throw new Error(
@@ -1560,7 +1585,7 @@ function ProductsPageInner() {
         if (createdListId) {
           setSelectedDeliveryListId(createdListId);
         }
-        await fetchDeliveryLists();
+        await fetchDeliveryLists(deliveryPartner);
         setDeliveryNewListName("");
         if (createdListId) {
           setSelectedDeliveryListId(createdListId);
@@ -1571,7 +1596,7 @@ function ProductsPageInner() {
         setIsCreatingDeliveryList(false);
       }
     },
-    [deliveryNewListName, fetchDeliveryLists, t]
+    [deliveryNewListName, deliveryPartner, fetchDeliveryLists, t]
   );
 
   const saveSelectedDeliveryList = useCallback(() => {
@@ -1681,6 +1706,7 @@ function ProductsPageInner() {
       Math.max(1, Number(params.get("pageSize") ?? "25"))
     );
 
+    skipUrlSyncRef.current = true;
     isRestoringRef.current = true;
     setSearchInput(nextSearch);
     setSort(nextSort);
@@ -1800,6 +1826,10 @@ function ProductsPageInner() {
   ]);
 
   useEffect(() => {
+    if (skipUrlSyncRef.current) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (sort !== "updated_desc") params.set("sort", sort);
@@ -1881,13 +1911,16 @@ function ProductsPageInner() {
       ].filter((column) => normalizedMarkets.includes(column.key)),
     [normalizedMarkets]
   );
-  const hasShiftKey = useCallback((event: unknown) => {
-    const candidate = event as {
-      shiftKey?: boolean;
-      nativeEvent?: { shiftKey?: boolean };
-    };
-    return Boolean(candidate.shiftKey ?? candidate.nativeEvent?.shiftKey);
-  }, []);
+  const orderedProductIds = useMemo(
+    () => products.map((product) => product.id),
+    [products]
+  );
+  const { clearAnchor: clearRowSelectionAnchor, toggleWithRange: applyRowSelection } =
+    useShiftRangeSelection<string>({
+      orderedIds: orderedProductIds,
+      selectedIds: selectedRows,
+      setSelectedIds: setSelectedRows,
+    });
   const isInteractiveRowTarget = useCallback((target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
     return Boolean(
@@ -1896,42 +1929,6 @@ function ProductsPageInner() {
       )
     );
   }, []);
-  const applyRowSelection = useCallback(
-    (rowIndex: number, checked: boolean, shiftKey: boolean) => {
-      setSelectedRows((prev) => {
-        const next = new Set(prev);
-        const row = products[rowIndex];
-        if (!row) return prev;
-        const anchorIndex = lastSelectedRowIndexRef.current;
-        const useRange =
-          shiftKey &&
-          anchorIndex !== null &&
-          anchorIndex >= 0 &&
-          anchorIndex < products.length;
-
-        if (useRange) {
-          const start = Math.min(anchorIndex, rowIndex);
-          const end = Math.max(anchorIndex, rowIndex);
-          for (let i = start; i <= end; i += 1) {
-            const rangeRow = products[i];
-            if (!rangeRow) continue;
-            if (checked) {
-              next.add(rangeRow.id);
-            } else {
-              next.delete(rangeRow.id);
-            }
-          }
-        } else if (checked) {
-          next.add(row.id);
-        } else {
-          next.delete(row.id);
-        }
-        return next;
-      });
-      lastSelectedRowIndexRef.current = rowIndex;
-    },
-    [products]
-  );
   const allSelected =
     products.length > 0 && products.every((product) => selectedRows.has(product.id));
   const someSelected = products.some((product) => selectedRows.has(product.id));
@@ -1941,36 +1938,6 @@ function ProductsPageInner() {
     [products, selectedRows]
   );
   const hasSelection = selectedItems.length > 0;
-
-  useEffect(() => {
-    lastSelectedRowIndexRef.current = null;
-  }, [products]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Shift") {
-        shiftPressedRef.current = true;
-      }
-    };
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Shift") {
-        shiftPressedRef.current = false;
-      }
-    };
-    const handleWindowBlur = () => {
-      shiftPressedRef.current = false;
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleWindowBlur);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleWindowBlur);
-    };
-  }, []);
 
   useEffect(() => {
     if (!hasSelection) {
@@ -2242,7 +2209,7 @@ function ProductsPageInner() {
 
   const rows = useMemo(
     () =>
-      products.map((product, rowIndex) => {
+      products.map((product) => {
         const title = product.title ?? product.spu;
         const thumb = product.thumbnail_url ?? getThumbnailUrl(product, null);
         const preview = product.small_image_url ?? thumb;
@@ -2288,7 +2255,13 @@ function ProductsPageInner() {
         const deliveryPartners = Array.isArray(product.delivery_partners)
           ? product.delivery_partners
           : [];
-        const hasDigiDealDelivery = deliveryPartners.includes("digideal");
+        const normalizedDeliveryPartners = Array.from(
+          new Set(
+            deliveryPartners
+              .map((value) => normalizeDeliveryPartner(value))
+              .filter(Boolean)
+          )
+        );
         const productWishlistIds = Array.isArray(product.wishlist_ids)
           ? product.wishlist_ids
           : [];
@@ -2342,11 +2315,7 @@ function ProductsPageInner() {
             )}
             onClick={(event) => {
               if (isInteractiveRowTarget(event.target)) return;
-              applyRowSelection(
-                rowIndex,
-                !isSelected,
-                event.shiftKey || shiftPressedRef.current
-              );
+              applyRowSelection(product.id, !isSelected, event);
             }}
           >
             <TableCell className={styles.imageCol}>
@@ -2447,7 +2416,7 @@ function ProductsPageInner() {
               <div className={styles.dateStack}>
                 <div className={styles.dateRow}>
                   <Text className={styles.dateLabel}>
-                    {t("products.table.createdLabel")}:
+                    {t("products.table.createdLabel")}
                   </Text>
                   <Text className={dateValueClassName}>
                     {formatShortDate(product.created_at)}
@@ -2455,7 +2424,7 @@ function ProductsPageInner() {
                 </div>
                 <div className={styles.dateRow}>
                   <Text className={styles.dateLabel}>
-                    {t("products.table.updated")}:
+                    {t("products.table.updated")}
                   </Text>
                   <Text className={dateValueClassName}>
                     {formatShortDate(product.updated_at)}
@@ -2614,8 +2583,12 @@ function ProductsPageInner() {
                       >
                         {t("products.lists.new")}
                       </MenuItem>
-                      <MenuItem onClick={() => openDeliveryDialog([product.id])}>
-                        {t("products.actions.deliverDigiDeal")}
+                      <MenuDivider />
+                      <MenuItem onClick={() => openDeliveryDialog([product.id], "digideal")}>
+                        Deliver to DigiDeal.se
+                      </MenuItem>
+                      <MenuItem onClick={() => openDeliveryDialog([product.id], "letsdeal")}>
+                        Deliver to LetsDeal
                       </MenuItem>
                     </MenuList>
                   </MenuPopover>
@@ -2664,16 +2637,19 @@ function ProductsPageInner() {
             </TableCell>
             <TableCell className={styles.deliveryCol}>
               <div className={styles.deliveryCell}>
-                {hasDigiDealDelivery ? (
+                {normalizedDeliveryPartners.map((partner) => (
                   <span
+                    key={`${product.id}-${partner}`}
                     className={mergeClasses(
                       styles.statusBadge,
-                      styles.deliveryBadgeDigiDeal
+                      partner === "letsdeal"
+                        ? styles.deliveryBadgeLetsDeal
+                        : styles.deliveryBadgeDigiDeal
                     )}
                   >
-                    {t("products.delivery.partner.digideal")}
+                    {DELIVERY_PARTNER_LABEL[partner]}
                   </span>
-                ) : null}
+                ))}
               </div>
             </TableCell>
             <TableCell>
@@ -2684,11 +2660,7 @@ function ProductsPageInner() {
                   className={styles.selectCheckbox}
                   onClick={(event) => event.stopPropagation()}
                   onChange={(event, data) => {
-                    applyRowSelection(
-                      rowIndex,
-                      data.checked === true,
-                      hasShiftKey(event) || shiftPressedRef.current
-                    );
+                    applyRowSelection(product.id, data.checked === true, event);
                   }}
                 />
               </div>
@@ -2709,7 +2681,6 @@ function ProductsPageInner() {
       openDeliveryDialog,
       isInteractiveRowTarget,
       applyRowSelection,
-      hasShiftKey,
     ]
   );
 
@@ -3272,11 +3243,23 @@ function ProductsPageInner() {
                                     disabled={!hasSelection || isApplyingAction}
                                     onClick={() =>
                                       openDeliveryDialog(
-                                        selectedItems.map((item) => item.id)
+                                        selectedItems.map((item) => item.id),
+                                        "digideal"
                                       )
                                     }
                                   >
-                                    {t("products.actions.deliverDigiDeal")}
+                                    Deliver to DigiDeal.se
+                                  </MenuItem>
+                                  <MenuItem
+                                    disabled={!hasSelection || isApplyingAction}
+                                    onClick={() =>
+                                      openDeliveryDialog(
+                                        selectedItems.map((item) => item.id),
+                                        "letsdeal"
+                                      )
+                                    }
+                                  >
+                                    Deliver to LetsDeal
                                   </MenuItem>
                                 </MenuList>
                               </MenuPopover>
@@ -3351,12 +3334,12 @@ function ProductsPageInner() {
                     disabled={isLoading || products.length === 0}
                     className={styles.selectCheckbox}
                     onChange={(_, data) => {
+                      clearRowSelectionAnchor();
                       if (data.checked === true) {
                         setSelectedRows(new Set(products.map((product) => product.id)));
                       } else {
                         setSelectedRows(new Set());
                       }
-                      lastSelectedRowIndexRef.current = null;
                     }}
                   />
                 </div>
@@ -3459,12 +3442,15 @@ function ProductsPageInner() {
             setDeliveryNewListName("");
             setDeliveryListsError(null);
             setSelectedDeliveryListId(null);
+            setDeliveryPartner("digideal");
           }
         }}
       >
         <DialogSurface className={styles.deliveryDialog}>
           <DialogBody className={styles.deliveryDialogBody}>
-            <DialogTitle>{t("products.delivery.dialogTitle")}</DialogTitle>
+            <DialogTitle>
+              {t("products.delivery.dialogTitle")} - {DELIVERY_PARTNER_LABEL[deliveryPartner]}
+            </DialogTitle>
             <Text size={200} className={styles.deliveryDialogSubtitle}>
               {t("products.delivery.dialogBody", {
                 count: deliveryTargetProductIds.length,

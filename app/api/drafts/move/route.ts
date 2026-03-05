@@ -35,6 +35,33 @@ const ensureUniqueFileDestination = (initialPath: string) => {
   }
 };
 
+const normalizeFolderToken = (value: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+
+const isDeletedImagesFolderToken = (value: string) => {
+  const normalized = normalizeFolderToken(value);
+  return normalized === "deletedimages" || normalized === "deletedimagesd";
+};
+
+const resolveDeletedImagesTargetFolder = (targetAbsolutePath: string) => {
+  const folderName = path.basename(targetAbsolutePath);
+  if (!isDeletedImagesFolderToken(folderName)) {
+    return targetAbsolutePath;
+  }
+  const parentAbsolutePath = path.dirname(targetAbsolutePath);
+  const candidates = ["deleted images", "Deleted Images (D)"];
+  for (const candidate of candidates) {
+    const candidateAbsolutePath = path.join(parentAbsolutePath, candidate);
+    if (fs.existsSync(candidateAbsolutePath) && fs.statSync(candidateAbsolutePath).isDirectory()) {
+      return candidateAbsolutePath;
+    }
+  }
+  return path.join(parentAbsolutePath, "deleted images");
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   const {
@@ -65,14 +92,19 @@ export async function POST(request: Request) {
   }
 
   const sourceAbsolutePath = resolveDraftPath(sourcePath);
-  const targetAbsolutePath = resolveDraftPath(targetPath);
+  const targetAbsolutePathRaw = resolveDraftPath(targetPath);
 
   if (
     !sourceAbsolutePath ||
-    !targetAbsolutePath ||
+    !targetAbsolutePathRaw ||
     !sourceAbsolutePath.startsWith(`${DRAFT_ROOT}${path.sep}`) ||
-    !targetAbsolutePath.startsWith(`${DRAFT_ROOT}${path.sep}`)
+    !targetAbsolutePathRaw.startsWith(`${DRAFT_ROOT}${path.sep}`)
   ) {
+    return NextResponse.json({ error: "Invalid path." }, { status: 400 });
+  }
+
+  const targetAbsolutePath = resolveDeletedImagesTargetFolder(targetAbsolutePathRaw);
+  if (!targetAbsolutePath.startsWith(`${DRAFT_ROOT}${path.sep}`)) {
     return NextResponse.json({ error: "Invalid path." }, { status: 400 });
   }
 

@@ -123,6 +123,73 @@ const detectBlock = (finalUrl: string, html: string): DirectFetchResult["blocked
   return null;
 };
 
+const parseHtmlAttribute = (tag: string, attrName: string) => {
+  const re = new RegExp(
+    `${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    "i"
+  );
+  const match = String(tag || "").match(re);
+  if (!match) return "";
+  return decodeHtmlEntities(String(match[1] ?? match[2] ?? match[3] ?? "")).trim();
+};
+
+const extractAmazonContinueForm = (baseUrl: string, html: string) => {
+  const formMatch = String(html || "").match(
+    /<form\b[^>]*action\s*=\s*(?:"([^"]*validateCaptcha[^"]*)"|'([^']*validateCaptcha[^']*)'|([^>\s]*validateCaptcha[^>\s]*))[^>]*>([\s\S]*?)<\/form>/i
+  );
+  if (!formMatch) return null;
+
+  const actionRaw = String(formMatch[1] ?? formMatch[2] ?? formMatch[3] ?? "").trim();
+  if (!actionRaw) return null;
+  const formInnerHtml = String(formMatch[4] || "");
+
+  const params = new URLSearchParams();
+  const hiddenInputs = Array.from(formInnerHtml.matchAll(/<input\b[^>]*>/gi));
+  hiddenInputs.forEach((match) => {
+    const tag = String(match[0] || "");
+    const inputType = parseHtmlAttribute(tag, "type").toLowerCase();
+    if (inputType && inputType !== "hidden") return;
+    const name = parseHtmlAttribute(tag, "name");
+    if (!name) return;
+    const value = parseHtmlAttribute(tag, "value");
+    params.set(name, value);
+  });
+
+  const hasCaptchaSignals =
+    params.has("amzn") ||
+    params.has("amzn-r") ||
+    /\/errors\/validatecaptcha/i.test(actionRaw);
+  if (!hasCaptchaSignals) return null;
+
+  const actionUrl = (() => {
+    try {
+      return new URL(actionRaw, baseUrl).toString();
+    } catch {
+      return "";
+    }
+  })();
+  if (!actionUrl) return null;
+
+  return { actionUrl, params };
+};
+
+const extractSetCookieHeaders = (headers: Headers): string[] => {
+  const anyHeaders = headers as unknown as { getSetCookie?: () => string[] };
+  if (typeof anyHeaders.getSetCookie === "function") {
+    const values = anyHeaders.getSetCookie();
+    return Array.isArray(values) ? values.filter(Boolean) : [];
+  }
+  const fallback = headers.get("set-cookie");
+  return fallback ? [fallback] : [];
+};
+
+const buildCookieHeader = (setCookieHeaders: string[]) => {
+  const pairs = setCookieHeaders
+    .map((entry) => String(entry || "").split(";")[0]?.trim() ?? "")
+    .filter((entry) => entry.includes("="));
+  return pairs.join("; ");
+};
+
 async function readBodyWithLimit(res: Response, maxBytes: number) {
   // Node fetch/undici supports streaming via res.body.
   if (!res.body) return await res.text();
@@ -162,6 +229,12 @@ export async function fetchAmazonHtmlDirect(
 
   const timeoutMs = Math.max(1_000, Math.trunc(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS));
   const maxBytes = Math.max(50_000, Math.trunc(opts.maxBytes ?? DEFAULT_MAX_BYTES));
+  const requestHeaders: Record<string, string> = {
+    // Keep headers simple. This is not intended to bypass anti-bot systems.
+    "User-Agent": "NordexoHubAmazonScraper/1.0",
+    Accept: "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+  };
 
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
@@ -171,12 +244,7 @@ export async function fetchAmazonHtmlDirect(
       method: "GET",
       redirect: "follow",
       signal: ac.signal,
-      headers: {
-        // Keep headers simple. This is not intended to bypass anti-bot systems.
-        "User-Agent": "NordexoHubAmazonScraper/1.0",
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+      headers: requestHeaders,
     });
   } catch (err) {
     clearTimeout(t);
@@ -207,6 +275,38 @@ export async function fetchAmazonHtmlDirect(
     });
   }
 
+  // Some Amazon locales show a one-click interstitial form before the product page.
+  // If present, submit it once and continue with the resulting document.
+  const continueForm = extractAmazonContinueForm(finalUrl, html);
+  if (continueForm) {
+    try {
+      const continueUrl = new URL(continueForm.actionUrl);
+      continueForm.params.forEach((value, key) => {
+        continueUrl.searchParams.set(key, value);
+      });
+      const cookieHeader = buildCookieHeader(extractSetCookieHeaders(res.headers));
+      const continueHeaders: Record<string, string> = {
+        ...requestHeaders,
+        Referer: finalUrl,
+      };
+      if (cookieHeader) {
+        continueHeaders.Cookie = cookieHeader;
+      }
+
+      const continueResponse = await fetch(continueUrl.toString(), {
+        method: "GET",
+        redirect: "follow",
+        signal: ac.signal,
+        headers: continueHeaders,
+      });
+      const continuedHtml = await readBodyWithLimit(continueResponse, maxBytes);
+      res = continueResponse;
+      html = continuedHtml;
+    } catch {
+      // Continue with original response body if form submit fails.
+    }
+  }
+
   const htmlSha1 = crypto.createHash("sha1").update(html).digest("hex");
   const title = extractTitle(html);
   const headForSnippets = String(html || "").slice(0, 120000);
@@ -218,10 +318,14 @@ export async function fetchAmazonHtmlDirect(
 
   return {
     url: trimmed,
-    finalUrl,
-    status: res.status,
+    finalUrl: res.url || finalUrl,
+    status: Number.isFinite(res.status) ? res.status : 0,
     html,
-    contentType: contentType ? toAscii(contentType) : null,
+    contentType: res.headers.get("content-type")
+      ? toAscii(String(res.headers.get("content-type") || ""))
+      : contentType
+        ? toAscii(contentType)
+        : null,
     blocked,
     debug,
   };

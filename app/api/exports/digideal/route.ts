@@ -4,7 +4,14 @@ import fs from "fs/promises";
 import { spawn } from "child_process";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
+import { resolveDeliveryPartnerFromListName } from "@/lib/product-delivery/digideal";
+import {
+  enqueueLetsdealDeliveryJobs,
+  isMissingLetsdealDeliveryJobsTableError,
+  spawnLetsdealDeliveryWorker,
+} from "@/lib/product-delivery/letsdeal-jobs";
 import { buildPublicUrl } from "@/lib/public-files";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -32,6 +39,24 @@ const PRODUCT_META_KEYS = [
 ];
 const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
 const B2B_MARKETS = ["SE", "NO", "DK", "FI"] as const;
+const LETSDEAL_HEADERS = [
+  "SPU",
+  "SKU",
+  "Name",
+  "Variant Name",
+  "Amount",
+  "Color",
+  "Size",
+  "Other",
+  "Combined Product Text",
+  "LetsDeal Title 1",
+  "LetsDeal Title 2",
+  "LetsDeal Summary",
+  "LetsDeal Produktinformation",
+  "B2B Price",
+  "MOQ",
+  "Image URL",
+] as const;
 const ALL_DATA_HEADERS = [
   "SPU",
   "SKU",
@@ -88,7 +113,7 @@ const ALL_DATA_HEADERS = [
 ] as const;
 
 type B2BMarket = (typeof B2B_MARKETS)[number];
-type ExportDataset = "partner" | "all";
+type ExportDataset = "partner" | "all" | "letsdeal";
 type StandardImageZipJobEntry = {
   spu: string;
   imageFolder: string | null;
@@ -153,6 +178,7 @@ const normalizeDataset = (value: unknown): ExportDataset => {
   const normalized = String(value ?? "")
     .trim()
     .toLowerCase();
+  if (normalized === "letsdeal" || normalized === "letsdeal_data") return "letsdeal";
   if (normalized === "all" || normalized === "full") return "all";
   return "partner";
 };
@@ -248,8 +274,28 @@ const buildAllDataWorkbook = async (rows: ExportCell[][]) => {
   return workbook.xlsx.writeBuffer();
 };
 
+const buildLetsdealWorkbook = async (rowsSe: ExportCell[][], rowsNo: ExportCell[][]) => {
+  const workbook = new ExcelJS.Workbook();
+  const swedenSheet = workbook.addWorksheet("Sweden");
+  swedenSheet.addRow([...LETSDEAL_HEADERS]);
+  rowsSe.forEach((row) => swedenSheet.addRow(row));
+  swedenSheet.getRow(1).font = { bold: true };
+  swedenSheet.views = [{ state: "frozen", ySplit: 1 }];
+  swedenSheet.columns = LETSDEAL_HEADERS.map(() => ({ width: 24 }));
+
+  const norwaySheet = workbook.addWorksheet("Norway");
+  norwaySheet.addRow([...LETSDEAL_HEADERS]);
+  rowsNo.forEach((row) => norwaySheet.addRow(row));
+  norwaySheet.getRow(1).font = { bold: true };
+  norwaySheet.views = [{ state: "frozen", ySplit: 1 }];
+  norwaySheet.columns = LETSDEAL_HEADERS.map(() => ({ width: 24 }));
+
+  return workbook.xlsx.writeBuffer();
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
+  const adminClient = createAdminSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -317,6 +363,7 @@ export async function POST(request: Request) {
   const exportName = requestedName || defaultName;
 
   let listName: string | null = null;
+  let listPartner: "digideal" | "letsdeal" | null = null;
   let productIds: string[] = [];
 
   if (listId) {
@@ -336,6 +383,10 @@ export async function POST(request: Request) {
     }
 
     listName = listRow.name ?? null;
+    listPartner = resolveDeliveryPartnerFromListName(listName);
+    if (!listPartner) {
+      return NextResponse.json({ error: "Invalid delivery list." }, { status: 400 });
+    }
 
     const { data: listItems, error: listItemsError } = await supabase
       .from("product_manager_wishlist_items")
@@ -362,14 +413,27 @@ export async function POST(request: Request) {
     productIds = (savedRows ?? []).map((row) => row.product_id);
   }
 
+  if (dataset === "letsdeal" && listPartner !== "letsdeal") {
+    return NextResponse.json(
+      { error: "LetsDeal Data export is available only for LetsDeal delivery lists." },
+      { status: 400 }
+    );
+  }
+
   productIds = Array.from(new Set(productIds));
   if (productIds.length === 0) {
     const buffer =
       dataset === "all"
         ? await buildAllDataWorkbook([])
-        : await buildPartnerWorkbook([]);
+        : dataset === "letsdeal"
+          ? await buildLetsdealWorkbook([], [])
+          : await buildPartnerWorkbook([]);
     const emptyFileName =
-      dataset === "all" ? "digideal_export_all.xlsx" : "digideal_export.xlsx";
+      dataset === "all"
+        ? "digideal_export_all.xlsx"
+        : dataset === "letsdeal"
+          ? "letsdeal_export.xlsx"
+          : "digideal_export.xlsx";
     return new NextResponse(buffer, {
       headers: {
         "Content-Type":
@@ -377,6 +441,52 @@ export async function POST(request: Request) {
         "Content-Disposition": `attachment; filename="${emptyFileName}"`,
       },
     });
+  }
+
+  if (dataset === "letsdeal" && listId) {
+    const queued = await enqueueLetsdealDeliveryJobs({
+      wishlistId: listId,
+      productIds,
+    });
+    if (queued.total > 0) {
+      spawnLetsdealDeliveryWorker(listId);
+    }
+
+    const { data: jobRows, error: jobError } = await adminClient
+      .from("letsdeal_delivery_jobs")
+      .select("product_id, status")
+      .eq("wishlist_id", listId)
+      .in("product_id", productIds);
+
+    if (jobError) {
+      if (isMissingLetsdealDeliveryJobsTableError(jobError)) {
+        return NextResponse.json(
+          { error: "LetsDeal delivery preprocessing is not enabled in this environment yet." },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: jobError.message }, { status: 500 });
+    }
+
+    const completedProductIds = new Set(
+      (jobRows ?? [])
+        .filter((row) => String((row as { status?: unknown }).status ?? "") === "completed")
+        .map((row) => String((row as { product_id?: unknown }).product_id ?? "").trim())
+        .filter(Boolean)
+    );
+    const missingProductIds = productIds.filter((productId) => !completedProductIds.has(productId));
+    if (missingProductIds.length > 0) {
+      return NextResponse.json(
+        {
+          error: "LetsDeal data is not ready yet for this delivery list.",
+          processing: {
+            queued_or_requeued: queued.total,
+            waiting_for_products: missingProductIds.length,
+          },
+        },
+        { status: 409 }
+      );
+    }
   }
 
   let productQuery = supabase
@@ -541,6 +651,49 @@ export async function POST(request: Request) {
     return null;
   };
 
+  const letsdealTextsByProduct = new Map<
+    string,
+    {
+      title_1_sv: string;
+      title_2_sv: string;
+      summary_sv: string;
+      product_information_sv: string;
+      title_1_no: string;
+      title_2_no: string;
+      summary_no: string;
+      product_information_no: string;
+    }
+  >();
+
+  if (dataset === "letsdeal") {
+    const { data: letsdealRowsRaw, error: letsdealRowsError } = await adminClient
+      .from("letsdeal_product_texts")
+      .select(
+        "product_id, title_1_sv, title_2_sv, summary_sv, product_information_sv, title_1_no, title_2_no, summary_no, product_information_no"
+      )
+      .in("product_id", productIds);
+
+    if (letsdealRowsError) {
+      return NextResponse.json({ error: letsdealRowsError.message }, { status: 500 });
+    }
+
+    (letsdealRowsRaw ?? []).forEach((row) => {
+      const raw = row as Record<string, unknown>;
+      const productId = String(raw.product_id ?? "").trim();
+      if (!productId) return;
+      letsdealTextsByProduct.set(productId, {
+        title_1_sv: String(raw.title_1_sv ?? "").trim(),
+        title_2_sv: String(raw.title_2_sv ?? "").trim(),
+        summary_sv: String(raw.summary_sv ?? "").trim(),
+        product_information_sv: String(raw.product_information_sv ?? "").trim(),
+        title_1_no: String(raw.title_1_no ?? "").trim(),
+        title_2_no: String(raw.title_2_no ?? "").trim(),
+        summary_no: String(raw.summary_no ?? "").trim(),
+        product_information_no: String(raw.product_information_no ?? "").trim(),
+      });
+    });
+  }
+
   const variantsByProduct = new Map<string, typeof variants>();
   (variants ?? []).forEach((variant) => {
     const list = variantsByProduct.get(variant.product_id) ?? [];
@@ -550,6 +703,8 @@ export async function POST(request: Request) {
 
   const partnerRows: ExportCell[][] = [];
   const allRows: ExportCell[][] = [];
+  const letsdealRowsSe: ExportCell[][] = [];
+  const letsdealRowsNo: ExportCell[][] = [];
 
   (products ?? []).forEach((product) => {
     const normalizedSpu = normalizeSpu(product.spu);
@@ -737,6 +892,61 @@ export async function POST(request: Request) {
         variant.shipping_name_zh ?? "",
         variant.shipping_class ?? "",
       ]);
+
+      if (dataset === "letsdeal") {
+        const letsdealText = letsdealTextsByProduct.get(product.id);
+        const letsdealTitle1Sv = letsdealText?.title_1_sv || longTitleSe || nameSe;
+        const letsdealTitle2Sv = letsdealText?.title_2_sv || subtitleRaw;
+        const letsdealSummarySv = letsdealText?.summary_sv || descriptionCell;
+        const letsdealInfoSv =
+          letsdealText?.product_information_sv || bulletList || specsList || "";
+
+        const letsdealTitle1No = letsdealText?.title_1_no || letsdealTitle1Sv;
+        const letsdealTitle2No = letsdealText?.title_2_no || letsdealTitle2Sv;
+        const letsdealSummaryNo = letsdealText?.summary_no || letsdealSummarySv;
+        const letsdealInfoNo = letsdealText?.product_information_no || letsdealInfoSv;
+
+        const combinedTextSe = variantName ? `${letsdealTitle1Sv} - ${variantName}` : letsdealTitle1Sv;
+        const combinedTextNo = variantName ? `${letsdealTitle1No} - ${variantName}` : letsdealTitle1No;
+
+        letsdealRowsSe.push([
+          product.spu ?? "",
+          currentSku,
+          letsdealTitle1Sv,
+          variantName,
+          amountFormatted,
+          bucket.color,
+          bucket.size,
+          bucket.other,
+          combinedTextSe,
+          letsdealTitle1Sv,
+          letsdealTitle2Sv,
+          letsdealSummarySv,
+          letsdealInfoSv,
+          b2bSe ?? "",
+          1000,
+          imageZipUrl,
+        ]);
+
+        letsdealRowsNo.push([
+          product.spu ?? "",
+          currentSku,
+          letsdealTitle1No,
+          variantName,
+          amountFormatted,
+          bucket.color,
+          bucket.size,
+          bucket.other,
+          combinedTextNo,
+          letsdealTitle1No,
+          letsdealTitle2No,
+          letsdealSummaryNo,
+          letsdealInfoNo,
+          b2bNo ?? "",
+          1000,
+          imageZipUrl,
+        ]);
+      }
     });
   });
 
@@ -744,7 +954,11 @@ export async function POST(request: Request) {
   const buffer =
     dataset === "all"
       ? await buildAllDataWorkbook(rowsToWrite)
-      : await buildPartnerWorkbook(rowsToWrite);
+      : dataset === "letsdeal"
+        ? await buildLetsdealWorkbook(letsdealRowsSe, letsdealRowsNo)
+        : await buildPartnerWorkbook(rowsToWrite);
+  const rowCountForMeta =
+    dataset === "letsdeal" ? letsdealRowsSe.length + letsdealRowsNo.length : rowsToWrite.length;
 
   await fs.mkdir(EXPORT_DIR, { recursive: true });
   const timestamp = formatTimestamp();
@@ -761,14 +975,15 @@ export async function POST(request: Request) {
       status: "generated",
       file_path: storedPath,
       meta: {
-        template: dataset === "all" ? "digideal_all" : "digideal",
+        template:
+          dataset === "all" ? "digideal_all" : dataset === "letsdeal" ? "letsdeal" : "digideal",
         dataset,
         export_name: exportName,
         market: requestedMarketTyped,
         product_count: productIds.length,
-        row_count: rowsToWrite.length,
+        row_count: rowCountForMeta,
         spu_count: productIds.length,
-        sku_count: rowsToWrite.length,
+        sku_count: rowCountForMeta,
         list_id: listId,
         list_name: listName,
       },

@@ -233,6 +233,24 @@ const useStyles = makeStyles({
     gap: "10px",
     flexWrap: "wrap",
   },
+  queueHeaderActions: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  queueHeaderDeleteButton: {
+    marginLeft: "auto",
+  },
+  queueHeaderDeleteButtonActive: {
+    backgroundColor: `${tokens.colorNeutralBackground1} !important`,
+    border: `1px solid ${tokens.colorStatusDangerForeground1}`,
+    color: `${tokens.colorStatusDangerForeground1} !important`,
+    "&:hover": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+    "&:active": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+  },
   chromeColSelect: {
     width: "44px",
   },
@@ -301,6 +319,37 @@ const useStyles = makeStyles({
       backgroundColor: "#095a09",
       color: "#ffffff",
     },
+  },
+  queueRowSecondaryAction: {
+    backgroundColor: "transparent !important",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    color: tokens.colorNeutralForeground1,
+    "&:hover": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+    "&:active": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+  },
+  queueRowStopAction: {
+    backgroundColor: `${tokens.colorNeutralBackground1} !important`,
+    border: `1px solid ${tokens.colorStatusDangerForeground1}`,
+    color: `${tokens.colorStatusDangerForeground1} !important`,
+    "&:hover": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+    "&:active": {
+      backgroundColor: `${tokens.colorNeutralBackground2} !important`,
+    },
+  },
+  processingIndicator: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  processingSpinner: {
+    color: tokens.colorNeutralForeground3,
+    transform: "scale(0.8)",
   },
   chromeLink: {
     paddingInline: 0,
@@ -1282,6 +1331,8 @@ export default function BulkProcessingPage() {
         .map((entry) => entry.name),
     [productionQueueFiles, selectedExtractorFiles]
   );
+  const hasSelectedProductionRows = selectedProductionNames.length > 0;
+  const canMergeSelectedProductionRows = selectedProductionNames.length >= 2;
 
   const allProductionSelected = useMemo(
     () =>
@@ -1992,7 +2043,7 @@ export default function BulkProcessingPage() {
           <Text size={500} weight="semibold">
             {t("bulkProcessing.queueIncoming.title")}
           </Text>
-          <div className={styles.chromeHeaderActions}>
+          <div className={`${styles.chromeHeaderActions} ${styles.queueHeaderActions}`}>
             <Button
               appearance="primary"
               size="small"
@@ -2002,22 +2053,25 @@ export default function BulkProcessingPage() {
               {isImportingJson ? <Spinner size="tiny" /> : "Import JSON File"}
             </Button>
             <Button
-              appearance="outline"
+              appearance={canMergeSelectedProductionRows ? "primary" : "outline"}
               size="small"
-              onClick={() => void handleDeleteSelectedExtractors()}
-              disabled={isDeletingSelected || selectedProductionNames.length === 0}
+              onClick={handleOpenMergeDialog}
+              disabled={
+                isMerging || isDeletingSelected || !canMergeSelectedProductionRows
+              }
             >
-              {isDeletingSelected ? <Spinner size="tiny" /> : "Delete"}
+              Merge
             </Button>
             <Button
               appearance="outline"
               size="small"
-              onClick={handleOpenMergeDialog}
-              disabled={
-                isMerging || isDeletingSelected || selectedProductionNames.length < 2
-              }
+              className={`${styles.queueHeaderDeleteButton} ${
+                hasSelectedProductionRows ? styles.queueHeaderDeleteButtonActive : ""
+              }`}
+              onClick={() => void handleDeleteSelectedExtractors()}
+              disabled={isDeletingSelected || !hasSelectedProductionRows}
             >
-              Merge
+              {isDeletingSelected ? <Spinner size="tiny" /> : "Delete"}
             </Button>
           </div>
         </div>
@@ -2297,17 +2351,19 @@ export default function BulkProcessingPage() {
                         ) : isBatchComplete ? (
                           "Batch Complete"
                         ) : isRunningBatch ? (
-                          <>
-                            <Spinner size="tiny" />
-                            {" "}
-                            Processing Batch
-                          </>
+                          <span className={styles.processingIndicator}>
+                            <Spinner size="tiny" className={styles.processingSpinner} />
+                            Processing
+                          </span>
                         ) : (
                           "Run this batch"
                         )}
                       </Button>
                       <Button
                         appearance="outline"
+                        className={`${styles.queueRowSecondaryAction} ${
+                          isRunningBatch ? styles.queueRowStopAction : ""
+                        }`}
                         onClick={() => {
                           if (isRunningBatch && rowJob) {
                             void handleStopBatch(entry.name, rowJob.jobId);

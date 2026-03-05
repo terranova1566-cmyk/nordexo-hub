@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const escapeLikeToken = (value: string) => value.replace(/[%_]/g, "\\$&");
 
 const VARIANT_SELECT =
-  "id,draft_sku,draft_spu,draft_option1,draft_option2,draft_option3,draft_option4,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_variant_image_url,draft_shipping_class,draft_status,draft_updated_at,draft_raw_row";
+  "id,draft_sku,draft_spu,draft_option1,draft_option2,draft_option3,draft_option4,draft_option_combined_zh,draft_price,draft_weight,draft_weight_unit,draft_option1_zh,draft_option2_zh,draft_option3_zh,draft_option4_zh,draft_compare_at_price,draft_cost,draft_barcode,draft_variant_image_url,draft_shipping_name_en,draft_short_title_zh,draft_shipping_name_zh,draft_shipping_class,draft_taxable,draft_tax_code,draft_hs_code,draft_country_of_origin,draft_category_code_fq,draft_category_code_ld,draft_supplier_name,draft_supplier_location,draft_b2b_dropship_price_se,draft_b2b_dropship_price_no,draft_b2b_dropship_price_dk,draft_b2b_dropship_price_fi,draft_purchase_price_cny,draft_status,draft_updated_at,draft_raw_row";
 
 function getAdminClient() {
   const supabaseUrl =

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { DIGIDEAL_DELIVERY_LIST_PREFIX } from "@/lib/product-delivery/digideal";
+import { isDeliveryListName } from "@/lib/product-delivery/digideal";
 
 export async function GET() {
   const supabase = await createServerSupabase();
@@ -16,14 +16,13 @@ export async function GET() {
     .from("product_manager_wishlists")
     .select("id, name, created_at")
     .eq("user_id", user.id)
-    .not("name", "like", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`)
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const lists = data ?? [];
+  const lists = (data ?? []).filter((list) => !isDeliveryListName(list.name));
   if (lists.length === 0) {
     return NextResponse.json({ items: [] });
   }
@@ -75,7 +74,7 @@ export async function POST(request: Request) {
   if (!name) {
     return NextResponse.json({ error: "Name is required." }, { status: 400 });
   }
-  if (name.startsWith(DIGIDEAL_DELIVERY_LIST_PREFIX)) {
+  if (isDeliveryListName(name)) {
     return NextResponse.json({ error: "Unsupported list name." }, { status: 400 });
   }
 
@@ -114,8 +113,25 @@ export async function PATCH(request: Request) {
   if (!id || !name) {
     return NextResponse.json({ error: "Missing fields." }, { status: 400 });
   }
-  if (name.startsWith(DIGIDEAL_DELIVERY_LIST_PREFIX)) {
+  if (isDeliveryListName(name)) {
     return NextResponse.json({ error: "Unsupported list name." }, { status: 400 });
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("product_manager_wishlists")
+    .select("id, name")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
+  }
+  if (isDeliveryListName(existing.name)) {
+    return NextResponse.json({ error: "Use the delivery list endpoint for this list." }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -123,7 +139,6 @@ export async function PATCH(request: Request) {
     .update({ name })
     .eq("id", id)
     .eq("user_id", user.id)
-    .not("name", "like", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`)
     .select("id, name, created_at")
     .maybeSingle();
 
@@ -160,12 +175,30 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Missing fields." }, { status: 400 });
   }
 
+  const { data: existing, error: existingError } = await supabase
+    .from("product_manager_wishlists")
+    .select("id, name")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+
+  if (!existing) {
+    return NextResponse.json({ error: "Wishlist not found." }, { status: 404 });
+  }
+
+  if (isDeliveryListName(existing.name)) {
+    return NextResponse.json({ error: "Use the delivery list endpoint for this list." }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("product_manager_wishlists")
     .delete()
     .eq("id", id)
     .eq("user_id", user.id)
-    .not("name", "like", `${DIGIDEAL_DELIVERY_LIST_PREFIX}%`)
     .select("id")
     .maybeSingle();
 
