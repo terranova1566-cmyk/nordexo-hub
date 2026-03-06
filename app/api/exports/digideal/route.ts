@@ -4,7 +4,10 @@ import fs from "fs/promises";
 import { spawn } from "child_process";
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
-import { resolveDeliveryPartnerFromListName } from "@/lib/product-delivery/digideal";
+import {
+  normalizeDeliveryPartner,
+  resolveDeliveryPartnerFromListName,
+} from "@/lib/product-delivery/digideal";
 import {
   enqueueLetsdealDeliveryJobs,
   isMissingLetsdealDeliveryJobsTableError,
@@ -183,6 +186,35 @@ const normalizeDataset = (value: unknown): ExportDataset => {
   return "partner";
 };
 
+const normalizeRequestedProductIds = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as string[];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const resolveViewerPartner = (
+  companyName: unknown,
+  userMetadata: Record<string, unknown> | null | undefined
+) => {
+  const candidates = [
+    companyName,
+    userMetadata?.company_name,
+    userMetadata?.organization_name,
+    userMetadata?.organization,
+    userMetadata?.company,
+  ];
+  for (const candidate of candidates) {
+    const partner = normalizeDeliveryPartner(String(candidate ?? ""));
+    if (partner) return partner;
+  }
+  return null;
+};
+
 const normalizeSpu = (value: unknown) => String(value ?? "").trim().toUpperCase();
 
 const sanitizeSpuSegment = (spu: string) => {
@@ -236,6 +268,19 @@ const buildPartnerWorkbook = async (rows: ExportCell[][]) => {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(TEMPLATE_PATH);
   const sheet = workbook.worksheets[0];
+  const headerRow = sheet.getRow(1);
+  headerRow.eachCell((cell) => {
+    const header = String(cell.value ?? "")
+      .trim()
+      .toLowerCase();
+    if (
+      header === "combined product text se" ||
+      header === "combined product text sc" ||
+      header === "combined product text"
+    ) {
+      cell.value = "SC_short_title";
+    }
+  });
   const templateRow = sheet.getRow(2);
 
   if (rows.length === 0) {
@@ -306,7 +351,7 @@ export async function POST(request: Request) {
 
   const { data: userSettings } = await supabase
     .from("partner_user_settings")
-    .select("active_markets, is_admin")
+    .select("active_markets, is_admin, company_name")
     .eq("user_id", user.id)
     .maybeSingle();
   const activeMarkets = (
@@ -315,11 +360,16 @@ export async function POST(request: Request) {
       : ["SE"]
   ).map((market: string) => market.toUpperCase());
   const isAdmin = Boolean(userSettings?.is_admin);
+  const viewerPartner = resolveViewerPartner(
+    userSettings?.company_name,
+    (user.user_metadata ?? null) as Record<string, unknown> | null
+  );
 
   let requestedName = "";
   let listId: string | null = null;
   let requestedMarket = "SE";
   let dataset: ExportDataset = "partner";
+  let requestedProductIds: string[] = [];
   try {
     const body = await request.json();
     if (body?.name) {
@@ -334,10 +384,12 @@ export async function POST(request: Request) {
     if (body?.dataset !== undefined) {
       dataset = normalizeDataset(body.dataset);
     }
+    requestedProductIds = normalizeRequestedProductIds(body?.productIds);
   } catch {
     requestedName = "";
     listId = null;
     dataset = "partner";
+    requestedProductIds = [];
   }
 
   if (!isAdmin && dataset === "all") {
@@ -367,11 +419,10 @@ export async function POST(request: Request) {
   let productIds: string[] = [];
 
   if (listId) {
-    const { data: listRow, error: listError } = await supabase
+    const { data: listRow, error: listError } = await adminClient
       .from("product_manager_wishlists")
       .select("id, name")
       .eq("id", listId)
-      .eq("user_id", user.id)
       .maybeSingle();
 
     if (listError) {
@@ -387,8 +438,16 @@ export async function POST(request: Request) {
     if (!listPartner) {
       return NextResponse.json({ error: "Invalid delivery list." }, { status: 400 });
     }
+    if (!isAdmin) {
+      if (!viewerPartner) {
+        return NextResponse.json({ error: "Partner access is not configured." }, { status: 403 });
+      }
+      if (viewerPartner !== listPartner) {
+        return NextResponse.json({ error: "Forbidden for this delivery list." }, { status: 403 });
+      }
+    }
 
-    const { data: listItems, error: listItemsError } = await supabase
+    const { data: listItems, error: listItemsError } = await adminClient
       .from("product_manager_wishlist_items")
       .select("product_id")
       .eq("wishlist_id", listId);
@@ -400,6 +459,10 @@ export async function POST(request: Request) {
     productIds = (listItems ?? [])
       .map((row) => row.product_id)
       .filter(Boolean) as string[];
+    if (requestedProductIds.length > 0) {
+      const selectedSet = new Set(requestedProductIds);
+      productIds = productIds.filter((productId) => selectedSet.has(String(productId)));
+    }
   } else {
     const { data: savedRows, error: savedError } = await supabase
       .from("partner_saved_products")
@@ -411,6 +474,10 @@ export async function POST(request: Request) {
     }
 
     productIds = (savedRows ?? []).map((row) => row.product_id);
+  }
+
+  if (!isAdmin && listPartner) {
+    dataset = listPartner === "letsdeal" ? "letsdeal" : "partner";
   }
 
   if (dataset === "letsdeal" && listPartner !== "letsdeal") {
@@ -496,7 +563,7 @@ export async function POST(request: Request) {
     )
     .in("id", productIds);
 
-  if (!isAdmin) {
+  if (!isAdmin && !listId) {
     productQuery = productQuery.eq("nordic_partner_enabled", true);
   }
 
@@ -789,7 +856,7 @@ export async function POST(request: Request) {
         bucket.other,
         amountFormatted,
       ].filter(Boolean);
-      const variantName = variantParts.join("; ");
+      const variantName = variantParts.join(", ");
       const combinedText = variantName ? `${nameSe} - ${variantName}` : nameSe;
       const fallbackByMarket = {
         SE: variant.b2b_dropship_price_se,

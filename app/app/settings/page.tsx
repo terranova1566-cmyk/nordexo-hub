@@ -184,6 +184,9 @@ const USER_ROLE_OPTIONS: Array<{ key: UserRoleKey; label: UserRoleLabel }> = [
   { key: "employee", label: "Employee" },
 ];
 
+const roleHasAdminAccess = (role: UserRoleKey): boolean =>
+  role === "admin" || role === "employee";
+
 const normalizeRoleLabel = (
   value: unknown,
   isAdmin: boolean | null | undefined
@@ -855,6 +858,21 @@ export default function SettingsPage() {
   );
   const [newUserRole, setNewUserRole] = useState<UserRoleKey>("external_partner");
   const [newUserSaving, setNewUserSaving] = useState(false);
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUserSaving, setEditUserSaving] = useState(false);
+  const [editUserId, setEditUserId] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserCompany, setEditUserCompany] = useState("");
+  const [editUserRole, setEditUserRole] = useState<UserRoleKey>("external_partner");
+  const [editUserLocale, setEditUserLocale] = useState<"en" | "sv" | "zh-Hans">(
+    "en"
+  );
+  const [editUserCreatedAt, setEditUserCreatedAt] = useState<string | null>(null);
+  const [editUserLastSignInAt, setEditUserLastSignInAt] = useState<string | null>(
+    null
+  );
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const [cropImage, setCropImage] = useState<string | null>(null);
@@ -1905,6 +1923,78 @@ export default function SettingsPage() {
       setManagedUsersError((err as Error).message);
     } finally {
       setNewUserSaving(false);
+    }
+  };
+
+  const openManagedUserEditor = (user: ManagedUser) => {
+    setManagedUsersError(null);
+    setManagedUsersSuccess(null);
+    setEditUserId(user.user_id);
+    setEditUserEmail(user.email ?? "");
+    setEditUserPassword("");
+    setEditUserName(user.full_name ?? "");
+    setEditUserCompany(user.company_name ?? "");
+    setEditUserRole(user.role_key);
+    setEditUserLocale(user.preferred_locale ?? "en");
+    setEditUserCreatedAt(user.created_at);
+    setEditUserLastSignInAt(user.last_sign_in_at);
+    setEditUserOpen(true);
+  };
+
+  const closeManagedUserEditor = () => {
+    if (editUserSaving) return;
+    setEditUserOpen(false);
+    setEditUserPassword("");
+  };
+
+  const handleSaveManagedUser = async () => {
+    const email = editUserEmail.trim().toLowerCase();
+    if (!editUserId) {
+      setManagedUsersError("No user selected.");
+      return;
+    }
+    if (!email || !email.includes("@")) {
+      setManagedUsersError("A valid email is required.");
+      return;
+    }
+    if (editUserPassword.length > 0 && editUserPassword.length < 8) {
+      setManagedUsersError("Password must be at least 8 characters.");
+      return;
+    }
+
+    setManagedUsersError(null);
+    setManagedUsersSuccess(null);
+    setEditUserSaving(true);
+    try {
+      const response = await fetch("/api/settings/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: editUserId,
+          email,
+          password: editUserPassword,
+          full_name: editUserName,
+          company_name: editUserCompany,
+          preferred_locale: editUserLocale,
+          role_key: editUserRole,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { user?: ManagedUser; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to update user.");
+      }
+
+      setManagedUsersSuccess("User updated.");
+      setEditUserOpen(false);
+      setEditUserPassword("");
+      await loadManagedUsers();
+      setTimeout(() => setManagedUsersSuccess(null), 2500);
+    } catch (err) {
+      setManagedUsersError((err as Error).message);
+    } finally {
+      setEditUserSaving(false);
     }
   };
 
@@ -2991,6 +3081,7 @@ export default function SettingsPage() {
                         <TableHeaderCell>Access</TableHeaderCell>
                         <TableHeaderCell>Created</TableHeaderCell>
                         <TableHeaderCell>Last sign-in</TableHeaderCell>
+                        <TableHeaderCell>Edit</TableHeaderCell>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -3007,17 +3098,159 @@ export default function SettingsPage() {
                             </TableCell>
                             <TableCell>{formatDateTime(user.created_at)}</TableCell>
                             <TableCell>{formatDateTime(user.last_sign_in_at)}</TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                appearance="subtle"
+                                onClick={() => openManagedUserEditor(user)}
+                              >
+                                Edit
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8}>No users found.</TableCell>
+                          <TableCell colSpan={9}>No users found.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
                 )}
               </Card>
+
+              <Dialog
+                open={editUserOpen}
+                onOpenChange={(_, data) => {
+                  if (!data.open) {
+                    closeManagedUserEditor();
+                    return;
+                  }
+                  setEditUserOpen(data.open);
+                }}
+              >
+                <DialogSurface className={styles.dialogSurface}>
+                  <DialogBody>
+                    <DialogTitle>Edit user</DialogTitle>
+                    <Text size={200} className={styles.helperText}>
+                      Update user details, role, email, and optional password.
+                    </Text>
+                    <div className={styles.infoGrid}>
+                      <Field label="Email">
+                        <Input
+                          type="email"
+                          value={editUserEmail}
+                          onChange={(_, data) => setEditUserEmail(data.value)}
+                          disabled={editUserSaving}
+                        />
+                      </Field>
+                      <Field label="Password">
+                        <Input
+                          type="password"
+                          value={editUserPassword}
+                          onChange={(_, data) => setEditUserPassword(data.value)}
+                          placeholder="Leave blank to keep unchanged"
+                          disabled={editUserSaving}
+                        />
+                      </Field>
+                      <Field label="Name">
+                        <Input
+                          value={editUserName}
+                          onChange={(_, data) => setEditUserName(data.value)}
+                          disabled={editUserSaving}
+                        />
+                      </Field>
+                      <Field label="Company">
+                        <Input
+                          value={editUserCompany}
+                          onChange={(_, data) => setEditUserCompany(data.value)}
+                          disabled={editUserSaving}
+                        />
+                      </Field>
+                      <Field label="Role">
+                        <Dropdown
+                          selectedOptions={[editUserRole]}
+                          onOptionSelect={(_, data) =>
+                            setEditUserRole(
+                              String(
+                                data.optionValue ?? "external_partner"
+                              ) as UserRoleKey
+                            )
+                          }
+                          disabled={editUserSaving}
+                        >
+                          {USER_ROLE_OPTIONS.map((option) => (
+                            <Option key={option.key} value={option.key}>
+                              {option.label}
+                            </Option>
+                          ))}
+                        </Dropdown>
+                      </Field>
+                      <Field label={t("settings.user.preferences.language")}>
+                        <Dropdown
+                          selectedOptions={[editUserLocale]}
+                          onOptionSelect={(_, data) =>
+                            setEditUserLocale(
+                              String(data.optionValue ?? "en") as
+                                | "en"
+                                | "sv"
+                                | "zh-Hans"
+                            )
+                          }
+                          disabled={editUserSaving}
+                        >
+                          <Option value="en">{t("language.english")}</Option>
+                          <Option value="sv">{t("language.swedish")}</Option>
+                          <Option value="zh-Hans">中文</Option>
+                        </Dropdown>
+                      </Field>
+                      <Field label="Access">
+                        <Dropdown
+                          selectedOptions={[
+                            roleHasAdminAccess(editUserRole) ? "admin" : "partner",
+                          ]}
+                          onOptionSelect={(_, data) => {
+                            const value = String(data.optionValue ?? "partner");
+                            if (value === "admin") {
+                              setEditUserRole((current) =>
+                                current === "external_partner" ? "admin" : current
+                              );
+                              return;
+                            }
+                            setEditUserRole("external_partner");
+                          }}
+                          disabled={editUserSaving}
+                        >
+                          <Option value="admin">Admin</Option>
+                          <Option value="partner">Partner</Option>
+                        </Dropdown>
+                      </Field>
+                      <Field label="Created">
+                        <Input value={formatDateTime(editUserCreatedAt)} disabled />
+                      </Field>
+                      <Field label="Last sign-in">
+                        <Input value={formatDateTime(editUserLastSignInAt)} disabled />
+                      </Field>
+                    </div>
+                    <DialogActions className={styles.dialogActions}>
+                      <Button
+                        appearance="subtle"
+                        onClick={closeManagedUserEditor}
+                        disabled={editUserSaving}
+                      >
+                        Close
+                      </Button>
+                      <Button
+                        appearance="primary"
+                        onClick={handleSaveManagedUser}
+                        disabled={editUserSaving || !editUserEmail.trim()}
+                      >
+                        {editUserSaving ? t("common.loading") : "Save"}
+                      </Button>
+                    </DialogActions>
+                  </DialogBody>
+                </DialogSurface>
+              </Dialog>
             </>
           ) : (
             <Card className={styles.card}>

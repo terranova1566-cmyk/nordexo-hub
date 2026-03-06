@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+const PARTNER_VISIBLE_SPU_PREFIXES = ["ND-", "GB-", "LD-", "SK-"] as const;
+const PARTNER_VISIBLE_SPU_OR_FILTER = PARTNER_VISIBLE_SPU_PREFIXES.map(
+  (prefix) => `spu.ilike.${prefix}%`
+).join(",");
+
 const normalizeValue = (value?: string | null) => value?.trim() ?? "";
 
 const collectUnique = (values: Array<string | null | undefined>) => {
@@ -39,7 +44,7 @@ export async function GET() {
     .neq("is_blocked", true);
 
   if (!isAdmin) {
-    query = query.eq("nordic_partner_enabled", true);
+    query = query.or(PARTNER_VISIBLE_SPU_OR_FILTER);
   }
 
   const { data, error } = await query;

@@ -3,25 +3,53 @@ export const LETSDEAL_DELIVERY_LIST_PREFIX = "letsdeal_delivery::";
 
 export type DeliveryPartner = "digideal" | "letsdeal";
 
+export const DELIVERY_PARTNER_LABEL: Record<DeliveryPartner, string> = {
+  digideal: "DigiDeal",
+  letsdeal: "LetsDeal",
+};
+
 const DELIVERY_PREFIX_BY_PARTNER: Record<DeliveryPartner, string> = {
   digideal: DIGIDEAL_DELIVERY_LIST_PREFIX,
   letsdeal: LETSDEAL_DELIVERY_LIST_PREFIX,
 };
 
-export const normalizeDeliveryPartner = (value: string | null | undefined) => {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "letsdeal") return "letsdeal" as const;
-  if (normalized === "digideal") return "digideal" as const;
+const detectDeliveryPartner = (value: string | null | undefined) => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  const compact = normalized.replace(/[\s._-]+/g, "");
+  if (compact.includes("letsdeal")) return "letsdeal" as const;
+  if (compact.includes("digideal")) return "digideal" as const;
   return null;
+};
+
+export const normalizeDeliveryPartner = (value: string | null | undefined) => {
+  return detectDeliveryPartner(value);
 };
 
 export const resolveDeliveryPartnerFromListName = (
   value: string | null | undefined
 ): DeliveryPartner | null => {
-  const text = String(value ?? "");
+  const text = String(value ?? "").trim();
+  if (!text) return null;
   if (text.startsWith(DIGIDEAL_DELIVERY_LIST_PREFIX)) return "digideal";
   if (text.startsWith(LETSDEAL_DELIVERY_LIST_PREFIX)) return "letsdeal";
+  const detected = detectDeliveryPartner(text);
+  if (detected) return detected;
+
+  // Backward compatibility for older DigiDeal delivery list names.
+  const lowered = text.toLowerCase();
+  if (lowered.startsWith("delivery") || lowered.startsWith("leverans")) {
+    return "digideal";
+  }
   return null;
+};
+
+export const deliveryPartnerLabel = (value: string | null | undefined) => {
+  const partner = normalizeDeliveryPartner(value) ?? resolveDeliveryPartnerFromListName(value);
+  if (!partner) return DELIVERY_PARTNER_LABEL.digideal;
+  return DELIVERY_PARTNER_LABEL[partner];
 };
 
 export const isDeliveryListName = (value: string | null | undefined) =>

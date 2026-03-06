@@ -302,6 +302,104 @@ const buildDraftVariantRawRow = (variant: CatalogVariantRow) => ({
   option4_zh: normalizeText(variant.option4_zh),
 });
 
+const stripTrailingImageTagSuffixes = (value: string) => {
+  let next = String(value || "").trim();
+  if (!next) return "";
+  for (let i = 0; i < 6; i += 1) {
+    const replaced = next
+      .replace(/\s*\(\s*[A-Z0-9]{2,12}\s*\)\s*$/u, "")
+      .replace(/[-_ ](?:MAIN|ENV|INF|DIGI|VAR|SIZE)\s*$/iu, "")
+      .trim();
+    if (replaced === next) break;
+    next = replaced;
+  }
+  return next;
+};
+
+const extractVariantLabelFromImageFileName = (fileName: string, spu: string) => {
+  const base = stripTrailingImageTagSuffixes(String(fileName || "").replace(/\.[^.]+$/u, ""));
+  if (!base) return "";
+  let next = base;
+  const normalizedSpu = String(spu || "").trim();
+  if (normalizedSpu && next.toLowerCase().startsWith(normalizedSpu.toLowerCase())) {
+    next = next.slice(normalizedSpu.length);
+  }
+  next = next.replace(/^-+/, "").replace(/-+$/, "");
+  return next.replace(/[_-]+/g, " ").trim();
+};
+
+const normalizeVariantComparableToken = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^0-9a-z\u00c0-\u024f\u0400-\u04ff\u4e00-\u9fff]+/g, "");
+
+const readVariantRawRow = (variant: CatalogVariantRow) => {
+  if (variant.raw_row && typeof variant.raw_row === "object" && !Array.isArray(variant.raw_row)) {
+    return variant.raw_row as Record<string, unknown>;
+  }
+  return {} as Record<string, unknown>;
+};
+
+const buildVariantComparableCandidates = (variant: CatalogVariantRow) => {
+  const raw = readVariantRawRow(variant);
+  const values = [
+    normalizeText(variant.option_combined_zh),
+    normalizeText(variant.option1),
+    normalizeText(variant.option2),
+    normalizeText(variant.option3),
+    normalizeText(variant.option4),
+    normalizeText(variant.option1_zh),
+    normalizeText(variant.option2_zh),
+    normalizeText(variant.option3_zh),
+    normalizeText(variant.option4_zh),
+    normalizeText(raw.option_combined_zh),
+    normalizeText(raw.option1),
+    normalizeText(raw.option2),
+    normalizeText(raw.option3),
+    normalizeText(raw.option4),
+    normalizeText(raw.option1_zh),
+    normalizeText(raw.option2_zh),
+    normalizeText(raw.option3_zh),
+    normalizeText(raw.option4_zh),
+    normalizeText(raw.variation_color_zh),
+    normalizeText(raw.variation_size_zh),
+    normalizeText(raw.variation_other_zh),
+    normalizeText(raw.variation_amount_zh),
+  ].filter((value): value is string => Boolean(value));
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeVariantComparableToken(value))
+        .filter((value) => value.length >= 2)
+    )
+  );
+};
+
+const buildVariantImageGroupingKey = (variant: CatalogVariantRow) => {
+  const raw = readVariantRawRow(variant);
+  const color = normalizeVariantComparableToken(
+    normalizeText(raw.variation_color_se) ??
+      normalizeText(variant.variation_color_se) ??
+      normalizeText(variant.option1) ??
+      ""
+  );
+  const other = normalizeVariantComparableToken(
+    normalizeText(raw.variation_other_se) ??
+      normalizeText(variant.variation_other_se) ??
+      normalizeText(variant.option3) ??
+      ""
+  );
+  const amount = normalizeVariantComparableToken(
+    normalizeText(raw.variation_amount_se) ??
+      normalizeText(variant.variation_amount_se) ??
+      normalizeText(variant.option4) ??
+      ""
+  );
+  if (!color && !other && !amount) return "";
+  return `${color}|${other}|${amount}`;
+};
+
 const deleteFromMeili = async (productId: string) => {
   try {
     const { getProductsIndex } = await import("@/lib/meili");
@@ -578,6 +676,12 @@ export async function POST(request: Request) {
         const variantRowsForSpu: Array<Record<string, unknown>> = [];
 
         if (productVariants.length > 0) {
+          const stagedRows: Array<{
+            row: Record<string, unknown>;
+            groupKey: string;
+            comparableCandidates: string[];
+          }> = [];
+
           productVariants.forEach((variant, index) => {
             const fileNameFromRef = extractFileNameFromReference(
               normalizeText(variant.variant_image_url)
@@ -596,7 +700,7 @@ export async function POST(request: Request) {
                 ? (variant.raw_row as Record<string, unknown>)
                 : null;
 
-            variantRowsForSpu.push({
+            const draftRow: Record<string, unknown> = {
               draft_spu: spu,
               draft_sku: sku,
               draft_option1: normalizeText(variant.option1),
@@ -636,7 +740,76 @@ export async function POST(request: Request) {
                 rawRowFromVariant ?? (buildDraftVariantRawRow(variant) as Record<string, unknown>),
               draft_status: "draft",
               draft_updated_at: nowIso,
+            };
+            stagedRows.push({
+              row: draftRow,
+              groupKey: buildVariantImageGroupingKey(variant),
+              comparableCandidates: buildVariantComparableCandidates(variant),
             });
+          });
+
+          const imageCandidates = copiedFileNames
+            .map((fileName) => {
+              const comparable = normalizeVariantComparableToken(
+                extractVariantLabelFromImageFileName(fileName, spu)
+              );
+              if (comparable.length < 2) return null;
+              return { fileName, comparable };
+            })
+            .filter(
+              (candidate): candidate is { fileName: string; comparable: string } =>
+                Boolean(candidate)
+            );
+
+          stagedRows.forEach((stagedRow) => {
+            const currentValue = normalizeText(stagedRow.row.draft_variant_image_url);
+            if (currentValue) return;
+            if (stagedRow.comparableCandidates.length === 0) return;
+
+            const matchedFileNames = new Set<string>();
+            imageCandidates.forEach((imageCandidate) => {
+              const matched = stagedRow.comparableCandidates.some(
+                (candidate) =>
+                  candidate === imageCandidate.comparable ||
+                  imageCandidate.comparable.includes(candidate) ||
+                  candidate.includes(imageCandidate.comparable)
+              );
+              if (matched) {
+                matchedFileNames.add(imageCandidate.fileName);
+              }
+            });
+
+            if (matchedFileNames.size === 1) {
+              stagedRow.row.draft_variant_image_url = Array.from(matchedFileNames)[0];
+            }
+          });
+
+          const groupKeyToImage = new Map<string, string | null>();
+          stagedRows.forEach((stagedRow) => {
+            if (!stagedRow.groupKey) return;
+            const mappedImage = normalizeText(stagedRow.row.draft_variant_image_url);
+            if (!mappedImage) return;
+            const existing = groupKeyToImage.get(stagedRow.groupKey);
+            if (!existing) {
+              groupKeyToImage.set(stagedRow.groupKey, mappedImage);
+              return;
+            }
+            if (existing !== mappedImage) {
+              groupKeyToImage.set(stagedRow.groupKey, null);
+            }
+          });
+
+          stagedRows.forEach((stagedRow) => {
+            const currentValue = normalizeText(stagedRow.row.draft_variant_image_url);
+            if (currentValue) return;
+            if (!stagedRow.groupKey) return;
+            const groupedImage = groupKeyToImage.get(stagedRow.groupKey);
+            if (!groupedImage) return;
+            stagedRow.row.draft_variant_image_url = groupedImage;
+          });
+
+          stagedRows.forEach((stagedRow) => {
+            variantRowsForSpu.push(stagedRow.row);
           });
         } else {
           variantRowsForSpu.push({

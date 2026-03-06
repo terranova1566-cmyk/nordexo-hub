@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import { loadImageUrls, preferImageUrlFilenameFirst } from "@/lib/server-images";
 import { loadLegacyHeroWhiteBySpu } from "@/lib/legacy-product-image-data";
 import { getProductsIndex } from "@/lib/meili";
@@ -7,6 +8,10 @@ import { resolveDeliveryPartnerFromListName } from "@/lib/product-delivery/digid
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 200;
+const PARTNER_VISIBLE_SPU_PREFIXES = ["ND-", "GB-", "LD-", "SK-"] as const;
+const PARTNER_VISIBLE_SPU_OR_FILTER = PARTNER_VISIBLE_SPU_PREFIXES.map(
+  (prefix) => `spu.ilike.${prefix}%`
+).join(",");
 
 type CategorySelection = {
   level: "l1" | "l2" | "l3";
@@ -71,6 +76,242 @@ type VariantInShopRow = {
   shop_id: string | null;
   is_active: boolean | null;
   deleted_at: string | null;
+};
+
+type ProductSalesRollupRow = {
+  product_id: string;
+  sales_1d: number | string | null;
+  sales_1w: number | string | null;
+  sales_1m: number | string | null;
+  sales_3m: number | string | null;
+  sales_1y: number | string | null;
+  sales_all_time: number | string | null;
+};
+
+type SalesMetricKey =
+  | "sales_all_time"
+  | "sales_1y"
+  | "sales_3m"
+  | "sales_1m"
+  | "sales_1w"
+  | "sales_1d";
+
+type ProductSalesMetrics = Record<SalesMetricKey, number>;
+
+type ServerSupabase = Awaited<ReturnType<typeof createServerSupabase>>;
+
+type ProductSortSnapshotRow = {
+  id: string;
+  updated_at: string | null;
+  title: string | null;
+};
+
+const SALES_SORT_METRIC_BY_KEY = {
+  sales_all_time_desc: "sales_all_time",
+  sales_1y_desc: "sales_1y",
+  sales_3m_desc: "sales_3m",
+  sales_1m_desc: "sales_1m",
+  sales_1w_desc: "sales_1w",
+  sales_1d_desc: "sales_1d",
+} as const satisfies Record<string, SalesMetricKey>;
+
+const MAX_SALES_SORT_CANDIDATES = 50000;
+const MAX_SALES_MEILI_HITS = 10000;
+
+const ZERO_SALES_METRICS: ProductSalesMetrics = {
+  sales_all_time: 0,
+  sales_1y: 0,
+  sales_3m: 0,
+  sales_1m: 0,
+  sales_1w: 0,
+  sales_1d: 0,
+};
+
+const toFiniteNumber = (value: unknown) => {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const getSalesSortMetric = (sort: string): SalesMetricKey | null => {
+  if (Object.prototype.hasOwnProperty.call(SALES_SORT_METRIC_BY_KEY, sort)) {
+    return SALES_SORT_METRIC_BY_KEY[sort as keyof typeof SALES_SORT_METRIC_BY_KEY];
+  }
+  return null;
+};
+
+const getSalesMetricsForProduct = (
+  salesByProductId: Map<string, ProductSalesMetrics>,
+  productId: string
+): ProductSalesMetrics => salesByProductId.get(productId) ?? ZERO_SALES_METRICS;
+
+const sortProductIdsBySalesMetric = (
+  productIds: string[],
+  salesByProductId: Map<string, ProductSalesMetrics>,
+  metric: SalesMetricKey
+) => {
+  return productIds.slice().sort((left, right) => {
+    const leftValue = getSalesMetricsForProduct(salesByProductId, left)[metric];
+    const rightValue = getSalesMetricsForProduct(salesByProductId, right)[metric];
+    if (rightValue !== leftValue) {
+      return rightValue - leftValue;
+    }
+    return left.localeCompare(right);
+  });
+};
+
+const sortProductsBySalesMetric = (
+  rows: ProductRow[],
+  salesByProductId: Map<string, ProductSalesMetrics>,
+  metric: SalesMetricKey
+) => {
+  return rows.slice().sort((left, right) => {
+    const leftValue = getSalesMetricsForProduct(salesByProductId, left.id)[metric];
+    const rightValue = getSalesMetricsForProduct(salesByProductId, right.id)[metric];
+    if (rightValue !== leftValue) {
+      return rightValue - leftValue;
+    }
+    const leftUpdated = left.updated_at ? Date.parse(left.updated_at) || 0 : 0;
+    const rightUpdated = right.updated_at ? Date.parse(right.updated_at) || 0 : 0;
+    if (rightUpdated !== leftUpdated) {
+      return rightUpdated - leftUpdated;
+    }
+    return left.id.localeCompare(right.id);
+  });
+};
+
+const loadProductSortSnapshotsByIds = async (
+  supabase: ServerSupabase,
+  productIds: string[]
+) => {
+  const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
+  const snapshots = new Map<
+    string,
+    { updatedTimestamp: number; title: string | null; hasTitle: boolean }
+  >();
+  if (uniqueProductIds.length === 0) return snapshots;
+
+  const idChunks = chunk(uniqueProductIds, 1000);
+  for (const idChunk of idChunks) {
+    const { data, error } = await supabase
+      .from("catalog_products")
+      .select("id, updated_at, title")
+      .in("id", idChunk);
+    if (error) {
+      throw new Error(error.message);
+    }
+    const rows = (data ?? []) as unknown as ProductSortSnapshotRow[];
+    rows.forEach((row) => {
+      const id = String(row.id ?? "").trim();
+      if (!id) return;
+      const titleValue =
+        typeof row.title === "string" && row.title.trim().length > 0 ? row.title : null;
+      snapshots.set(id, {
+        updatedTimestamp: row.updated_at ? Date.parse(row.updated_at) || 0 : 0,
+        title: titleValue,
+        hasTitle: Boolean(titleValue),
+      });
+    });
+  }
+  return snapshots;
+};
+
+const sortProductIdsByCatalogSort = (
+  productIds: string[],
+  sort: string,
+  snapshots: Map<string, { updatedTimestamp: number; title: string | null; hasTitle: boolean }>
+) => {
+  return productIds.slice().sort((leftId, rightId) => {
+    const leftSnapshot = snapshots.get(leftId);
+    const rightSnapshot = snapshots.get(rightId);
+
+    if (sort === "title_asc") {
+      const leftMissingTitle = !leftSnapshot?.hasTitle;
+      const rightMissingTitle = !rightSnapshot?.hasTitle;
+      if (leftMissingTitle !== rightMissingTitle) {
+        return leftMissingTitle ? 1 : -1;
+      }
+      const leftTitle = leftSnapshot?.title ?? "";
+      const rightTitle = rightSnapshot?.title ?? "";
+      const titleCompare = leftTitle.localeCompare(rightTitle, "sv-SE", {
+        sensitivity: "base",
+        numeric: true,
+      });
+      if (titleCompare !== 0) return titleCompare;
+      return leftId.localeCompare(rightId);
+    }
+
+    const leftUpdated = leftSnapshot?.updatedTimestamp ?? 0;
+    const rightUpdated = rightSnapshot?.updatedTimestamp ?? 0;
+    if (rightUpdated !== leftUpdated) {
+      return rightUpdated - leftUpdated;
+    }
+    return rightId.localeCompare(leftId);
+  });
+};
+
+const loadSalesRollupsByProductIds = async (
+  supabase: ServerSupabase,
+  productIds: string[]
+) => {
+  const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
+  const output = new Map<string, ProductSalesMetrics>();
+  if (uniqueProductIds.length === 0) return output;
+
+  const callRollupRpc = async (
+    client:
+      | ServerSupabase
+      | ReturnType<typeof createAdminSupabase>
+  ) =>
+    client.rpc("legacy_sales_product_rollups", {
+      product_ids: uniqueProductIds,
+    });
+
+  let data: unknown[] | null = null;
+  const primaryResult = await callRollupRpc(supabase);
+  if (!primaryResult.error) {
+    data = (primaryResult.data as unknown[] | null) ?? [];
+  } else {
+    let fallbackErrorMessage = primaryResult.error.message;
+    try {
+      const adminSupabase = createAdminSupabase();
+      const adminResult = await callRollupRpc(adminSupabase);
+      if (!adminResult.error) {
+        data = (adminResult.data as unknown[] | null) ?? [];
+      } else {
+        fallbackErrorMessage = `${fallbackErrorMessage}; ${adminResult.error.message}`;
+      }
+    } catch (adminClientError) {
+      const adminMessage =
+        adminClientError instanceof Error
+          ? adminClientError.message
+          : String(adminClientError);
+      fallbackErrorMessage = `${fallbackErrorMessage}; ${adminMessage}`;
+    }
+
+    if (!data) {
+      console.error(
+        "[api/products] sales rollup rpc failed, continuing without sales metrics",
+        fallbackErrorMessage
+      );
+      return output;
+    }
+  }
+
+  (data ?? []).forEach((row: unknown) => {
+    const entry = row as ProductSalesRollupRow;
+    const productId = String(entry.product_id ?? "").trim();
+    if (!productId) return;
+    output.set(productId, {
+      sales_all_time: toFiniteNumber(entry.sales_all_time),
+      sales_1y: toFiniteNumber(entry.sales_1y),
+      sales_3m: toFiniteNumber(entry.sales_3m),
+      sales_1m: toFiniteNumber(entry.sales_1m),
+      sales_1w: toFiniteNumber(entry.sales_1w),
+      sales_1d: toFiniteNumber(entry.sales_1d),
+    });
+  });
+
+  return output;
 };
 
 const SHOPIFY_PUBLISHED_STORE_CODES = [
@@ -268,19 +509,18 @@ export async function GET(request: NextRequest) {
     Math.max(1, Number(searchParams.get("pageSize") ?? DEFAULT_PAGE_SIZE))
   );
 
+  const salesSortMetric = getSalesSortMetric(sort);
   let products: ProductRow[] = [];
   let totalCount = 0;
+  const salesByProductId = new Map<string, ProductSalesMetrics>();
 
-const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
+  const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
     ? "id, spu, title, subtitle, description_html, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled"
     : "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled";
 
   if (useMeili) {
     const filters: string[] = [];
     filters.push("is_blocked = false");
-    if (!isAdmin) {
-      filters.push("nordic_partner_enabled = true");
-    }
     if (hasVariants) {
       filters.push("variant_count > 0");
     }
@@ -440,7 +680,7 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
           ? ["updated_at:desc"]
           : undefined;
 
-    const maxHits = page * pageSize;
+    const maxHits = salesSortMetric ? MAX_SALES_MEILI_HITS : page * pageSize;
     const searchConfig = {
       filter: filters.length ? filters.join(" AND ") : undefined,
       sort: sortRules,
@@ -481,6 +721,51 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       });
     }
 
+    if (
+      !salesSortMetric &&
+      mergedIds.length > 1 &&
+      (sort === "updated_desc" || sort === "added_desc" || sort === "title_asc")
+    ) {
+      try {
+        const sortSnapshots = await loadProductSortSnapshotsByIds(supabase, mergedIds);
+        mergedIds = sortProductIdsByCatalogSort(mergedIds, sort, sortSnapshots);
+      } catch (sortSnapshotError) {
+        return NextResponse.json(
+          {
+            error:
+              sortSnapshotError instanceof Error
+                ? sortSnapshotError.message
+                : "Unable to load product sort snapshots.",
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (salesSortMetric && mergedIds.length > 0) {
+      try {
+        const salesRollups = await loadSalesRollupsByProductIds(supabase, mergedIds);
+        salesRollups.forEach((value, key) => {
+          salesByProductId.set(key, value);
+        });
+        mergedIds = sortProductIdsBySalesMetric(
+          mergedIds,
+          salesByProductId,
+          salesSortMetric
+        );
+      } catch (salesError) {
+        return NextResponse.json(
+          {
+            error:
+              salesError instanceof Error
+                ? salesError.message
+                : "Unable to load sales rollups.",
+          },
+          { status: 500 }
+        );
+      }
+    }
+
     totalCount =
       expandedResult.estimatedTotalHits ??
       (expandedResult as { totalHits?: number }).totalHits ??
@@ -499,7 +784,7 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       .neq("is_blocked", true);
 
     if (!isAdmin) {
-      productQuery = productQuery.eq("nordic_partner_enabled", true);
+      productQuery = productQuery.or(PARTNER_VISIBLE_SPU_OR_FILTER);
     }
 
     const { data, error } = await productQuery;
@@ -522,7 +807,7 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       .neq("is_blocked", true);
 
     if (!isAdmin) {
-      query = query.eq("nordic_partner_enabled", true);
+      query = query.or(PARTNER_VISIBLE_SPU_OR_FILTER);
     }
 
     if (savedFilter === "saved" || savedFilter === "unsaved") {
@@ -695,20 +980,30 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       query = query.lte("updated_at", addedTo);
     }
 
-    switch (sort) {
-      case "title_asc":
-        query = query.order("title", { ascending: true, nullsFirst: false });
-        break;
-      case "added_desc":
-      case "updated_desc":
-      default:
-        query = query.order("updated_at", { ascending: false });
-        break;
-    }
-
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    query = query.range(from, to);
+    if (salesSortMetric) {
+      query = query
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(0, MAX_SALES_SORT_CANDIDATES - 1);
+    } else {
+      switch (sort) {
+        case "title_asc":
+          query = query
+            .order("title", { ascending: true, nullsFirst: false })
+            .order("id", { ascending: true });
+          break;
+        case "added_desc":
+        case "updated_desc":
+        default:
+          query = query
+            .order("updated_at", { ascending: false })
+            .order("id", { ascending: false });
+          break;
+      }
+      query = query.range(from, to);
+    }
 
     const { data, error, count } = await query;
 
@@ -716,8 +1011,38 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    products = (data ?? []) as unknown as ProductRow[];
-    totalCount = count ?? 0;
+    const rows = (data ?? []) as unknown as ProductRow[];
+    if (salesSortMetric) {
+      totalCount = count ?? rows.length;
+      try {
+        const salesRollups = await loadSalesRollupsByProductIds(
+          supabase,
+          rows.map((row) => row.id)
+        );
+        salesRollups.forEach((value, key) => {
+          salesByProductId.set(key, value);
+        });
+      } catch (salesError) {
+        return NextResponse.json(
+          {
+            error:
+              salesError instanceof Error
+                ? salesError.message
+                : "Unable to load sales rollups.",
+          },
+          { status: 500 }
+        );
+      }
+      const orderedRows = sortProductsBySalesMetric(
+        rows,
+        salesByProductId,
+        salesSortMetric
+      );
+      products = orderedRows.slice(from, to + 1);
+    } else {
+      products = rows;
+      totalCount = count ?? 0;
+    }
   }
 
   const fallbackBySpu = new Map<
@@ -738,6 +1063,30 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
   }
 
   const productIds = products?.map((product) => product.id) ?? [];
+  const missingSalesIds = productIds.filter(
+    (productId) => !salesByProductId.has(productId)
+  );
+  if (missingSalesIds.length > 0) {
+    try {
+      const salesRollups = await loadSalesRollupsByProductIds(
+        supabase,
+        missingSalesIds
+      );
+      salesRollups.forEach((value, key) => {
+        salesByProductId.set(key, value);
+      });
+    } catch (salesError) {
+      return NextResponse.json(
+        {
+          error:
+            salesError instanceof Error
+              ? salesError.message
+              : "Unable to load sales rollups.",
+        },
+        { status: 500 }
+      );
+    }
+  }
 
   const workflowBySpu = new Map<
     string,
@@ -1132,6 +1481,7 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
       if (hasVariants && variantCount === 0) {
         return null;
       }
+      const salesMetrics = getSalesMetricsForProduct(salesByProductId, product.id);
 
       const fallback = product.spu ? fallbackBySpu.get(product.spu) : null;
       const resolvedTitle =
@@ -1181,6 +1531,12 @@ const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
         ),
         thumbnail_url: thumbnailUrl,
         small_image_url: smallUrl ?? null,
+        sales_1d: salesMetrics.sales_1d,
+        sales_1w: salesMetrics.sales_1w,
+        sales_1m: salesMetrics.sales_1m,
+        sales_3m: salesMetrics.sales_3m,
+        sales_1y: salesMetrics.sales_1y,
+        sales_all_time: salesMetrics.sales_all_time,
       };
     })
   );

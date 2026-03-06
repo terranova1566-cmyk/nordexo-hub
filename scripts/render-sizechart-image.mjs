@@ -6,6 +6,37 @@ import sharp from "sharp";
 const WIDTH = 1000;
 const HEIGHT = 1000;
 
+const normalizeLang = (value) => {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "sv" || raw === "se" || raw === "swedish") return "se";
+  if (raw === "no" || raw === "nb" || raw === "norwegian") return "no";
+  if (raw === "en" || raw === "eng" || raw === "english") return "en";
+  return "se";
+};
+
+const LOCALE_TEXT = {
+  se: {
+    chartTitle: "Storlekstabell",
+    topMeasurements: "Produktmått",
+    sizeRecommendation: "Storleksrekommendation",
+    fallbackColumn: "Kolumn",
+  },
+  no: {
+    chartTitle: "Storrelsestabell",
+    topMeasurements: "Produktmal",
+    sizeRecommendation: "Storrelsesanbefaling",
+    fallbackColumn: "Kolonne",
+  },
+  en: {
+    chartTitle: "Size Chart",
+    topMeasurements: "Product Measurements",
+    sizeRecommendation: "Size Recommendation",
+    fallbackColumn: "Column",
+  },
+};
+
 const parseArgs = (argv) => {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -61,14 +92,33 @@ const formatCell = (value, column) => {
   return String(value);
 };
 
-const tableTitle = (table, index) => {
+const tableTitle = (table, index, lang) => {
   const type = String(table?.table_type || "").trim();
-  if (type === "top_measurements") return "Produktmått";
-  if (type === "size_recommendation") return "Storleksrekommendation";
+  const locale = LOCALE_TEXT[lang] || LOCALE_TEXT.se;
+  if (type === "top_measurements") return locale.topMeasurements;
+  if (type === "size_recommendation") return locale.sizeRecommendation;
   return `Tabell ${index + 1}`;
 };
 
-const buildTables = (payload) => {
+const pickLocalizedLabel = (column, lang) => {
+  const keyForLang = `label_${lang}`;
+  const candidates = [
+    column?.[keyForLang],
+    column?.label_sv,
+    column?.label_se,
+    column?.label_no,
+    column?.label_en,
+    column?.label,
+    column?.key,
+  ];
+  const label = candidates
+    .map((value) => String(value ?? "").trim())
+    .find((value) => value.length > 0);
+  if (label) return label;
+  return (LOCALE_TEXT[lang] || LOCALE_TEXT.se).fallbackColumn;
+};
+
+const buildTables = (payload, lang) => {
   const tables = Array.isArray(payload?.tables) ? payload.tables : [];
   return tables
     .filter((t) => Array.isArray(t?.columns) && t.columns.length > 0 && Array.isArray(t?.rows))
@@ -76,7 +126,7 @@ const buildTables = (payload) => {
     .map((t, idx) => {
       const columns = t.columns.map((c) => ({
         key: String(c?.key || ""),
-        label: String(c?.label_sv || c?.key || "Kolumn"),
+        label: pickLocalizedLabel(c, lang),
       }));
       const rows = t.rows.map((row) =>
         columns.map((c) => formatCell(row?.[c.key], c))
@@ -94,7 +144,7 @@ const buildTables = (payload) => {
       const weights = lens.map((len) => len / sum);
 
       return {
-        title: tableTitle(t, idx),
+        title: tableTitle(t, idx, lang),
         columns,
         rows,
         weights,
@@ -102,7 +152,8 @@ const buildTables = (payload) => {
     });
 };
 
-const renderSvg = ({ tables, notes }) => {
+const renderSvg = ({ tables, notes, lang }) => {
+  const locale = LOCALE_TEXT[lang] || LOCALE_TEXT.se;
   const margin = 44;
   const innerX = margin;
   const innerY = margin;
@@ -133,7 +184,7 @@ const renderSvg = ({ tables, notes }) => {
   const chunks = [];
 
   chunks.push(`<rect x="0" y="0" width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>`);
-  chunks.push(`<text x="${innerX}" y="${y + titleH - 10}" font-family="Arial, Helvetica, sans-serif" font-size="${titleFont}" font-weight="700" fill="#000">Storlekstabell</text>`);
+  chunks.push(`<text x="${innerX}" y="${y + titleH - 10}" font-family="Arial, Helvetica, sans-serif" font-size="${titleFont}" font-weight="700" fill="#000">${escapeXml(locale.chartTitle)}</text>`);
   y += titleH + gapAfterTitle;
 
   for (let ti = 0; ti < tables.length; ti += 1) {
@@ -200,6 +251,7 @@ const main = async () => {
   const args = parseArgs(process.argv.slice(2));
   const inputPath = path.resolve(String(args.input || ""));
   const outputPath = path.resolve(String(args.output || ""));
+  const lang = normalizeLang(args.lang);
 
   if (!inputPath || !outputPath) {
     throw new Error("Usage: node scripts/render-sizechart-image.mjs --input <sizechart.json> --output <out.jpg> --spu <SPU>");
@@ -209,16 +261,23 @@ const main = async () => {
   }
 
   const payload = JSON.parse(fs.readFileSync(inputPath, "utf8"));
-  const tables = buildTables(payload);
+  const tables = buildTables(payload, lang);
   if (tables.length === 0) {
     throw new Error("No usable tables found in JSON.");
   }
 
-  const notes = Array.isArray(payload?.sizing_info_sv)
-    ? payload.sizing_info_sv.map((x) => String(x || "").trim()).filter(Boolean)
+  const notesKey = `sizing_info_${lang}`;
+  const notesSource =
+    payload?.[notesKey] ??
+    payload?.sizing_info_sv ??
+    payload?.sizing_info_se ??
+    payload?.sizing_info_en ??
+    [];
+  const notes = Array.isArray(notesSource)
+    ? notesSource.map((x) => String(x || "").trim()).filter(Boolean)
     : [];
 
-  const svg = renderSvg({ tables, notes });
+  const svg = renderSvg({ tables, notes, lang });
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
   await sharp(Buffer.from(svg))

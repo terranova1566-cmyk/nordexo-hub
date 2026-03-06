@@ -260,3 +260,127 @@ export async function POST(request: Request) {
   const user = mapUserRecord(createdUser, settingsResult.data ?? null);
   return NextResponse.json({ user }, { status: 201 });
 }
+
+export async function PATCH(request: Request) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const adminClient = getAdminClient();
+  if (!adminClient) {
+    return NextResponse.json(
+      { error: "Server is missing Supabase credentials." },
+      { status: 500 }
+    );
+  }
+
+  let payload: {
+    user_id?: unknown;
+    email?: unknown;
+    password?: unknown;
+    full_name?: unknown;
+    company_name?: unknown;
+    preferred_locale?: unknown;
+    role_key?: unknown;
+    role_label?: unknown;
+  };
+
+  try {
+    payload = (await request.json()) as typeof payload;
+  } catch {
+    return NextResponse.json({ error: "Invalid payload." }, { status: 400 });
+  }
+
+  const userId = String(payload.user_id ?? "").trim();
+  const email = String(payload.email ?? "").trim().toLowerCase();
+  const password = String(payload.password ?? "");
+  const fullName = String(payload.full_name ?? "").trim();
+  const companyName = String(payload.company_name ?? "").trim();
+  const preferredLocale = isLocale(payload.preferred_locale)
+    ? payload.preferred_locale
+    : null;
+  const roleKey = isRoleKey(payload.role_key)
+    ? payload.role_key
+    : mapRoleLabelToKey(payload.role_label);
+
+  if (!userId) {
+    return NextResponse.json({ error: "User ID is required." }, { status: 400 });
+  }
+
+  if (!email || !email.includes("@")) {
+    return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
+  }
+
+  if (password.length > 0 && password.length < 8) {
+    return NextResponse.json(
+      { error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  if (!roleKey) {
+    return NextResponse.json(
+      { error: "Role must be one of: admin, external_partner, employee." },
+      { status: 400 }
+    );
+  }
+
+  const existingResult = await adminClient.auth.admin.getUserById(userId);
+  if (existingResult.error) {
+    const status = existingResult.error.status || 500;
+    return NextResponse.json({ error: existingResult.error.message }, { status });
+  }
+  if (!existingResult.data.user) {
+    return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+
+  const existingUser = existingResult.data.user;
+  const currentMetadata =
+    existingUser.user_metadata && typeof existingUser.user_metadata === "object"
+      ? (existingUser.user_metadata as Record<string, unknown>)
+      : {};
+
+  const updateResult = await adminClient.auth.admin.updateUserById(userId, {
+    email,
+    email_confirm: true,
+    ...(password.length > 0 ? { password } : {}),
+    user_metadata: {
+      ...currentMetadata,
+      full_name: fullName || null,
+      company_name: companyName || null,
+      preferred_locale: preferredLocale,
+    },
+  });
+
+  if (updateResult.error || !updateResult.data.user) {
+    return NextResponse.json(
+      { error: updateResult.error?.message || "Unable to update user." },
+      { status: 500 }
+    );
+  }
+
+  const settingsResult = await adminClient
+    .from("partner_user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        full_name: fullName || null,
+        company_name: companyName || null,
+        preferred_locale: preferredLocale,
+        job_title: ROLE_LABELS[roleKey],
+        is_admin: ROLE_ADMIN_ACCESS[roleKey],
+      },
+      { onConflict: "user_id" }
+    )
+    .select("user_id, full_name, company_name, preferred_locale, is_admin, job_title")
+    .maybeSingle();
+
+  if (settingsResult.error) {
+    return NextResponse.json(
+      { error: settingsResult.error.message },
+      { status: 500 }
+    );
+  }
+
+  const user = mapUserRecord(updateResult.data.user, settingsResult.data ?? null);
+  return NextResponse.json({ user });
+}

@@ -27,20 +27,20 @@ const PRODUCT_META_NAMESPACES = ["product_global", "product.global"];
 const BATCH_PREVIEW_BCC_EMAIL = "terranova_sh@hotmail.com";
 const ORDER_EMAIL_PARTNER_RECEIVERS = {
   letsdeal_se: {
-    name: "LetsDeal SE",
-    email: "support@letsdeal.se",
+    name: "LetsDeal",
+    email: "order@letsdeal.se",
   },
   letsdeal_no: {
-    name: "LetsDeal NO",
-    email: "support@letsdeal.no",
+    name: "LetsDeal",
+    email: "order@letsdeal.se",
   },
   letsdeal_sc: {
-    name: "LetsDeal SE",
-    email: "support@letsdeal.se",
+    name: "LetsDeal",
+    email: "order@letsdeal.se",
   },
   letsdeal_nordexo: {
-    name: "LetsDeal NO",
-    email: "support@letsdeal.no",
+    name: "LetsDeal",
+    email: "order@letsdeal.se",
   },
 } as const;
 const ORDER_EMAIL_SEND_MODE = {
@@ -65,8 +65,8 @@ const DELIVERY_LETSDEAL_PARTNER_RECEIVER_BY_COUNTRY = {
     ...ORDER_EMAIL_PARTNER_RECEIVERS.letsdeal_se,
   },
   NO: {
-    key: "letsdeal_no",
-    ...ORDER_EMAIL_PARTNER_RECEIVERS.letsdeal_no,
+    key: "letsdeal_se",
+    ...ORDER_EMAIL_PARTNER_RECEIVERS.letsdeal_se,
   },
 } as const;
 

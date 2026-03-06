@@ -326,10 +326,22 @@ type DraftVariantEditorEditableField =
   | "draft_price"
   | "draft_weight";
 
+type DraftVariantEditorClearableField =
+  | "variation_color_se"
+  | "variation_size_se"
+  | "variation_other_se"
+  | "variation_amount_se";
+
 type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
 type VariantEditorSortDirection = "asc" | "desc";
-type ImageFolderTabValue = "main" | "variants" | "ocr" | "others" | "downloaded";
-type MainImageViewFilter = "all" | "var_only";
+type ImageFolderTabValue =
+  | "main"
+  | "variants"
+  | "sizecharts"
+  | "ocr"
+  | "others"
+  | "downloaded";
+type MainImageViewFilter = "all" | "var_only" | "size_only";
 type ReverseSearchLocale = "sweden" | "us_global";
 
 const SHIPPING_CLASS_OPTIONS = ["NOR", "BAT", "PBA", "LIQ"] as const;
@@ -1323,6 +1335,9 @@ const useStyles = makeStyles({
   mediaTagDigi: {
     backgroundColor: "#E83E8C",
   },
+  mediaTagSize: {
+    backgroundColor: "#6610F2",
+  },
   mediaImageBusy: {
     filter: "blur(2.4px)",
     transform: "scale(1.015)",
@@ -2091,6 +2106,59 @@ const useStyles = makeStyles({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.34)",
     pointerEvents: "none",
+  },
+  stackOverlaySurface: {
+    width: "min(900px, 92vw)",
+    maxWidth: "92vw",
+    maxHeight: "86vh",
+    padding: "12px",
+    overflow: "hidden",
+  },
+  stackOverlayBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minHeight: "380px",
+    maxHeight: "82vh",
+    overflow: "hidden",
+  },
+  stackOverlayThumbGrid: {
+    position: "relative",
+    flex: "1 1 auto",
+    minHeight: "220px",
+    overflow: "auto",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+    gap: "8px",
+    padding: "10px",
+    alignContent: "start",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    backgroundColor: "#ffffff",
+  },
+  stackOverlayThumbCardButton: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    textAlign: "left",
+    cursor: "pointer",
+    width: "100%",
+  },
+  stackOverlayThumbCardSelected: {
+    boxShadow: `inset 0 0 0 2px ${tokens.colorBrandStroke1}`,
+    backgroundColor: tokens.colorBrandBackground2,
+  },
+  stackOverlayTagLine: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+  },
+  stackOverlayTopMarker: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorBrandForeground1,
+    fontWeight: tokens.fontWeightSemibold,
   },
   filesSection: {
     borderRadius: "12px",
@@ -3508,6 +3576,39 @@ const useStyles = makeStyles({
     cursor: "pointer",
     textAlign: "left",
   },
+  variantsEditorSortButtonInline: {
+    width: "auto",
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
+  variantsEditorHeadCellActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    width: "100%",
+  },
+  variantsEditorClearColumnLink: {
+    appearance: "none",
+    border: "none",
+    backgroundColor: "transparent",
+    padding: 0,
+    margin: 0,
+    color: tokens.colorNeutralForeground3,
+    cursor: "pointer",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    textDecoration: "underline",
+    whiteSpace: "nowrap",
+    ":hover": {
+      color: tokens.colorStatusDangerForeground1,
+    },
+    ":disabled": {
+      color: tokens.colorNeutralForegroundDisabled,
+      cursor: "not-allowed",
+      textDecoration: "none",
+    },
+  },
   variantsEditorSortIndicator: {
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase100,
@@ -3786,6 +3887,7 @@ const parseImageFolderTabValue = (value: string): ImageFolderTabValue | "" => {
   if (
     normalized === "main" ||
     normalized === "variants" ||
+    normalized === "sizecharts" ||
     normalized === "others" ||
     normalized === "ocr" ||
     normalized === "downloaded"
@@ -3793,6 +3895,20 @@ const parseImageFolderTabValue = (value: string): ImageFolderTabValue | "" => {
     return normalized;
   }
   return "";
+};
+
+const toMainImageViewFilter = (imageTab: ImageFolderTabValue | ""): MainImageViewFilter => {
+  if (imageTab === "variants") return "var_only";
+  if (imageTab === "sizecharts") return "size_only";
+  return "all";
+};
+
+const toImageTabFromMainViewFilter = (
+  filter: MainImageViewFilter
+): ImageFolderTabValue => {
+  if (filter === "var_only") return "variants";
+  if (filter === "size_only") return "sizecharts";
+  return "main";
 };
 
 const parseExplorerStateParam = (
@@ -4156,11 +4272,18 @@ const splitFileNameAndExtension = (fileName: string) => {
 };
 
 const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
-type ImageTagOption = (typeof TAG_IMAGE_OPTIONS)[number];
+const DISPLAY_IMAGE_TAG_OPTIONS = [...TAG_IMAGE_OPTIONS, "SIZE"] as const;
+type ImageTagOption = (typeof DISPLAY_IMAGE_TAG_OPTIONS)[number];
 const GOOGLE_SEARCH_BADGE_ICON_SRC = "/icons/google-logo.png";
-const TAG_IMAGE_SUFFIXES_TO_STRIP = [...TAG_IMAGE_OPTIONS, "ENF", "TAG IMAGE"] as const;
-const IMAGE_TAG_MATCH_REGEX =
-  /(?:\(\s*(MAIN|ENV|VAR|INF|ENF|DIGI)\s*\)|(?:^|[-_ ])(MAIN|ENV|VAR|INF|ENF|DIGI)(?=$|[-_ .)]))/gi;
+const TAG_IMAGE_SUFFIXES_TO_STRIP = [
+  ...DISPLAY_IMAGE_TAG_OPTIONS,
+  "ENF",
+  "TAG IMAGE",
+] as const;
+const IMAGE_TAG_SUFFIX_PAREN_REGEX =
+  /\(\s*(MAIN|ENV|VAR|INF|ENF|DIGI|SIZE)\s*\)\s*$/i;
+const IMAGE_TAG_SUFFIX_TOKEN_REGEX =
+  /(?:[-_ ]+)(MAIN|ENV|VAR|INF|ENF|DIGI|SIZE)\s*$/i;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -4196,7 +4319,7 @@ const stripTrailingImageTagSuffixes = (baseName: string) => {
 };
 
 const normalizeImageTags = (tags: ImageTagOption[]) =>
-  TAG_IMAGE_OPTIONS.filter((option) => tags.includes(option));
+  DISPLAY_IMAGE_TAG_OPTIONS.filter((option) => tags.includes(option));
 
 const buildTaggedImageFileNameFromTags = (
   fileName: string,
@@ -4215,25 +4338,56 @@ const buildTaggedImageFileName = (fileName: string, tag: ImageTagOption) => {
 
 const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
   const ordered: ImageTagOption[] = [];
-  const source = String(fileName || "");
-  for (const match of source.matchAll(IMAGE_TAG_MATCH_REGEX)) {
-    const normalizedRaw = String(match[1] || match[2] || "")
-      .trim()
-      .toUpperCase();
+  const { baseName } = splitFileNameAndExtension(String(fileName || ""));
+  let working = String(baseName || "").trim();
+
+  const appendNormalizedTag = (rawTag: string) => {
+    const normalizedRaw = String(rawTag || "").trim().toUpperCase();
     const normalized = normalizedRaw === "ENF" ? "INF" : normalizedRaw;
-    if (!normalized) continue;
     if (
       (normalized === "MAIN" ||
         normalized === "ENV" ||
         normalized === "VAR" ||
         normalized === "INF" ||
-        normalized === "DIGI") &&
+        normalized === "DIGI" ||
+        normalized === "SIZE") &&
       !ordered.includes(normalized as ImageTagOption)
     ) {
       ordered.push(normalized as ImageTagOption);
     }
+  };
+
+  // Only treat explicit trailing suffixes as tags.
+  // This prevents words like "...-main-..." inside normal filenames from becoming MAIN tags.
+  while (working) {
+    const parenMatch = working.match(IMAGE_TAG_SUFFIX_PAREN_REGEX);
+    if (parenMatch) {
+      appendNormalizedTag(String(parenMatch[1] || ""));
+      working = working.slice(0, parenMatch.index ?? working.length).trim();
+      continue;
+    }
+
+    const tokenMatch = working.match(IMAGE_TAG_SUFFIX_TOKEN_REGEX);
+    if (tokenMatch) {
+      appendNormalizedTag(String(tokenMatch[1] || ""));
+      working = working.slice(0, working.length - tokenMatch[0].length).trim();
+      continue;
+    }
+
+    break;
   }
+
   return normalizeImageTags(ordered);
+};
+
+const isSizeChartImageName = (fileName: string) => {
+  const source = String(fileName || "");
+  if (!source) return false;
+  if (extractImageTagsFromFileName(source).includes("SIZE")) return true;
+  const normalized = source.toLowerCase();
+  if (normalized.includes("sizechart")) return true;
+  if (/size[\s_-]*chart/.test(normalized)) return true;
+  return /size-(?:se|no|en)\b/.test(normalized);
 };
 
 const getWhiteSignalsFromEntry = (entry: DraftEntry) => {
@@ -4260,11 +4414,12 @@ const isWhiteBorderPriorityImage = (entry: DraftEntry) => {
 
 const getTagGroupSortRank = (tags: ImageTagOption[]) => {
   // Tagged section order:
-  // INF/ENF -> ENV -> DIGI -> VAR
+  // INF/ENF -> ENV -> DIGI -> VAR -> SIZE
   if (tags.includes("INF")) return 1;
   if (tags.includes("ENV")) return 2;
   if (tags.includes("DIGI")) return 3;
   if (tags.includes("VAR")) return 4;
+  if (tags.includes("SIZE")) return 5;
   return 0;
 };
 
@@ -4526,6 +4681,41 @@ const buildVariantSwedishReadableLabel = (row: DraftSkuRow) => {
   return zhCombined || String(row.draft_sku || "").trim() || String(row.id || "").trim();
 };
 
+const normalizeVariantGroupToken = (value: unknown) =>
+  toText(value)
+    .trim()
+    .toLowerCase();
+
+const getVariantGroupingFieldsFromRow = (row: DraftSkuRow) => {
+  const raw = parseDraftRawRow(row.draft_raw_row);
+  const color = toText(raw.variation_color_se || row.draft_option1).trim();
+  const other = toText(raw.variation_other_se || row.draft_option3).trim();
+  const amount = toText(raw.variation_amount_se || row.draft_option4).trim();
+  return { color, other, amount };
+};
+
+const buildVariantAssignmentGroupIdFromRow = (row: DraftSkuRow) => {
+  const rowId = String(row.id || "").trim();
+  if (!rowId) return "";
+  const { color, other, amount } = getVariantGroupingFieldsFromRow(row);
+  const colorKey = normalizeVariantGroupToken(color);
+  const otherKey = normalizeVariantGroupToken(other);
+  const amountKey = normalizeVariantGroupToken(amount);
+  if (!colorKey && !otherKey && !amountKey) {
+    return `row:${rowId}`;
+  }
+  return `group:${colorKey}|${otherKey}|${amountKey}`;
+};
+
+const buildVariantAssignmentGroupLabelFromRow = (row: DraftSkuRow) => {
+  const { color, other, amount } = getVariantGroupingFieldsFromRow(row);
+  const parts = [color, other, amount].filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(" / ");
+  }
+  return buildVariantSwedishReadableLabel(row);
+};
+
 const createVariantEditorKey = () =>
   `variant-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -4638,7 +4828,12 @@ const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
 const UNSEEN_AI_UPDATES_STORAGE_KEY = "draftExplorer.unseenAiUpdatesBySpu.v1";
 const CONTEXT_MENU_STICKY_CLOSE_MS = 520;
 const AUTO_LEVELS_MAX_IMAGES = 8;
+const FLIP_HORIZONTAL_MAX_IMAGES = 12;
 const COLLAGE_MAX_IMAGES = 9;
+const STACK_IMAGES_MAX_IMAGES = 9;
+const STACK_OVERLAY_MIN_IMAGES = 2;
+const DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES = 3;
+const ENABLE_VARIANT_IMAGE_AUTO_INFER = false;
 
 const getSpuRootFromDraftPath = (pathValue: string) => {
   const normalized = String(pathValue || "").trim().replace(/^\/+|\/+$/g, "");
@@ -4787,6 +4982,7 @@ export default function DraftExplorerPage() {
   >({
     main: 0,
     variants: 0,
+    sizecharts: 0,
     ocr: 0,
     others: 0,
     downloaded: 0,
@@ -5032,6 +5228,7 @@ export default function DraftExplorerPage() {
   const [productNoteSaving, setProductNoteSaving] = useState(false);
   const [productNoteError, setProductNoteError] = useState<string | null>(null);
   const [deleteRowsPending, setDeleteRowsPending] = useState(false);
+  const [duplicateProductPending, setDuplicateProductPending] = useState(false);
   const [duplicateRolesPending, setDuplicateRolesPending] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<DraftSpuRow | null>(null);
@@ -5092,6 +5289,8 @@ export default function DraftExplorerPage() {
   const [variantsEditorPacksText, setVariantsEditorPacksText] = useState("");
   const [variantsEditorAiPrompt, setVariantsEditorAiPrompt] = useState("");
   const [variantsEditorAiRunning, setVariantsEditorAiRunning] = useState(false);
+  const [variantsEditorSkuRegenerating, setVariantsEditorSkuRegenerating] =
+    useState(false);
   const [variantsEditorSort, setVariantsEditorSort] = useState<{
     key: VariantEditorSortKey | null;
     direction: VariantEditorSortDirection;
@@ -5105,6 +5304,18 @@ export default function DraftExplorerPage() {
   const [autoLevelsQuality, setAutoLevelsQuality] = useState(92);
   const [autoLevelsSubmitting, setAutoLevelsSubmitting] = useState(false);
   const [autoLevelsError, setAutoLevelsError] = useState<string | null>(null);
+  const [stackOverlayPickerOpen, setStackOverlayPickerOpen] = useState(false);
+  const [stackOverlayTargets, setStackOverlayTargets] = useState<DraftEntry[]>([]);
+  const [stackOverlayCandidateTargets, setStackOverlayCandidateTargets] = useState<DraftEntry[]>(
+    []
+  );
+  const [stackOverlayMode, setStackOverlayMode] = useState<
+    "digideal_main_stack_overlay" | "stack_overlay"
+  >("digideal_main_stack_overlay");
+  const [stackOverlayTopImagePath, setStackOverlayTopImagePath] = useState("");
+  const [stackOverlayInfo, setStackOverlayInfo] = useState<string | null>(null);
+  const [stackOverlaySubmitting] = useState(false);
+  const [stackOverlayError, setStackOverlayError] = useState<string | null>(null);
   const [initialOpenSpu, setInitialOpenSpu] = useState("");
   const pendingFolderOpenPathRef = useRef<string | null>(null);
   const initialUrlStateRef = useRef<DraftExplorerUrlState | null>(null);
@@ -5129,6 +5340,8 @@ export default function DraftExplorerPage() {
   const previousSelectedSpuPathForDraftTableRef = useRef("");
   const previousRunSpuPendingAiByPathRef = useRef<Record<string, boolean>>({});
   const autoMainSortPersistSignatureRef = useRef("");
+  const sizeChartAutoGenerateSignatureRef = useRef("");
+  const sizeChartAutoGenerateInFlightRef = useRef(false);
   const imageOrderSaveQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const entriesRequestSeqRef = useRef(0);
   const variantEntriesCacheRef = useRef<Map<string, DraftEntry[]>>(new Map());
@@ -5704,7 +5917,7 @@ export default function DraftExplorerPage() {
     if (requestedTab) {
       setDraftTab(requestedTab);
     }
-    setMainImageViewFilter(requestedImageTab === "variants" ? "var_only" : "all");
+    setMainImageViewFilter(toMainImageViewFilter(requestedImageTab));
     if (!requestedImagePath) {
       setPreviewPath(null);
     }
@@ -5781,7 +5994,7 @@ export default function DraftExplorerPage() {
       initialOpenSpuHandledRef.current = false;
 
       setDraftTab(requestedTab);
-      setMainImageViewFilter(requestedImageTab === "variants" ? "var_only" : "all");
+      setMainImageViewFilter(toMainImageViewFilter(requestedImageTab));
       if (!requestedImagePath) {
         setPreviewPath(null);
       }
@@ -5803,6 +6016,9 @@ export default function DraftExplorerPage() {
       }
       setDraftTableShowAll(requestedShowAll);
     };
+
+    // Apply URL state on first load as well (not only on browser back/forward).
+    applyUrlState();
 
     const handlePopState = () => {
       applyUrlState();
@@ -7408,6 +7624,44 @@ export default function DraftExplorerPage() {
     visibleSkuRows,
   ]);
 
+  const handleDuplicateProducts = useCallback(async () => {
+    if (duplicateProductPending) return;
+    const ids = visibleSpuRows
+      .filter((row) => selectedSpus.has(row.id))
+      .map((row) => row.id);
+    if (ids.length === 0) return;
+    setDuplicateProductPending(true);
+    setDraftError(null);
+    try {
+      const response = await fetch("/api/drafts/products/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to duplicate selected products.");
+      }
+      setSelectedSpus(new Set());
+      await fetchSpuRows();
+      await fetchSkuRows({ silent: true });
+    } catch (err) {
+      setDraftError(
+        err instanceof Error
+          ? err.message
+          : "Unable to duplicate selected products."
+      );
+    } finally {
+      setDuplicateProductPending(false);
+    }
+  }, [
+    duplicateProductPending,
+    fetchSkuRows,
+    fetchSpuRows,
+    selectedSpus,
+    visibleSpuRows,
+  ]);
+
   const handleDetailSave = async () => {
     if (!detailTarget || detailSaving) return;
     setDetailSaving(true);
@@ -8812,8 +9066,8 @@ export default function DraftExplorerPage() {
     } else {
       params.delete("showAll");
     }
-    if (mainImageViewFilter === "var_only") {
-      params.set("imgTab", "variants");
+    if (mainImageViewFilter !== "all") {
+      params.set("imgTab", toImageTabFromMainViewFilter(mainImageViewFilter));
     } else {
       params.delete("imgTab");
     }
@@ -8844,8 +9098,8 @@ export default function DraftExplorerPage() {
     if (draftTableShowAll) {
       hashParams.set("showAll", "1");
     }
-    if (mainImageViewFilter === "var_only") {
-      hashParams.set("imgTab", "variants");
+    if (mainImageViewFilter !== "all") {
+      hashParams.set("imgTab", toImageTabFromMainViewFilter(mainImageViewFilter));
     }
     if (imagePathValue) {
       hashParams.set("img", imagePathValue);
@@ -10384,7 +10638,11 @@ export default function DraftExplorerPage() {
   }, []);
 
   const closeVariantsEditor = useCallback((force = false) => {
-    if (!force && (variantsEditorSaving || variantsEditorAiRunning)) return;
+    if (
+      !force &&
+      (variantsEditorSaving || variantsEditorAiRunning || variantsEditorSkuRegenerating)
+    )
+      return;
     setVariantsEditorOpen(false);
     setVariantsEditorSpu("");
     setVariantsEditorRows([]);
@@ -10393,8 +10651,9 @@ export default function DraftExplorerPage() {
     setVariantsEditorSelectedRows(new Set());
     setVariantsEditorPacksText("");
     setVariantsEditorAiPrompt("");
+    setVariantsEditorSkuRegenerating(false);
     setVariantsEditorSort({ key: null, direction: "asc" });
-  }, [variantsEditorAiRunning, variantsEditorSaving]);
+  }, [variantsEditorAiRunning, variantsEditorSaving, variantsEditorSkuRegenerating]);
 
   const openVariantsEditor = useCallback(
     async (spu: string | null | undefined) => {
@@ -10679,6 +10938,119 @@ export default function DraftExplorerPage() {
     setVariantsEditorSelectedRows(new Set());
   }, [variantsEditorSelectedRows]);
 
+  const handleVariantEditorClearColumn = useCallback(
+    (field: DraftVariantEditorClearableField) => {
+      setVariantsEditorRows((prev) =>
+        prev.map((row) => ({
+          ...row,
+          [field]: "",
+          draft_raw_row: {
+            ...(row.draft_raw_row ?? {}),
+            [field]: "",
+          },
+        }))
+      );
+    },
+    []
+  );
+
+  const handleVariantEditorRegenerateSkus = useCallback(async () => {
+    if (
+      variantsEditorLoading ||
+      variantsEditorSaving ||
+      variantsEditorAiRunning ||
+      variantsEditorSkuRegenerating
+    ) {
+      return;
+    }
+    if (!variantsEditorSpu || variantsEditorRows.length === 0) return;
+    setVariantsEditorSkuRegenerating(true);
+    setVariantsEditorError(null);
+    try {
+      const response = await fetch("/api/drafts/variants/regenerate-skus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spu: variantsEditorSpu,
+          variants: variantsEditorRows.map((row) => ({
+            key: row.key,
+            id: row.id,
+            draft_option1: row.draft_option1,
+            draft_option2: row.draft_option2,
+            draft_option3: row.draft_option3,
+            draft_option4: row.draft_option4,
+            draft_option_combined_zh: row.draft_option_combined_zh,
+            variation_color_se: row.variation_color_se,
+            variation_size_se: row.variation_size_se,
+            variation_other_se: row.variation_other_se,
+            variation_amount_se: row.variation_amount_se,
+            draft_raw_row: row.draft_raw_row,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to regenerate SKUs.");
+      }
+      const updatedRows = Array.isArray(payload?.variants)
+        ? (payload.variants as Array<Record<string, unknown>>)
+        : [];
+      const patchByKey = new Map(
+        updatedRows
+          .map((row) => [String(row.key || "").trim(), row] as const)
+          .filter(([key]) => Boolean(key))
+      );
+      setVariantsEditorRows((prev) =>
+        prev.map((row) => {
+          const patch = patchByKey.get(row.key);
+          if (!patch) return row;
+          const nextSku = String(patch.draft_sku ?? row.draft_sku).trim();
+          const nextCombined = String(
+            patch.draft_option_combined_zh ?? row.draft_option_combined_zh
+          ).trim();
+          const patchRaw =
+            patch.draft_raw_row &&
+            typeof patch.draft_raw_row === "object" &&
+            !Array.isArray(patch.draft_raw_row)
+              ? (patch.draft_raw_row as Record<string, unknown>)
+              : null;
+          return {
+            ...row,
+            draft_sku: nextSku || row.draft_sku,
+            draft_option_combined_zh: nextCombined || row.draft_option_combined_zh,
+            draft_raw_row: patchRaw
+              ? {
+                  ...(row.draft_raw_row ?? {}),
+                  ...patchRaw,
+                }
+              : row.draft_raw_row,
+          };
+        })
+      );
+      const warnings = Array.isArray(payload?.warnings)
+        ? payload.warnings.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+        : [];
+      if (warnings.length > 0) {
+        setVariantsEditorError(
+          `SKU regeneration completed with ${warnings.length} warning(s): ${warnings
+            .slice(0, 2)
+            .join("; ")}${warnings.length > 2 ? "..." : ""}`
+        );
+      }
+    } catch (err) {
+      setVariantsEditorError((err as Error).message);
+    } finally {
+      setVariantsEditorSkuRegenerating(false);
+    }
+  }, [
+    variantsEditorAiRunning,
+    variantsEditorLoading,
+    variantsEditorRows,
+    variantsEditorSaving,
+    variantsEditorSkuRegenerating,
+    variantsEditorSpu,
+  ]);
+
   const handleVariantEditorAddPacks = useCallback(() => {
     const tokens = variantsEditorPacksText.match(/\d+/g) ?? [];
     const seenPacks = new Set<number>();
@@ -10812,7 +11184,7 @@ export default function DraftExplorerPage() {
   }, [variantsEditorPacksText, variantsEditorSpu]);
 
   const handleVariantEditorRunAi = useCallback(async () => {
-    if (variantsEditorAiRunning || variantsEditorSaving) return;
+    if (variantsEditorAiRunning || variantsEditorSaving || variantsEditorSkuRegenerating) return;
     const prompt = variantsEditorAiPrompt.trim();
     if (!variantsEditorSpu) return;
     if (!prompt) {
@@ -10976,11 +11348,18 @@ export default function DraftExplorerPage() {
     variantsEditorAiRunning,
     variantsEditorRows,
     variantsEditorSaving,
+    variantsEditorSkuRegenerating,
     variantsEditorSpu,
   ]);
 
   const handleVariantEditorSave = useCallback(async () => {
-    if (!variantsEditorSpu || variantsEditorSaving || variantsEditorAiRunning) return;
+    if (
+      !variantsEditorSpu ||
+      variantsEditorSaving ||
+      variantsEditorAiRunning ||
+      variantsEditorSkuRegenerating
+    )
+      return;
     setVariantsEditorSaving(true);
     setVariantsEditorError(null);
     try {
@@ -11014,6 +11393,7 @@ export default function DraftExplorerPage() {
     variantsEditorAiRunning,
     variantsEditorRows,
     variantsEditorSaving,
+    variantsEditorSkuRegenerating,
     variantsEditorSpu,
   ]);
 
@@ -11304,6 +11684,164 @@ export default function DraftExplorerPage() {
     fetchFolderTree,
     isImage,
     selectedFolder,
+  ]);
+
+  const closeStackOverlayPickerDialog = useCallback(
+    (force = false) => {
+      if (!force && stackOverlaySubmitting) return;
+      setStackOverlayPickerOpen(false);
+      setStackOverlayTargets([]);
+      setStackOverlayCandidateTargets([]);
+      setStackOverlayMode("digideal_main_stack_overlay");
+      setStackOverlayTopImagePath("");
+      setStackOverlayInfo(null);
+      setStackOverlayError(null);
+    },
+    [stackOverlaySubmitting]
+  );
+
+  const openStackOverlayPickerForEntries = useCallback(
+    (
+      sourceEntries: DraftEntry[],
+      mode: "digideal_main_stack_overlay" | "stack_overlay" = "digideal_main_stack_overlay"
+    ) => {
+      const targets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      const minImages =
+        mode === "stack_overlay"
+          ? STACK_OVERLAY_MIN_IMAGES
+          : DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
+      if (targets.length < minImages) {
+        setError(
+          mode === "stack_overlay"
+            ? "Select at least two images."
+            : "Select at least three images (white-background cards + one scenic image)."
+        );
+        return;
+      }
+
+      const limitedTargets = targets.slice(0, STACK_IMAGES_MAX_IMAGES);
+      const whiteCandidates = limitedTargets.filter((entry) =>
+        isWhiteBackgroundPriorityImage(entry)
+      );
+      const candidateTargets =
+        whiteCandidates.length > 0 ? whiteCandidates : limitedTargets;
+      const firstCandidatePath = candidateTargets[0]?.path || "";
+
+      let warningMessage: string | null = null;
+      if (targets.length > STACK_IMAGES_MAX_IMAGES) {
+        warningMessage = `Only the first ${STACK_IMAGES_MAX_IMAGES} selected images are included.`;
+      } else if (whiteCandidates.length === 0) {
+        warningMessage = "No clear white-background candidates detected; showing all selected images.";
+      }
+
+      setStackOverlayTargets(limitedTargets);
+      setStackOverlayCandidateTargets(candidateTargets);
+      setStackOverlayMode(mode);
+      setStackOverlayTopImagePath(firstCandidatePath);
+      setStackOverlayInfo(warningMessage);
+      setStackOverlayError(null);
+      setStackOverlayPickerOpen(true);
+      setError(null);
+    },
+    [isImage]
+  );
+
+  const applyStackOverlayForDialogTargets = useCallback(async () => {
+    if (stackOverlaySubmitting) return;
+    const targets = stackOverlayTargets.filter(
+      (entry) => entry.type === "file" && isImage(entry.name)
+    );
+    const isStandaloneMode = stackOverlayMode === "stack_overlay";
+    const minImages = isStandaloneMode
+      ? STACK_OVERLAY_MIN_IMAGES
+      : DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
+    if (targets.length < minImages) {
+      setStackOverlayError(
+        isStandaloneMode ? "Select at least two images." : "Select at least three images."
+      );
+      return;
+    }
+    const selectedTopPath = String(stackOverlayTopImagePath || "").trim();
+    if (!selectedTopPath) {
+      setStackOverlayError("Select one top image.");
+      return;
+    }
+    if (!stackOverlayCandidateTargets.some((entry) => entry.path === selectedTopPath)) {
+      setStackOverlayError("Selected top image is no longer valid.");
+      return;
+    }
+
+    const fallbackTargetPath = getParentFolderPathFromEntryPath(targets[0]?.path || "");
+    const resolvedTargetPath = String(currentPath || fallbackTargetPath || "").trim();
+    if (!resolvedTargetPath) {
+      setStackOverlayError(
+        isStandaloneMode
+          ? "Unable to resolve target folder for Stack Overlay."
+          : "Unable to resolve target folder for DigiDeal Main Stack Overlay."
+      );
+      return;
+    }
+
+    setError(null);
+    const targetPaths = targets.map((entry) => entry.path);
+    closeStackOverlayPickerDialog(true);
+    clearSelectedFilesForImageActions();
+
+    // Run long stack-overlay generation in the background so the gallery stays usable.
+    void (async () => {
+      try {
+        const response = await fetch("/api/drafts/images/merge-digideal-main-stack-overlay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paths: targetPaths,
+            targetPath: resolvedTargetPath,
+            topImagePath: selectedTopPath,
+            standalone: isStandaloneMode,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            payload?.error ||
+              (isStandaloneMode
+                ? "Unable to create Stack Overlay."
+                : "Unable to create DigiDeal Main Stack Overlay.")
+          );
+        }
+
+        const latestPath = String(currentPathRef.current || "").trim();
+        if (latestPath === resolvedTargetPath) {
+          await refreshEntries(resolvedTargetPath);
+        }
+
+        const latestSelectedFolder = String(selectedFolderRef.current || "").trim();
+        if (latestSelectedFolder) {
+          await fetchFolderTree(latestSelectedFolder);
+        }
+      } catch (err) {
+        setError(
+          (err as Error).message ||
+            (isStandaloneMode
+              ? "Unable to create Stack Overlay."
+              : "Unable to create DigiDeal Main Stack Overlay.")
+        );
+      }
+    })();
+  }, [
+    clearSelectedFilesForImageActions,
+    closeStackOverlayPickerDialog,
+    currentPath,
+    fetchFolderTree,
+    isImage,
+    refreshEntries,
+    stackOverlayCandidateTargets,
+    stackOverlayMode,
+    stackOverlaySubmitting,
+    stackOverlayTargets,
+    stackOverlayTopImagePath,
   ]);
 
   const requestPhotopeaExport = useCallback(() => {
@@ -11879,10 +12417,7 @@ export default function DraftExplorerPage() {
               typeof copy?.zimageUpscaled === "boolean"
                 ? copy.zimageUpscaled
                 : false;
-            const sourcePathNormalized = normalizeDraftRelativePath(entry.path);
-            const sourceIsVariant =
-              sourcePathNormalized.includes("/variant images (v)/") ||
-              extractImageTagsFromFileName(entry.name).includes("VAR");
+            const sourceIsVariant = extractImageTagsFromFileName(entry.name).includes("VAR");
             if (copyName && copyPath) {
               created.push({
                 sourcePath: entry.path,
@@ -12075,6 +12610,207 @@ export default function DraftExplorerPage() {
     ]
   );
 
+  const handleStackImagesForEntries = useCallback(
+    async (sourceEntries: DraftEntry[]) => {
+      clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
+      const targets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      if (targets.length < 2) {
+        setError("Select at least two images.");
+        return;
+      }
+
+      const limitedTargets = targets.slice(0, STACK_IMAGES_MAX_IMAGES);
+      const fallbackTargetPath = getParentFolderPathFromEntryPath(limitedTargets[0]?.path || "");
+      const resolvedTargetPath = String(currentPath || fallbackTargetPath || "").trim();
+      if (!resolvedTargetPath) {
+        setError("Unable to resolve target folder for Stack Images.");
+        return;
+      }
+
+      setBulkImageActionPending(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/drafts/images/stack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paths: limitedTargets.map((entry) => entry.path),
+            targetPath: resolvedTargetPath,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to create image stack.");
+        }
+
+        await refreshEntries(resolvedTargetPath);
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
+        }
+      } catch (err) {
+        setError((err as Error).message || "Unable to create image stack.");
+      } finally {
+        setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
+      }
+    },
+    [
+      bulkImageActionPending,
+      clearSelectedFilesForImageActions,
+      currentPath,
+      fetchFolderTree,
+      isImage,
+      refreshEntries,
+      selectedFolder,
+    ]
+  );
+
+  const handleFlipHorizontalForEntries = useCallback(
+    async (sourceEntries: DraftEntry[]) => {
+      clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
+      const targets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      if (targets.length === 0) {
+        setError("Select at least one image.");
+        return;
+      }
+
+      const limitedTargets = targets.slice(0, FLIP_HORIZONTAL_MAX_IMAGES);
+      const targetPaths = limitedTargets.map((entry) => entry.path);
+
+      setBulkImageActionPending(true);
+      setError(null);
+      setReloadingImagePaths((prev) => {
+        const next = new Set(prev);
+        targetPaths.forEach((pathValue) => next.add(pathValue));
+        return next;
+      });
+      try {
+        const response = await fetch("/api/drafts/images/flip-horizontal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paths: targetPaths,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to flip image(s).");
+        }
+
+        const updatedRows = Array.isArray(payload?.updated)
+          ? (payload.updated as Array<Record<string, unknown>>)
+          : [];
+        const errors = Array.isArray(payload?.errors)
+          ? (payload.errors as Array<Record<string, unknown>>)
+          : [];
+
+        const updates = new Map<
+          string,
+          {
+            modifiedAt: string;
+            size: number;
+            pixelQualityScore: number | null;
+          }
+        >();
+        updatedRows.forEach((row) => {
+          const rowPath = String(row.path || "").trim();
+          if (!rowPath) return;
+          const modifiedAt =
+            String(row.modifiedAt || "").trim() || new Date().toISOString();
+          const size =
+            typeof row.size === "number" && Number.isFinite(row.size) ? row.size : 0;
+          const pixelQualityScore =
+            typeof row.pixelQualityScore === "number" &&
+            Number.isFinite(row.pixelQualityScore)
+              ? Math.round(row.pixelQualityScore)
+              : null;
+          updates.set(rowPath, { modifiedAt, size, pixelQualityScore });
+        });
+
+        if (updates.size > 0) {
+          setEntries((prev) =>
+            prev.map((item) => {
+              const update = updates.get(item.path);
+              if (!update) return item;
+              return {
+                ...item,
+                modifiedAt: update.modifiedAt,
+                size: update.size || item.size,
+                pixelQualityScore:
+                  update.pixelQualityScore !== null
+                    ? update.pixelQualityScore
+                    : item.pixelQualityScore ?? null,
+              };
+            })
+          );
+          setMainViewVariantImageEntries((prev) =>
+            prev.map((item) => {
+              const update = updates.get(item.path);
+              if (!update) return item;
+              return {
+                ...item,
+                modifiedAt: update.modifiedAt,
+                size: update.size || item.size,
+                pixelQualityScore:
+                  update.pixelQualityScore !== null
+                    ? update.pixelQualityScore
+                    : item.pixelQualityScore ?? null,
+              };
+            })
+          );
+          setImageDimensions((prev) => {
+            const next: Record<string, { width: number; height: number }> = {
+              ...prev,
+            };
+            targetPaths.forEach((pathValue) => {
+              delete next[pathValue];
+            });
+            return next;
+          });
+        }
+
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
+        }
+
+        if (errors.length > 0) {
+          const preview = errors
+            .slice(0, 2)
+            .map((row) => String(row.error || "Unknown error"))
+            .join("; ");
+          setError(
+            `Flip Horizontal failed for ${errors.length} image(s). ${preview}${
+              errors.length > 2 ? "..." : ""
+            }`
+          );
+        }
+      } catch (err) {
+        setError((err as Error).message || "Unable to flip image(s).");
+      } finally {
+        setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
+        setReloadingImagePaths((prev) => {
+          const next = new Set(prev);
+          targetPaths.forEach((pathValue) => next.delete(pathValue));
+          return next;
+        });
+      }
+    },
+    [
+      bulkImageActionPending,
+      clearSelectedFilesForImageActions,
+      fetchFolderTree,
+      isImage,
+      selectedFolder,
+    ]
+  );
+
   const handleMergeDigidealMainForEntries = useCallback(
     async (sourceEntries: DraftEntry[]) => {
       clearSelectedFilesForImageActions();
@@ -12131,6 +12867,81 @@ export default function DraftExplorerPage() {
       refreshEntries,
       selectedFolder,
     ]
+  );
+
+  const handleMergeDigidealMainOverlayForEntries = useCallback(
+    async (sourceEntries: DraftEntry[]) => {
+      clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
+      const targets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      if (targets.length !== 2) {
+        setError("Select exactly two images.");
+        return;
+      }
+
+      const fallbackTargetPath = getParentFolderPathFromEntryPath(targets[0]?.path || "");
+      const resolvedTargetPath = String(currentPath || fallbackTargetPath || "").trim();
+      if (!resolvedTargetPath) {
+        setError("Unable to resolve target folder for DigiDeal Main Overlay.");
+        return;
+      }
+
+      setBulkImageActionPending(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/drafts/images/merge-digideal-main-overlay-v2", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paths: targets.map((entry) => entry.path),
+            targetPath: resolvedTargetPath,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to create DigiDeal Main Overlay.");
+        }
+
+        await refreshEntries(resolvedTargetPath);
+        if (selectedFolder) {
+          await fetchFolderTree(selectedFolder);
+        }
+      } catch (err) {
+        setError((err as Error).message || "Unable to create DigiDeal Main Overlay.");
+      } finally {
+        setBulkImageActionPending(false);
+        clearSelectedFilesForImageActions();
+      }
+    },
+    [
+      bulkImageActionPending,
+      clearSelectedFilesForImageActions,
+      currentPath,
+      fetchFolderTree,
+      isImage,
+      refreshEntries,
+      selectedFolder,
+    ]
+  );
+
+  const handleMergeDigidealMainStackOverlayForEntries = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
+      openStackOverlayPickerForEntries(sourceEntries, "digideal_main_stack_overlay");
+    },
+    [bulkImageActionPending, clearSelectedFilesForImageActions, openStackOverlayPickerForEntries]
+  );
+
+  const handleStackOverlayForEntries = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      clearSelectedFilesForImageActions();
+      if (bulkImageActionPending) return;
+      openStackOverlayPickerForEntries(sourceEntries, "stack_overlay");
+    },
+    [bulkImageActionPending, clearSelectedFilesForImageActions, openStackOverlayPickerForEntries]
   );
 
   const handleUndoLastChangeForEntries = useCallback(
@@ -15220,6 +16031,113 @@ export default function DraftExplorerPage() {
     []
   );
 
+  const clearVariantImageAssignmentsByFileKey = useCallback(
+    async (input: { spu: string; fileNameKey: string }) => {
+      const normalizedSpu = String(input.spu || "").trim().toUpperCase();
+      const normalizedFileNameKey = normalizeVariantImageFileNameKey(input.fileNameKey);
+      if (!normalizedSpu || !normalizedFileNameKey) return;
+
+      const matchingRows = skuRows.filter((row) => {
+        const rowSpu = String(row.draft_spu || "").trim().toUpperCase();
+        if (rowSpu !== normalizedSpu) return false;
+        const fileName = extractVariantImageFileName(row.draft_variant_image_url);
+        const fileNameKey = normalizeVariantImageFileNameKey(fileName);
+        return fileNameKey === normalizedFileNameKey;
+      });
+      if (matchingRows.length === 0) return;
+
+      const rowIds = matchingRows
+        .map((row) => String(row.id || "").trim())
+        .filter(Boolean);
+      if (rowIds.length === 0) return;
+
+      const previousById = new Map<string, string | null>(
+        matchingRows.map((row) => [
+          String(row.id || "").trim(),
+          row.draft_variant_image_url ?? null,
+        ])
+      );
+
+      setSkuRows((prev) =>
+        prev.map((row) =>
+          rowIds.includes(String(row.id || "").trim())
+            ? { ...row, draft_variant_image_url: null }
+            : row
+        )
+      );
+
+      setVariantPickerRowsBySpu((prev) => {
+        const existing = prev[normalizedSpu];
+        if (!existing || existing.length === 0) return prev;
+        let changed = false;
+        const nextRows = existing.map((row) => {
+          const rowId = String(row.id || "").trim();
+          if (!rowIds.includes(rowId)) return row;
+          changed = true;
+          return { ...row, draft_variant_image_url: null };
+        });
+        if (!changed) return prev;
+        return {
+          ...prev,
+          [normalizedSpu]: nextRows,
+        };
+      });
+
+      const failures: string[] = [];
+      for (const rowId of rowIds) {
+        try {
+          const response = await fetch("/api/drafts/variants/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: rowId,
+              field: "draft_variant_image_url",
+              value: null,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Unable to clear variant image mapping.");
+          }
+        } catch (err) {
+          const previousValue = previousById.get(rowId) ?? null;
+          setSkuRows((prev) =>
+            prev.map((row) =>
+              String(row.id || "").trim() === rowId
+                ? { ...row, draft_variant_image_url: previousValue }
+                : row
+            )
+          );
+          setVariantPickerRowsBySpu((prev) => {
+            const existing = prev[normalizedSpu];
+            if (!existing || existing.length === 0) return prev;
+            let changed = false;
+            const nextRows = existing.map((row) => {
+              if (String(row.id || "").trim() !== rowId) return row;
+              changed = true;
+              return { ...row, draft_variant_image_url: previousValue };
+            });
+            if (!changed) return prev;
+            return {
+              ...prev,
+              [normalizedSpu]: nextRows,
+            };
+          });
+          failures.push((err as Error).message);
+        }
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Variant release completed with ${failures.length} issue(s): ${failures
+            .slice(0, 2)
+            .join("; ")}${failures.length > 2 ? "..." : ""}`
+        );
+      }
+    },
+    [skuRows]
+  );
+
   const handleApplyImageTag = useCallback(
     async (sourceEntries: DraftEntry[], tag: ImageTagOption) => {
       clearSelectedFilesForImageActions();
@@ -15259,7 +16177,11 @@ export default function DraftExplorerPage() {
             const response = await fetch("/api/drafts/images/rename", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: previousPath, name: requestedName }),
+              body: JSON.stringify({
+                path: previousPath,
+                name: requestedName,
+                allowRenameOnConflict: true,
+              }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -15337,8 +16259,18 @@ export default function DraftExplorerPage() {
           }
           const previousPath = entry.path;
           const previousName = entry.name;
+          const previousTags = extractImageTagsFromFileName(previousName);
           const requestedName = toggleImageTagInFileName(entry.name, tag);
           if (!requestedName || requestedName === entry.name) continue;
+          const nextTags = extractImageTagsFromFileName(requestedName);
+          const removingVariantTag =
+            tag === "VAR" && previousTags.includes("VAR") && !nextTags.includes("VAR");
+          const previousFileName = extractFileNameFromPath(previousPath || previousName);
+          const previousVariantFileNameKey = normalizeVariantImageFileNameKey(previousFileName);
+          const previousPathParts = String(previousPath || "")
+            .split("/")
+            .filter(Boolean);
+          const previousSpu = String(previousPathParts[1] || "").trim().toUpperCase();
           const parentPath = getParentFolderPathFromEntryPath(previousPath);
           const optimisticPath = parentPath
             ? `${parentPath}/${requestedName}`.replace(/\/{2,}/g, "/")
@@ -15351,7 +16283,12 @@ export default function DraftExplorerPage() {
             const response = await fetch("/api/drafts/images/rename", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: previousPath, name: requestedName }),
+              body: JSON.stringify({
+                path: previousPath,
+                name: requestedName,
+                allowRenameOnConflict: true,
+                clearVariantMappings: removingVariantTag,
+              }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -15369,6 +16306,12 @@ export default function DraftExplorerPage() {
             }
             const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
             if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
+            if (removingVariantTag && previousSpu && previousVariantFileNameKey) {
+              await clearVariantImageAssignmentsByFileKey({
+                spu: previousSpu,
+                fileNameKey: previousVariantFileNameKey,
+              });
+            }
           } catch (err) {
             applyLocalImageRename(optimisticPath, previousPath, previousName);
             failures.push(`${entry.name}: ${(err as Error).message}`);
@@ -15400,6 +16343,7 @@ export default function DraftExplorerPage() {
       entryByPath,
       isImage,
       pendingAiEditsByOriginal,
+      clearVariantImageAssignmentsByFileKey,
       resortImageFoldersByHierarchy,
     ]
   );
@@ -15955,7 +16899,14 @@ export default function DraftExplorerPage() {
     [contextMenu, resolveContextActionTargets]
   );
   const contextMenuCollageAllowed = contextMenuImageTargets.length >= 2;
+  const contextMenuStackOverlayAllowed =
+    contextMenuImageTargets.length >= STACK_OVERLAY_MIN_IMAGES;
+  const contextMenuStackImagesAllowed = contextMenuImageTargets.length >= 2;
+  const contextMenuFlipHorizontalAllowed = contextMenuImageTargets.length >= 1;
   const contextMenuMergeDigidealMainAllowed = contextMenuImageTargets.length === 2;
+  const contextMenuMergeDigidealMainOverlayAllowed = contextMenuImageTargets.length === 2;
+  const contextMenuMergeDigidealMainStackOverlayAllowed =
+    contextMenuImageTargets.length >= DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
   const contextMenuCollectionAllowed =
     contextMenuImageTargets.length >= 2 && contextMenuImageTargets.length <= 4;
   const contextMenuVariantSpu = useMemo(() => {
@@ -16015,6 +16966,54 @@ export default function DraftExplorerPage() {
     });
     return next;
   }, [contextMenuVariantRows]);
+  const contextMenuVariantGroups = useMemo(() => {
+    const byId = new Map<
+      string,
+      { id: string; label: string; rowIds: string[]; skuHint: string }
+    >();
+    contextMenuVariantRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      const groupId = buildVariantAssignmentGroupIdFromRow(row) || `row:${rowId}`;
+      const sku = String(row.draft_sku || "").trim();
+      const existing = byId.get(groupId);
+      if (!existing) {
+        byId.set(groupId, {
+          id: groupId,
+          label: buildVariantAssignmentGroupLabelFromRow(row) || "-",
+          rowIds: [rowId],
+          skuHint: sku,
+        });
+        return;
+      }
+      if (!existing.rowIds.includes(rowId)) {
+        existing.rowIds.push(rowId);
+      }
+      if (!existing.skuHint && sku) {
+        existing.skuHint = sku;
+      }
+    });
+
+    return Array.from(byId.values()).sort((left, right) => {
+      const labelCompare = left.label.localeCompare(right.label, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+      if (labelCompare !== 0) return labelCompare;
+      return left.skuHint.localeCompare(right.skuHint, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }, [contextMenuVariantRows]);
+  const contextMenuVariantGroupsById = useMemo(() => {
+    const next = new Map<string, { id: string; label: string; rowIds: string[]; skuHint: string }>();
+    contextMenuVariantGroups.forEach((group) => {
+      if (!group.id) return;
+      next.set(group.id, group);
+    });
+    return next;
+  }, [contextMenuVariantGroups]);
   const contextMenuVariantInferredRowIds = useMemo(() => {
     if (!contextMenuVariantImageIsTaggedVar) return new Set<string>();
     if (!contextMenuVariantImageFileName) return new Set<string>();
@@ -16166,12 +17165,19 @@ export default function DraftExplorerPage() {
     return Array.from(uniqueByKey.values());
   }, [entries, isImage, mainViewVariantImageEntries]);
   const applyVariantImageAssignmentToLocalState = useCallback(
-    (spu: string, variantId: string, nextImageValue: string | null) => {
-      const normalizedVariantId = String(variantId || "").trim();
-      if (!normalizedVariantId) return;
+    (spu: string, variantIdsRaw: string[], nextImageValue: string | null) => {
+      const normalizedVariantIds = Array.from(
+        new Set(
+          variantIdsRaw
+            .map((value) => String(value || "").trim())
+            .filter((value) => Boolean(value))
+        )
+      );
+      if (normalizedVariantIds.length === 0) return;
+      const variantIdSet = new Set(normalizedVariantIds);
       setSkuRows((prev) =>
         prev.map((row) =>
-          String(row.id || "").trim() === normalizedVariantId
+          variantIdSet.has(String(row.id || "").trim())
             ? { ...row, draft_variant_image_url: nextImageValue }
             : row
         )
@@ -16182,7 +17188,7 @@ export default function DraftExplorerPage() {
         if (!existing || existing.length === 0) return prev;
         let changed = false;
         const nextRows = existing.map((row) => {
-          if (String(row.id || "").trim() !== normalizedVariantId) return row;
+          if (!variantIdSet.has(String(row.id || "").trim())) return row;
           changed = true;
           return { ...row, draft_variant_image_url: nextImageValue };
         });
@@ -16196,59 +17202,107 @@ export default function DraftExplorerPage() {
     []
   );
   const handleToggleContextMenuVariantAssignment = useCallback(
-    async (variantIdRaw: string) => {
-      const variantId = String(variantIdRaw || "").trim();
-      if (!variantId) return;
+    async (assignmentIdRaw: string) => {
+      const assignmentId = String(assignmentIdRaw || "").trim();
+      if (!assignmentId) return;
       if (!contextMenuVariantSpu || !contextMenuVariantImageFileName) return;
-      const targetRow = contextMenuVariantRowsById.get(variantId);
-      if (!targetRow) {
+
+      const targetGroup = contextMenuVariantGroupsById.get(assignmentId);
+      const targetVariantIds = targetGroup
+        ? targetGroup.rowIds
+        : contextMenuVariantRowsById.has(assignmentId)
+          ? [assignmentId]
+          : [];
+      if (targetVariantIds.length === 0) {
         setError("Variant row not found.");
         return;
       }
-      const currentRefFileName = extractVariantImageFileName(targetRow.draft_variant_image_url);
-      const currentRefKey = normalizeVariantImageFileNameKey(currentRefFileName);
+
+      const targetRows = targetVariantIds
+        .map((rowId) => contextMenuVariantRowsById.get(rowId))
+        .filter((row): row is DraftSkuRow => Boolean(row));
+      if (targetRows.length === 0) {
+        setError("Variant row not found.");
+        return;
+      }
+
+      const isFullyAssigned = targetRows.every((row) => {
+        const currentRefFileName = extractVariantImageFileName(row.draft_variant_image_url);
+        const currentRefKey = normalizeVariantImageFileNameKey(currentRefFileName);
+        return Boolean(currentRefKey) && currentRefKey === contextMenuVariantImageFileNameKey;
+      });
       const nextImageValue =
-        currentRefKey === contextMenuVariantImageFileNameKey
+        isFullyAssigned
           ? null
           : contextMenuVariantImageFileName;
-      const previousValue = targetRow.draft_variant_image_url ?? null;
+      const previousValuesById = new Map<string, string | null>(
+        targetRows.map((row) => [String(row.id || "").trim(), row.draft_variant_image_url ?? null])
+      );
       setContextMenuVariantSavingIds((prev) => {
         const next = new Set(prev);
-        next.add(variantId);
+        next.add(assignmentId);
         return next;
       });
-      applyVariantImageAssignmentToLocalState(contextMenuVariantSpu, variantId, nextImageValue);
       try {
-        const response = await fetch("/api/drafts/variants/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: variantId,
-            field: "draft_variant_image_url",
-            value: nextImageValue,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || "Unable to update variant image mapping.");
+        applyVariantImageAssignmentToLocalState(
+          contextMenuVariantSpu,
+          targetVariantIds,
+          nextImageValue
+        );
+
+        const failures: string[] = [];
+        let successCount = 0;
+        for (const variantId of targetVariantIds) {
+          try {
+            const response = await fetch("/api/drafts/variants/update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: variantId,
+                field: "draft_variant_image_url",
+                value: nextImageValue,
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Unable to update variant image mapping.");
+            }
+            successCount += 1;
+          } catch (err) {
+            const previousValue = previousValuesById.get(variantId) ?? null;
+            applyVariantImageAssignmentToLocalState(
+              contextMenuVariantSpu,
+              [variantId],
+              previousValue
+            );
+            failures.push((err as Error).message);
+          }
         }
-        try {
-          const refreshed = await fetchVariantPickerRowsForSpu(contextMenuVariantSpu);
-          setVariantPickerRowsBySpu((prev) => ({
-            ...prev,
-            [contextMenuVariantSpu]: refreshed,
-          }));
-        } catch {
-          // Keep optimistic update if refresh fails.
+
+        if (successCount > 0) {
+          try {
+            const refreshed = await fetchVariantPickerRowsForSpu(contextMenuVariantSpu);
+            setVariantPickerRowsBySpu((prev) => ({
+              ...prev,
+              [contextMenuVariantSpu]: refreshed,
+            }));
+          } catch {
+            // Keep optimistic update if refresh fails.
+          }
         }
-      } catch (err) {
-        applyVariantImageAssignmentToLocalState(contextMenuVariantSpu, variantId, previousValue);
-        setError((err as Error).message);
+
+        if (failures.length > 0) {
+          setError(
+            `Variant mapping updated with ${failures.length} issue(s): ${failures
+              .slice(0, 2)
+              .join("; ")}${failures.length > 2 ? "..." : ""}`
+          );
+        }
       } finally {
         setContextMenuVariantSavingIds((prev) => {
-          if (!prev.has(variantId)) return prev;
+          if (!prev.has(assignmentId)) return prev;
           const next = new Set(prev);
-          next.delete(variantId);
+          next.delete(assignmentId);
           return next;
         });
       }
@@ -16257,12 +17311,14 @@ export default function DraftExplorerPage() {
       applyVariantImageAssignmentToLocalState,
       contextMenuVariantImageFileName,
       contextMenuVariantImageFileNameKey,
+      contextMenuVariantGroupsById,
       contextMenuVariantRowsById,
       contextMenuVariantSpu,
       fetchVariantPickerRowsForSpu,
     ]
   );
   useEffect(() => {
+    if (!ENABLE_VARIANT_IMAGE_AUTO_INFER) return;
     const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
     if (!spu) return;
     if (autoVariantRowsForCurrentSpu.length === 0) return;
@@ -16367,7 +17423,7 @@ export default function DraftExplorerPage() {
         if (cancelled) break;
         const currentRow = rowById.get(update.rowId);
         const previousValue = currentRow?.draft_variant_image_url ?? null;
-        applyVariantImageAssignmentToLocalState(spu, update.rowId, update.fileName);
+        applyVariantImageAssignmentToLocalState(spu, [update.rowId], update.fileName);
         try {
           const response = await fetch("/api/drafts/variants/update", {
             method: "POST",
@@ -16384,7 +17440,7 @@ export default function DraftExplorerPage() {
           }
           successfulUpdates += 1;
         } catch (err) {
-          applyVariantImageAssignmentToLocalState(spu, update.rowId, previousValue);
+          applyVariantImageAssignmentToLocalState(spu, [update.rowId], previousValue);
           failures.push((err as Error).message);
         }
       }
@@ -16424,6 +17480,7 @@ export default function DraftExplorerPage() {
     fetchVariantPickerRowsForSpu,
   ]);
   useEffect(() => {
+    if (!ENABLE_VARIANT_IMAGE_AUTO_INFER) return;
     if (contextMenuSubmenu !== "assign-variant") return;
     if (!contextMenuVariantImageIsTaggedVar) return;
     if (!contextMenuVariantImageFileNameKey) return;
@@ -16512,6 +17569,19 @@ export default function DraftExplorerPage() {
         variantId = encodedVariantId;
       }
       void handleToggleContextMenuVariantAssignment(variantId);
+      return;
+    }
+    if (action.startsWith("assign-variant-group-toggle:")) {
+      const encodedGroupId = action
+        .slice("assign-variant-group-toggle:".length)
+        .trim();
+      let groupId = encodedGroupId;
+      try {
+        groupId = decodeURIComponent(encodedGroupId);
+      } catch {
+        groupId = encodedGroupId;
+      }
+      void handleToggleContextMenuVariantAssignment(groupId);
       return;
     }
     setContextMenu(null);
@@ -16613,11 +17683,41 @@ export default function DraftExplorerPage() {
       }
       return;
     }
+    if (action === "flip-horizontal") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        void handleFlipHorizontalForEntries(targets);
+      } else {
+        setError("Select at least one image.");
+      }
+      return;
+    }
     if (action === "create-collage") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 1) {
         restoreSelectionAfterContextAction(targets);
         void handleCreateCollageForEntries(targets);
+      } else {
+        setError("Select at least two images.");
+      }
+      return;
+    }
+    if (action === "stack-overlay") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length >= STACK_OVERLAY_MIN_IMAGES) {
+        restoreSelectionAfterContextAction(targets);
+        void handleStackOverlayForEntries(targets);
+      } else {
+        setError("Select at least two images.");
+      }
+      return;
+    }
+    if (action === "stack-images") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 1) {
+        restoreSelectionAfterContextAction(targets);
+        void handleStackImagesForEntries(targets);
       } else {
         setError("Select at least two images.");
       }
@@ -16630,6 +17730,26 @@ export default function DraftExplorerPage() {
         void handleMergeDigidealMainForEntries(targets);
       } else {
         setError("Select exactly two images.");
+      }
+      return;
+    }
+    if (action === "merge-digideal-main-overlay") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length === 2) {
+        restoreSelectionAfterContextAction(targets);
+        void handleMergeDigidealMainOverlayForEntries(targets);
+      } else {
+        setError("Select exactly two images.");
+      }
+      return;
+    }
+    if (action === "merge-digideal-main-stack-overlay") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length >= DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES) {
+        restoreSelectionAfterContextAction(targets);
+        void handleMergeDigidealMainStackOverlayForEntries(targets);
+      } else {
+        setError("Select at least three images.");
       }
       return;
     }
@@ -17313,35 +18433,119 @@ export default function DraftExplorerPage() {
     });
   }, [currentPath, fetchEntries, imageTabTargets.mainPath, imageTabTargets.variantsPath]);
 
+  const ensureSizeChartsForMainPath = useCallback(
+    async (mainPath: string) => {
+      const normalizedMainPath = String(mainPath || "").trim();
+      if (!normalizedMainPath) return;
+      if (sizeChartAutoGenerateInFlightRef.current) return;
+      if (sizeChartAutoGenerateSignatureRef.current === normalizedMainPath) return;
+
+      sizeChartAutoGenerateSignatureRef.current = normalizedMainPath;
+      sizeChartAutoGenerateInFlightRef.current = true;
+      try {
+        const response = await fetch("/api/drafts/images/size-charts/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mainPath: normalizedMainPath }),
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json().catch(() => ({}));
+        const generatedCount = Array.isArray(payload?.generated)
+          ? payload.generated.length
+          : 0;
+        if (generatedCount > 0) {
+          const currentMainPath = String(currentPathRef.current || "").trim();
+          if (currentMainPath === normalizedMainPath) {
+            await refreshEntries(normalizedMainPath);
+          }
+        }
+      } catch {
+        // Ignore auto-generation failures to keep explorer interaction smooth.
+      } finally {
+        sizeChartAutoGenerateInFlightRef.current = false;
+      }
+    },
+    [refreshEntries]
+  );
+
+  useEffect(() => {
+    const normalizedMainPath = String(imageTabTargets.mainPath || "").trim();
+    if (!normalizedMainPath) return;
+    if (String(currentPath || "").trim() !== normalizedMainPath) return;
+    void ensureSizeChartsForMainPath(normalizedMainPath);
+  }, [currentPath, ensureSizeChartsForMainPath, imageTabTargets.mainPath]);
+
   const countImagesInEntryList = useCallback(
-    (items: DraftEntry[]) =>
-      items.reduce(
-        (count, item) =>
-          item.type === "file" &&
-          isImage(item.name) &&
-          !optimisticHiddenImagePaths.has(item.path)
-            ? count + 1
-            : count,
-        0
-      ),
+    (items: DraftEntry[], predicate?: (item: DraftEntry) => boolean) =>
+      items.reduce((count, item) => {
+        if (item.type !== "file" || !isImage(item.name)) return count;
+        if (optimisticHiddenImagePaths.has(item.path)) return count;
+        if (predicate && !predicate(item)) return count;
+        return count + 1;
+      }, 0),
     [isImage, optimisticHiddenImagePaths]
   );
 
   const countImagesForPath = useCallback(
-    async (pathValue: string | null) => {
+    async (
+      pathValue: string | null,
+      predicate?: (item: DraftEntry) => boolean
+    ) => {
       const normalizedPath = String(pathValue || "").trim();
       if (!normalizedPath) return 0;
       if (normalizedPath === currentPath) {
-        return countImagesInEntryList(entries);
+        return countImagesInEntryList(entries, predicate);
       }
       try {
         const items = await listPathEntries(normalizedPath);
-        return countImagesInEntryList(items);
+        return countImagesInEntryList(items, predicate);
       } catch {
         return 0;
       }
     },
     [countImagesInEntryList, currentPath, entries, listPathEntries]
+  );
+
+  const countSizeChartImagesForPaths = useCallback(
+    async (mainPathValue: string | null, variantsPathValue: string | null) => {
+      const normalizedMainPath = String(mainPathValue || "").trim();
+      const normalizedVariantsPath = String(variantsPathValue || "").trim();
+      const uniquePaths = Array.from(
+        new Set([normalizedMainPath, normalizedVariantsPath].filter(Boolean))
+      );
+      if (uniquePaths.length === 0) return 0;
+
+      const seenImagePaths = new Set<string>();
+      let count = 0;
+
+      for (const pathValue of uniquePaths) {
+        let items: DraftEntry[] = [];
+        if (pathValue === currentPath) {
+          items = entries;
+        } else {
+          try {
+            items = await listPathEntries(pathValue);
+          } catch {
+            continue;
+          }
+        }
+
+        items.forEach((entry) => {
+          if (entry.type !== "file" || !isImage(entry.name)) return;
+          const entryPath = String(entry.path || "").trim();
+          if (!entryPath || seenImagePaths.has(entryPath)) return;
+          if (optimisticHiddenImagePaths.has(entryPath)) return;
+          if (!isSizeChartImageName(entry.name)) return;
+          seenImagePaths.add(entryPath);
+          count += 1;
+        });
+      }
+
+      return count;
+    },
+    [currentPath, entries, isImage, listPathEntries, optimisticHiddenImagePaths]
   );
 
   const countVariantImagesForPaths = useCallback(
@@ -17351,9 +18555,8 @@ export default function DraftExplorerPage() {
       assignedFileNameKeys: Set<string>
     ) => {
       const normalizedMainPath = String(mainPathValue || "").trim();
-      const normalizedVariantsPath = String(variantsPathValue || "").trim();
       const uniquePaths = Array.from(
-        new Set([normalizedMainPath, normalizedVariantsPath].filter(Boolean))
+        new Set([normalizedMainPath, String(variantsPathValue || "").trim()].filter(Boolean))
       );
       if (uniquePaths.length === 0) return 0;
 
@@ -17384,11 +18587,7 @@ export default function DraftExplorerPage() {
           const hasVariantAssignment = fileNameKey
             ? assignedFileNameKeys.has(fileNameKey)
             : false;
-          const isInsideVariantsPath =
-            Boolean(normalizedVariantsPath) &&
-            (entryPath === normalizedVariantsPath ||
-              entryPath.startsWith(`${normalizedVariantsPath}/`));
-          if (!(isInsideVariantsPath || fileTags.includes("VAR") || hasVariantAssignment)) {
+          if (!(fileTags.includes("VAR") || hasVariantAssignment)) {
             return;
           }
 
@@ -17457,6 +18656,7 @@ export default function DraftExplorerPage() {
         downloadedCount,
         othersCounts,
         variantCount,
+        sizeChartsCount,
       ] =
         await Promise.all([
           countImagesForPath(imageTabTargets.mainPath),
@@ -17469,15 +18669,20 @@ export default function DraftExplorerPage() {
             imageTabTargets.variantsPath,
             variantAssignmentKeys
           ),
+          countSizeChartImagesForPaths(
+            imageTabTargets.mainPath,
+            imageTabTargets.variantsPath
+          ),
         ]);
 
       if (cancelled) return;
 
       const othersCount = othersCounts.reduce((total, value) => total + value, 0);
       setImageTabImageCounts({
-        // Main view intentionally includes merged variant images.
-        main: mainDirectCount + variantsCount,
+        // Main view intentionally includes merged variant images, excluding SIZE charts.
+        main: Math.max(0, mainDirectCount + variantsCount - sizeChartsCount),
         variants: variantCount,
+        sizecharts: sizeChartsCount,
         ocr: ocrCount,
         downloaded: downloadedCount,
         others: othersCount,
@@ -17490,6 +18695,7 @@ export default function DraftExplorerPage() {
     };
   }, [
     countImagesForPath,
+    countSizeChartImagesForPaths,
     countVariantImagesForPaths,
     currentImageSpuForDraftFilter,
     imageTabTargets.mainPath,
@@ -17506,7 +18712,7 @@ export default function DraftExplorerPage() {
     Boolean(imageTabTargets.mainPath) && currentPath === imageTabTargets.mainPath;
 
   useEffect(() => {
-    if (mainImageViewFilter !== "var_only") return;
+    if (mainImageViewFilter === "all") return;
     if (!mainViewShowsMergedImages) {
       setMainImageViewFilter("all");
     }
@@ -17515,6 +18721,9 @@ export default function DraftExplorerPage() {
   const selectedImageTabValue: ImageFolderTabValue = useMemo(() => {
     if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
       return "variants";
+    }
+    if (mainViewShowsMergedImages && mainImageViewFilter === "size_only") {
+      return "sizecharts";
     }
     return imageTabTargets.active ?? "main";
   }, [imageTabTargets.active, mainImageViewFilter, mainViewShowsMergedImages]);
@@ -17543,6 +18752,17 @@ export default function DraftExplorerPage() {
       const mainPath = String(imageTabTargets.mainPath || "").trim();
       if (!mainPath) return;
       setMainImageViewFilter("var_only");
+      if (String(currentPath || "").trim() !== mainPath) {
+        setCurrentPath(mainPath);
+      }
+      initialUrlImageTabPendingRef.current = "";
+      return;
+    }
+
+    if (requestedImageTab === "sizecharts") {
+      const mainPath = String(imageTabTargets.mainPath || "").trim();
+      if (!mainPath) return;
+      setMainImageViewFilter("size_only");
       if (String(currentPath || "").trim() !== mainPath) {
         setCurrentPath(mainPath);
       }
@@ -17695,21 +18915,22 @@ export default function DraftExplorerPage() {
   const getDisplayImageTagsForEntry = useCallback(
     (entry: DraftEntry) => {
       const fileTags = extractImageTagsFromFileName(entry.name);
-      const variantsPath = String(imageTabTargets.variantsPath || "").trim();
-      const entryPath = String(entry.path || "").trim();
-      const isInsideVariantsPath =
-        Boolean(variantsPath) &&
-        (entryPath === variantsPath || entryPath.startsWith(`${variantsPath}/`));
-      if (isInsideVariantsPath) {
-        return normalizeImageTags([...fileTags, "VAR"]);
-      }
       if (fileTags.includes("VAR")) return fileTags;
       if (entryHasVariantAssignment(entry)) {
         return normalizeImageTags([...fileTags, "VAR"]);
       }
       return fileTags;
     },
-    [entryHasVariantAssignment, imageTabTargets.variantsPath]
+    [entryHasVariantAssignment]
+  );
+
+  const isSizeChartEntry = useCallback(
+    (entry: DraftEntry) => {
+      const tags = getDisplayImageTagsForEntry(entry);
+      if (tags.includes("SIZE")) return true;
+      return isSizeChartImageName(entry.name);
+    },
+    [getDisplayImageTagsForEntry]
   );
 
   const displayImageEntries = useMemo(() => {
@@ -17740,24 +18961,22 @@ export default function DraftExplorerPage() {
       .filter((entry): entry is DraftEntry => Boolean(entry));
     if (sorted.length !== combined.length) return combined;
 
-    const variantsPath = String(imageTabTargets.variantsPath || "").trim();
     if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
       return sorted.filter((entry) => {
-        const entryPath = String(entry.path || "").trim();
-        if (
-          variantsPath &&
-          (entryPath === variantsPath || entryPath.startsWith(`${variantsPath}/`))
-        ) {
-          return true;
-        }
         return getDisplayImageTagsForEntry(entry).includes("VAR");
       });
     }
+    if (mainViewShowsMergedImages && mainImageViewFilter === "size_only") {
+      return sorted.filter((entry) => isSizeChartEntry(entry));
+    }
+    if (mainViewShowsMergedImages && mainImageViewFilter === "all") {
+      return sorted.filter((entry) => !isSizeChartEntry(entry));
+    }
     return sorted;
   }, [
-    imageTabTargets.variantsPath,
     getDisplayImageTagsForEntry,
     imageEntries,
+    isSizeChartEntry,
     mainImageViewFilter,
     mainViewShowsMergedImages,
     mainViewVariantImageEntries,
@@ -18332,6 +19551,7 @@ export default function DraftExplorerPage() {
     imageTabImageCounts.variants,
     variantAssignedImageFileNameKeysForCurrentSpu.size
   );
+  const sizeChartsTabBadgeCount = imageTabImageCounts.sizecharts;
   const othersTabBadgeCount = imageTabImageCounts.others;
   const ocrTabBadgeCount = imageTabImageCounts.ocr;
   const downloadedTabBadgeCount = imageTabImageCounts.downloaded;
@@ -18339,6 +19559,8 @@ export default function DraftExplorerPage() {
   // even when the current image count is zero.
   const mainTabDisabled = !imageTabTargets.mainPath || movingEntry;
   const variantsTabDisabled = !imageTabTargets.mainPath || movingEntry;
+  const sizeChartsTabDisabled =
+    !imageTabTargets.mainPath || movingEntry || sizeChartsTabBadgeCount === 0;
   const ocrTabDisabled =
     !imageTabTargets.ocrPath || movingEntry || ocrTabBadgeCount === 0;
   const downloadedTabDisabled =
@@ -18347,6 +19569,12 @@ export default function DraftExplorerPage() {
     downloadedTabBadgeCount === 0;
   const othersTabDisabled =
     imageTabTargets.othersPaths.length === 0 || movingEntry || othersTabBadgeCount === 0;
+
+  useEffect(() => {
+    if (mainImageViewFilter !== "size_only") return;
+    if (sizeChartsTabBadgeCount > 0) return;
+    setMainImageViewFilter("all");
+  }, [mainImageViewFilter, sizeChartsTabBadgeCount]);
 
   useEffect(() => {
     const el = nonImageFileSelectAllRef.current;
@@ -19023,6 +20251,26 @@ export default function DraftExplorerPage() {
                 </span>
               ) : (
                 t("draftExplorer.deleteRowsButton")
+              )}
+            </Button>
+            <Button
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                draftTab === "spu" && someSpuSelected
+                  ? styles.draftToolbarActionButtonPrimaryActive
+                  : undefined
+              )}
+              onClick={handleDuplicateProducts}
+              disabled={draftTab !== "spu" || !someSpuSelected || duplicateProductPending}
+            >
+              {duplicateProductPending ? (
+                <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                  <Spinner size="tiny" />
+                  Duplicating...
+                </span>
+              ) : (
+                "Duplicate Product"
               )}
             </Button>
             <Button
@@ -20141,7 +21389,9 @@ export default function DraftExplorerPage() {
             <div
               className={mergeClasses(
                 styles.variantsEditorContent,
-                variantsEditorAiRunning ? styles.variantsEditorBusy : undefined
+                variantsEditorAiRunning || variantsEditorSkuRegenerating
+                  ? styles.variantsEditorBusy
+                  : undefined
               )}
             >
               <div className={styles.variantsEditorToolbar}>
@@ -20149,7 +21399,12 @@ export default function DraftExplorerPage() {
                   <Button
                     appearance="outline"
                     onClick={handleVariantEditorAddRow}
-                    disabled={variantsEditorLoading || variantsEditorSaving}
+                    disabled={
+                      variantsEditorLoading ||
+                      variantsEditorSaving ||
+                      variantsEditorAiRunning ||
+                      variantsEditorSkuRegenerating
+                    }
                   >
                     Add Variant
                   </Button>
@@ -20159,6 +21414,8 @@ export default function DraftExplorerPage() {
                     disabled={
                       variantsEditorLoading ||
                       variantsEditorSaving ||
+                      variantsEditorAiRunning ||
+                      variantsEditorSkuRegenerating ||
                       variantsEditorSelectedRows.size === 0
                     }
                   >
@@ -20173,9 +21430,27 @@ export default function DraftExplorerPage() {
                   <Button
                     appearance="outline"
                     onClick={handleVariantEditorAddPacks}
-                    disabled={variantsEditorLoading || variantsEditorSaving}
+                    disabled={
+                      variantsEditorLoading ||
+                      variantsEditorSaving ||
+                      variantsEditorAiRunning ||
+                      variantsEditorSkuRegenerating
+                    }
                   >
                     Only Add Packs
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    onClick={handleVariantEditorRegenerateSkus}
+                    disabled={
+                      variantsEditorLoading ||
+                      variantsEditorSaving ||
+                      variantsEditorAiRunning ||
+                      variantsEditorSkuRegenerating ||
+                      variantsEditorRows.length === 0
+                    }
+                  >
+                    {variantsEditorSkuRegenerating ? "Regenerating..." : "Regenerate SKUs"}
                   </Button>
                 </div>
               </div>
@@ -20237,16 +21512,36 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.colorSe}
                         >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("color")}
-                          >
-                            <span>Color (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("color")}
-                            </span>
-                          </button>
+                          <div className={styles.variantsEditorHeadCellActions}>
+                            <button
+                              type="button"
+                              className={mergeClasses(
+                                styles.variantsEditorSortButton,
+                                styles.variantsEditorSortButtonInline
+                              )}
+                              onClick={() => handleVariantEditorSort("color")}
+                            >
+                              <span>Color (SE)</span>
+                              <span className={styles.variantsEditorSortIndicator}>
+                                {getVariantSortIndicator("color")}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.variantsEditorClearColumnLink}
+                              onClick={() =>
+                                handleVariantEditorClearColumn("variation_color_se")
+                              }
+                              disabled={
+                                variantsEditorLoading ||
+                                variantsEditorSaving ||
+                                variantsEditorAiRunning ||
+                                variantsEditorSkuRegenerating
+                              }
+                            >
+                              Clear all
+                            </button>
+                          </div>
                         </th>
                         <th
                           className={mergeClasses(
@@ -20255,16 +21550,36 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.sizeSe}
                         >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("size")}
-                          >
-                            <span>Size (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("size")}
-                            </span>
-                          </button>
+                          <div className={styles.variantsEditorHeadCellActions}>
+                            <button
+                              type="button"
+                              className={mergeClasses(
+                                styles.variantsEditorSortButton,
+                                styles.variantsEditorSortButtonInline
+                              )}
+                              onClick={() => handleVariantEditorSort("size")}
+                            >
+                              <span>Size (SE)</span>
+                              <span className={styles.variantsEditorSortIndicator}>
+                                {getVariantSortIndicator("size")}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.variantsEditorClearColumnLink}
+                              onClick={() =>
+                                handleVariantEditorClearColumn("variation_size_se")
+                              }
+                              disabled={
+                                variantsEditorLoading ||
+                                variantsEditorSaving ||
+                                variantsEditorAiRunning ||
+                                variantsEditorSkuRegenerating
+                              }
+                            >
+                              Clear all
+                            </button>
+                          </div>
                         </th>
                         <th
                           className={mergeClasses(
@@ -20273,16 +21588,36 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.otherSe}
                         >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("order")}
-                          >
-                            <span>Other (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("order")}
-                            </span>
-                          </button>
+                          <div className={styles.variantsEditorHeadCellActions}>
+                            <button
+                              type="button"
+                              className={mergeClasses(
+                                styles.variantsEditorSortButton,
+                                styles.variantsEditorSortButtonInline
+                              )}
+                              onClick={() => handleVariantEditorSort("order")}
+                            >
+                              <span>Other (SE)</span>
+                              <span className={styles.variantsEditorSortIndicator}>
+                                {getVariantSortIndicator("order")}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.variantsEditorClearColumnLink}
+                              onClick={() =>
+                                handleVariantEditorClearColumn("variation_other_se")
+                              }
+                              disabled={
+                                variantsEditorLoading ||
+                                variantsEditorSaving ||
+                                variantsEditorAiRunning ||
+                                variantsEditorSkuRegenerating
+                              }
+                            >
+                              Clear all
+                            </button>
+                          </div>
                         </th>
                         <th
                           className={mergeClasses(
@@ -20291,16 +21626,36 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.amountSe}
                         >
-                          <button
-                            type="button"
-                            className={styles.variantsEditorSortButton}
-                            onClick={() => handleVariantEditorSort("amount")}
-                          >
-                            <span>Amount (SE)</span>
-                            <span className={styles.variantsEditorSortIndicator}>
-                              {getVariantSortIndicator("amount")}
-                            </span>
-                          </button>
+                          <div className={styles.variantsEditorHeadCellActions}>
+                            <button
+                              type="button"
+                              className={mergeClasses(
+                                styles.variantsEditorSortButton,
+                                styles.variantsEditorSortButtonInline
+                              )}
+                              onClick={() => handleVariantEditorSort("amount")}
+                            >
+                              <span>Amount (SE)</span>
+                              <span className={styles.variantsEditorSortIndicator}>
+                                {getVariantSortIndicator("amount")}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.variantsEditorClearColumnLink}
+                              onClick={() =>
+                                handleVariantEditorClearColumn("variation_amount_se")
+                              }
+                              disabled={
+                                variantsEditorLoading ||
+                                variantsEditorSaving ||
+                                variantsEditorAiRunning ||
+                                variantsEditorSkuRegenerating
+                              }
+                            >
+                              Clear all
+                            </button>
+                          </div>
                         </th>
                         <th
                           className={mergeClasses(
@@ -20506,6 +21861,7 @@ export default function DraftExplorerPage() {
                         variantsEditorLoading ||
                         variantsEditorSaving ||
                         variantsEditorAiRunning ||
+                        variantsEditorSkuRegenerating ||
                         variantsEditorRows.length === 0
                       }
                     >
@@ -20560,11 +21916,13 @@ export default function DraftExplorerPage() {
                 </div>
               </div>
             </div>
-            {variantsEditorAiRunning ? (
+            {variantsEditorAiRunning || variantsEditorSkuRegenerating ? (
               <div className={styles.variantsEditorOverlay}>
                 <span style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
                   <Spinner size="small" />
-                  Updating variants with AI...
+                  {variantsEditorSkuRegenerating
+                    ? "Regenerating SKUs..."
+                    : "Updating variants with AI..."}
                 </span>
               </div>
             ) : null}
@@ -20572,14 +21930,23 @@ export default function DraftExplorerPage() {
               <Button
                 appearance="outline"
                 onClick={() => closeVariantsEditor()}
-                disabled={variantsEditorSaving || variantsEditorAiRunning}
+                disabled={
+                  variantsEditorSaving ||
+                  variantsEditorAiRunning ||
+                  variantsEditorSkuRegenerating
+                }
               >
                 {t("common.close")}
               </Button>
               <Button
                 appearance="primary"
                 onClick={handleVariantEditorSave}
-                disabled={variantsEditorLoading || variantsEditorSaving || variantsEditorAiRunning}
+                disabled={
+                  variantsEditorLoading ||
+                  variantsEditorSaving ||
+                  variantsEditorAiRunning ||
+                  variantsEditorSkuRegenerating
+                }
               >
                 {variantsEditorSaving ? "Saving..." : t("common.save")}
               </Button>
@@ -21608,11 +22975,15 @@ export default function DraftExplorerPage() {
                       const value = data.value as ImageFolderTabValue;
                       if (value === "variants") {
                         setMainImageViewFilter("var_only");
+                      } else if (value === "sizecharts") {
+                        setMainImageViewFilter("size_only");
                       } else {
                         setMainImageViewFilter("all");
                       }
                       const nextPath =
-                        value === "main" || value === "variants"
+                        value === "main" ||
+                        value === "variants" ||
+                        value === "sizecharts"
                           ? imageTabTargets.mainPath
                           : value === "downloaded"
                             ? imageTabTargets.downloadedPath
@@ -21660,6 +23031,21 @@ export default function DraftExplorerPage() {
 		                        </span>
 		                      </span>
 		                    </Tab>
+                    <Tab value="sizecharts" disabled={sizeChartsTabDisabled}>
+                      <span className={styles.imageTabLabel}>
+                        <span>Size Charts</span>
+                        <span
+                          className={mergeClasses(
+                            styles.imageTabBadge,
+                            sizeChartsTabBadgeCount === 0
+                              ? styles.imageTabBadgeDisabled
+                              : undefined
+                          )}
+                        >
+                          {sizeChartsTabBadgeCount}
+                        </span>
+                      </span>
+                    </Tab>
                     <Tab value="others" disabled={othersTabDisabled}>
                       <span className={styles.imageTabLabel}>
                         <span>Others</span>
@@ -22215,6 +23601,8 @@ export default function DraftExplorerPage() {
                                             ? styles.mediaTagEnv
                                             : tag === "VAR"
                                               ? styles.mediaTagVar
+                                              : tag === "SIZE"
+                                                ? styles.mediaTagSize
                                               : tag === "DIGI"
                                                 ? styles.mediaTagDigi
                                               : styles.mediaTagInf
@@ -23103,12 +24491,12 @@ export default function DraftExplorerPage() {
                       <div className={styles.contextMenuButton}>
                         <span>{contextMenuVariantRowsError}</span>
                       </div>
-                    ) : contextMenuVariantRows.length === 0 && contextMenuVariantRowsLoading ? (
+                    ) : contextMenuVariantGroups.length === 0 && contextMenuVariantRowsLoading ? (
                       <div className={styles.contextMenuButton}>
                         <Spinner size="tiny" />
                         <span>Loading variants...</span>
                       </div>
-                    ) : contextMenuVariantRows.length === 0 ? (
+                    ) : contextMenuVariantGroups.length === 0 ? (
                       <div className={styles.contextMenuButton}>
                         <span>No variants found for this product.</span>
                       </div>
@@ -23120,20 +24508,36 @@ export default function DraftExplorerPage() {
                             <span>Refreshing variants...</span>
                           </div>
                         ) : null}
-                        {contextMenuVariantRows.map((row) => {
-                          const rowId = String(row.id || "").trim();
-                          if (!rowId) return null;
-                          const currentFileName = extractVariantImageFileName(
-                            row.draft_variant_image_url
-                          );
-                          const isExplicitlyChecked =
-                            normalizeVariantImageFileNameKey(currentFileName) ===
-                            contextMenuVariantImageFileNameKey;
-                          const isInferredChecked = contextMenuVariantInferredRowIds.has(rowId);
-                          const isChecked = isExplicitlyChecked || isInferredChecked;
-                          const isSaving = contextMenuVariantSavingIds.has(rowId);
-                          const swedishLabel = buildVariantSwedishReadableLabel(row);
-                          const skuLabel = String(row.draft_sku || "").trim();
+                        {contextMenuVariantGroups.map((group) => {
+                          const rowsInGroup = group.rowIds
+                            .map((rowId) => contextMenuVariantRowsById.get(rowId))
+                            .filter((row): row is DraftSkuRow => Boolean(row));
+                          if (rowsInGroup.length === 0) return null;
+                          let assignedCount = 0;
+                          rowsInGroup.forEach((row) => {
+                            const currentFileName = extractVariantImageFileName(
+                              row.draft_variant_image_url
+                            );
+                            const currentFileNameKey =
+                              normalizeVariantImageFileNameKey(currentFileName);
+                            if (
+                              currentFileNameKey &&
+                              currentFileNameKey === contextMenuVariantImageFileNameKey
+                            ) {
+                              assignedCount += 1;
+                            }
+                          });
+                          const state: "none" | "some" | "all" =
+                            assignedCount === 0
+                              ? "none"
+                              : assignedCount === rowsInGroup.length
+                                ? "all"
+                                : "some";
+                          const isSaving = contextMenuVariantSavingIds.has(group.id);
+                          const skuLabel =
+                            rowsInGroup.length > 1
+                              ? `${rowsInGroup.length} SKUs`
+                              : group.skuHint || String(rowsInGroup[0].draft_sku || "").trim();
                           return (
                             <button
                               type="button"
@@ -23142,15 +24546,15 @@ export default function DraftExplorerPage() {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 handleContextMenuAction(
-                                  `assign-variant-toggle:${encodeURIComponent(rowId)}`
+                                  `assign-variant-group-toggle:${encodeURIComponent(group.id)}`
                                 );
                               }}
                               disabled={isSaving}
-                              key={`assign-variant-${rowId}`}
+                              key={`assign-variant-group-${group.id}`}
                             >
                               <span className={styles.contextMenuVariantLabelWrap}>
                                 <span className={styles.contextMenuVariantPrimaryLabel}>
-                                  {swedishLabel || "-"}
+                                  {group.label || "-"}
                                 </span>
                                 {skuLabel ? (
                                   <span className={styles.contextMenuVariantSecondaryLabel}>
@@ -23162,11 +24566,16 @@ export default function DraftExplorerPage() {
                                 <span
                                   className={mergeClasses(
                                     styles.contextMenuTagCheckbox,
-                                    isChecked ? styles.contextMenuTagCheckboxChecked : undefined
+                                    state === "all"
+                                      ? styles.contextMenuTagCheckboxChecked
+                                      : undefined,
+                                    state === "some"
+                                      ? styles.contextMenuTagCheckboxMixed
+                                      : undefined
                                   )}
                                   aria-hidden="true"
                                 >
-                                  {isChecked ? (
+                                  {state === "all" ? (
                                     <svg
                                       xmlns="http://www.w3.org/2000/svg"
                                       viewBox="0 0 12 12"
@@ -23179,6 +24588,8 @@ export default function DraftExplorerPage() {
                                     >
                                       <path d="M2.4 6.4l2.2 2.2l5 -5" />
                                     </svg>
+                                  ) : state === "some" ? (
+                                    <span className={styles.contextMenuTagCheckboxBar} />
                                   ) : null}
                                 </span>
                               </span>
@@ -23368,6 +24779,14 @@ export default function DraftExplorerPage() {
                       <button
                         type="button"
                         className={styles.contextMenuButton}
+                        disabled={!contextMenuFlipHorizontalAllowed}
+                        onClick={() => handleContextMenuAction("flip-horizontal")}
+                      >
+                        <span>Flip Horizontal</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
                         disabled={!contextMenuCollageAllowed}
                         onClick={() => handleContextMenuAction("create-collage")}
                       >
@@ -23376,10 +24795,46 @@ export default function DraftExplorerPage() {
                       <button
                         type="button"
                         className={styles.contextMenuButton}
+                        disabled={!contextMenuStackOverlayAllowed}
+                        onClick={() => handleContextMenuAction("stack-overlay")}
+                      >
+                        <span>Stack Overlay</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
+                        disabled={!contextMenuStackImagesAllowed}
+                        onClick={() => handleContextMenuAction("stack-images")}
+                      >
+                        <span>Stack Images</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
                         disabled={!contextMenuMergeDigidealMainAllowed}
                         onClick={() => handleContextMenuAction("merge-digideal-main")}
                       >
                         <span>Merge DigiDeal Main</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
+                        disabled={!contextMenuMergeDigidealMainOverlayAllowed}
+                        onClick={() =>
+                          handleContextMenuAction("merge-digideal-main-overlay")
+                        }
+                      >
+                        <span>DigiDeal Main Overlay</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
+                        disabled={!contextMenuMergeDigidealMainStackOverlayAllowed}
+                        onClick={() =>
+                          handleContextMenuAction("merge-digideal-main-stack-overlay")
+                        }
+                      >
+                        <span>DigiDeal Main Stack Overlay</span>
                       </button>
                     </div>
                   ) : null}
@@ -24437,6 +25892,99 @@ export default function DraftExplorerPage() {
                   disabled={autoLevelsSubmitting || autoLevelsTargets.length === 0}
                 >
                   {autoLevelsSubmitting ? "Applying..." : "Save and Edit"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={stackOverlayPickerOpen}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeStackOverlayPickerDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.stackOverlaySurface}>
+            <DialogBody className={styles.stackOverlayBody}>
+              <DialogTitle>{`${
+                stackOverlayMode === "stack_overlay"
+                  ? "Stack Overlay"
+                  : "DigiDeal Main Stack Overlay"
+              } (${stackOverlayTargets.length})`}</DialogTitle>
+              {stackOverlayError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {stackOverlayError}
+                </Text>
+              ) : stackOverlayInfo ? (
+                <Text size={100} className={styles.filesInfo}>
+                  {stackOverlayInfo}
+                </Text>
+              ) : (
+                <Text size={100} className={styles.filesInfo}>
+                  Select which white-background image should be on top, then save.
+                </Text>
+              )}
+              {stackOverlayMode === "digideal_main_stack_overlay" ? (
+                <Text size={100} className={styles.stackOverlayTagLine}>
+                  Only white-background candidates are shown here.
+                </Text>
+              ) : null}
+              <div className={styles.stackOverlayThumbGrid}>
+                {stackOverlayCandidateTargets.map((entry) => (
+                  <button
+                    key={entry.path}
+                    type="button"
+                    className={mergeClasses(
+                      styles.stackOverlayThumbCardButton,
+                      styles.autoLevelsThumbCard,
+                      entry.path === stackOverlayTopImagePath
+                        ? styles.stackOverlayThumbCardSelected
+                        : undefined
+                    )}
+                    disabled={stackOverlaySubmitting}
+                    onClick={() => setStackOverlayTopImagePath(entry.path)}
+                  >
+                    <div className={styles.autoLevelsThumbImageFrame}>
+                      <img
+                        src={buildDraftDownloadUrl(
+                          entry.path,
+                          entryByPath.get(entry.path)?.modifiedAt ?? entry.modifiedAt
+                        )}
+                        alt={entry.name}
+                        className={styles.autoLevelsThumbImage}
+                      />
+                    </div>
+                    <Text size={100} className={styles.autoLevelsThumbName} title={entry.name}>
+                      {entry.name}
+                    </Text>
+                    {entry.path === stackOverlayTopImagePath ? (
+                      <Text size={100} className={styles.stackOverlayTopMarker}>
+                        Top image
+                      </Text>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={() => closeStackOverlayPickerDialog()}
+                  disabled={stackOverlaySubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void applyStackOverlayForDialogTargets()}
+                  disabled={
+                    stackOverlaySubmitting ||
+                    stackOverlayCandidateTargets.length === 0 ||
+                    !stackOverlayTopImagePath
+                  }
+                >
+                  {stackOverlaySubmitting ? "Running..." : "Save"}
                 </Button>
               </DialogActions>
             </DialogBody>

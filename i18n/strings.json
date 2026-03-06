@@ -362,6 +362,11 @@
       "context": "Admin menu item"
     },
     {
+      "key": "nav.adminFileExplorer",
+      "text": "File Explorer",
+      "context": "Admin menu item"
+    },
+    {
       "key": "nav.adminFileUpload",
       "text": "File Upload",
       "context": "Admin menu item"
@@ -1398,7 +1403,7 @@
     },
     {
       "key": "orders.email.partnerReceiver.letsdealSe",
-      "text": "LetsDeal SE",
+      "text": "LetsDeal",
       "context": "Orders send email partner receiver option"
     },
     {
@@ -3568,13 +3573,28 @@
     },
     {
       "key": "home.title",
-      "text": "Nodexo Hub",
+      "text": "Welcome {name}, write to Nodexo Hub!",
       "context": "Landing page title"
     },
     {
       "key": "home.subtitle",
-      "text": "Welcome to Nodexo Hub!\n\nMarket Trends Reports are generated daily from monitored commerce sites by extracting front-page visible text + OCR from promo images, then summarizing themes and featured products with AI. Browse daily and weekly reports in Market Trends.\n\nIf you find any bugs or issues, please contact admin support at partner@nordexo.se.",
+      "text": "Hey, welcome {name}! Welcome to the Nordexo Hub.\n\nThis is where we gather and deliver products for our partners in one simple place. Here you can download product images and files, review sales data, explore new product opportunities, and receive curated product suggestions based on market trends. The Hub also gives you access to our AI tools that help you prepare listings, analyze demand, and move faster from idea to live product.\n\nEverything here is designed to help you discover, prepare, and launch products more efficiently. Browse the latest deliveries, explore the data, and pick the items that make sense for your business.",
       "context": "Landing page subtitle"
+    },
+    {
+      "key": "home.recentPublished.title",
+      "text": "Recent Newly Published Products",
+      "context": "Landing page recently published section title"
+    },
+    {
+      "key": "home.recentPublished.loading",
+      "text": "Loading recent ENV gallery...",
+      "context": "Landing page recently published loading label"
+    },
+    {
+      "key": "home.recentPublished.empty",
+      "text": "No recent ENV images available yet.",
+      "context": "Landing page recently published empty state"
     },
     {
       "key": "home.marketTrends.title",
@@ -3774,6 +3794,36 @@
     {
       "key": "products.sort.titleAZ",
       "text": "Title A-Z",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesAllTime",
+      "text": "Sales (all time)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesOneYear",
+      "text": "Sales (1 year)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesThreeMonths",
+      "text": "Sales (3 months)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesOneMonth",
+      "text": "Sales (1 month)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesOneWeek",
+      "text": "Sales (1 week)",
+      "context": "Products sort option"
+    },
+    {
+      "key": "products.sort.salesOneDay",
+      "text": "Sales (1 day)",
       "context": "Products sort option"
     },
     {
@@ -4072,8 +4122,18 @@
       "context": "Products table header"
     },
     {
+      "key": "products.table.sales",
+      "text": "Sales",
+      "context": "Products table header"
+    },
+    {
       "key": "products.table.save",
       "text": "Save",
+      "context": "Products table header"
+    },
+    {
+      "key": "products.table.actions",
+      "text": "Actions",
       "context": "Products table header"
     },
     {
@@ -4132,6 +4192,21 @@
       "context": "Products bulk deliver action label"
     },
     {
+      "key": "products.actions.addToList",
+      "text": "Add to List",
+      "context": "Products row action submenu label"
+    },
+    {
+      "key": "products.actions.addToCurrentNewList",
+      "text": "Current new list",
+      "context": "Products row action submenu option"
+    },
+    {
+      "key": "products.actions.addToExistingLists",
+      "text": "Add to existing lists",
+      "context": "Products row action submenu label"
+    },
+    {
       "key": "products.actions.deliverTo",
       "text": "Deliver to",
       "context": "Products bulk deliver submenu label"
@@ -4139,6 +4214,11 @@
     {
       "key": "products.actions.deliverDigiDeal",
       "text": "DigiDeal",
+      "context": "Products deliver target option"
+    },
+    {
+      "key": "products.actions.deliverLetsDeal",
+      "text": "LetsDeal",
       "context": "Products deliver target option"
     },
     {
@@ -6648,8 +6728,8 @@
     },
     {
       "key": "digidealDelivery.download.partnerData",
-      "text": "Partner Data",
-      "context": "DigiDeal delivery partner data export menu item"
+      "text": "DigiDeal Data",
+      "context": "DigiDeal delivery DigiDeal data export menu item"
     },
     {
       "key": "digidealDelivery.download.letsdealData",
@@ -6658,7 +6738,7 @@
     },
     {
       "key": "digidealDelivery.download.fullImageSet",
-      "text": "Full Set",
+      "text": "Full Set Images",
       "context": "DigiDeal delivery full image export menu item"
     },
     {

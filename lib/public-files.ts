@@ -6,7 +6,7 @@ export const PUBLIC_FILES_ROOT =
   "/srv/node-files/exports/public";
 
 export const PUBLIC_FILES_BASE_URL =
-  process.env.PARTNER_PUBLIC_FILES_BASE_URL || "https://files.nordexo.se";
+  process.env.PARTNER_PUBLIC_FILES_BASE_URL || "https://hub.nordexo.se";
 
 export const PUBLIC_LINK_EXPIRY_DAYS = Number(
   process.env.PARTNER_PUBLIC_LINK_EXPIRY_DAYS || "30"

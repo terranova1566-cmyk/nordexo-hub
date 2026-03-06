@@ -16,7 +16,8 @@
     "meili:index": "node scripts/index-products-meili.mjs",
     "sales:template": "node scripts/generate-sales-template.mjs",
     "sales:import": "node scripts/import-sales-excel.mjs",
-    "digideal:shipping-backfill": "tsx tools/backfill-digideal-shipping-class.ts"
+    "digideal:shipping-backfill": "tsx tools/backfill-digideal-shipping-class.ts",
+    "deals:taxonomy-backfill": "node scripts/backfill-deals-google-taxonomy.mjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.72.9",

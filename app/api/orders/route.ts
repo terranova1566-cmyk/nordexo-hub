@@ -74,8 +74,7 @@ const PARTNER_INFORMED_RECEIVER_NAMES = new Set([
   "letsdeal at nordexo (nodexo)",
 ]);
 const PARTNER_INFORMED_RECEIVER_EMAILS = new Set([
-  "support@letsdeal.se",
-  "support@letsdeal.no",
+  "order@letsdeal.se",
 ]);
 
 function parseOrdersSortOption(value: unknown): OrdersSortOption {

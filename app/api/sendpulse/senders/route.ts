@@ -5,6 +5,18 @@ import { listSenders } from "@/lib/sendpulse";
 
 export const runtime = "nodejs";
 
+const DEFAULT_SENDPULSE_SENDER_EMAIL = "support@nodexo.se";
+
+const normalizeToken = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const isExcludedSender = (sender: { email?: unknown; name?: unknown }) => {
+  const name = normalizeToken(sender.name);
+  return name === "thomas at gadget bay";
+};
+
 export async function GET() {
   const supabase = await createServerSupabase();
   const {
@@ -30,14 +42,26 @@ export async function GET() {
     const activeSenders = senders.filter(
       (sender) => sender.status?.toLowerCase() !== "inactive"
     );
+    const prioritizedSenders = activeSenders
+      .filter((sender) => !isExcludedSender(sender))
+      .sort((left, right) => {
+        const leftEmail = normalizeToken(left.email);
+        const rightEmail = normalizeToken(right.email);
+        const leftIsDefault = leftEmail === DEFAULT_SENDPULSE_SENDER_EMAIL;
+        const rightIsDefault = rightEmail === DEFAULT_SENDPULSE_SENDER_EMAIL;
+        if (leftIsDefault !== rightIsDefault) {
+          return leftIsDefault ? -1 : 1;
+        }
+        return leftEmail.localeCompare(rightEmail);
+      });
     const { signatures } = await listEmailSenderSignatures(supabase, {
-      emails: activeSenders.map((sender) => sender.email),
+      emails: prioritizedSenders.map((sender) => sender.email),
     });
     const signatureBySenderEmail = new Map(
       signatures.map((signature) => [signature.senderEmail, signature])
     );
     return NextResponse.json({
-      senders: activeSenders.map((sender) => {
+      senders: prioritizedSenders.map((sender) => {
         const signature = signatureBySenderEmail.get(
           String(sender.email ?? "").trim().toLowerCase()
         );

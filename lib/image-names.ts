@@ -45,6 +45,31 @@ export const isPublishableImageName = (name: string) =>
 const hasTag = (name: string, tag: string) =>
   name.toUpperCase().includes(tag.toUpperCase());
 
+const SIZE_TAG_TOKEN_REGEX =
+  /(?:\(\s*SIZE\s*\)|(?:^|[-_ ])SIZE(?=$|[-_ .)]))/i;
+const SIZE_CHART_HINT_REGEX = /size[\s_-]*chart/i;
+const SIZE_CHART_LANG_REGEX =
+  /(?:size(?:[\s_-]*chart)?[\s_-]*)(se|sv|no|nb|en)(?=$|[\s_.\-()])/i;
+
+const isSizeChartImageName = (name: string) => {
+  const source = String(name || "");
+  if (!source) return false;
+  if (SIZE_TAG_TOKEN_REGEX.test(source)) return true;
+  return SIZE_CHART_HINT_REGEX.test(source) && SIZE_CHART_LANG_REGEX.test(source);
+};
+
+const detectSizeChartLanguageCode = (name: string) => {
+  const source = String(name || "");
+  const match = source.match(SIZE_CHART_LANG_REGEX);
+  const token = String(match?.[1] || "")
+    .trim()
+    .toUpperCase();
+  if (token === "SV") return "SE";
+  if (token === "NB") return "NO";
+  if (token === "SE" || token === "NO" || token === "EN") return token;
+  return "";
+};
+
 const DIGI_OR_DIG_TAG_IN_FILE_NAME =
   /(?:\(\s*DIGI?\s*\)|(?:^|[-_ ])DIGI?(?:[-_ .)]|$))/i;
 
@@ -80,8 +105,11 @@ export const normalizeImageNamesInFolder = async (
     await readDraftImageOrder(folder)
   );
 
-  const hasMain = imageFiles.some((name) => hasTag(name, "MAIN"));
-  let orderedImageFiles = [...imageFiles];
+  const sizeChartFiles = imageFiles.filter((name) => isSizeChartImageName(name));
+  const regularImageFiles = imageFiles.filter((name) => !isSizeChartImageName(name));
+
+  const hasMain = regularImageFiles.some((name) => hasTag(name, "MAIN"));
+  let orderedImageFiles = [...regularImageFiles];
   const explicitMainIndex = orderedImageFiles.findIndex((name) => hasTag(name, "MAIN"));
   if (explicitMainIndex > 0) {
     const [mainName] = orderedImageFiles.splice(explicitMainIndex, 1);
@@ -106,6 +134,31 @@ export const normalizeImageNamesInFolder = async (
       sourceName: name,
       targetName: `${parts.join("-")}${ext}`,
     };
+  });
+
+  const usedTargetNames = new Set(plan.map((item) => item.targetName));
+  const fallbackLangOrder = ["SE", "NO", "EN"];
+  let fallbackLangIndex = 0;
+  sizeChartFiles.forEach((name, index) => {
+    const ext = path.extname(name);
+    const detectedLang = detectSizeChartLanguageCode(name);
+    const fallbackLang = fallbackLangOrder[fallbackLangIndex] || `L${index + 1}`;
+    if (!detectedLang && fallbackLangIndex < fallbackLangOrder.length) {
+      fallbackLangIndex += 1;
+    }
+    const langCode = detectedLang || fallbackLang;
+    const baseName = `${spu}-size-chart-${langCode} (SIZE)`;
+    let candidate = `${baseName}${ext}`;
+    let dedupeIndex = 2;
+    while (usedTargetNames.has(candidate)) {
+      candidate = `${baseName}-${dedupeIndex}${ext}`;
+      dedupeIndex += 1;
+    }
+    usedTargetNames.add(candidate);
+    plan.push({
+      sourceName: name,
+      targetName: candidate,
+    });
   });
 
   const toRename = plan.filter((item) => item.sourceName !== item.targetName);

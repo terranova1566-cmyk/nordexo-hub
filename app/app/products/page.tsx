@@ -432,12 +432,18 @@ const useStyles = makeStyles({
     paddingRight: "20px",
   },
   spuCol: {
-    minWidth: "96px",
-    width: "96px",
-    maxWidth: "96px",
+    minWidth: "118px",
+    width: "118px",
+    maxWidth: "118px",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+  },
+  spuWithVariant: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    maxWidth: "100%",
   },
   supplierCol: {
     minWidth: "160px",
@@ -449,10 +455,67 @@ const useStyles = makeStyles({
     width: "120px",
     maxWidth: "140px",
   },
+  statusCol: {
+    minWidth: "92px",
+    width: "92px",
+    maxWidth: "112px",
+    whiteSpace: "nowrap",
+  },
   publishedCol: {
-    minWidth: "180px",
-    width: "180px",
-    maxWidth: "220px",
+    width: "auto",
+    minWidth: "74px",
+    maxWidth: "160px",
+    whiteSpace: "nowrap",
+  },
+  salesCol: {
+    minWidth: "152px",
+    width: "152px",
+    maxWidth: "160px",
+  },
+  salesStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    alignItems: "stretch",
+  },
+  salesRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "3px",
+  },
+  salesLabel: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground2,
+    width: "10px",
+    flexShrink: 0,
+  },
+  salesValue: {
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    fontWeight: tokens.fontWeightBold,
+    fontVariantNumeric: "tabular-nums",
+    color: tokens.colorNeutralForeground1,
+    whiteSpace: "pre",
+    width: "5ch",
+    flexShrink: 0,
+  },
+  salesTrack: {
+    display: "block",
+    width: "76px",
+    flex: "0 0 76px",
+    height: "6px",
+    borderRadius: "999px",
+    backgroundColor: "#e3e5e8",
+    overflow: "hidden",
+  },
+  salesFill: {
+    display: "block",
+    height: "100%",
+    borderRadius: "999px",
+    backgroundColor: "#2b73d9",
+    transition: "width 180ms ease",
   },
   productStack: {
     display: "flex",
@@ -481,13 +544,13 @@ const useStyles = makeStyles({
   dateStack: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
-    paddingBlock: "2px",
+    gap: "0px",
+    paddingBlock: "0px",
   },
   dateRow: {
     display: "flex",
     flexDirection: "column",
-    gap: "3px",
+    gap: "1px",
   },
   dateLabel: {
     fontSize: tokens.fontSizeBase100,
@@ -503,6 +566,20 @@ const useStyles = makeStyles({
     color: "#107c10",
     fontWeight: tokens.fontWeightBold,
   },
+  createdCol: {
+    width: "120px",
+    minWidth: "120px",
+    maxWidth: "120px",
+    paddingLeft: "8px",
+    paddingRight: "8px",
+  },
+  updatedCol: {
+    width: "120px",
+    minWidth: "120px",
+    maxWidth: "120px",
+    paddingLeft: "8px",
+    paddingRight: "8px",
+  },
   selectCol: {
     width: "56px",
     minWidth: "56px",
@@ -513,7 +590,7 @@ const useStyles = makeStyles({
   },
   actionCol: {
     width: "auto",
-    minWidth: "140px",
+    minWidth: "126px",
     whiteSpace: "nowrap",
   },
   cellStack: {
@@ -644,7 +721,7 @@ const useStyles = makeStyles({
     lineHeight: "1.1",
   },
   variantPopover: {
-    padding: "8px",
+    padding: "6px",
     borderRadius: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     boxShadow: tokens.shadow16,
@@ -657,19 +734,22 @@ const useStyles = makeStyles({
     minWidth: "unset",
     tableLayout: "auto",
     fontSize: tokens.fontSizeBase100,
-    lineHeight: "1.1",
+    lineHeight: "1.0",
+    "& .fui-TableRow": {
+      height: "22px",
+    },
     "& .fui-TableCell": {
-      paddingTop: "1px",
-      paddingBottom: "1px",
+      paddingTop: "0px",
+      paddingBottom: "0px",
       fontSize: tokens.fontSizeBase100,
-      lineHeight: "1.1",
+      lineHeight: "1.0",
     },
     "& .fui-TableHeaderCell": {
-      paddingTop: "1px",
-      paddingBottom: "1px",
+      paddingTop: "0px",
+      paddingBottom: "0px",
       fontSize: tokens.fontSizeBase100,
       color: tokens.colorNeutralForeground3,
-      lineHeight: "1.05",
+      lineHeight: "1.0",
     },
   },
   variantValueCell: {
@@ -677,7 +757,7 @@ const useStyles = makeStyles({
     whiteSpace: "normal",
     wordBreak: "break-word",
   },
-  saveCell: {
+  actionCell: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
@@ -695,10 +775,10 @@ const useStyles = makeStyles({
     gap: "6px",
   },
   publishedCell: {
-    display: "inline-flex",
+    display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: "6px",
+    gap: "4px",
   },
   publishedBadge: {
     backgroundColor: "#edf5ff",
@@ -713,9 +793,9 @@ const useStyles = makeStyles({
   },
   tableActionButton: {
     borderRadius: "6px",
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-    color: tokens.colorNeutralForeground1,
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    backgroundColor: tokens.colorBrandBackground,
+    color: tokens.colorNeutralForegroundOnBrand,
     opacity: 1,
     minHeight: "28px",
     paddingInline: "10px",
@@ -723,11 +803,15 @@ const useStyles = makeStyles({
     lineHeight: tokens.lineHeightBase100,
     fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
+      backgroundColor: tokens.colorBrandBackgroundHover,
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+      color: tokens.colorNeutralForegroundOnBrand,
       opacity: 1,
     },
     "&:disabled": {
-      backgroundColor: tokens.colorNeutralBackground1,
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      border: `1px solid ${tokens.colorNeutralStrokeDisabled}`,
+      color: tokens.colorNeutralForegroundDisabled,
       opacity: 1,
     },
   },
@@ -934,6 +1018,12 @@ type ProductListItem = {
   price_max?: number | null;
   b2c_price_min?: number | null;
   b2c_price_max?: number | null;
+  sales_1d?: number | null;
+  sales_1w?: number | null;
+  sales_1m?: number | null;
+  sales_3m?: number | null;
+  sales_1y?: number | null;
+  sales_all_time?: number | null;
   variant_preview?: Array<{
     sku: string | null;
     option1: string | null;
@@ -968,10 +1058,18 @@ type DeliveryList = {
   item_count?: number;
 };
 
+type ProfileResponse = {
+  is_admin?: boolean;
+  company_name?: string | null;
+};
+
 type ProductVariantPreview = NonNullable<ProductListItem["variant_preview"]>[number];
 
 const pageSizeOptions = [25, 50, 100, 200];
 const priceFormatter = new Intl.NumberFormat("sv-SE", {
+  maximumFractionDigits: 0,
+});
+const salesFormatter = new Intl.NumberFormat("sv-SE", {
   maximumFractionDigits: 0,
 });
 const PUBLISHED_CHANNEL_RANK: Record<string, number> = {
@@ -981,11 +1079,27 @@ const PUBLISHED_CHANNEL_RANK: Record<string, number> = {
 };
 const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
 const DELIVERY_PARTNER_LABEL: Record<DeliveryPartner, string> = {
-  digideal: "DigiDeal.se",
+  digideal: "DigiDeal",
   letsdeal: "LetsDeal",
 };
 
 const formatPriceValue = (value: number) => priceFormatter.format(value);
+const formatSalesValue = (value: number | null | undefined) =>
+  salesFormatter.format(Math.round(Number.isFinite(Number(value)) ? Number(value) : 0));
+const SALES_BENCHMARK_DAY = 10;
+const SALES_BENCHMARK_WEEK = 70;
+const SALES_BENCHMARK_YEAR = 365;
+
+const toSalesNumber = (value: number | null | undefined) => {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return numeric;
+};
+
+const toSalesFillPercent = (value: number, benchmark: number) => {
+  if (!Number.isFinite(value) || value <= 0 || benchmark <= 0) return 0;
+  return Math.min(100, (value / benchmark) * 100);
+};
 
 const formatPriceRange = (
   min: number | null | undefined,
@@ -1117,6 +1231,16 @@ const normalizeDeliveryPartner = (value: string | null | undefined): DeliveryPar
     : "digideal";
 };
 
+const normalizeCompanyPartner = (
+  value: string | null | undefined
+): DeliveryPartner | null => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("letsdeal")) return "letsdeal";
+  if (normalized.includes("digideal")) return "digideal";
+  return null;
+};
+
 function ProductsPageInner() {
   const styles = useStyles();
   const router = useRouter();
@@ -1125,11 +1249,24 @@ function ProductsPageInner() {
 
   const sortOptions = useMemo(
     () => [
-      { value: "updated_desc", label: t("products.sort.updatedNewest") },
-      { value: "added_desc", label: t("products.sort.addedNewest") },
-      { value: "title_asc", label: t("products.sort.titleAZ") },
+      { value: "sales_1d_desc", label: t("products.sort.salesOneDay") },
+      { value: "sales_1w_desc", label: t("products.sort.salesOneWeek") },
+      { value: "sales_1m_desc", label: t("products.sort.salesOneMonth") },
+      { value: "sales_3m_desc", label: t("products.sort.salesThreeMonths") },
+      { value: "sales_1y_desc", label: t("products.sort.salesOneYear") },
+      { value: "sales_all_time_desc", label: t("products.sort.salesAllTime") },
     ],
     [t]
+  );
+  const normalizeSortValue = useCallback(
+    (value: string | null | undefined) => {
+      const normalized = String(value ?? "").trim();
+      if (sortOptions.some((option) => option.value === normalized)) {
+        return normalized;
+      }
+      return "sales_all_time_desc";
+    },
+    [sortOptions]
   );
   const savedFilterOptions = useMemo(
     () => [
@@ -1151,7 +1288,7 @@ function ProductsPageInner() {
   const [advancedRawResponse, setAdvancedRawResponse] = useState<string | null>(null);
   const [advancedRawJson, setAdvancedRawJson] = useState<Record<string, unknown> | null>(null);
   const [advancedDataOpen, setAdvancedDataOpen] = useState(false);
-  const [sort, setSort] = useState("updated_desc");
+  const [sort, setSort] = useState("sales_all_time_desc");
   const [savedFilter, setSavedFilter] = useState("all");
   const [wishlistFilterId, setWishlistFilterId] = useState("all");
   const [categorySelections, setCategorySelections] = useState<CategorySelection[]>([]);
@@ -1212,6 +1349,8 @@ function ProductsPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [viewerCompanyName, setViewerCompanyName] = useState("");
 
   const debouncedSearch = useDebouncedValue(searchInput, 400);
   const effectiveQuery =
@@ -1222,6 +1361,10 @@ function ProductsPageInner() {
         .filter(Boolean)
         .join("|")
     : "";
+  const viewerDeliveryPartner = useMemo(
+    () => normalizeCompanyPartner(viewerCompanyName),
+    [viewerCompanyName]
+  );
 
   const runAdvancedSearch = async () => {
     const query = searchInput.trim();
@@ -1445,6 +1588,36 @@ function ProductsPageInner() {
     };
 
     loadFilters();
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/settings/profile", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setIsAdminUser(false);
+          setViewerCompanyName("");
+          return;
+        }
+        const payload = (await response.json()) as ProfileResponse;
+        setIsAdminUser(Boolean(payload?.is_admin));
+        setViewerCompanyName(
+          typeof payload?.company_name === "string" ? payload.company_name : ""
+        );
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setIsAdminUser(false);
+          setViewerCompanyName("");
+        }
+      }
+    };
+
+    loadProfile();
 
     return () => controller.abort();
   }, []);
@@ -1689,7 +1862,7 @@ function ProductsPageInner() {
   useEffect(() => {
     const params = new URLSearchParams(urlSearch);
     const nextSearch = params.get("q") ?? "";
-    const nextSort = params.get("sort") ?? "updated_desc";
+    const nextSort = normalizeSortValue(params.get("sort"));
     const nextCategories = parseCategoryParam(params.get("categories"));
     const nextBrands = params.getAll("brand").filter(Boolean);
     const nextVendors = params.getAll("vendor").filter(Boolean);
@@ -1722,7 +1895,7 @@ function ProductsPageInner() {
     setWishlistFilterId(nextWishlist);
     setPage(nextPage);
     setPageSize(nextPageSize);
-  }, [urlSearch]);
+  }, [urlSearch, normalizeSortValue]);
 
   useEffect(() => {
     if (isRestoringRef.current) {
@@ -1832,7 +2005,7 @@ function ProductsPageInner() {
     }
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
-    if (sort !== "updated_desc") params.set("sort", sort);
+    if (sort !== "sales_all_time_desc") params.set("sort", sort);
     const categoryParam = buildCategoryParam(categorySelections);
     if (categoryParam) params.set("categories", categoryParam);
     selectedBrands.forEach((brand) => params.append("brand", brand));
@@ -1873,6 +2046,8 @@ function ProductsPageInner() {
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const selectedSortOption =
+    sortOptions.find((option) => option.value === sort) ?? sortOptions[0];
   const normalizedMarkets = useMemo(
     () => activeMarkets.map((market) => market.toUpperCase()),
     [activeMarkets]
@@ -2226,6 +2401,24 @@ function ProductsPageInner() {
           t("common.notAvailable"),
           t("common.currencySek")
         );
+        const salesDayValue = toSalesNumber(product.sales_1d);
+        const salesWeekValue = toSalesNumber(product.sales_1w);
+        const salesYearValue = toSalesNumber(product.sales_1y);
+        const salesDayLabel = formatSalesValue(salesDayValue);
+        const salesWeekLabel = formatSalesValue(salesWeekValue);
+        const salesYearLabel = formatSalesValue(salesYearValue);
+        const salesDayFillPct = toSalesFillPercent(
+          salesDayValue,
+          SALES_BENCHMARK_DAY
+        );
+        const salesWeekFillPct = toSalesFillPercent(
+          salesWeekValue,
+          SALES_BENCHMARK_WEEK
+        );
+        const salesYearFillPct = toSalesFillPercent(
+          salesYearValue,
+          SALES_BENCHMARK_YEAR
+        );
         const taxonomyParts = [
           product.google_taxonomy_l1,
           product.google_taxonomy_l2,
@@ -2233,8 +2426,9 @@ function ProductsPageInner() {
         ].filter(Boolean) as string[];
         const taxonomyLevels = ["l1", "l2", "l3"] as const;
         const previewVariants = product.variant_preview ?? [];
+        const hasMultipleVariants = product.variant_count > 1;
         const hasPreview =
-          product.variant_count > 1 && previewVariants.length > 1;
+          hasMultipleVariants && previewVariants.length > 1;
         const workflowStatus =
           String(product.workflow_status ?? "")
             .trim()
@@ -2262,6 +2456,13 @@ function ProductsPageInner() {
               .filter(Boolean)
           )
         );
+        const visibleDeliveryPartners = isAdminUser
+          ? normalizedDeliveryPartners
+          : viewerDeliveryPartner
+            ? normalizedDeliveryPartners.filter(
+                (partner) => partner === viewerDeliveryPartner
+              )
+            : [];
         const productWishlistIds = Array.isArray(product.wishlist_ids)
           ? product.wishlist_ids
           : [];
@@ -2387,32 +2588,117 @@ function ProductsPageInner() {
               </div>
             </TableCell>
             <TableCell className={styles.spuCol}>
-              <Text size={200}>{product.spu}</Text>
-            </TableCell>
-            <TableCell className={styles.supplierCol}>
-              <div className={styles.supplierCell}>
-                {supplierUrl ? (
-                  <a
-                    href={supplierUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.supplierLink}
-                  >
-                    {t("products.table.supplierLink")}
-                  </a>
-                ) : (
-                  <span
-                    className={mergeClasses(
-                      styles.supplierLink,
-                      styles.supplierLinkDisabled
-                    )}
-                  >
-                    {t("products.table.supplierLink")}
-                  </span>
-                )}
+              <div className={styles.spuWithVariant}>
+                <Text size={200}>{product.spu}</Text>
+                {hasMultipleVariants ? (
+                  hasPreview ? (
+                    <Popover
+                      openOnHover
+                      positioning={{
+                        position: "after",
+                        align: "start",
+                        offset: { mainAxis: 8, crossAxis: 0 },
+                        pinned: true,
+                      }}
+                    >
+                      <PopoverTrigger disableButtonEnhancement>
+                        <Badge
+                          appearance="outline"
+                          color="brand"
+                          size="small"
+                          className={mergeClasses(
+                            styles.variantBadge,
+                            styles.variantBadgeInteractive
+                          )}
+                          style={{ backgroundColor: tokens.colorNeutralBackground1 }}
+                          aria-label={t("products.variant.count", {
+                            count: product.variant_count,
+                          })}
+                          tabIndex={0}
+                        >
+                          {product.variant_count}
+                        </Badge>
+                      </PopoverTrigger>
+                      <PopoverSurface className={styles.variantPopover}>
+                        <Table size="small" className={styles.variantTable}>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHeaderCell>{t("common.sku")}</TableHeaderCell>
+                              <TableHeaderCell>{t("common.variant")}</TableHeaderCell>
+                              {marketColumns.map((column) => (
+                                <TableHeaderCell key={column.key}>
+                                  {column.label}
+                                </TableHeaderCell>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {previewVariants.map((variant, index) => {
+                              const variantName = buildSwedishVariantLabel(variant);
+                              return (
+                                <TableRow key={`${variant.sku ?? "sku"}-${index}`}>
+                                  <TableCell>{variant.sku ?? t("common.notAvailable")}</TableCell>
+                                  <TableCell className={styles.variantValueCell}>
+                                    {variantName || t("products.variant.default")}
+                                  </TableCell>
+                                  {marketColumns.map((column) => (
+                                    <TableCell key={`${variant.sku}-${column.key}`}>
+                                      {formatCurrency(
+                                        column.getValue(variant),
+                                        column.currency
+                                      )}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </PopoverSurface>
+                    </Popover>
+                  ) : (
+                    <Badge
+                      appearance="outline"
+                      color="brand"
+                      size="small"
+                      className={styles.variantBadge}
+                      style={{ backgroundColor: tokens.colorNeutralBackground1 }}
+                      aria-label={t("products.variant.count", {
+                        count: product.variant_count,
+                      })}
+                    >
+                      {product.variant_count}
+                    </Badge>
+                  )
+                ) : null}
               </div>
             </TableCell>
-            <TableCell>
+            {isAdminUser ? (
+              <TableCell className={styles.supplierCol}>
+                <div className={styles.supplierCell}>
+                  {supplierUrl ? (
+                    <a
+                      href={supplierUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.supplierLink}
+                    >
+                      {t("products.table.supplierLink")}
+                    </a>
+                  ) : (
+                    <span
+                      className={mergeClasses(
+                        styles.supplierLink,
+                        styles.supplierLinkDisabled
+                      )}
+                    >
+                      {t("products.table.supplierLink")}
+                    </span>
+                  )}
+                </div>
+              </TableCell>
+            ) : null}
+            <TableCell className={styles.createdCol}>
               <div className={styles.dateStack}>
                 <div className={styles.dateRow}>
                   <Text className={styles.dateLabel}>
@@ -2433,166 +2719,47 @@ function ProductsPageInner() {
               </div>
             </TableCell>
             <TableCell>
-              <div className={styles.variantMetaRow}>
-                {hasPreview ? (
-                  <Popover
-                    openOnHover
-                    positioning={{
-                      position: "after",
-                      align: "start",
-                      offset: { mainAxis: 8, crossAxis: 0 },
-                      pinned: true,
-                    }}
-                  >
-                    <PopoverTrigger disableButtonEnhancement>
-                      <Badge
-                        appearance="outline"
-                        color="brand"
-                        size="small"
-                        className={mergeClasses(
-                          styles.variantBadge,
-                          styles.variantBadgeInteractive
-                        )}
-                        style={{ backgroundColor: tokens.colorNeutralBackground1 }}
-                        aria-label={t("products.variant.count", {
-                          count: product.variant_count,
-                        })}
-                        tabIndex={0}
-                      >
-                        {product.variant_count}
-                      </Badge>
-                    </PopoverTrigger>
-                    <PopoverSurface className={styles.variantPopover}>
-                      <Table size="small" className={styles.variantTable}>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHeaderCell>{t("common.sku")}</TableHeaderCell>
-                            <TableHeaderCell>{t("common.variant")}</TableHeaderCell>
-                            {marketColumns.map((column) => (
-                              <TableHeaderCell key={column.key}>
-                                {column.label}
-                              </TableHeaderCell>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {previewVariants.map((variant, index) => {
-                            const variantName = buildSwedishVariantLabel(variant);
-                            return (
-                              <TableRow key={`${variant.sku ?? "sku"}-${index}`}>
-                                <TableCell>{variant.sku ?? t("common.notAvailable")}</TableCell>
-                                <TableCell className={styles.variantValueCell}>
-                                  {variantName || t("products.variant.default")}
-                                </TableCell>
-                                {marketColumns.map((column) => (
-                                  <TableCell key={`${variant.sku}-${column.key}`}>
-                                    {formatCurrency(
-                                      column.getValue(variant),
-                                      column.currency
-                                    )}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </PopoverSurface>
-                  </Popover>
-                ) : (
-                  <Badge
-                    appearance="outline"
-                    color="brand"
-                    size="small"
-                    className={styles.variantBadge}
-                    style={{ backgroundColor: tokens.colorNeutralBackground1 }}
-                    aria-label={t("products.variant.count", {
-                      count: product.variant_count,
-                    })}
-                  >
-                    {product.variant_count}
-                  </Badge>
-                )}
-                <div className={styles.priceStack}>
-                  <Text size={200} className={styles.metaText}>
-                    B2B: {priceLabel}
-                  </Text>
-                  <Text size={200} className={styles.metaText}>
-                    B2C: {b2cPriceLabel}
-                  </Text>
-                </div>
+              <div className={styles.priceStack}>
+                <Text size={200} className={styles.metaText}>
+                  B2B: {priceLabel}
+                </Text>
+                <Text size={200} className={styles.metaText}>
+                  B2C: {b2cPriceLabel}
+                </Text>
               </div>
             </TableCell>
-            <TableCell>
-              <div className={styles.saveCell}>
-                <Menu>
-                  <MenuTrigger disableButtonEnhancement>
-                    <Button
-                      appearance="outline"
-                      size="small"
-                      className={mergeClasses(
-                        styles.tableActionButton,
-                        styles.listSaveButton
-                      )}
-                    >
-                      {t("common.save")}
-                    </Button>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList>
-                      {wishlistsLoading ? (
-                        <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
-                      ) : wishlistsError ? (
-                        <MenuItem disabled>{wishlistsError}</MenuItem>
-                      ) : wishlists.length === 0 ? (
-                        <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
-                      ) : (
-                        <>
-                          {wishlistsAlreadyIn.map((list) => (
-                            <MenuItem
-                              key={list.id}
-                              disabled
-                              className={styles.wishlistMenuItemInList}
-                            >
-                              <span className={styles.wishlistMenuItemRow}>
-                                <span>{list.name}</span>
-                                <span className={styles.wishlistMenuCheck}>✓</span>
-                              </span>
-                            </MenuItem>
-                          ))}
-                          {wishlistsAlreadyIn.length > 0 &&
-                          wishlistsAvailable.length > 0 ? (
-                            <MenuDivider />
-                          ) : null}
-                          {wishlistsAvailable.map((list) => (
-                            <MenuItem
-                              key={list.id}
-                              onClick={() => saveProductToWishlist(product.id, list.id)}
-                            >
-                              {list.name}
-                            </MenuItem>
-                          ))}
-                        </>
-                      )}
-                      <MenuDivider />
-                      <MenuItem
-                        onClick={() => {
-                          setPendingSaveProductIds([product.id]);
-                          setNewListDialogOpen(true);
-                        }}
-                      >
-                        {t("products.lists.new")}
-                      </MenuItem>
-                      <MenuDivider />
-                      <MenuItem onClick={() => openDeliveryDialog([product.id], "digideal")}>
-                        Deliver to DigiDeal.se
-                      </MenuItem>
-                      <MenuItem onClick={() => openDeliveryDialog([product.id], "letsdeal")}>
-                        Deliver to LetsDeal
-                      </MenuItem>
-                    </MenuList>
-                  </MenuPopover>
-                </Menu>
+            <TableCell className={styles.salesCol}>
+              <div className={styles.salesStack}>
+                <div className={styles.salesRow}>
+                  <span className={styles.salesLabel}>D</span>
+                  <span className={styles.salesValue}>{`  ${salesDayLabel}`}</span>
+                  <span className={styles.salesTrack}>
+                    <span
+                      className={styles.salesFill}
+                      style={{ width: `${salesDayFillPct}%` }}
+                    />
+                  </span>
+                </div>
+                <div className={styles.salesRow}>
+                  <span className={styles.salesLabel}>W</span>
+                  <span className={styles.salesValue}>{`  ${salesWeekLabel}`}</span>
+                  <span className={styles.salesTrack}>
+                    <span
+                      className={styles.salesFill}
+                      style={{ width: `${salesWeekFillPct}%` }}
+                    />
+                  </span>
+                </div>
+                <div className={styles.salesRow}>
+                  <span className={styles.salesLabel}>Y</span>
+                  <span className={styles.salesValue}>{`  ${salesYearLabel}`}</span>
+                  <span className={styles.salesTrack}>
+                    <span
+                      className={styles.salesFill}
+                      style={{ width: `${salesYearFillPct}%` }}
+                    />
+                  </span>
+                </div>
               </div>
             </TableCell>
             <TableCell>
@@ -2603,19 +2770,21 @@ function ProductsPageInner() {
                 {t("common.view")}
               </Link>
             </TableCell>
-            <TableCell className={styles.publishedCol}>
-              <div className={styles.publishedCell}>
-                {publishedChannelLabels.map((label) => (
-                  <span
-                    key={`${product.id}-${label}`}
-                    className={mergeClasses(styles.statusBadge, styles.publishedBadge)}
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </TableCell>
-            <TableCell>
+            {isAdminUser ? (
+              <TableCell className={styles.publishedCol}>
+                <div className={styles.publishedCell}>
+                  {publishedChannelLabels.map((label) => (
+                    <span
+                      key={`${product.id}-${label}`}
+                      className={mergeClasses(styles.statusBadge, styles.publishedBadge)}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </TableCell>
+            ) : null}
+            <TableCell className={styles.statusCol}>
               {canOpenReEdit ? (
                 <Link
                   href={reEditHref}
@@ -2637,7 +2806,7 @@ function ProductsPageInner() {
             </TableCell>
             <TableCell className={styles.deliveryCol}>
               <div className={styles.deliveryCell}>
-                {normalizedDeliveryPartners.map((partner) => (
+                {visibleDeliveryPartners.map((partner) => (
                   <span
                     key={`${product.id}-${partner}`}
                     className={mergeClasses(
@@ -2650,6 +2819,108 @@ function ProductsPageInner() {
                     {DELIVERY_PARTNER_LABEL[partner]}
                   </span>
                 ))}
+              </div>
+            </TableCell>
+            <TableCell className={styles.actionCol}>
+              <div className={styles.actionCell}>
+                <Menu>
+                  <MenuTrigger disableButtonEnhancement>
+                    <Button
+                      appearance="outline"
+                      size="small"
+                      className={mergeClasses(
+                        styles.tableActionButton,
+                        styles.listSaveButton
+                      )}
+                    >
+                      {t("products.table.actions")}
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopover>
+                    <MenuList>
+                      <Menu positioning="after-top">
+                        <MenuTrigger disableButtonEnhancement>
+                          <MenuItem hasSubmenu>{t("products.actions.addToList")}</MenuItem>
+                        </MenuTrigger>
+                        <MenuPopover>
+                          <MenuList>
+                            <MenuItem
+                              onClick={() => {
+                                setPendingSaveProductIds([product.id]);
+                                setNewListDialogOpen(true);
+                              }}
+                            >
+                              {t("products.actions.addToCurrentNewList")}
+                            </MenuItem>
+                            <Menu positioning="after-top">
+                              <MenuTrigger disableButtonEnhancement>
+                                <MenuItem hasSubmenu>
+                                  {t("products.actions.addToExistingLists")}
+                                </MenuItem>
+                              </MenuTrigger>
+                              <MenuPopover>
+                                <MenuList>
+                                  {wishlistsLoading ? (
+                                    <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
+                                  ) : wishlistsError ? (
+                                    <MenuItem disabled>{wishlistsError}</MenuItem>
+                                  ) : wishlists.length === 0 ? (
+                                    <MenuItem disabled>{t("products.lists.empty")}</MenuItem>
+                                  ) : (
+                                    <>
+                                      {wishlistsAlreadyIn.map((list) => (
+                                        <MenuItem
+                                          key={list.id}
+                                          disabled
+                                          className={styles.wishlistMenuItemInList}
+                                        >
+                                          <span className={styles.wishlistMenuItemRow}>
+                                            <span>{list.name}</span>
+                                            <span className={styles.wishlistMenuCheck}>✓</span>
+                                          </span>
+                                        </MenuItem>
+                                      ))}
+                                      {wishlistsAlreadyIn.length > 0 &&
+                                      wishlistsAvailable.length > 0 ? (
+                                        <MenuDivider />
+                                      ) : null}
+                                      {wishlistsAvailable.map((list) => (
+                                        <MenuItem
+                                          key={list.id}
+                                          onClick={() =>
+                                            saveProductToWishlist(product.id, list.id)
+                                          }
+                                        >
+                                          {list.name}
+                                        </MenuItem>
+                                      ))}
+                                    </>
+                                  )}
+                                </MenuList>
+                              </MenuPopover>
+                            </Menu>
+                          </MenuList>
+                        </MenuPopover>
+                      </Menu>
+                      <MenuDivider />
+                      <Menu positioning="after-top">
+                        <MenuTrigger disableButtonEnhancement>
+                          <MenuItem hasSubmenu>{t("products.actions.deliverTo")}</MenuItem>
+                        </MenuTrigger>
+                        <MenuPopover>
+                          <MenuList>
+                            <MenuItem onClick={() => openDeliveryDialog([product.id], "digideal")}>
+                              {t("products.actions.deliverDigiDeal")}
+                            </MenuItem>
+                            <MenuItem onClick={() => openDeliveryDialog([product.id], "letsdeal")}>
+                              {t("products.actions.deliverLetsDeal")}
+                            </MenuItem>
+                          </MenuList>
+                        </MenuPopover>
+                      </Menu>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
               </div>
             </TableCell>
             <TableCell>
@@ -2681,8 +2952,12 @@ function ProductsPageInner() {
       openDeliveryDialog,
       isInteractiveRowTarget,
       applyRowSelection,
+      isAdminUser,
+      viewerDeliveryPartner,
     ]
   );
+
+  const tableColumnCount = isAdminUser ? 13 : 11;
 
   return (
     <div className={styles.layout}>
@@ -2993,13 +3268,15 @@ function ProductsPageInner() {
         <div className={styles.bottomRow}>
           <div className={styles.bottomLeft}>
             <Field
-              label={<span className={styles.filterLabel}>{t("products.filters.updated")}</span>}
+              label={<span className={styles.filterLabel}>{t("products.table.sales")}</span>}
               className={styles.dropdownField}
             >
               <Dropdown
-                value={sortOptions.find((option) => option.value === sort)?.label}
-                selectedOptions={[sort]}
-                onOptionSelect={(_, data) => setSort(String(data.optionValue))}
+                value={selectedSortOption?.label}
+                selectedOptions={[selectedSortOption?.value ?? "sales_all_time_desc"]}
+                onOptionSelect={(_, data) =>
+                  setSort(normalizeSortValue(String(data.optionValue)))
+                }
                 className={styles.dropdownCompact}
               >
                 {sortOptions.map((option) => (
@@ -3248,7 +3525,7 @@ function ProductsPageInner() {
                                       )
                                     }
                                   >
-                                    Deliver to DigiDeal.se
+                                    Deliver to DigiDeal
                                   </MenuItem>
                                   <MenuItem
                                     disabled={!hasSelection || isApplyingAction}
@@ -3310,21 +3587,30 @@ function ProductsPageInner() {
               <TableHeaderCell className={styles.spuCol}>
                 {t("products.table.spu")}
               </TableHeaderCell>
-              <TableHeaderCell className={styles.supplierCol}>
-                {t("products.table.supplier")}
-              </TableHeaderCell>
-              <TableHeaderCell>
+              {isAdminUser ? (
+                <TableHeaderCell className={styles.supplierCol}>
+                  {t("products.table.supplier")}
+                </TableHeaderCell>
+              ) : null}
+              <TableHeaderCell className={styles.createdCol}>
                 {t("products.table.createdUpdated")}
               </TableHeaderCell>
               <TableHeaderCell>{t("products.table.variants")}</TableHeaderCell>
-              <TableHeaderCell>{t("products.table.save")}</TableHeaderCell>
-              <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
-              <TableHeaderCell className={styles.publishedCol}>
-                {t("products.table.published")}
+              <TableHeaderCell className={styles.salesCol}>
+                {t("products.table.sales")}
               </TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell>{t("products.table.details")}</TableHeaderCell>
+              {isAdminUser ? (
+                <TableHeaderCell className={styles.publishedCol}>
+                  {t("products.table.published")}
+                </TableHeaderCell>
+              ) : null}
+              <TableHeaderCell className={styles.statusCol}>Status</TableHeaderCell>
               <TableHeaderCell className={styles.deliveryCol}>
                 {t("products.table.delivery")}
+              </TableHeaderCell>
+              <TableHeaderCell className={styles.actionCol}>
+                {t("products.table.actions")}
               </TableHeaderCell>
               <TableHeaderCell className={styles.selectCol}>
                 <div className={styles.selectCheckboxWrap}>
@@ -3349,7 +3635,7 @@ function ProductsPageInner() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={12} className={styles.tableStatusCell}>
+                <TableCell colSpan={tableColumnCount} className={styles.tableStatusCell}>
                   <div className={styles.tableLoadingContent}>
                     <Spinner appearance="primary" />
                     <Text size={200} className={styles.tableLoadingLabel}>
@@ -3360,7 +3646,7 @@ function ProductsPageInner() {
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className={styles.tableStatusCell}>
+                <TableCell colSpan={tableColumnCount} className={styles.tableStatusCell}>
                   <div className={styles.tableStatusContent}>
                     <Text>{t("products.empty")}</Text>
                   </div>

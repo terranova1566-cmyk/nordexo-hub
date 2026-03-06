@@ -13,6 +13,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-API-Key, X-Nodexo-Token",
 };
+const INTERNAL_EXTENSION_STATIC_TOKEN =
+  "550fdd5c20fc25e8e5483c8869e3a897bb6a2e3992f988c3";
 
 const MAX_BULLETS = 24;
 const MAX_IMAGES = 80;
@@ -50,10 +52,14 @@ const parseTokens = () => {
     process.env.NODEXO_EXTRACTOR_UPLOAD_TOKEN ||
     "";
 
-  return raw
+  const tokens = raw
     .split(",")
     .map((token) => token.trim())
     .filter(Boolean);
+  if (!toBool(process.env.NODEXO_INTERNAL_STATIC_UPLOAD_TOKEN_REVOKED, false)) {
+    tokens.push(INTERNAL_EXTENSION_STATIC_TOKEN);
+  }
+  return Array.from(new Set(tokens));
 };
 
 const getAuthToken = (request: Request) => {

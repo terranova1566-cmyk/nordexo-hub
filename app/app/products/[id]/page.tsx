@@ -787,6 +787,10 @@ type DescriptionForm = {
   specs: string;
 };
 
+type ProfileResponse = {
+  is_admin?: boolean;
+};
+
 const CJK_CHAR_PATTERN = /[\u3400-\u9FFF\uF900-\uFAFF]/g;
 
 const sanitizeSwedishVariantPart = (value: string | null) => {
@@ -944,6 +948,7 @@ export default function ProductDetailPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [aiPreviewActive, setAiPreviewActive] = useState(false);
   const [aiSnapshot, setAiSnapshot] = useState<DescriptionForm | null>(null);
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const resolvedProductId = data?.product?.id ?? routeProductParam;
 
   const variantIdentityColumns = useMemo<
@@ -1270,6 +1275,37 @@ export default function ProductDetailPage() {
       return null;
     }
   }, [internalProduct.supplier_1688_url]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/settings/profile", {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setIsAdminUser(false);
+          return;
+        }
+        const payload = (await response.json()) as ProfileResponse;
+        setIsAdminUser(Boolean(payload?.is_admin));
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setIsAdminUser(false);
+        }
+      }
+    };
+
+    loadProfile();
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!isAdminUser && activeTab === "product-data") {
+      setActiveTab("variants");
+    }
+  }, [activeTab, isAdminUser]);
 
   useEffect(() => {
     setVisibleIdentityEmptyColumns(new Set());
@@ -1710,6 +1746,7 @@ export default function ProductDetailPage() {
     field: keyof DescriptionForm,
     value: string
   ) => {
+    if (!isAdminUser) return;
     setDescriptionDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
@@ -1734,6 +1771,7 @@ export default function ProductDetailPage() {
   }, [descriptionDraft, descriptionBaseline]);
 
   const saveDescription = async () => {
+    if (!isAdminUser) return;
     if (!descriptionDraft || !resolvedProductId) return;
     setIsSavingDescription(true);
     setDescriptionSaveError(null);
@@ -1792,6 +1830,7 @@ export default function ProductDetailPage() {
   };
 
   const runRegenerate = async () => {
+    if (!isAdminUser) return;
     if (!descriptionDraft || !resolvedProductId) return;
     setIsRegenerating(true);
     setRegenerateError(null);
@@ -1878,6 +1917,7 @@ export default function ProductDetailPage() {
   };
 
   const saveInternalData = async () => {
+    if (!isAdminUser) return;
     if (!resolvedProductId) return;
     setIsSavingInternal(true);
     setInternalSaveError(null);
@@ -2092,6 +2132,7 @@ export default function ProductDetailPage() {
     placeholder,
     multiline,
     rows,
+    readOnly,
     onChange,
   }: {
     label: string;
@@ -2099,6 +2140,7 @@ export default function ProductDetailPage() {
     placeholder: string;
     multiline?: boolean;
     rows?: number;
+    readOnly?: boolean;
     onChange: (next: string) => void;
   }) => {
     return (
@@ -2109,6 +2151,7 @@ export default function ProductDetailPage() {
             onChange={(_, data) => onChange(data.value)}
             placeholder={placeholder}
             rows={rows}
+            readOnly={readOnly}
             className={styles.descriptionTextarea}
           />
         ) : (
@@ -2116,6 +2159,7 @@ export default function ProductDetailPage() {
             value={value}
             onChange={(_, data) => onChange(data.value)}
             placeholder={placeholder}
+            readOnly={readOnly}
           />
         )}
       </Field>
@@ -2269,15 +2313,21 @@ export default function ProductDetailPage() {
           <div className={styles.tabHeader}>
             <TabList
               selectedValue={activeTab}
-              onTabSelect={(_, data) => setActiveTab(String(data.value))}
+              onTabSelect={(_, data) => {
+                const nextValue = String(data.value);
+                if (nextValue === "product-data" && !isAdminUser) return;
+                setActiveTab(nextValue);
+              }}
             >
               <Tab value="variants">{t("productDetail.tabs.variants")}</Tab>
               {showDescription ? (
                 <Tab value="description">{t("productDetail.tabs.descriptionSe")}</Tab>
               ) : null}
-              <Tab value="product-data">{t("productDetail.tabs.productData")}</Tab>
+              <Tab value="product-data" disabled={!isAdminUser}>
+                {t("productDetail.tabs.productData")}
+              </Tab>
             </TabList>
-            {activeTab === "description" && showDescription ? (
+            {activeTab === "description" && showDescription && isAdminUser ? (
               <div className={styles.descriptionActions}>
                 {aiPreviewActive ? (
                   <>
@@ -2407,6 +2457,7 @@ export default function ProductDetailPage() {
                       label={t("productDetail.description.shortTitle")}
                       value={descriptionForm.short_title}
                       placeholder={t("productDetail.description.shortTitleEmpty")}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("short_title", value)
                       }
@@ -2415,6 +2466,7 @@ export default function ProductDetailPage() {
                       label={t("productDetail.description.subtitle")}
                       value={descriptionForm.subtitle}
                       placeholder={t("productDetail.description.subtitleEmpty")}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("subtitle", value)
                       }
@@ -2425,6 +2477,7 @@ export default function ProductDetailPage() {
                       label={t("productDetail.description.longTitle")}
                       value={descriptionForm.long_title}
                       placeholder={t("productDetail.description.longTitleEmpty")}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("long_title", value)
                       }
@@ -2436,6 +2489,7 @@ export default function ProductDetailPage() {
                     placeholder={t("productDetail.description.shortDescriptionEmpty")}
                     multiline
                     rows={2}
+                    readOnly={!isAdminUser}
                     onChange={(value) =>
                       updateDescriptionField("description_short", value)
                     }
@@ -2446,6 +2500,7 @@ export default function ProductDetailPage() {
                     placeholder={t("productDetail.description.longDescriptionEmpty")}
                     multiline
                     rows={6}
+                    readOnly={!isAdminUser}
                     onChange={(value) =>
                       updateDescriptionField("description_main", value)
                     }
@@ -2456,6 +2511,7 @@ export default function ProductDetailPage() {
                     placeholder={t("productDetail.description.extendedDescriptionEmpty")}
                     multiline
                     rows={6}
+                    readOnly={!isAdminUser}
                     onChange={(value) =>
                       updateDescriptionField("description_extended", value)
                     }
@@ -2467,6 +2523,7 @@ export default function ProductDetailPage() {
                       placeholder={t("productDetail.description.shortBulletsEmpty")}
                       multiline
                       rows={4}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("bullets_short", value)
                       }
@@ -2477,6 +2534,7 @@ export default function ProductDetailPage() {
                       placeholder={t("productDetail.description.bulletsEmpty")}
                       multiline
                       rows={5}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("bullets", value)
                       }
@@ -2487,6 +2545,7 @@ export default function ProductDetailPage() {
                       placeholder={t("productDetail.description.longBulletsEmpty")}
                       multiline
                       rows={6}
+                      readOnly={!isAdminUser}
                       onChange={(value) =>
                         updateDescriptionField("bullets_long", value)
                       }
@@ -2498,6 +2557,7 @@ export default function ProductDetailPage() {
                     placeholder={t("productDetail.description.specificationEmpty")}
                     multiline
                     rows={4}
+                    readOnly={!isAdminUser}
                     onChange={(value) =>
                       updateDescriptionField("specs", value)
                     }
@@ -2511,7 +2571,7 @@ export default function ProductDetailPage() {
               </div>
             </div>
           ) : null}
-          {activeTab === "product-data" ? (
+          {activeTab === "product-data" && isAdminUser ? (
             <div className={styles.dataPanel}>
               <div className={styles.dataSectionHeader}>
                 <Text weight="semibold">{t("productDetail.data.title")}</Text>

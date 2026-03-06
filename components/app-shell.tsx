@@ -211,6 +211,7 @@ const shopifyMenuItems = [
 
 const adminMenuItems = [
   { label: "nav.adminOverview", href: "/app/admin" },
+  { label: "nav.adminFileExplorer", href: "/app/admin?tool=file-explorer" },
   { label: "nav.adminFileUpload", href: "/app/admin?tool=file-upload" },
   { label: "nav.adminSystem", href: "/app/settings?tab=system" },
   { label: "nav.adminUIKit", href: "/app/settings?tab=uikit" },
@@ -270,7 +271,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const { locale, setLocale, t } = useI18n();
   const supabase = useMemo(() => createClient(), []);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isB2BInternal, setIsB2BInternal] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const isProductsActive = useMemo(
     () =>
@@ -316,26 +316,17 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       if (!user) {
         if (isActive) {
           setIsAdmin(false);
-          setIsB2BInternal(false);
           setUserId(null);
         }
         return;
       }
-      const [{ data: settings }, { data: b2bRole, error: b2bRoleError }] = await Promise.all([
-        supabase
-          .from("partner_user_settings")
-          .select("is_admin, preferred_locale")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-        supabase
-          .from("b2b_user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
+      const { data: settings } = await supabase
+        .from("partner_user_settings")
+        .select("is_admin, preferred_locale")
+        .eq("user_id", user.id)
+        .maybeSingle();
       if (isActive) {
         setIsAdmin(Boolean(settings?.is_admin));
-        setIsB2BInternal(!b2bRoleError && Boolean(b2bRole?.role));
         if (settings?.preferred_locale) {
           setLocale(settings.preferred_locale);
         }
@@ -361,7 +352,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     [pathname]
   );
 
-  const canAccessB2B = isAdmin || isB2BInternal;
+  const canAccessB2B = isAdmin;
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

@@ -3,6 +3,11 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import { spawnSync } from "child_process";
 import { NextResponse } from "next/server";
+import {
+  normalizeDeliveryPartner,
+  resolveDeliveryPartnerFromListName,
+} from "@/lib/product-delivery/digideal";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 const EXPORT_DIR = path.join(process.cwd(), "exports", "digideal");
@@ -36,8 +41,38 @@ const resolveImageFolder = (folder: string | null, spu: string | null) => {
   return null;
 };
 
+const resolveViewerPartner = (
+  companyName: unknown,
+  userMetadata: Record<string, unknown> | null | undefined
+) => {
+  const candidates = [
+    companyName,
+    userMetadata?.company_name,
+    userMetadata?.organization_name,
+    userMetadata?.organization,
+    userMetadata?.company,
+  ];
+  for (const candidate of candidates) {
+    const partner = normalizeDeliveryPartner(String(candidate ?? ""));
+    if (partner) return partner;
+  }
+  return null;
+};
+
+const normalizeRequestedProductIds = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as string[];
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+};
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
+  const adminClient = createAdminSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -48,7 +83,7 @@ export async function POST(request: Request) {
 
   const { data: userSettings } = await supabase
     .from("partner_user_settings")
-    .select("active_markets, is_admin")
+    .select("active_markets, is_admin, company_name")
     .eq("user_id", user.id)
     .maybeSingle();
   const activeMarkets = (
@@ -57,6 +92,10 @@ export async function POST(request: Request) {
       : ["SE"]
   ).map((market: string) => market.toUpperCase());
   const isAdmin = Boolean(userSettings?.is_admin);
+  const viewerPartner = resolveViewerPartner(
+    userSettings?.company_name,
+    (user.user_metadata ?? null) as Record<string, unknown> | null
+  );
 
   if (!activeMarkets.includes("SE")) {
     return NextResponse.json(
@@ -68,6 +107,7 @@ export async function POST(request: Request) {
   let requestedName = "";
   let listId: string | null = null;
   let imageMode = "all";
+  let requestedProductIds: string[] = [];
   try {
     const body = await request.json();
     if (body?.name) {
@@ -79,9 +119,11 @@ export async function POST(request: Request) {
     if (body?.imageMode) {
       imageMode = String(body.imageMode).trim().toLowerCase() || "all";
     }
+    requestedProductIds = normalizeRequestedProductIds(body?.productIds);
   } catch {
     requestedName = "";
     listId = null;
+    requestedProductIds = [];
   }
 
   if (!isAdmin && imageMode === "all") {
@@ -105,11 +147,10 @@ export async function POST(request: Request) {
   let productIds: string[] = [];
 
   if (listId) {
-    const { data: listRow, error: listError } = await supabase
+    const { data: listRow, error: listError } = await adminClient
       .from("product_manager_wishlists")
       .select("id, name")
       .eq("id", listId)
-      .eq("user_id", user.id)
       .maybeSingle();
 
     if (listError) {
@@ -121,8 +162,20 @@ export async function POST(request: Request) {
     }
 
     listName = listRow.name ?? null;
+    const listPartner = resolveDeliveryPartnerFromListName(listName);
+    if (!listPartner) {
+      return NextResponse.json({ error: "Invalid delivery list." }, { status: 400 });
+    }
+    if (!isAdmin) {
+      if (!viewerPartner) {
+        return NextResponse.json({ error: "Partner access is not configured." }, { status: 403 });
+      }
+      if (viewerPartner !== listPartner) {
+        return NextResponse.json({ error: "Forbidden for this delivery list." }, { status: 403 });
+      }
+    }
 
-    const { data: listItems, error: listItemsError } = await supabase
+    const { data: listItems, error: listItemsError } = await adminClient
       .from("product_manager_wishlist_items")
       .select("product_id")
       .eq("wishlist_id", listId);
@@ -134,6 +187,10 @@ export async function POST(request: Request) {
     productIds = (listItems ?? [])
       .map((row) => row.product_id)
       .filter(Boolean) as string[];
+    if (requestedProductIds.length > 0) {
+      const selectedSet = new Set(requestedProductIds);
+      productIds = productIds.filter((productId) => selectedSet.has(String(productId)));
+    }
   } else {
     const { data: savedRows, error: savedError } = await supabase
       .from("partner_saved_products")
@@ -154,7 +211,7 @@ export async function POST(request: Request) {
     .select("id, spu, image_folder, nordic_partner_enabled")
     .in("id", productIds);
 
-  if (!isAdmin) {
+  if (!isAdmin && !listId) {
     productQuery = productQuery.eq("nordic_partner_enabled", true);
   }
 
@@ -171,6 +228,7 @@ export async function POST(request: Request) {
         return { spu: product.spu, path: folder };
       })
       .filter(Boolean) ?? [];
+  const excludeDigiTaggedImages = !isAdmin && viewerPartner === "letsdeal";
 
   await fs.mkdir(EXPORT_DIR, { recursive: true });
   const timestamp = formatTimestamp();
@@ -181,12 +239,14 @@ export async function POST(request: Request) {
   const filePath = path.join(EXPORT_DIR, filename);
 
   const script = [
-    "import zipfile, os",
+    "import zipfile, os, re",
     `entries = ${JSON.stringify(entries)}`,
     `zip_path = ${JSON.stringify(filePath)}`,
     `mode = ${JSON.stringify(imageMode)}`,
+    `exclude_digi = ${excludeDigiTaggedImages ? "True" : "False"}`,
     "img_exts = {'.jpg','.jpeg','.png','.webp'}",
-    "with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:",
+    "digi_tag_re = re.compile(r'(?:\\(\\s*DIGI?\\s*\\)|(?:^|[-_ ])DIGI?(?=$|[-_ .)]))', re.IGNORECASE)",
+    "with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as zf:",
     "  for entry in entries:",
     "    spu = entry.get('spu') or 'product'",
     "    folder = entry.get('path') or ''",
@@ -196,6 +256,8 @@ export async function POST(request: Request) {
     "      for root, dirs, files in os.walk(folder):",
     "        for name in files:",
     "          full = os.path.join(root, name)",
+    "          if exclude_digi and digi_tag_re.search(name):",
+    "            continue",
     "          rel = os.path.relpath(full, folder)",
     "          arc = os.path.join(spu, rel)",
     "          zf.write(full, arcname=arc)",
@@ -213,6 +275,8 @@ export async function POST(request: Request) {
     "      for name in os.listdir(source_dir):",
     "        full = os.path.join(source_dir, name)",
     "        if os.path.isdir(full):",
+    "          continue",
+    "        if exclude_digi and digi_tag_re.search(name):",
     "          continue",
     "        if name == 'media-manifest.json':",
     "          continue",

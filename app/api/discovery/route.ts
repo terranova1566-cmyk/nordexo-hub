@@ -777,7 +777,7 @@ export async function GET(request: NextRequest) {
       const buildQuery = (select: string) => {
         let query = supabase
           .from("discovery_products")
-          .select(select, { count: "exact" });
+          .select(select, { count: "planned" });
 
         if (filterProviders) {
           query = query.in("provider", providers);

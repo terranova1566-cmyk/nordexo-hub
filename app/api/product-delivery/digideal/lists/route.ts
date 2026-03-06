@@ -66,6 +66,11 @@ type LetsdealStatusSummary = {
   ready: boolean;
 };
 
+type ViewerAccess = {
+  isAdmin: boolean;
+  partner: DeliveryPartner | null;
+};
+
 const extractTextValue = (row: Record<string, unknown>) => {
   if (row.value_text) return String(row.value_text);
   if (row.value_number !== null && row.value_number !== undefined) {
@@ -109,14 +114,69 @@ const normalizeIds = (value: unknown) => {
   );
 };
 
+const resolveViewerPartner = (
+  companyName: unknown,
+  userMetadata: Record<string, unknown> | null | undefined
+) => {
+  const candidates = [
+    companyName,
+    userMetadata?.company_name,
+    userMetadata?.organization_name,
+    userMetadata?.organization,
+    userMetadata?.company,
+  ];
+  for (const candidate of candidates) {
+    const partner = normalizeDeliveryPartner(String(candidate ?? ""));
+    if (partner) return partner;
+  }
+  return null;
+};
+
+const resolveViewerAccess = async (
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  userId: string,
+  userMetadata: Record<string, unknown> | null | undefined
+): Promise<{ access: ViewerAccess | null; error: string | null }> => {
+  const { data: settings, error } = await supabase
+    .from("partner_user_settings")
+    .select("is_admin, company_name")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    return { access: null, error: error.message };
+  }
+  return {
+    access: {
+      isAdmin: Boolean(settings?.is_admin),
+      partner: resolveViewerPartner(settings?.company_name, userMetadata),
+    },
+    error: null,
+  };
+};
+
 export async function GET(request: Request) {
   const supabase = await createServerSupabase();
+  const storage = createAdminSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { access: viewerAccess, error: viewerAccessError } = await resolveViewerAccess(
+    supabase,
+    user.id,
+    (user.user_metadata ?? null) as Record<string, unknown> | null
+  );
+  if (viewerAccessError) {
+    return NextResponse.json({ error: viewerAccessError }, { status: 500 });
+  }
+  if (!viewerAccess) {
+    return NextResponse.json({ error: "Unable to resolve viewer access." }, { status: 500 });
+  }
+  if (!viewerAccess.isAdmin && !viewerAccess.partner) {
+    return NextResponse.json({ items: [] });
   }
 
   const { searchParams } = new URL(request.url);
@@ -132,10 +192,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unsupported partner." }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await storage
     .from("product_manager_wishlists")
     .select("id, name, created_at")
-    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -159,16 +218,19 @@ export async function GET(request: Request) {
         partner: DeliveryPartner;
       } => Boolean(list)
     );
+  const listsForViewer = viewerAccess.isAdmin
+    ? allDeliveryLists
+    : allDeliveryLists.filter((list) => list.partner === viewerAccess.partner);
   const lists = partnerFilter
-    ? allDeliveryLists.filter((list) => list.partner === partnerFilter)
-    : allDeliveryLists;
+    ? listsForViewer.filter((list) => list.partner === partnerFilter)
+    : listsForViewer;
 
   if (lists.length === 0) {
     return NextResponse.json({ items: [] });
   }
 
   const listIds = lists.map((list) => list.id);
-  const { data: itemRowsRaw, error: itemRowsError } = await supabase
+  const { data: itemRowsRaw, error: itemRowsError } = await storage
     .from("product_manager_wishlist_items")
     .select("wishlist_id, product_id, created_at")
     .in("wishlist_id", listIds)
@@ -182,7 +244,7 @@ export async function GET(request: Request) {
   const countMap = new Map<string, number>();
   const listProductsMap = new Map<string, string[]>();
   const deckPreviewLimit = 5;
-  const batchContentLimit = 8;
+  const batchContentLimit = 40;
   const maxPreviewProducts = Math.max(deckPreviewLimit, batchContentLimit);
   itemRows.forEach((row) => {
     const listId = String(row.wishlist_id ?? "").trim();
@@ -286,8 +348,7 @@ export async function GET(request: Request) {
 
     const statusByListProduct = new Map<string, Map<string, string>>();
     if (letsdealListIds.length > 0 && letsdealProductIds.length > 0) {
-      const adminClient = createAdminSupabase();
-      const { data: letsdealJobRowsRaw, error: letsdealJobError } = await adminClient
+      const { data: letsdealJobRowsRaw, error: letsdealJobError } = await storage
         .from("letsdeal_delivery_jobs")
         .select("wishlist_id, product_id, status")
         .in("wishlist_id", letsdealListIds)
@@ -508,12 +569,24 @@ type CreateDeliveryListPayload = {
 
 export async function POST(request: Request) {
   const supabase = await createServerSupabase();
+  const storage = createAdminSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { access: viewerAccess, error: viewerAccessError } = await resolveViewerAccess(
+    supabase,
+    user.id,
+    (user.user_metadata ?? null) as Record<string, unknown> | null
+  );
+  if (viewerAccessError) {
+    return NextResponse.json({ error: viewerAccessError }, { status: 500 });
+  }
+  if (!viewerAccess) {
+    return NextResponse.json({ error: "Unable to resolve viewer access." }, { status: 500 });
   }
 
   let payload: CreateDeliveryListPayload;
@@ -532,13 +605,20 @@ export async function POST(request: Request) {
   if (!partner) {
     return NextResponse.json({ error: "Unsupported partner." }, { status: 400 });
   }
+  if (!viewerAccess.isAdmin) {
+    if (!viewerAccess.partner) {
+      return NextResponse.json({ error: "Partner access is not configured." }, { status: 403 });
+    }
+    if (partner !== viewerAccess.partner) {
+      return NextResponse.json({ error: "Forbidden for this partner." }, { status: 403 });
+    }
+  }
 
   if (sourceListId) {
-    const { data: sourceListRow, error: sourceListError } = await supabase
+    const { data: sourceListRow, error: sourceListError } = await storage
       .from("product_manager_wishlists")
       .select("id, name")
       .eq("id", sourceListId)
-      .eq("user_id", user.id)
       .maybeSingle();
 
     if (sourceListError) {
@@ -547,13 +627,20 @@ export async function POST(request: Request) {
     if (!sourceListRow) {
       return NextResponse.json({ error: "Source list not found." }, { status: 404 });
     }
-    if (!isDeliveryListName(String(sourceListRow.name ?? ""))) {
+    const sourceName = String(sourceListRow.name ?? "");
+    if (!isDeliveryListName(sourceName)) {
       return NextResponse.json({ error: "Invalid source list." }, { status: 400 });
+    }
+    if (!viewerAccess.isAdmin) {
+      const sourcePartner = resolveDeliveryPartnerFromListName(sourceName);
+      if (!sourcePartner || sourcePartner !== viewerAccess.partner) {
+        return NextResponse.json({ error: "Forbidden for this source list." }, { status: 403 });
+      }
     }
   }
 
   const storedName = toStoredDeliveryListName(displayName, partner);
-  const { data, error } = await supabase
+  const { data, error } = await storage
     .from("product_manager_wishlists")
     .insert({ user_id: user.id, name: storedName })
     .select("id, name, created_at")
@@ -567,7 +654,7 @@ export async function POST(request: Request) {
   let duplicatedProductIds: string[] = [];
   let letsdealQueueError: string | null = null;
   if (sourceListId) {
-    const { data: sourceItemsRaw, error: sourceItemsError } = await supabase
+    const { data: sourceItemsRaw, error: sourceItemsError } = await storage
       .from("product_manager_wishlist_items")
       .select("product_id")
       .eq("wishlist_id", sourceListId);
@@ -590,7 +677,7 @@ export async function POST(request: Request) {
         wishlist_id: data.id,
         product_id: productId,
       }));
-      const { error: copyError } = await supabase
+      const { error: copyError } = await storage
         .from("product_manager_wishlist_items")
         .upsert(rows, {
           onConflict: "wishlist_id,product_id",
@@ -632,12 +719,27 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const supabase = await createServerSupabase();
+  const storage = createAdminSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { access: viewerAccess, error: viewerAccessError } = await resolveViewerAccess(
+    supabase,
+    user.id,
+    (user.user_metadata ?? null) as Record<string, unknown> | null
+  );
+  if (viewerAccessError) {
+    return NextResponse.json({ error: viewerAccessError }, { status: 500 });
+  }
+  if (!viewerAccess) {
+    return NextResponse.json({ error: "Unable to resolve viewer access." }, { status: 500 });
+  }
+  if (!viewerAccess.isAdmin && !viewerAccess.partner) {
+    return NextResponse.json({ error: "Partner access is not configured." }, { status: 403 });
   }
 
   let payload: { listId?: string; listIds?: unknown };
@@ -657,10 +759,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Missing listIds." }, { status: 400 });
   }
 
-  const { data: ownedRowsRaw, error: ownedRowsError } = await supabase
+  const { data: ownedRowsRaw, error: ownedRowsError } = await storage
     .from("product_manager_wishlists")
     .select("id, name")
-    .eq("user_id", user.id)
     .in("id", requestedIds);
 
   if (ownedRowsError) {
@@ -669,7 +770,13 @@ export async function DELETE(request: Request) {
 
   const ownedRows = (ownedRowsRaw ?? []) as Pick<DeliveryListRow, "id" | "name">[];
   const validDeleteIds = ownedRows
-    .filter((row) => isDeliveryListName(String(row.name ?? "")))
+    .filter((row) => {
+      const name = String(row.name ?? "");
+      if (!isDeliveryListName(name)) return false;
+      if (viewerAccess.isAdmin) return true;
+      const partner = resolveDeliveryPartnerFromListName(name);
+      return partner !== null && partner === viewerAccess.partner;
+    })
     .map((row) => String(row.id ?? "").trim())
     .filter(Boolean);
 
@@ -677,7 +784,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "No matching delivery lists found." }, { status: 404 });
   }
 
-  const { error: deleteItemsError } = await supabase
+  const { error: deleteItemsError } = await storage
     .from("product_manager_wishlist_items")
     .delete()
     .in("wishlist_id", validDeleteIds);
@@ -686,10 +793,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: deleteItemsError.message }, { status: 500 });
   }
 
-  const { data: deletedRows, error: deleteListsError } = await supabase
+  const { data: deletedRows, error: deleteListsError } = await storage
     .from("product_manager_wishlists")
     .delete()
-    .eq("user_id", user.id)
     .in("id", validDeleteIds)
     .select("id");
 

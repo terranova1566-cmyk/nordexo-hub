@@ -1263,10 +1263,6 @@ const ORDER_EMAIL_PARTNER_RECEIVER_OPTIONS = [
     key: "letsdeal_se",
     labelKey: "orders.email.partnerReceiver.letsdealSe",
   },
-  {
-    key: "letsdeal_no",
-    labelKey: "orders.email.partnerReceiver.letsdealNo",
-  },
 ] as const;
 
 const eventHasShiftKey = (event: unknown) => {

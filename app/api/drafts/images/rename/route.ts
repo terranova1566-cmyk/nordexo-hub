@@ -19,6 +19,18 @@ const isSafeName = (value: string) => {
   return true;
 };
 
+const ensureUniqueSiblingName = (directoryPath: string, preferredName: string) => {
+  const ext = path.extname(preferredName);
+  const stem = path.basename(preferredName, ext) || "image";
+  let candidate = preferredName;
+  let index = 2;
+  while (fs.existsSync(path.join(directoryPath, candidate))) {
+    candidate = `${stem}-${index}${ext}`;
+    index += 1;
+  }
+  return candidate;
+};
+
 const normalizeForMatch = (value: string) =>
   value.toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -125,12 +137,14 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const relativePath = String(body?.path || "").trim();
-  const newName = String(body?.name || "").trim();
+  const requestedNewName = String(body?.name || "").trim();
+  const allowRenameOnConflict = Boolean(body?.allowRenameOnConflict);
+  const clearVariantMappings = Boolean(body?.clearVariantMappings);
 
-  if (!relativePath || !newName) {
+  if (!relativePath || !requestedNewName) {
     return NextResponse.json({ error: "Missing path or name." }, { status: 400 });
   }
-  if (!isSafeName(newName)) {
+  if (!isSafeName(requestedNewName)) {
     return NextResponse.json({ error: "Invalid name." }, { status: 400 });
   }
 
@@ -162,7 +176,7 @@ export async function POST(request: Request) {
 
   const oldName = path.basename(absolute);
   const oldExt = path.extname(oldName).toLowerCase();
-  const newExt = path.extname(newName).toLowerCase();
+  const requestedExt = path.extname(requestedNewName).toLowerCase();
 
   if (!IMAGE_EXTENSIONS.has(oldExt)) {
     return NextResponse.json(
@@ -170,7 +184,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (!newExt || newExt !== oldExt) {
+  if (!requestedExt || requestedExt !== oldExt) {
     return NextResponse.json(
       { error: "File extension must stay the same." },
       { status: 400 }
@@ -179,7 +193,7 @@ export async function POST(request: Request) {
   const oldHasSpuPrefix = oldName.toUpperCase().startsWith(`${spu.toUpperCase()}-`);
   if (
     oldHasSpuPrefix &&
-    !newName.toUpperCase().startsWith(`${spu.toUpperCase()}-`)
+    !requestedNewName.toUpperCase().startsWith(`${spu.toUpperCase()}-`)
   ) {
     return NextResponse.json(
       { error: `Filename must start with ${spu}-` },
@@ -187,15 +201,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const dest = path.join(path.dirname(absolute), newName);
+  const directoryPath = path.dirname(absolute);
+  let finalNewName = requestedNewName;
+  let dest = path.join(directoryPath, finalNewName);
   if (!dest.startsWith(`${DRAFT_ROOT}${path.sep}`)) {
     return NextResponse.json({ error: "Invalid destination." }, { status: 400 });
   }
   if (dest === absolute) {
-    return NextResponse.json({ ok: true, name: newName, path: relativePath });
+    return NextResponse.json({ ok: true, name: finalNewName, path: relativePath });
   }
   if (fs.existsSync(dest)) {
-    return NextResponse.json({ error: "Name already exists." }, { status: 409 });
+    if (allowRenameOnConflict) {
+      finalNewName = ensureUniqueSiblingName(directoryPath, requestedNewName);
+      dest = path.join(directoryPath, finalNewName);
+    } else {
+      return NextResponse.json({ error: "Name already exists." }, { status: 409 });
+    }
   }
 
   fs.renameSync(absolute, dest);
@@ -231,27 +252,27 @@ export async function POST(request: Request) {
     const nextImageFiles = replaceFilenameInArray(
       product.draft_image_files,
       oldName,
-      newName
+      finalNewName
     );
     const nextVariantImageFiles = replaceFilenameInArray(
       product.draft_variant_image_files,
       oldName,
-      newName
+      finalNewName
     );
     const nextImageUrls = replaceFilenameInArray(
       product.draft_image_urls,
       oldName,
-      newName
+      finalNewName
     );
     const nextVariantImageUrls = replaceFilenameInArray(
       product.draft_variant_image_urls,
       oldName,
-      newName
+      finalNewName
     );
     const nextMainImageUrl = replaceFilename(
       product.draft_main_image_url,
       oldName,
-      newName
+      finalNewName
     );
 
     if (
@@ -295,19 +316,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: variantError.message }, { status: 500 });
     }
 
-    const normalizedNewName = normalizeForMatch(newName);
+    const normalizedNewName = normalizeForMatch(finalNewName);
     const variantUpdates: Array<{ id: string; url: string | null }> = [];
     const originalVariantUrls = new Map<string, string | null>();
 
     (variants || []).forEach((row) => {
       const currentUrl = row.draft_variant_image_url as string | null;
       originalVariantUrls.set(row.id as string, currentUrl ?? null);
-      let nextUrl = replaceFilename(currentUrl, oldName, newName);
+      const pointsToOldName = replaceFilename(currentUrl, oldName, finalNewName) !== currentUrl;
+      if (clearVariantMappings && pointsToOldName) {
+        variantUpdates.push({ id: row.id as string, url: null });
+        return;
+      }
+      let nextUrl = replaceFilename(currentUrl, oldName, finalNewName);
       const color = normalizeForMatch(getColorSe(row.draft_raw_row));
       const colorMatch =
         isVariantFile && color.length > 0 && normalizedNewName.includes(color);
       if (colorMatch) {
-        nextUrl = replaceTail(currentUrl, newName);
+        nextUrl = replaceTail(currentUrl, finalNewName);
       }
       if (nextUrl !== currentUrl) {
         variantUpdates.push({ id: row.id as string, url: nextUrl });
@@ -372,7 +398,7 @@ export async function POST(request: Request) {
         .insert({
           draft_spu: spu,
           old_name: oldName,
-          new_name: newName,
+          new_name: finalNewName,
           user_id: user.id,
           user_email: user.email,
         });
@@ -384,7 +410,7 @@ export async function POST(request: Request) {
     appendAuditLog({
       spu,
       oldName,
-      newName,
+      newName: finalNewName,
       userId: user.id,
       userEmail: user.email ?? null,
     });
@@ -397,12 +423,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    rewriteDraftImageOrderNamesSync(path.dirname(dest), { [oldName]: newName });
+    rewriteDraftImageOrderNamesSync(path.dirname(dest), { [oldName]: finalNewName });
   } catch {}
 
   return NextResponse.json({
     ok: true,
-    name: newName,
+    name: finalNewName,
     path: toRelativePath(dest),
   });
 }

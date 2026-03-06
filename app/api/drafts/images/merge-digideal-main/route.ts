@@ -13,6 +13,7 @@ const OUTPUT_HEIGHT = 752;
 const RIGHT_FADE_PERCENT_DEFAULT = 35;
 const LEFT_IMAGE_SCALE = 0.925;
 const RIGHT_OVERFLOW_PX = 30;
+const FADE_PROFILE_POWER = 0.55;
 const IMAGE_EXTENSIONS = new Set([
   ".jpg",
   ".jpeg",
@@ -174,8 +175,9 @@ const buildRightFadeOverlay = (size: number, fadePercent: number) => {
         raw[idx + 3] = 0;
         continue;
       }
-      const ratio = fadeWidth <= 1 ? 1 : 1 - x / (fadeWidth - 1);
-      raw[idx + 3] = Math.max(0, Math.min(255, Math.round(ratio * 255)));
+      const t = fadeWidth <= 1 ? 1 : x / (fadeWidth - 1);
+      const whiteMix = Math.pow(Math.max(0, 1 - t), FADE_PROFILE_POWER);
+      raw[idx + 3] = Math.max(0, Math.min(255, Math.round(whiteMix * 255)));
     }
   }
   return { raw, fadeWidth };

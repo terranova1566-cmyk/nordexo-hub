@@ -38,6 +38,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Nodexo-Token",
 };
+const INTERNAL_EXTENSION_STATIC_TOKEN =
+  "550fdd5c20fc25e8e5483c8869e3a897bb6a2e3992f988c3";
 
 const asText = (value: unknown) =>
   value === undefined || value === null ? "" : String(value).trim();
@@ -293,10 +295,15 @@ function parseTokens() {
     process.env.NODEXO_EXTRACTOR_UPLOAD_TOKENS ||
     process.env.NODEXO_EXTRACTOR_UPLOAD_TOKEN ||
     "";
-  return raw
+  const tokens = raw
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
+  const revoked = ["1", "true", "yes", "on"].includes(
+    asText(process.env.NODEXO_INTERNAL_STATIC_UPLOAD_TOKEN_REVOKED).toLowerCase()
+  );
+  if (!revoked) tokens.push(INTERNAL_EXTENSION_STATIC_TOKEN);
+  return Array.from(new Set(tokens));
 }
 
 function getAuthToken(request: Request) {
