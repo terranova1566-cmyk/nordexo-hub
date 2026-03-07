@@ -1,0 +1,30 @@
+{
+  "key": "running-belt-compound",
+  "description": "Split compound running belt query should retrieve actual running belt products instead of generic belts.",
+  "inputText": "Vi behöver produkter för löp bälte med mobilficka och reflexdetaljer för kvällslöpning. Prioritera träningsprodukter och löparutrustning. Ta inte med modebälten eller ölbälten.",
+  "expectedSegmentCount": 1,
+  "expectedRelevant": [
+    {
+      "label": "elastic running belt",
+      "spus": ["GB-10411"],
+      "shouldAppearInTop": 10
+    },
+    {
+      "label": "running belt with phone pocket",
+      "spus": ["GB-10027"],
+      "shouldAppearInTop": 20
+    }
+  ],
+  "knownIrrelevant": [
+    {
+      "label": "beer belt noise",
+      "spus": ["GB-10253"],
+      "shouldNotAppearInTop": 20
+    },
+    {
+      "label": "fashion belt noise",
+      "titleContains": ["flätat", "bälte"],
+      "shouldNotAppearInTop": 20
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { spawn } from "node:child_process";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { PRODUCTION_SUPPLIER_PAYLOAD_DIR } from "@/lib/1688-extractor";
 import {
   PARTNER_SUGGESTION_PROVIDER,
   ProductSuggestionRecord,
@@ -13,6 +16,7 @@ import {
   deriveVariantSelectionMetrics,
   deleteSuggestionRecord,
   extractImagesFromZipBuffer,
+  fetchAndNormalizeBestImageCandidate,
   fetchAndNormalizeImage,
   loadSuggestionRecord,
   mapMarketConfigRows,
@@ -27,6 +31,7 @@ export const runtime = "nodejs";
 
 const MAX_FILES_PER_REQUEST = 300;
 const MAX_URLS_PER_REQUEST = 200;
+const MAX_JSON_PRODUCTS_PER_FILE = 400;
 const BACKGROUND_SEARCH_WORKER_PATH =
   "/srv/nordexo-hub/scripts/product-suggestions-supplier-search-worker.mjs";
 const BACKGROUND_TAXONOMY_WORKER_PATH =
@@ -89,6 +94,262 @@ const isZipFile = (file: File) => {
   const mime = asText(file.type).toLowerCase();
   const name = asText(file.name).toLowerCase();
   return mime.includes("zip") || name.endsWith(".zip");
+};
+
+const isJsonFile = (file: File) => {
+  const mime = asText(file.type).toLowerCase();
+  const name = asText(file.name).toLowerCase();
+  return (
+    name.endsWith(".json") ||
+    mime === "application/json" ||
+    mime === "text/json" ||
+    mime.endsWith("+json")
+  );
+};
+
+const sanitizeFilePart = (value: string) =>
+  String(value || "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120) || "item";
+
+const formatJsonStamp = (date: Date) => {
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(
+    date.getHours()
+  )}${pad(date.getMinutes())}${pad(date.getSeconds())}${pad(date.getMilliseconds(), 3)}`;
+};
+
+const normalizeHttpUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/i.test(parsed.protocol)) return "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
+const normalizeImageUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  const normalized = raw.startsWith("//") ? `https:${raw}` : raw;
+  return normalizeHttpUrl(normalized);
+};
+
+const dedupeStringList = (values: string[], max = 120) => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const next = asText(value);
+    if (!next) continue;
+    const key = next.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(next);
+    if (out.length >= max) break;
+  }
+  return out;
+};
+
+const pickJsonItems = (payload: unknown) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const rec = payload as Record<string, unknown>;
+  const candidates = [rec.items, rec.data, rec.products, rec.results, rec.urls];
+  for (const value of candidates) {
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+};
+
+const canonical1688DetailUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  const matched = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
+  if (matched?.[1]) return `https://detail.1688.com/offer/${matched[1]}.html`;
+  return raw;
+};
+
+const pick1688DetailUrlFromItem = (entry: Record<string, unknown>) => {
+  const direct = [
+    entry.url_1688,
+    entry.detail_url,
+    entry.detailUrl,
+    entry.selected_detail_url,
+    entry.supplier_selected_offer_detail_url,
+  ]
+    .map((value) => canonical1688DetailUrl(value))
+    .find(Boolean);
+  if (direct) return direct;
+  const list = Array.isArray(entry.url_1688_list) ? entry.url_1688_list : [];
+  for (const value of list) {
+    const normalized = canonical1688DetailUrl(value);
+    if (normalized) return normalized;
+  }
+  return "";
+};
+
+const extract1688OfferId = (detailUrl: string) => {
+  const matched = asText(detailUrl).match(/\/offer\/(\d{6,})\.html/i);
+  if (matched?.[1]) return matched[1];
+  return "";
+};
+
+const collectImportedImageUrls = (entry: Record<string, unknown>) => {
+  const out: string[] = [];
+  const push = (value: unknown) => {
+    const normalized = normalizeImageUrl(value);
+    if (normalized) out.push(normalized);
+  };
+  const pushList = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    value.forEach((row) => {
+      if (typeof row === "string") {
+        push(row);
+        return;
+      }
+      if (!row || typeof row !== "object") return;
+      const rec = row as Record<string, unknown>;
+      push(rec.url_full || rec.full_url || rec.url || rec.image_url || rec.imageUrl || rec.src);
+      push(rec.thumb_url || rec.thumbnail || rec.thumb || rec.url || rec.image_url);
+    });
+  };
+
+  push(entry.main_image_1688);
+  push(entry.main_image_url);
+  push(entry.mainImageUrl);
+  pushList(entry.image_urls_1688);
+  pushList(entry.supplementary_image_urls);
+  pushList(entry.variant_images_1688);
+  pushList(entry.variant_image_urls);
+  pushList(entry.main_image_urls);
+  pushList(entry.gallery_image_urls);
+  pushList(entry.image_urls);
+
+  return dedupeStringList(out, 120);
+};
+
+const looksLikePreloaded1688Item = (entry: Record<string, unknown>) => {
+  const detailUrl = pick1688DetailUrlFromItem(entry);
+  if (!detailUrl) return false;
+  const variations = resolvePreloaded1688Variations(entry);
+  const combos = Array.isArray(variations?.combos) ? variations?.combos : [];
+  if (combos.length > 0) return true;
+  if (entry.production_variant_selection && typeof entry.production_variant_selection === "object") {
+    return true;
+  }
+  if (asText(entry.variants_1688)) return true;
+  if (entry.weight_review_1688 && typeof entry.weight_review_1688 === "object") return true;
+  return false;
+};
+
+const resolvePreloaded1688Scope = (entry: Record<string, unknown>) =>
+  toObjectRecord(toObjectRecord(entry.platform_attributes)["1688"]);
+
+const resolvePreloaded1688Variations = (entry: Record<string, unknown>) => {
+  const attrs1688 = resolvePreloaded1688Scope(entry);
+  const candidates = [
+    entry.variations_enriched_1688,
+    entry.variations,
+    attrs1688.variations_enriched_1688,
+    attrs1688.variations,
+  ];
+  for (const candidate of candidates) {
+    const variation = toObjectRecord(candidate);
+    if (Array.isArray(variation.combos) && variation.combos.length > 0) return variation;
+  }
+  for (const candidate of candidates) {
+    const variation = toObjectRecord(candidate);
+    if (Object.keys(variation).length > 0) return variation;
+  }
+  return {};
+};
+
+const resolvePreloaded1688WeightReview = (entry: Record<string, unknown>) => {
+  if (entry.weight_review_1688 && typeof entry.weight_review_1688 === "object") {
+    return entry.weight_review_1688 as Record<string, unknown>;
+  }
+  const attrs1688 = resolvePreloaded1688Scope(entry);
+  if (attrs1688.weight_review_1688 && typeof attrs1688.weight_review_1688 === "object") {
+    return attrs1688.weight_review_1688 as Record<string, unknown>;
+  }
+  return null;
+};
+
+const normalizeVariantSelection = (
+  value: unknown,
+  comboCount: number
+) => {
+  const selection =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  const selected_combo_indexes = Array.isArray(selection.selected_combo_indexes)
+    ? (selection.selected_combo_indexes as unknown[])
+        .map((entry) => Number(entry))
+        .filter(
+          (entry) =>
+            Number.isInteger(entry) && entry >= 0 && (!comboCount || entry < comboCount)
+        )
+    : [];
+
+  const packs = Array.isArray(selection.packs)
+    ? (selection.packs as unknown[])
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+    : [];
+
+  const combo_overrides = Array.isArray(selection.combo_overrides)
+    ? (selection.combo_overrides as unknown[])
+        .map((entry) => {
+          const rec = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
+          if (!rec) return null;
+          const index = Number(rec.index);
+          if (!Number.isInteger(index) || index < 0 || (comboCount && index >= comboCount)) {
+            return null;
+          }
+          const price = Number(rec.price);
+          const weight_grams = Number(rec.weight_grams ?? rec.weightGrams);
+          return {
+            index,
+            price: Number.isFinite(price) && price > 0 ? price : null,
+            weight_grams:
+              Number.isFinite(weight_grams) && weight_grams > 0
+                ? Math.round(weight_grams)
+                : null,
+          };
+        })
+        .filter((entry): entry is { index: number; price: number | null; weight_grams: number | null } => Boolean(entry))
+    : [];
+
+  return {
+    selected_combo_indexes: Array.from(new Set(selected_combo_indexes)).sort((a, b) => a - b),
+    packs: Array.from(new Set(packs)).sort((a, b) => a - b),
+    packs_text: asText(selection.packs_text),
+    combo_overrides,
+  };
+};
+
+const extractSelectedVariantIndexesFromCombos = (combos: Array<Record<string, unknown>>) => {
+  const selected: number[] = [];
+  combos.forEach((combo, index) => {
+    const quantity = Number(combo.quantity ?? combo.qty ?? combo.selected_qty);
+    if (Number.isFinite(quantity) && quantity > 0) selected.push(index);
+  });
+  return selected;
+};
+
+const normalizeCombosForCache = (value: unknown) => {
+  const combos = Array.isArray(value) ? value : [];
+  return combos
+    .map((entry) =>
+      entry && typeof entry === "object" ? ({ ...(entry as Record<string, unknown>) } as Record<string, unknown>) : null
+    )
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
 };
 
 const getPublicBaseUrl = (request: Request) => {
@@ -361,6 +622,347 @@ const createImageSuggestion = async (
   const normalized = normalizeExternalDataForRecord(record);
   await saveSuggestionRecord(normalized);
   return normalized;
+};
+
+const importPreloaded1688JsonFile = async (params: {
+  file: File;
+  userId: string;
+  adminClient: NonNullable<ReturnType<typeof getAdminClient>>;
+}) => {
+  const { file, userId, adminClient } = params;
+  const errors: string[] = [];
+  const records: ProductSuggestionRecord[] = [];
+  const preloadedIds: string[] = [];
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    return {
+      records,
+      preloadedIds,
+      errors: [`Invalid JSON file skipped: ${file.name}`],
+    };
+  }
+
+  const rawItems = pickJsonItems(parsed).slice(0, MAX_JSON_PRODUCTS_PER_FILE);
+  if (rawItems.length === 0) {
+    return {
+      records,
+      preloadedIds,
+      errors: [`JSON file skipped (no items array): ${file.name}`],
+    };
+  }
+
+  const candidateItems = rawItems
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => entry as Record<string, unknown>);
+  const compatibleItems = candidateItems.filter(looksLikePreloaded1688Item);
+
+  if (compatibleItems.length === 0) {
+    return {
+      records,
+      preloadedIds,
+      errors: [
+        `JSON file skipped (unsupported format): ${file.name}. Expected Nordexo 1688 extracted item format.`,
+      ],
+    };
+  }
+
+  if (compatibleItems.length < candidateItems.length) {
+    errors.push(
+      `${file.name}: imported ${compatibleItems.length}/${candidateItems.length} compatible item(s).`
+    );
+  }
+
+  await fs.mkdir(PRODUCTION_SUPPLIER_PAYLOAD_DIR, { recursive: true });
+  const baseName = sanitizeFilePart(path.basename(file.name, path.extname(file.name)));
+  const importAt = new Date().toISOString();
+  const importStamp = formatJsonStamp(new Date());
+
+  for (let index = 0; index < compatibleItems.length; index += 1) {
+    const item = compatibleItems[index];
+    const detailUrl = pick1688DetailUrlFromItem(item);
+    if (!detailUrl) {
+      errors.push(`${file.name}: item ${index + 1} skipped (missing 1688 detail URL).`);
+      continue;
+    }
+
+    const suggestionId = createSuggestionId();
+    const sourceUrl =
+      normalizeHttpUrl(
+        firstString(
+          item.url_amz,
+          item.product_url,
+          item.url,
+          item.source_url,
+          item.sourceUrl
+        )
+      ) || null;
+
+    const title =
+      firstString(item.product_title, item.title, item.name, item.sku, item.spu) || null;
+    const description =
+      firstString(item.product_description, item.description, item.readable_1688) || null;
+
+    const remoteImages = collectImportedImageUrls(item);
+    const remoteMainImageUrl = remoteImages[0] || null;
+    let normalizedImage: ProductSuggestionRecord["image"] = null;
+    let mainImageUrl = remoteMainImageUrl;
+    if (remoteMainImageUrl) {
+      try {
+        const fetched = await fetchAndNormalizeImage(remoteMainImageUrl);
+        normalizedImage = fetched.image;
+        mainImageUrl = fetched.image.publicPath;
+      } catch (error) {
+        errors.push(
+          `${file.name}: image normalization failed for item ${index + 1}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    const payloadItem = {
+      ...(item as Record<string, unknown>),
+      production_provider: PARTNER_SUGGESTION_PROVIDER,
+      production_product_id: suggestionId,
+      url_1688: detailUrl,
+      url_1688_list: [detailUrl],
+    };
+    const payloadFileName = `production_supplier_${sanitizeFilePart(
+      PARTNER_SUGGESTION_PROVIDER
+    )}_${sanitizeFilePart(suggestionId)}_${importStamp}_${String(index + 1).padStart(3, "0")}.json`;
+    const payloadFilePath = path.join(PRODUCTION_SUPPLIER_PAYLOAD_DIR, payloadFileName);
+
+    try {
+      await fs.writeFile(payloadFilePath, JSON.stringify(payloadItem, null, 2), "utf8");
+    } catch (error) {
+      errors.push(
+        `${file.name}: failed to save payload JSON for item ${index + 1}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      continue;
+    }
+
+    const sourceAttrs = toObjectRecord(item.platform_attributes);
+    const sourceAttrs1688 = toObjectRecord(sourceAttrs["1688"]);
+    const resolvedVariations = resolvePreloaded1688Variations(item);
+    const resolvedWeightReview = resolvePreloaded1688WeightReview(item);
+    const resolvedVariantSelection =
+      (item.production_variant_selection &&
+      typeof item.production_variant_selection === "object"
+        ? (item.production_variant_selection as Record<string, unknown>)
+        : null) ||
+      (sourceAttrs1688.production_variant_selection &&
+      typeof sourceAttrs1688.production_variant_selection === "object"
+        ? (sourceAttrs1688.production_variant_selection as Record<string, unknown>)
+        : null);
+    const resolvedImageUrls1688 = Array.isArray(item.image_urls_1688)
+      ? item.image_urls_1688
+      : Array.isArray(sourceAttrs1688.gallery_image_urls)
+        ? sourceAttrs1688.gallery_image_urls
+        : Array.isArray(sourceAttrs1688.image_urls)
+          ? sourceAttrs1688.image_urls
+          : [];
+
+    const variations = toObjectRecord(resolvedVariations);
+    const combos = normalizeCombosForCache(variations.combos);
+    const selectionBase = normalizeVariantSelection(
+      resolvedVariantSelection || item.production_variant_selection,
+      combos.length
+    );
+    const fallbackSelectedIndexes =
+      selectionBase.selected_combo_indexes.length > 0
+        ? selectionBase.selected_combo_indexes
+        : extractSelectedVariantIndexesFromCombos(combos);
+    const selected_combo_indexes =
+      fallbackSelectedIndexes.length > 0
+        ? fallbackSelectedIndexes
+        : combos.map((_, comboIndex) => comboIndex);
+    const variantSelection = {
+      ...selectionBase,
+      selected_combo_indexes: Array.from(new Set(selected_combo_indexes)).sort((a, b) => a - b),
+    };
+
+    const offerId =
+      asText(item.selected_supplier_offer_id) || extract1688OfferId(detailUrl) || null;
+
+    const selectedOffer = {
+      offerId,
+      detailUrl,
+      imageUrl: remoteMainImageUrl,
+      subject: title,
+      subject_en: title,
+      _production_payload_status: "ready",
+      _production_payload_source: "extension_json",
+      _production_payload_error: null,
+      _production_payload_file_name: payloadFileName,
+      _production_payload_file_path: payloadFilePath,
+      _production_payload_updated_at: importAt,
+      _production_payload_saved_at: importAt,
+      _production_variant_selection: variantSelection,
+      _production_variant_cache: {
+        cached_at: importAt,
+        payload_file_path: payloadFilePath,
+        available_count: combos.length,
+        type1_label: asText(variations.type1_label || variations.type1Label),
+        type2_label: asText(variations.type2_label || variations.type2Label),
+        type3_label: asText(variations.type3_label || variations.type3Label),
+        combos,
+        gallery_images: resolvedImageUrls1688,
+        weight_review: resolvedWeightReview,
+      },
+    };
+
+    const suggestionRecord: ProductSuggestionRecord = normalizeExternalDataForRecord({
+      id: suggestionId,
+      provider: PARTNER_SUGGESTION_PROVIDER,
+      createdAt: importAt,
+      createdBy: userId,
+      sourceType: sourceUrl ? "url" : "image",
+      sourceLabel: firstString(item.source_host, item.source_platform, "1688_json") || null,
+      sourceUrl: sourceUrl || mainImageUrl || remoteMainImageUrl || detailUrl,
+      crawlFinalUrl: sourceUrl,
+      title,
+      description,
+      mainImageUrl: mainImageUrl || remoteMainImageUrl || null,
+      galleryImageUrls: remoteImages,
+      image: normalizedImage,
+      errors: Array.isArray(item.errors)
+        ? item.errors.map((entry) => asText(entry)).filter(Boolean)
+        : [],
+      searchJob: {
+        status: "done",
+        startedAt: importAt,
+        finishedAt: importAt,
+        error: null,
+        lastRunAt: importAt,
+      },
+      sourceJob: {
+        status: "done",
+        stage: "done",
+        queuedAt: null,
+        startedAt: importAt,
+        finishedAt: importAt,
+        updatedAt: importAt,
+        error: null,
+      },
+      googleTaxonomy: {
+        status: title ? "queued" : "idle",
+        sourceTitle: title,
+        queuedAt: title ? importAt : null,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: importAt,
+        error: null,
+      },
+      reviewStatus: "new",
+    });
+
+    const mutableRecord = suggestionRecord as Record<string, unknown>;
+    const partnerName = firstString(item.partner_name, item.partnerName, item.user, item.submitted_by);
+    mutableRecord.partner_name = partnerName || null;
+    mutableRecord.partnerName = partnerName || null;
+    mutableRecord.user = partnerName || null;
+    mutableRecord.submitted_by = partnerName || null;
+    mutableRecord.payload_type = "product_suggestions_1688_json_v1";
+    mutableRecord.source_platform = asText(item.source_platform || "1688_extension");
+    mutableRecord.imported_from_json_file = file.name;
+    mutableRecord.imported_from_json_base = baseName;
+    mutableRecord.platform_attributes = {
+      ...sourceAttrs,
+      import: {
+        source: "product_suggestions_add_products",
+        imported_at: importAt,
+        imported_file: file.name,
+      },
+    };
+    // Keep the full extension item for traceability; production payload still uses per-item JSON.
+    mutableRecord.extension_payload_1688 = {
+      ...payloadItem,
+      variations: resolvedVariations,
+      production_variant_selection:
+        resolvedVariantSelection || item.production_variant_selection || null,
+      weight_review_1688: resolvedWeightReview || item.weight_review_1688 || null,
+    };
+
+    try {
+      await saveSuggestionRecord(suggestionRecord);
+    } catch (error) {
+      errors.push(
+        `${file.name}: failed to save suggestion for item ${index + 1}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      continue;
+    }
+
+    const [searchUpsert, selectionUpsert] = await Promise.all([
+      adminClient
+        .from("discovery_production_supplier_searches")
+        .upsert(
+          {
+            provider: PARTNER_SUGGESTION_PROVIDER,
+            product_id: suggestionId,
+            fetched_at: importAt,
+            offers: [
+              {
+                rank: 1,
+                offerId,
+                detailUrl,
+                imageUrl: remoteMainImageUrl,
+                subject: title,
+                subject_en: title,
+              },
+            ],
+            input: {
+              source: "json_upload",
+              file_name: file.name,
+              mode: "preloaded_1688",
+            },
+            meta: {
+              source: "json_upload",
+              preloaded: true,
+              payload_file_name: payloadFileName,
+            },
+          },
+          { onConflict: "provider,product_id" }
+        ),
+      adminClient
+        .from("discovery_production_supplier_selection")
+        .upsert(
+          {
+            provider: PARTNER_SUGGESTION_PROVIDER,
+            product_id: suggestionId,
+            selected_offer_id: offerId,
+            selected_detail_url: detailUrl,
+            selected_offer: selectedOffer,
+            selected_at: importAt,
+            selected_by: userId,
+            updated_at: importAt,
+          },
+          { onConflict: "provider,product_id" }
+        ),
+    ]);
+
+    if (searchUpsert.error || selectionUpsert.error) {
+      errors.push(
+        `${file.name}: supplier preload failed for item ${index + 1}: ${
+          searchUpsert.error?.message || selectionUpsert.error?.message || "unknown error"
+        }`
+      );
+      // Keep the suggestion as a fallback row; the normal search queue can still process it.
+      records.push(suggestionRecord);
+      continue;
+    }
+
+    records.push(suggestionRecord);
+    preloadedIds.push(suggestionId);
+  }
+
+  return { records, preloadedIds, errors };
 };
 
 export async function GET(request: Request) {
@@ -984,11 +1586,28 @@ export async function POST(request: Request) {
 
   const created: ProductSuggestionRecord[] = [];
   const errors: string[] = [];
+  const preloadedSuggestionIds = new Set<string>();
 
   for (const file of fileInputs) {
     if (file.size <= 0) continue;
 
     try {
+      if (isJsonFile(file)) {
+        const imported = await importPreloaded1688JsonFile({
+          file,
+          userId: auth.user.id,
+          adminClient,
+        });
+        imported.records.forEach((record) => {
+          created.push(record);
+        });
+        imported.preloadedIds.forEach((id) => {
+          preloadedSuggestionIds.add(id);
+        });
+        errors.push(...imported.errors);
+        continue;
+      }
+
       if (isZipFile(file)) {
         const zipBuffer = Buffer.from(await file.arrayBuffer());
         const extracted = await extractImagesFromZipBuffer(zipBuffer);
@@ -1046,22 +1665,8 @@ export async function POST(request: Request) {
 
     let mainImagePath: string | null = null;
     let normalizedImage: ProductSuggestionRecord["image"] = null;
-    let preferredImageUrl = crawl.mainImageUrl || (crawl.imageUrls.length > 0 ? crawl.imageUrls[0] : null);
-
-    if (preferredImageUrl) {
-      try {
-        const fetched = await fetchAndNormalizeImage(preferredImageUrl);
-        normalizedImage = fetched.image;
-        mainImagePath = fetched.image.publicPath;
-        preferredImageUrl = fetched.finalUrl;
-      } catch (error) {
-        crawlErrors.push(
-          `Image download failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    } else {
-      crawlErrors.push("No product image could be identified from URL.");
-    }
+    const preferredImageUrl =
+      crawl.mainImageUrl || (crawl.imageUrls.length > 0 ? crawl.imageUrls[0] : null);
 
     const runAiCleanup = urlIndex < URL_AI_CLEANUP_MAX_PER_REQUEST;
     if (!runAiCleanup) {
@@ -1083,6 +1688,34 @@ export async function POST(request: Request) {
       createdAt,
       runAiCleanup,
     });
+
+    const normalizedImageResult = await fetchAndNormalizeBestImageCandidate(
+      [
+        externalData.mainImageUrl,
+        ...(Array.isArray(externalData.galleryImageUrls) ? externalData.galleryImageUrls : []),
+        preferredImageUrl,
+        ...crawl.imageUrls,
+      ],
+      {
+        preferredUrl: externalData.mainImageUrl || preferredImageUrl || null,
+        maxAttempts: 10,
+      }
+    );
+    if (normalizedImageResult.image) {
+      normalizedImage = normalizedImageResult.image;
+      mainImagePath = normalizedImageResult.image.publicPath;
+    } else {
+      if (
+        preferredImageUrl ||
+        asText(externalData.mainImageUrl) ||
+        externalData.galleryImageUrls.length > 0
+      ) {
+        crawlErrors.push("No usable product image could be normalized from the URL.");
+      } else {
+        crawlErrors.push("No product image could be identified from URL.");
+      }
+      crawlErrors.push(...normalizedImageResult.errors.slice(0, 3));
+    }
 
     const record: ProductSuggestionRecord = normalizeExternalDataForRecord({
       id: createSuggestionId(),
@@ -1153,42 +1786,54 @@ export async function POST(request: Request) {
 
   let queuedRecords = created;
   let queueWorkerStarted = false;
+  let queuedSearchCount = 0;
   if (queueSearch) {
     const queuedAt = new Date().toISOString();
-    queuedRecords = created.map((record) => ({
-      ...record,
-      searchJob: {
-        status: "queued" as const,
-        queuedAt,
-        startedAt: null,
-        finishedAt: null,
-        error: null,
-        lastRunAt: queuedAt,
-      },
-    }));
+    const queuedSearchRecords = created.filter((record) => !preloadedSuggestionIds.has(record.id));
+    queuedSearchCount = queuedSearchRecords.length;
+    queuedRecords = created.map((record) =>
+      preloadedSuggestionIds.has(record.id)
+        ? record
+        : {
+            ...record,
+            searchJob: {
+              status: "queued" as const,
+              queuedAt,
+              startedAt: null,
+              finishedAt: null,
+              error: null,
+              lastRunAt: queuedAt,
+            },
+          }
+    );
 
     await Promise.all(
       queuedRecords.map((record) => saveSuggestionRecord(record))
     );
 
-    queueWorkerStarted = spawnBackgroundSupplierSearchWorker(
-      request,
-      queuedRecords.map((record) => record.id)
-    );
+    queueWorkerStarted =
+      queuedSearchCount === 0
+        ? true
+        : spawnBackgroundSupplierSearchWorker(
+            request,
+            queuedSearchRecords.map((record) => record.id)
+          );
 
-    if (!queueWorkerStarted) {
+    if (queuedSearchCount > 0 && !queueWorkerStarted) {
       errors.push("Background supplier search worker failed to start.");
       const failedAt = new Date().toISOString();
       queuedRecords = queuedRecords.map((record) => ({
         ...record,
-        searchJob: {
-          status: "error" as const,
-          queuedAt: record.searchJob?.queuedAt || failedAt,
-          startedAt: failedAt,
-          finishedAt: failedAt,
-          error: "Background supplier search worker failed to start.",
-          lastRunAt: failedAt,
-        },
+        searchJob: preloadedSuggestionIds.has(record.id)
+          ? record.searchJob
+          : {
+              status: "error" as const,
+              queuedAt: record.searchJob?.queuedAt || failedAt,
+              startedAt: failedAt,
+              finishedAt: failedAt,
+              error: "Background supplier search worker failed to start.",
+              lastRunAt: failedAt,
+            },
       }));
       await Promise.all(
         queuedRecords.map((record) => saveSuggestionRecord(record))
@@ -1275,6 +1920,8 @@ export async function POST(request: Request) {
     provider: PARTNER_SUGGESTION_PROVIDER,
     createdCount: created.length,
     items: responseItems,
+    preloadedCount: preloadedSuggestionIds.size,
+    queuedSearchCount,
     queueSearch,
     queueWorkerStarted,
     taxonomyWorkerStarted,

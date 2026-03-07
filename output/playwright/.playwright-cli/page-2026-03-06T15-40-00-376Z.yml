@@ -1,0 +1,5 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - progressbar "Loading login" [ref=e3]: Loading login
+  - alert [ref=e6]

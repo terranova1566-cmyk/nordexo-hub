@@ -17,6 +17,7 @@ export type DraftEntry = {
   size: number;
   modifiedAt: string;
   runType?: DraftRunType;
+  productCount?: number;
   pixelQualityScore?: number | null;
   zimageUpscaled?: boolean;
   whiteSides?: number | null;
@@ -62,6 +63,12 @@ export const getDraftRunType = (value: string): DraftRunType => {
     return "re_edit";
   }
   return "draft";
+};
+
+const isRunProductDirectoryName = (name: string) => {
+  if (!name || name.startsWith(".")) return false;
+  const normalized = name.toLowerCase().replace(/[\s_-]+/g, "");
+  return normalized !== "chunks";
 };
 
 type ImageQualityIndex = {
@@ -875,6 +882,14 @@ export const listFolders = (): DraftEntry[] => {
     .map((entry) => {
       const full = path.join(DRAFT_ROOT, entry.name);
       const stat = fs.statSync(full);
+      let productCount = 0;
+      try {
+        productCount = fs
+          .readdirSync(full, { withFileTypes: true })
+          .filter((child) => child.isDirectory() && isRunProductDirectoryName(child.name)).length;
+      } catch {
+        productCount = 0;
+      }
       return {
         name: entry.name,
         path: entry.name,
@@ -882,6 +897,7 @@ export const listFolders = (): DraftEntry[] => {
         size: 0,
         modifiedAt: stat.mtime.toISOString(),
         runType: getDraftRunType(entry.name),
+        productCount,
       };
     })
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));

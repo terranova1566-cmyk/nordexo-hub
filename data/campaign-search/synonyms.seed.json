@@ -1,0 +1,37 @@
+[
+  {
+    "locale": "sv",
+    "canonical": "löparbälte",
+    "alias": "löp bälte",
+    "strength": 1,
+    "notes": "Compound rescue seed for running belt campaigns."
+  },
+  {
+    "locale": "sv",
+    "canonical": "löparbälte",
+    "alias": "löpbälte",
+    "strength": 0.9,
+    "notes": "Retail variant for running belt."
+  },
+  {
+    "locale": "sv",
+    "canonical": "skärmskydd",
+    "alias": "skärm skydd",
+    "strength": 1,
+    "notes": "Split compound variant for screen protector."
+  },
+  {
+    "locale": "sv",
+    "canonical": "linsskydd",
+    "alias": "lins skydd",
+    "strength": 1,
+    "notes": "Split compound variant for camera lens protector."
+  },
+  {
+    "locale": "sv",
+    "canonical": "solcellslampa",
+    "alias": "solcell lampa",
+    "strength": 1,
+    "notes": "Split compound variant for solar lamp."
+  }
+]

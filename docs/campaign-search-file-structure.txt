@@ -1,0 +1,83 @@
+Campaign Search feature file structure
+=====================================
+
+/srv/nordexo-hub
+├── app
+│   ├── api
+│   │   ├── campaign-search
+│   │   │   ├── [runId]
+│   │   │   │   └── route.ts
+│   │   │   ├── reindex
+│   │   │   │   └── route.ts
+│   │   │   └── route.ts
+│   │   └── products
+│   │       └── route.ts                        (updated)
+│   └── app
+│       └── products
+│           ├── campaign-search
+│           │   └── page.tsx
+│           └── page.tsx                        (updated)
+├── components
+│   └── app-shell.tsx                           (updated)
+├── data
+│   └── campaign-search
+│       ├── fixtures
+│       │   ├── phone-protection-multi-segment.json
+│       │   ├── running-belt-compound.json
+│       │   └── solar-lighting-compound.json
+│       ├── synonyms.seed.json
+│       └── taxonomy-aliases.seed.json
+├── docs
+│   ├── campaign-search.md
+│   └── campaign-search-file-structure.txt
+├── i18n
+│   └── strings.json                            (updated)
+├── lib
+│   └── campaign-search
+│       ├── compound.ts
+│       ├── constants.ts
+│       ├── evaluation.ts
+│       ├── fallback.ts
+│       ├── normalization.ts
+│       ├── openai.ts
+│       ├── prompt.ts
+│       ├── query-builder.ts
+│       ├── repository.ts
+│       ├── schema.ts
+│       ├── scoring.ts
+│       ├── semantic.ts
+│       ├── service.ts
+│       ├── taxonomy.ts
+│       ├── tuning-analyst.ts
+│       └── types.ts
+├── supabase
+│   └── migrations
+│       ├── 0084_campaign_search_foundation.sql
+│       └── 0085_campaign_search_semantic_recall.sql
+├── tests
+│   └── campaign-search
+│       ├── compound.test.ts
+│       ├── evaluation.test.ts
+│       ├── integration-fixture.test.ts
+│       ├── normalization.test.ts
+│       ├── query-builder.test.ts
+│       ├── schema.test.ts
+│       ├── scoring.test.ts
+│       └── semantic.test.ts
+├── tools
+│   ├── campaign-search-embed-products.ts
+│   ├── campaign-search-evaluate.ts
+│   ├── campaign-search-fixture-run.ts
+│   ├── campaign-search-sync-tuning.ts
+│   ├── campaign-search-tuning-report.ts
+│   └── load-local-env.ts
+└── package.json                                (updated)
+
+Summary of existing files updated for integration
+-------------------------------------------------
+
+- /srv/nordexo-hub/app/api/products/route.ts
+- /srv/nordexo-hub/app/app/products/page.tsx
+- /srv/nordexo-hub/components/app-shell.tsx
+- /srv/nordexo-hub/i18n/strings.json
+- /srv/nordexo-hub/package.json

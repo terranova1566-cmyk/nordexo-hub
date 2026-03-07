@@ -1,0 +1,65 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "Nordexo Hub HUB" [ref=e8] [cursor=pointer]:
+            - /url: /app
+            - generic [ref=e9]:
+              - img "Nordexo Hub" [ref=e10]
+              - generic [ref=e11]: HUB
+          - generic [ref=e12]:
+            - button "Product Manager" [ref=e13]
+            - button "Product Discovery" [ref=e14]
+            - button "Deals" [ref=e15]
+            - button "Market Trends" [ref=e16]
+            - button "NX Labs" [ref=e17]
+        - toolbar [ref=e18]:
+          - combobox "Language" [ref=e21] [cursor=pointer]:
+            - text: EN
+            - img [ref=e23]
+          - button "Settings" [ref=e25]:
+            - img [ref=e27]
+          - button "Sign out" [ref=e31]:
+            - img [ref=e33]
+    - main [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]: Settings
+        - group [ref=e43]:
+          - tablist [ref=e44]:
+            - tab "Product Discovery" [selected] [ref=e45] [cursor=pointer]:
+              - generic [ref=e46]: Product Discovery
+            - tab "User" [ref=e47] [cursor=pointer]:
+              - generic [ref=e48]: User
+            - tab "Production" [ref=e49] [cursor=pointer]:
+              - generic [ref=e50]: Production
+            - tab "Z-image" [ref=e51] [cursor=pointer]:
+              - generic [ref=e52]: Z-image
+            - tab "AI Prompts" [ref=e53] [cursor=pointer]:
+              - generic [ref=e54]: AI Prompts
+            - tab "UIKit" [ref=e55] [cursor=pointer]:
+              - generic [ref=e56]: UIKit
+            - tab "UI Audit" [ref=e57] [cursor=pointer]:
+              - generic [ref=e58]: UI Audit
+            - tab "Shopify Syncer" [ref=e59] [cursor=pointer]:
+              - generic [ref=e60]: Shopify Syncer
+            - tab "System" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: System
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - group [ref=e65]:
+              - generic [ref=e66]: Category hiding
+              - generic [ref=e67]: Hide categories so they do not appear while browsing Product Discovery.
+              - generic [ref=e68]:
+                - generic [ref=e69]: Hidden categories
+                - button "No hidden categories" [ref=e70]
+            - group [ref=e71]:
+              - generic [ref=e72]: Keyword hiding
+              - generic [ref=e73]: Hide products whose titles contain these keywords.
+              - generic [ref=e74]:
+                - textbox "Add keyword" [disabled] [ref=e76]
+                - button "Add" [disabled] [ref=e77]
+          - button "Save" [disabled] [ref=e79]
+  - alert [ref=e82]

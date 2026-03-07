@@ -1,0 +1,30 @@
+{
+  "key": "phone-protection-multi-segment",
+  "description": "Screen protectors and camera lens protectors should split into separate product families.",
+  "inputText": "Vi vill bygga en kampanj för iPhone-skydd med två tydliga familjer: skärm skydd i härdat glas och kamera lins skydd / linsskydd. Håll dessa som separata produktfamiljer. Undvik mobilskal och plånboksfodral.",
+  "expectedSegmentCount": 2,
+  "expectedRelevant": [
+    {
+      "label": "privacy screen protector",
+      "spus": ["MB-15905"],
+      "shouldAppearInTop": 10
+    },
+    {
+      "label": "glass screen protector",
+      "spus": ["MB-14960"],
+      "shouldAppearInTop": 20
+    },
+    {
+      "label": "camera lens protector",
+      "spus": ["MB-15096"],
+      "shouldAppearInTop": 20
+    }
+  ],
+  "knownIrrelevant": [
+    {
+      "label": "wallet case noise",
+      "spus": ["MB-15106"],
+      "shouldNotAppearInTop": 20
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "locale": "sv",
+    "alias": "löparbälte",
+    "taxonomyL1": "Sporting Goods",
+    "taxonomyL2": "Exercise & Fitness",
+    "confidence": 0.95,
+    "notes": "Runner belt family."
+  },
+  {
+    "locale": "sv",
+    "alias": "skärmskydd",
+    "taxonomyL1": "Electronics",
+    "taxonomyL2": "Electronics Accessories",
+    "confidence": 0.94,
+    "notes": "Phone screen protection."
+  },
+  {
+    "locale": "sv",
+    "alias": "linsskydd",
+    "taxonomyL1": "Electronics",
+    "taxonomyL2": "Electronics Accessories",
+    "confidence": 0.9,
+    "notes": "Camera lens protection for phones."
+  },
+  {
+    "locale": "sv",
+    "alias": "solcellslampa",
+    "taxonomyL1": "Home & Garden",
+    "taxonomyL2": "Lighting",
+    "confidence": 0.95,
+    "notes": "Solar lighting."
+  }
+]

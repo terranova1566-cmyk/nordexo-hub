@@ -302,6 +302,110 @@ const buildDraftVariantRawRow = (variant: CatalogVariantRow) => ({
   option4_zh: normalizeText(variant.option4_zh),
 });
 
+const CJK_TEXT_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
+const SIZE_TOKEN_REGEX =
+  /\b(?:XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|[2-9]XL|[0-9]{2,3})\b/i;
+
+const hasCjkText = (value: string | null) =>
+  Boolean(value && CJK_TEXT_REGEX.test(value));
+
+const splitCombinedZh = (value: string | null) =>
+  String(value || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const extractSizeToken = (value: string | null) => {
+  const normalized = String(value || "")
+    .replace(/【[^】]*】/g, " ")
+    .replace(/[()（）]/g, " ")
+    .trim();
+  if (!normalized) return null;
+  const matched = normalized.match(SIZE_TOKEN_REGEX);
+  return matched?.[0]?.toUpperCase() || null;
+};
+
+const normalizeCatalogVariantForDraft = (variant: CatalogVariantRow) => {
+  const optionCombinedZh = normalizeText(variant.option_combined_zh);
+  const [combinedColorZh, combinedSizeZh] = splitCombinedZh(optionCombinedZh);
+
+  const variationColorSe = normalizeText(variant.variation_color_se);
+  let variationSizeSe = normalizeText(variant.variation_size_se);
+
+  let option1 = normalizeText(variant.option1);
+  let option2 = normalizeText(variant.option2);
+  const option3 = normalizeText(variant.option3);
+  const option4 = normalizeText(variant.option4);
+
+  let option1Zh = normalizeText(variant.option1_zh);
+  let option2Zh = normalizeText(variant.option2_zh);
+  const option3Zh = normalizeText(variant.option3_zh);
+  const option4Zh = normalizeText(variant.option4_zh);
+
+  const looksLegacyFlattened =
+    Boolean(
+      variationColorSe &&
+        option1 &&
+        option1.toLowerCase() === variationColorSe.toLowerCase() &&
+        !option2 &&
+        combinedColorZh &&
+        combinedSizeZh &&
+        hasCjkText(combinedColorZh)
+    ) ||
+    Boolean(option1Zh && extractSizeToken(option1Zh) && !option2Zh && combinedSizeZh);
+
+  if (looksLegacyFlattened) {
+    option1 = combinedColorZh || option1;
+    option2 = combinedSizeZh || option2;
+  } else {
+    if (!option1 && combinedColorZh) option1 = combinedColorZh;
+    if (!option2 && combinedSizeZh) option2 = combinedSizeZh;
+  }
+
+  if (!option1Zh && combinedColorZh) option1Zh = combinedColorZh;
+  if (!option2Zh && combinedSizeZh) option2Zh = combinedSizeZh;
+  if (looksLegacyFlattened && combinedColorZh) option1Zh = combinedColorZh;
+  if (looksLegacyFlattened && combinedSizeZh) option2Zh = combinedSizeZh;
+
+  if (!variationSizeSe) {
+    variationSizeSe =
+      extractSizeToken(option2Zh) ||
+      extractSizeToken(option2) ||
+      extractSizeToken(combinedSizeZh) ||
+      null;
+  }
+
+  const rawRow = {
+    ...(buildDraftVariantRawRow(variant) as Record<string, unknown>),
+    option1: option1,
+    option2: option2,
+    option3: option3,
+    option4: option4,
+    option1_zh: option1Zh,
+    option2_zh: option2Zh,
+    option3_zh: option3Zh,
+    option4_zh: option4Zh,
+    option_combined_zh: optionCombinedZh,
+    variation_color_se: variationColorSe,
+    variation_size_se: variationSizeSe,
+  };
+
+  return {
+    option1,
+    option2,
+    option3,
+    option4,
+    option1Zh,
+    option2Zh,
+    option3Zh,
+    option4Zh,
+    optionCombinedZh,
+    variationColorSe,
+    variationSizeSe,
+    rawRow,
+  };
+};
+
 const stripTrailingImageTagSuffixes = (value: string) => {
   let next = String(value || "").trim();
   if (!next) return "";
@@ -683,6 +787,7 @@ export async function POST(request: Request) {
           }> = [];
 
           productVariants.forEach((variant, index) => {
+            const normalizedVariant = normalizeCatalogVariantForDraft(variant);
             const fileNameFromRef = extractFileNameFromReference(
               normalizeText(variant.variant_image_url)
             );
@@ -699,19 +804,25 @@ export async function POST(request: Request) {
               variant.raw_row && typeof variant.raw_row === "object"
                 ? (variant.raw_row as Record<string, unknown>)
                 : null;
+            const draftRawRow = rawRowFromVariant
+              ? {
+                  ...rawRowFromVariant,
+                  ...normalizedVariant.rawRow,
+                }
+              : normalizedVariant.rawRow;
 
             const draftRow: Record<string, unknown> = {
               draft_spu: spu,
               draft_sku: sku,
-              draft_option1: normalizeText(variant.option1),
-              draft_option2: normalizeText(variant.option2),
-              draft_option3: normalizeText(variant.option3),
-              draft_option4: normalizeText(variant.option4),
-              draft_option_combined_zh: normalizeText(variant.option_combined_zh),
-              draft_option1_zh: normalizeText(variant.option1_zh),
-              draft_option2_zh: normalizeText(variant.option2_zh),
-              draft_option3_zh: normalizeText(variant.option3_zh),
-              draft_option4_zh: normalizeText(variant.option4_zh),
+              draft_option1: normalizedVariant.option1,
+              draft_option2: normalizedVariant.option2,
+              draft_option3: normalizedVariant.option3,
+              draft_option4: normalizedVariant.option4,
+              draft_option_combined_zh: normalizedVariant.optionCombinedZh,
+              draft_option1_zh: normalizedVariant.option1Zh,
+              draft_option2_zh: normalizedVariant.option2Zh,
+              draft_option3_zh: normalizedVariant.option3Zh,
+              draft_option4_zh: normalizedVariant.option4Zh,
               draft_price: normalizeNumber(variant.price),
               draft_compare_at_price: normalizeNumber(variant.compare_at_price),
               draft_cost: normalizeNumber(variant.cost),
@@ -736,8 +847,7 @@ export async function POST(request: Request) {
               draft_b2b_dropship_price_dk: normalizeNumber(variant.b2b_dropship_price_dk),
               draft_b2b_dropship_price_fi: normalizeNumber(variant.b2b_dropship_price_fi),
               draft_purchase_price_cny: normalizeNumber(variant.purchase_price_cny),
-              draft_raw_row:
-                rawRowFromVariant ?? (buildDraftVariantRawRow(variant) as Record<string, unknown>),
+              draft_raw_row: draftRawRow,
               draft_status: "draft",
               draft_updated_at: nowIso,
             };

@@ -232,6 +232,8 @@ const normalizeText = (value: unknown) => {
 const CJK_TEXT_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
 const SIZE_TEXT_REGEX =
   /(?:\d+(?:[.,]\d+)?\s*(?:mm|cm|m|ml|cl|l|g|kg|inch|in|oz)\b|(?:^|\b)(?:höjd|bredd|längd|diameter|storlek|size)(?:\b|\s))/i;
+const SIZE_TOKEN_REGEX =
+  /\b(?:XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|[2-9]XL|[0-9]{2,3})\b/i;
 const DEFAULT_OPTION_NAME_BY_INDEX = {
   1: "Antal",
   2: "Färg",
@@ -258,6 +260,16 @@ const hasCjkText = (value: string | null) =>
 
 const isLikelySizeText = (value: string | null) =>
   Boolean(value && SIZE_TEXT_REGEX.test(value));
+
+const extractSizeToken = (value: string | null) => {
+  const normalized = String(value || "")
+    .replace(/【[^】]*】/g, " ")
+    .replace(/[()（）]/g, " ")
+    .trim();
+  if (!normalized) return null;
+  const match = normalized.match(SIZE_TOKEN_REGEX);
+  return match?.[0]?.toUpperCase() || null;
+};
 
 const pickFirstNonCjkText = (...values: Array<string | null>) => {
   for (const candidate of values) {
@@ -289,6 +301,7 @@ const normalizeVariantOptionLocalization = (input: {
   option2: string | null;
   option3: string | null;
   option4: string | null;
+  option_combined_zh: string | null;
   option1_zh: string | null;
   option2_zh: string | null;
   option3_zh: string | null;
@@ -302,6 +315,7 @@ const normalizeVariantOptionLocalization = (input: {
   let option2 = normalizeText(input.option2);
   let option3 = normalizeText(input.option3);
   let option4 = normalizeText(input.option4);
+  const optionCombinedZh = normalizeText(input.option_combined_zh);
   let option1Zh = normalizeText(input.option1_zh);
   let option2Zh = normalizeText(input.option2_zh);
   let option3Zh = normalizeText(input.option3_zh);
@@ -331,8 +345,24 @@ const normalizeVariantOptionLocalization = (input: {
     );
     if (nextSize) {
       variationSizeSe = nextSize;
-    } else if (hasCjkText(variationSizeSe) || !isLikelySizeText(variationSizeSe)) {
-      variationSizeSe = null;
+    } else {
+      const combinedParts = String(optionCombinedZh || "")
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const fallbackSize =
+        extractSizeToken(option2Zh) ||
+        extractSizeToken(option2) ||
+        extractSizeToken(option3Zh) ||
+        extractSizeToken(option3) ||
+        extractSizeToken(option4Zh) ||
+        extractSizeToken(option4) ||
+        extractSizeToken(combinedParts[1] || null);
+      if (fallbackSize) {
+        variationSizeSe = fallbackSize;
+      } else if (hasCjkText(variationSizeSe) || !isLikelySizeText(variationSizeSe)) {
+        variationSizeSe = null;
+      }
     }
   }
   if (hasCjkText(variationOtherSe)) {
@@ -2828,6 +2858,7 @@ export async function POST(request: Request) {
       option2: normalizeText(row.draft_option2),
       option3: normalizeText(row.draft_option3),
       option4: normalizeText(row.draft_option4),
+      option_combined_zh: normalizeText(row.draft_option_combined_zh),
       option1_zh: normalizeText(row.draft_option1_zh),
       option2_zh: normalizeText(row.draft_option2_zh),
       option3_zh: normalizeText(row.draft_option3_zh),

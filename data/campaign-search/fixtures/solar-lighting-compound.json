@@ -1,0 +1,30 @@
+{
+  "key": "solar-lighting-compound",
+  "description": "Solar lighting query should prefer lighting products and avoid unrelated solar-powered electronics.",
+  "inputText": "Partnern söker solcell lampa och solcellsdriven utomhusbelysning för trädgård. Ljusslinga, lykta och trädgårdslampa är bra. Undvik radio, laddare eller andra elektronikprylar som bara råkar ha solcell.",
+  "expectedSegmentCount": 1,
+  "expectedRelevant": [
+    {
+      "label": "solar light string",
+      "spus": ["MB-14662"],
+      "shouldAppearInTop": 15
+    },
+    {
+      "label": "solar garden spotlight",
+      "spus": ["MB-14823"],
+      "shouldAppearInTop": 20
+    },
+    {
+      "label": "solar lantern",
+      "spus": ["MB-14990"],
+      "shouldAppearInTop": 25
+    }
+  ],
+  "knownIrrelevant": [
+    {
+      "label": "solar radio noise",
+      "spus": ["GB-12557"],
+      "shouldNotAppearInTop": 20
+    }
+  ]
+}

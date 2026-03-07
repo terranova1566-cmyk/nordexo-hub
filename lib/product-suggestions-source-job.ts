@@ -2,7 +2,7 @@ import {
   ProductSuggestionRecord,
   buildExternalDataForUrlSuggestion,
   crawlUrlForProduct,
-  fetchAndNormalizeImage,
+  fetchAndNormalizeBestImageCandidate,
   loadSuggestionRecord,
   normalizeExternalDataForRecord,
   saveSuggestionRecord,
@@ -130,26 +130,11 @@ export const runSuggestionSourceCrawlJob = async (params: {
     const crawl = await crawlUrlForProduct(sourceUrl);
     const crawlErrors = [...(Array.isArray(crawl.errors) ? crawl.errors : [])];
 
-    let preferredImageUrl =
+    const preferredImageUrl =
       asText(crawl.mainImageUrl) ||
       (Array.isArray(crawl.imageUrls) && crawl.imageUrls.length > 0
         ? asText(crawl.imageUrls[0])
         : "");
-
-    if (preferredImageUrl) {
-      try {
-        const fetched = await fetchAndNormalizeImage(preferredImageUrl);
-        preferredImageUrl = asText(fetched.finalUrl) || preferredImageUrl;
-      } catch (error) {
-        crawlErrors.push(
-          `Image download failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    } else {
-      crawlErrors.push("No product image could be identified from URL.");
-    }
 
     const beforeAi = new Date().toISOString();
     const interimExternalData = await buildExternalDataForUrlSuggestion({
@@ -158,18 +143,54 @@ export const runSuggestionSourceCrawlJob = async (params: {
       title: asText(crawl.title),
       description: asText(crawl.description),
       readablePageText: asText(crawl.readableText),
-      mainImageUrl: preferredImageUrl || crawl.mainImageUrl || null,
+      mainImageUrl: preferredImageUrl || null,
       galleryImageUrls: Array.isArray(crawl.imageUrls) ? crawl.imageUrls : [],
       errors: crawlErrors,
       createdAt: asText(record.externalData?.createdAt) || beforeAi,
       runAiCleanup: false,
     });
 
+    const normalizedImageResult = await fetchAndNormalizeBestImageCandidate(
+      [
+        interimExternalData.mainImageUrl,
+        ...(Array.isArray(interimExternalData.galleryImageUrls)
+          ? interimExternalData.galleryImageUrls
+          : []),
+        preferredImageUrl,
+        ...(Array.isArray(crawl.imageUrls) ? crawl.imageUrls : []),
+      ],
+      {
+        preferredUrl: interimExternalData.mainImageUrl || preferredImageUrl || null,
+        maxAttempts: 10,
+      }
+    );
+    const normalizedImage = normalizedImageResult.image || null;
+    const normalizedMainImageUrl = normalizedImage?.publicPath || null;
+    if (!normalizedImage) {
+      if (normalizedImageResult.errors.length > 0) {
+        crawlErrors.push(...normalizedImageResult.errors.slice(0, 3));
+      } else if (
+        preferredImageUrl ||
+        asText(interimExternalData.mainImageUrl) ||
+        interimExternalData.galleryImageUrls.length > 0
+      ) {
+        crawlErrors.push("No usable product image could be normalized from URL.");
+      } else {
+        crawlErrors.push("No product image could be identified from URL.");
+      }
+    }
+
     record = normalizeExternalDataForRecord({
       ...record,
       sourceUrl,
       sourceLabel: record.sourceLabel || sourceUrl,
       crawlFinalUrl: asText(crawl.finalUrl) || null,
+      mainImageUrl:
+        normalizedMainImageUrl ||
+        asText(record.mainImageUrl) ||
+        asText(interimExternalData.mainImageUrl) ||
+        null,
+      image: normalizedImage || record.image || null,
       externalData: interimExternalData,
       sourceJob: {
         status: "running",
@@ -190,7 +211,7 @@ export const runSuggestionSourceCrawlJob = async (params: {
       title: asText(crawl.title),
       description: asText(crawl.description),
       readablePageText: asText(crawl.readableText),
-      mainImageUrl: preferredImageUrl || crawl.mainImageUrl || null,
+      mainImageUrl: interimExternalData.mainImageUrl,
       galleryImageUrls: Array.isArray(crawl.imageUrls) ? crawl.imageUrls : [],
       errors: crawlErrors,
       createdAt: asText(record.externalData?.createdAt) || finishedAt,
@@ -216,6 +237,12 @@ export const runSuggestionSourceCrawlJob = async (params: {
       sourceUrl,
       sourceLabel: record.sourceLabel || sourceUrl,
       crawlFinalUrl: asText(crawl.finalUrl) || null,
+      mainImageUrl:
+        normalizedMainImageUrl ||
+        asText(record.mainImageUrl) ||
+        asText(finalExternalData.mainImageUrl) ||
+        null,
+      image: normalizedImage || record.image || null,
       externalData: finalExternalData,
       sourceJob: {
         status: "done",

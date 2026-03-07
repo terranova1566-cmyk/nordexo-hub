@@ -3,6 +3,7 @@ import path from "path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { PRODUCTION_SUPPLIER_PAYLOAD_DIR } from "@/lib/1688-extractor";
 import { generateQueueKeywordsForFile } from "@/lib/queue-keywords";
 import { warmQueueImageCacheForFile } from "@/lib/queue-image-cache";
 import {
@@ -24,6 +25,7 @@ const UPLOAD_DIR =
   process.env.NODEXO_EXTRACTOR_UPLOAD_DIR || "/srv/node-files/1688-extractor";
 const PRODUCT_SUGGESTION_PAYLOAD_TYPE = "product_suggestions_browser_v1";
 const PRODUCT_SUGGESTION_IMPORT_MAX = 200;
+const PRODUCT_SUGGESTION_TRANSLATE_MAX = 30;
 const DEFAULT_PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL || process.env.HUB_PUBLIC_URL || "https://hub.nordexo.se";
 const BACKGROUND_SEARCH_WORKER_PATH =
@@ -40,6 +42,45 @@ const CORS_HEADERS = {
 };
 const INTERNAL_EXTENSION_STATIC_TOKEN =
   "550fdd5c20fc25e8e5483c8869e3a897bb6a2e3992f988c3";
+const STOREISH_TITLE_RE = /(旗舰店|专营店|店铺|商行|有限公司|工厂|鞋厂|公司介绍|企业店)/i;
+const CJK_RE = /[\u3400-\u9fff]/;
+const TITLE_BLOCKLIST = [
+  "客服",
+  "回头率",
+  "商品评价",
+  "查看全部评价",
+  "登录查看全部",
+  "服务",
+  "物流",
+  "发货",
+  "材质",
+  "品牌",
+  "规格",
+  "货号",
+  "价格",
+  "评价",
+  "全部",
+  "店铺",
+  "商品属性",
+  "商品资质",
+  "包装信息",
+  "商品详情",
+  "加采购车",
+  "立即下单",
+  "库存",
+  "商品件重尺",
+  "关于质量",
+  "质量问题",
+  "本店",
+  "负责处理",
+  "同款商品",
+  "多个平台",
+  "累计销量",
+  "淘宝",
+  "天猫",
+  "电子商务平台",
+  "销量",
+];
 
 const asText = (value: unknown) =>
   value === undefined || value === null ? "" : String(value).trim();
@@ -321,6 +362,14 @@ function sanitizeBaseName(input: string) {
   return dashed.replace(/[^a-zA-Z0-9._-]/g, "").replace(/^-+|-+$/g, "");
 }
 
+function sanitizeFilePart(input: string) {
+  return String(input || "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120) || "item";
+}
+
 function buildTimestamp() {
   const d = new Date();
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -363,6 +412,74 @@ const pickFirstText = (...values: unknown[]) => {
   return "";
 };
 
+const hasCjk = (value: unknown) => CJK_RE.test(asText(value));
+
+const cleanReadableLine = (value: unknown) =>
+  asText(value)
+    .replace(/\s+/g, " ")
+    .replace(/[|｜•·]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const isStoreishTitle = (value: unknown) => {
+  const text = asText(value);
+  if (!text) return false;
+  return STOREISH_TITLE_RE.test(text) && text.length <= 64;
+};
+
+const inferTitleFromReadable1688 = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => cleanReadableLine(line))
+    .filter(Boolean);
+  if (!lines.length) return "";
+
+  const candidates = lines
+    .filter((line) => hasCjk(line))
+    .filter((line) => line.length >= 6 && line.length <= 90)
+    .filter((line) => !/^[-\d\s.,%]+$/.test(line))
+    .filter((line) => !line.includes("\t"))
+    .filter(
+      (line) =>
+        !TITLE_BLOCKLIST.some((token) => line.includes(token)) &&
+        !line.includes("¥") &&
+        !line.includes("￥")
+    )
+    .map((line, idx) => {
+      let score = 0;
+      score += Math.min(60, line.length);
+      if (!/[A-Za-z]/.test(line)) score += 8;
+      if (idx < Math.max(20, Math.round(lines.length * 0.35))) score += 10;
+      if (isStoreishTitle(line)) score -= 24;
+      if (/(同款商品|平台|销量|质量问题|本店|关于质量|负责处理)/.test(line)) score -= 60;
+      if ((line.match(/[，,]/g) || []).length >= 4) score -= 20;
+      if (/^(跨境|新款|春秋|夏季|秋冬|冬季|男女|男士|女士|儿童|户外|运动)/.test(line)) score += 10;
+      return { line, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.line || "";
+};
+
+const extractJsonFromText = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end <= start) return null;
+    try {
+      return JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+};
+
 const normalizeHttpUrl = (value: unknown) => {
   const raw = asText(value);
   if (!raw) return "";
@@ -374,6 +491,162 @@ const normalizeHttpUrl = (value: unknown) => {
   } catch {
     return "";
   }
+};
+
+const canonical1688DetailUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  const matched = raw.match(/(?:detail\.1688\.com\/offer\/|\/offer\/)(\d{6,})\.html/i);
+  if (matched?.[1]) return `https://detail.1688.com/offer/${matched[1]}.html`;
+  return canonicalize1688Url(raw);
+};
+
+const extract1688OfferId = (value: unknown) => {
+  const text = asText(value);
+  if (!text) return "";
+  const matched = text.match(/\/offer\/(\d{6,})\.html/i);
+  return matched?.[1] || "";
+};
+
+const pickUploadedSuggestionDetailUrl = (entry: Record<string, unknown>) => {
+  const direct = canonical1688DetailUrl(
+    pickFirstText(
+      entry.url_1688,
+      entry.detail_url,
+      entry.detailUrl,
+      entry.selected_detail_url,
+      entry.supplier_selected_offer_detail_url,
+      entry.offer_url,
+      entry.offerUrl
+    )
+  );
+  if (direct) return direct;
+
+  const list = Array.isArray(entry.url_1688_list) ? entry.url_1688_list : [];
+  for (const value of list) {
+    const normalized = canonical1688DetailUrl(value);
+    if (normalized) return normalized;
+  }
+  return "";
+};
+
+const looksLikePreloaded1688Item = (entry: Record<string, unknown>) => {
+  const detailUrl = pickUploadedSuggestionDetailUrl(entry);
+  if (!detailUrl) return false;
+  const variations = resolveUploaded1688Variations(entry);
+  if (Array.isArray(variations.combos) && variations.combos.length > 0) return true;
+  if (entry.production_variant_selection && typeof entry.production_variant_selection === "object") {
+    return true;
+  }
+  if (asText(entry.variants_1688)) return true;
+  if (entry.weight_review_1688 && typeof entry.weight_review_1688 === "object") return true;
+  return true;
+};
+
+const resolveUploaded1688Scope = (entry: Record<string, unknown>) =>
+  toObjectRecord(toObjectRecord(entry.platform_attributes)["1688"]);
+
+const resolveUploaded1688Variations = (entry: Record<string, unknown>) => {
+  const attrs1688 = resolveUploaded1688Scope(entry);
+  const candidates = [
+    entry.variations_enriched_1688,
+    entry.variations,
+    attrs1688.variations_enriched_1688,
+    attrs1688.variations,
+  ];
+  for (const candidate of candidates) {
+    const variation = toObjectRecord(candidate);
+    if (Array.isArray(variation.combos) && variation.combos.length > 0) return variation;
+  }
+  for (const candidate of candidates) {
+    const variation = toObjectRecord(candidate);
+    if (Object.keys(variation).length > 0) return variation;
+  }
+  return {};
+};
+
+const resolveUploaded1688WeightReview = (entry: Record<string, unknown>) => {
+  if (entry.weight_review_1688 && typeof entry.weight_review_1688 === "object") {
+    return entry.weight_review_1688 as Record<string, unknown>;
+  }
+  const attrs1688 = resolveUploaded1688Scope(entry);
+  if (attrs1688.weight_review_1688 && typeof attrs1688.weight_review_1688 === "object") {
+    return attrs1688.weight_review_1688 as Record<string, unknown>;
+  }
+  return null;
+};
+
+const normalizeCombosForCache = (value: unknown) => {
+  const combos = Array.isArray(value) ? value : [];
+  return combos
+    .map((entry) =>
+      entry && typeof entry === "object"
+        ? ({ ...(entry as Record<string, unknown>) } as Record<string, unknown>)
+        : null
+    )
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+};
+
+const normalizeVariantSelection = (
+  value: unknown,
+  comboCount: number
+) => {
+  const selection = toObjectRecord(value);
+  const selectedComboIndexes = Array.isArray(selection.selected_combo_indexes)
+    ? (selection.selected_combo_indexes as unknown[])
+        .map((entry) => Number(entry))
+        .filter(
+          (entry) =>
+            Number.isInteger(entry) && entry >= 0 && (!comboCount || entry < comboCount)
+        )
+    : [];
+  const packs = Array.isArray(selection.packs)
+    ? (selection.packs as unknown[])
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry) && entry > 0)
+    : [];
+  const comboOverrides = Array.isArray(selection.combo_overrides)
+    ? (selection.combo_overrides as unknown[])
+        .map((entry) => {
+          const row = toObjectRecord(entry);
+          const index = Number(row.index);
+          if (!Number.isInteger(index) || index < 0 || (comboCount && index >= comboCount)) {
+            return null;
+          }
+          const price = Number(row.price);
+          const weightGrams = Number(row.weight_grams ?? row.weightGrams);
+          return {
+            index,
+            price: Number.isFinite(price) && price > 0 ? price : null,
+            weight_grams:
+              Number.isFinite(weightGrams) && weightGrams > 0
+                ? Math.round(weightGrams)
+                : null,
+          };
+        })
+        .filter(
+          (
+            entry
+          ): entry is { index: number; price: number | null; weight_grams: number | null } =>
+            Boolean(entry)
+        )
+    : [];
+
+  return {
+    selected_combo_indexes: Array.from(new Set(selectedComboIndexes)).sort((a, b) => a - b),
+    packs: Array.from(new Set(packs)).sort((a, b) => a - b),
+    packs_text: asText(selection.packs_text),
+    combo_overrides: comboOverrides,
+  };
+};
+
+const extractSelectedVariantIndexesFromCombos = (combos: Array<Record<string, unknown>>) => {
+  const out: number[] = [];
+  combos.forEach((combo, index) => {
+    const quantity = Number(combo.quantity ?? combo.qty ?? combo.selected_qty);
+    if (Number.isFinite(quantity) && quantity > 0) out.push(index);
+  });
+  return out;
 };
 
 const normalizeImageUrlList = (values: unknown[], max = 120) => {
@@ -393,6 +666,7 @@ const normalizeImageUrlList = (values: unknown[], max = 120) => {
 
 const collectUploadedSuggestionImages = (entry: Record<string, unknown>) => {
   const attrs = toObjectRecord(entry.platform_attributes);
+  const attrs1688 = toObjectRecord(attrs["1688"]);
   const scopedLists: unknown[] = [];
   Object.values(attrs).forEach((scope) => {
     const scoped = toObjectRecord(scope);
@@ -407,15 +681,160 @@ const collectUploadedSuggestionImages = (entry: Record<string, unknown>) => {
 
   return normalizeImageUrlList(
     [
+      ...(Array.isArray(entry.main_image_urls_1688) ? entry.main_image_urls_1688 : []),
+      ...(Array.isArray(entry.gallery_image_urls_1688) ? entry.gallery_image_urls_1688 : []),
+      ...(Array.isArray(entry.image_urls_1688) ? entry.image_urls_1688 : []),
+      ...(Array.isArray(entry.description_image_urls_1688) ? entry.description_image_urls_1688 : []),
       ...(Array.isArray(entry.main_image_urls) ? entry.main_image_urls : []),
       ...(Array.isArray(entry.gallery_image_urls) ? entry.gallery_image_urls : []),
       ...(Array.isArray(entry.image_urls) ? entry.image_urls : []),
       ...(Array.isArray(entry.supplementary_image_urls) ? entry.supplementary_image_urls : []),
+      ...(Array.isArray(entry.variant_image_urls) ? entry.variant_image_urls : []),
       entry.main_image_url,
+      entry.main_image_1688,
+      attrs1688.main_image_url,
+      attrs1688.main_image_1688,
       ...scopedLists.flatMap((value) => (Array.isArray(value) ? value : [value])),
     ],
     120
   );
+};
+
+const translateChineseTitlesBestEffort = async (titles: string[]) => {
+  const apiKey = asText(process.env.OPENAI_API_KEY);
+  if (!apiKey) return new Map<string, string>();
+
+  const uniqueTitles = Array.from(new Set(titles.map((entry) => asText(entry)).filter(Boolean)));
+  const limited = uniqueTitles.filter((entry) => hasCjk(entry)).slice(0, PRODUCT_SUGGESTION_TRANSLATE_MAX);
+  if (limited.length === 0) return new Map<string, string>();
+
+  const models = Array.from(
+    new Set(
+      [
+        process.env.SUPPLIER_TRANSLATE_MODEL,
+        process.env.NODEXO_1688_TITLE_TRANSLATE_MODEL,
+        "gpt-5-mini",
+        "gpt-5-nano",
+      ]
+        .map((entry) => asText(entry))
+        .filter(Boolean)
+    )
+  );
+  if (!models.length) return new Map<string, string>();
+
+  const prompt = [
+    "Translate Chinese 1688 product titles into concise, natural English.",
+    "Return JSON only.",
+    'Format: { "items": [ { "source": "...", "english_title": "..." } ] }',
+    "Rules:",
+    "1) Keep key product nouns and technical attributes.",
+    "2) Remove hype/marketing words.",
+    "3) Max 120 characters per title.",
+    "",
+    "Titles:",
+    ...limited.map((entry, idx) => `${idx + 1}. ${entry}`),
+  ].join("\n");
+
+  let parsed: Record<string, unknown> | null = null;
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => null);
+      const extracted = extractJsonFromText(payload?.choices?.[0]?.message?.content);
+      if (extracted && typeof extracted === "object") {
+        parsed = extracted as Record<string, unknown>;
+        break;
+      }
+    } catch {
+      // try next model
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const out = new Map<string, string>();
+  const rows = Array.isArray(parsed?.items) ? parsed.items : [];
+  rows.forEach((row, index) => {
+    const record = toObjectRecord(row);
+    const source = asText(record.source || limited[index]);
+    const english = asText(
+      record.english_title ||
+        record.englishTitle ||
+        record.title_en ||
+        record.translation ||
+        record.english
+    ).slice(0, 120);
+    if (!source || !english || hasCjk(english)) return;
+    out.set(source, english);
+  });
+
+  const translateSingle = async (source: string) => {
+    const prompt = [
+      "Translate this Chinese supplier product title into concise, natural English.",
+      "Keep key product nouns and technical attributes, remove marketing filler, max 120 chars.",
+      'Return JSON only with format: { "english_title": "..." }',
+      "",
+      `Title: ${source}`,
+    ].join("\n");
+    for (const model of models) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+          signal: controller.signal,
+        });
+        if (!response.ok) continue;
+        const payload = await response.json().catch(() => null);
+        const extracted = extractJsonFromText(payload?.choices?.[0]?.message?.content);
+        const english = asText(
+          toObjectRecord(extracted).english_title ||
+            toObjectRecord(extracted).englishTitle ||
+            toObjectRecord(extracted).title_en ||
+            toObjectRecord(extracted).translation ||
+            toObjectRecord(extracted).english
+        ).slice(0, 120);
+        if (english && !hasCjk(english)) return english;
+      } catch {
+        // try next model
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    return "";
+  };
+
+  for (const source of limited) {
+    if (out.has(source)) continue;
+    const translated = await translateSingle(source);
+    if (translated) out.set(source, translated);
+  }
+
+  return out;
 };
 
 const isProductSuggestionPayload = (
@@ -590,23 +1009,123 @@ type SuggestionImportSummary = {
   errors: string[];
 };
 
+type UploadRouteTarget = "auto" | "production" | "suggestions";
+
+const buildSuggestionImportSkippedSummary = (
+  reason: string,
+  errors: string[] = []
+): SuggestionImportSummary => ({
+  enabled: false,
+  attempted: 0,
+  imported: 0,
+  queued: 0,
+  sourceQueued: 0,
+  searchWorkerStarted: false,
+  taxonomyWorkerStarted: false,
+  sourceWorkerStarted: false,
+  skippedReason: reason,
+  errors,
+});
+
+const resolveUploadRouteTarget = (
+  payloadRecord: Record<string, unknown> | null
+): UploadRouteTarget => {
+  const raw = asText(
+    payloadRecord?.routeTo ??
+      payloadRecord?.route_to ??
+      payloadRecord?.destination ??
+      payloadRecord?.sendTo ??
+      payloadRecord?.send_to
+  ).toLowerCase();
+  if (raw === "production") return "production";
+  if (raw === "suggestions" || raw === "product_suggestions") return "suggestions";
+  return "auto";
+};
+
+const pickUploadedSuggestionTitle = (entry: Record<string, unknown>) => {
+  const direct = pickFirstText(
+    entry.product_title,
+    entry.title,
+    entry.name,
+    entry.title_1688,
+    entry.title_cn,
+    entry.title_zh,
+    entry.offerTitle,
+    entry.subject
+  );
+  if (!direct) return null;
+  if (!isStoreishTitle(direct)) return direct;
+
+  const readableFallback = inferTitleFromReadable1688(
+    pickFirstText(entry.readable_1688, entry.readable_1688_raw)
+  );
+  if (readableFallback && !isStoreishTitle(readableFallback)) {
+    return readableFallback;
+  }
+  return direct;
+};
+
+const pickUploadedSuggestionEnglishTitle = (entry: Record<string, unknown>) => {
+  const ai1688 = toObjectRecord(entry.ai_1688);
+  const aiAttr = toObjectRecord(ai1688.attribute_extract);
+  const entryAttrs = toObjectRecord(entry.platform_attributes);
+  const attrs1688 = toObjectRecord(entryAttrs["1688"]);
+  const attrs1688Ai = toObjectRecord(attrs1688.ai_1688);
+  const attrs1688AiAttr = toObjectRecord(attrs1688Ai.attribute_extract);
+  const english = pickFirstText(
+    entry.title_en,
+    entry.product_title_en,
+    entry.subject_en,
+    aiAttr.product_name_en,
+    attrs1688AiAttr.product_name_en
+  );
+  if (!english || hasCjk(english)) return "";
+  return english.slice(0, 180);
+};
+
+const pickUploadedSuggestionSourceUrl = (entry: Record<string, unknown>) => {
+  const direct = normalizeHttpUrl(
+    pickFirstText(
+      entry.product_url,
+      entry.url,
+      entry.source_url,
+      entry.sourceUrl,
+      entry.url_1688,
+      entry.detail_url,
+      entry.detailUrl,
+      entry.offer_url,
+      entry.offerUrl
+    )
+  );
+  if (direct) return direct;
+  const list = Array.isArray(entry.url_1688_list) ? entry.url_1688_list : [];
+  for (const value of list) {
+    const candidate = normalizeHttpUrl(value);
+    if (candidate) return candidate;
+  }
+  return null;
+};
+
+const pickUploadedSuggestionDescription = (entry: Record<string, unknown>) => {
+  const raw = pickFirstText(
+    entry.product_description,
+    entry.description,
+    entry.readable_1688,
+    entry.readable_1688_raw
+  );
+  const text = asText(raw);
+  if (!text) return null;
+  return text.slice(0, 12000);
+};
+
 const importSuggestionsToPartnerQueue = async (
   items: unknown[],
-  payloadRecord: Record<string, unknown> | null
+  payloadRecord: Record<string, unknown> | null,
+  options: { force?: boolean } = {}
 ): Promise<SuggestionImportSummary> => {
-  if (!isProductSuggestionPayload(payloadRecord, items)) {
-    return {
-      enabled: false,
-      attempted: 0,
-      imported: 0,
-      queued: 0,
-      sourceQueued: 0,
-      searchWorkerStarted: false,
-      taxonomyWorkerStarted: false,
-      sourceWorkerStarted: false,
-      skippedReason: "payload_not_product_suggestions",
-      errors: [],
-    };
+  const forceImport = Boolean(options.force);
+  if (!forceImport && !isProductSuggestionPayload(payloadRecord, items)) {
+    return buildSuggestionImportSkippedSummary("payload_not_product_suggestions");
   }
 
   const adminClient = getAdminClient();
@@ -649,16 +1168,42 @@ const importSuggestionsToPartnerQueue = async (
   const createdRecords: ProductSuggestionRecord[] = [];
   const errors: string[] = [];
   const importedAt = new Date().toISOString();
+  const { date: importDate, time: importTime } = buildTimestamp();
+  const importStamp = `${importDate}_${importTime}`;
+  const translationCandidates = candidates
+    .map((entry) => {
+      const title = pickUploadedSuggestionTitle(entry);
+      const english = pickUploadedSuggestionEnglishTitle(entry);
+      if (!title || english || !hasCjk(title)) return "";
+      return title;
+    })
+    .filter(Boolean);
+  const translatedTitleMap = await translateChineseTitlesBestEffort(translationCandidates);
+  const supplierSearchWorkerIds: string[] = [];
+  const sourceWorkerCandidateIds: string[] = [];
 
-  for (const entry of candidates) {
-    const sourcePlatform = asText(entry.source_platform || entry.sourcePlatform).toLowerCase();
-    const title = pickFirstText(entry.product_title, entry.title, entry.name) || null;
-    const sourceUrl =
-      normalizeHttpUrl(
-        pickFirstText(entry.product_url, entry.url, entry.source_url, entry.sourceUrl)
-      ) || null;
-    const hasExternalSourceUrl = Boolean(sourceUrl);
-    const description = pickFirstText(entry.product_description, entry.description) || null;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const entry = candidates[index];
+    const sourcePlatform = asText(
+      entry.source_platform ||
+        entry.sourcePlatform ||
+        entry.platform ||
+        payloadRecord?.sourcePlatform ||
+        payloadRecord?.source_platform ||
+        "1688"
+    ).toLowerCase();
+    const baseTitle = pickUploadedSuggestionTitle(entry);
+    const translatedTitle =
+      pickUploadedSuggestionEnglishTitle(entry) ||
+      (baseTitle ? asText(translatedTitleMap.get(baseTitle)) : "");
+    const title = translatedTitle || baseTitle || null;
+    const detailUrl = pickUploadedSuggestionDetailUrl(entry);
+    const isPreloaded1688 =
+      sourcePlatform.includes("1688") && looksLikePreloaded1688Item(entry);
+    const sourceUrl = pickUploadedSuggestionSourceUrl(entry);
+    const effectiveSourceUrl = sourceUrl || (isPreloaded1688 ? detailUrl || null : null);
+    const hasExternalSourceUrl = Boolean(effectiveSourceUrl) && !isPreloaded1688;
+    const description = pickUploadedSuggestionDescription(entry);
     const imageUrls = collectUploadedSuggestionImages(entry);
     const remoteMainImageUrl = imageUrls[0] || null;
     const createdAt = importedAt;
@@ -673,6 +1218,7 @@ const importSuggestionsToPartnerQueue = async (
       payloadRecord?.user,
       payloadRecord?.sourceUser
     );
+    const suggestionId = createSuggestionId();
 
     const recordErrors: string[] = [];
     let image: ProductSuggestionRecord["image"] = null;
@@ -693,35 +1239,66 @@ const importSuggestionsToPartnerQueue = async (
       recordErrors.push("No product image URL found in uploaded suggestion.");
     }
 
+    const searchJob = isPreloaded1688
+      ? {
+          status: "done" as const,
+          queuedAt: null,
+          startedAt: importedAt,
+          finishedAt: importedAt,
+          error: null,
+          lastRunAt: importedAt,
+        }
+      : {
+          status: "queued" as const,
+          queuedAt: importedAt,
+          startedAt: null,
+          finishedAt: null,
+          error: null,
+          lastRunAt: importedAt,
+        };
+    const sourceJob = isPreloaded1688
+      ? {
+          status: "done" as const,
+          stage: "done" as const,
+          queuedAt: null,
+          startedAt: importedAt,
+          finishedAt: importedAt,
+          updatedAt: importedAt,
+          error: null,
+        }
+      : {
+          status: hasExternalSourceUrl ? ("queued" as const) : ("done" as const),
+          stage: hasExternalSourceUrl ? ("queued" as const) : ("done" as const),
+          queuedAt: hasExternalSourceUrl ? importedAt : null,
+          startedAt: hasExternalSourceUrl ? null : importedAt,
+          finishedAt: hasExternalSourceUrl ? null : importedAt,
+          updatedAt: importedAt,
+          error: null,
+        };
+
     const record: ProductSuggestionRecord = {
-      id: createSuggestionId(),
+      id: suggestionId,
       provider: PARTNER_SUGGESTION_PROVIDER,
       createdAt,
       createdBy: queueUserId,
-      sourceType: "url",
+      sourceType: effectiveSourceUrl ? "url" : "image",
       sourceLabel: pickFirstText(entry.source_host, sourcePlatform, "browser_extension") || null,
-      sourceUrl: sourceUrl || remoteMainImageUrl || null,
-      crawlFinalUrl: sourceUrl || null,
+      sourceUrl: effectiveSourceUrl || remoteMainImageUrl || null,
+      crawlFinalUrl: hasExternalSourceUrl ? effectiveSourceUrl : null,
       title,
       description,
       mainImageUrl: mainImageUrl || remoteMainImageUrl || null,
       galleryImageUrls: imageUrls,
       image,
       errors: recordErrors,
-      searchJob: {
-        status: "queued",
-        queuedAt: importedAt,
+      searchJob,
+      sourceJob,
+      googleTaxonomy: {
+        status: title ? "queued" : "idle",
+        sourceTitle: title,
+        queuedAt: title ? importedAt : null,
         startedAt: null,
         finishedAt: null,
-        error: null,
-        lastRunAt: importedAt,
-      },
-      sourceJob: {
-        status: hasExternalSourceUrl ? "queued" : "done",
-        stage: hasExternalSourceUrl ? "queued" : "done",
-        queuedAt: hasExternalSourceUrl ? importedAt : null,
-        startedAt: hasExternalSourceUrl ? null : importedAt,
-        finishedAt: hasExternalSourceUrl ? null : importedAt,
         updatedAt: importedAt,
         error: null,
       },
@@ -743,18 +1320,211 @@ const importSuggestionsToPartnerQueue = async (
       tagged_at: importedAt,
       scraped_at: scrapedAt,
     };
+    const sourceAttrs1688 = toObjectRecord(sourceAttrs["1688"]);
+    const resolvedVariations = resolveUploaded1688Variations(entry);
+    const resolvedWeightReview = resolveUploaded1688WeightReview(entry);
+    const resolvedVariantSelection =
+      (entry.production_variant_selection &&
+      typeof entry.production_variant_selection === "object"
+        ? (entry.production_variant_selection as Record<string, unknown>)
+        : null) ||
+      (sourceAttrs1688.production_variant_selection &&
+      typeof sourceAttrs1688.production_variant_selection === "object"
+        ? (sourceAttrs1688.production_variant_selection as Record<string, unknown>)
+        : null);
+    const resolvedImageUrls1688 = Array.isArray(entry.image_urls_1688)
+      ? entry.image_urls_1688
+      : Array.isArray(sourceAttrs1688.gallery_image_urls)
+        ? sourceAttrs1688.gallery_image_urls
+        : Array.isArray(sourceAttrs1688.image_urls)
+          ? sourceAttrs1688.image_urls
+          : [];
+    const merged1688 = {
+      ...sourceAttrs1688,
+      offer_id: asText(sourceAttrs1688.offer_id || extract1688OfferId(detailUrl)) || null,
+      offer_url: detailUrl || asText(sourceAttrs1688.offer_url) || null,
+      gallery_image_urls: Array.isArray(sourceAttrs1688.gallery_image_urls)
+        ? sourceAttrs1688.gallery_image_urls
+        : Array.isArray(entry.gallery_image_urls_1688)
+          ? entry.gallery_image_urls_1688
+          : [],
+      description_image_urls: Array.isArray(sourceAttrs1688.description_image_urls)
+        ? sourceAttrs1688.description_image_urls
+        : Array.isArray(entry.description_image_urls_1688)
+          ? entry.description_image_urls_1688
+          : [],
+      variations:
+        sourceAttrs1688.variations && typeof sourceAttrs1688.variations === "object"
+          ? sourceAttrs1688.variations
+          : resolvedVariations,
+      weight_review_1688:
+        sourceAttrs1688.weight_review_1688 && typeof sourceAttrs1688.weight_review_1688 === "object"
+          ? sourceAttrs1688.weight_review_1688
+          : resolvedWeightReview,
+    };
     mutableRecord.platform_attributes = {
       ...sourceAttrs,
+      "1688": merged1688,
       submission: submissionAttrs,
     };
+    const normalizedEntryForStorage = isPreloaded1688
+      ? {
+          ...entry,
+          variations: resolvedVariations,
+          production_variant_selection:
+            resolvedVariantSelection || entry.production_variant_selection || null,
+          weight_review_1688: resolvedWeightReview || entry.weight_review_1688 || null,
+        }
+      : null;
+    mutableRecord.extension_payload_1688 = normalizedEntryForStorage;
 
     try {
       const normalized = normalizeExternalDataForRecord(record);
       await saveSuggestionRecord(normalized);
+
+      if (isPreloaded1688) {
+        let payloadFileName = "";
+        let payloadFilePath = "";
+        try {
+          fs.mkdirSync(PRODUCTION_SUPPLIER_PAYLOAD_DIR, { recursive: true });
+          const payloadItem = {
+            ...(normalizedEntryForStorage || entry),
+            production_provider: PARTNER_SUGGESTION_PROVIDER,
+            production_product_id: normalized.id,
+            url_1688: detailUrl,
+            url_1688_list: detailUrl ? [detailUrl] : [],
+          };
+          payloadFileName = `production_supplier_${sanitizeFilePart(
+            PARTNER_SUGGESTION_PROVIDER
+          )}_${sanitizeFilePart(normalized.id)}_${importStamp}_${String(index + 1).padStart(
+            3,
+            "0"
+          )}.json`;
+          payloadFilePath = path.join(PRODUCTION_SUPPLIER_PAYLOAD_DIR, payloadFileName);
+          fs.writeFileSync(payloadFilePath, JSON.stringify(payloadItem, null, 2), "utf8");
+        } catch (error) {
+          errors.push(
+            `Failed to persist preloaded 1688 payload for "${asText(title) || normalized.id}": ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+
+        const variations = toObjectRecord(resolvedVariations);
+        const combos = normalizeCombosForCache(variations.combos);
+        const baseSelection = normalizeVariantSelection(
+          resolvedVariantSelection || entry.production_variant_selection,
+          combos.length
+        );
+        const fallbackSelectedIndexes =
+          baseSelection.selected_combo_indexes.length > 0
+            ? baseSelection.selected_combo_indexes
+            : extractSelectedVariantIndexesFromCombos(combos);
+        const selectedComboIndexes =
+          fallbackSelectedIndexes.length > 0
+            ? fallbackSelectedIndexes
+            : combos.map((_, comboIndex) => comboIndex);
+        const variantSelection = {
+          ...baseSelection,
+          selected_combo_indexes: Array.from(new Set(selectedComboIndexes)).sort((a, b) => a - b),
+        };
+        const offerId =
+          asText(entry.selected_supplier_offer_id) || extract1688OfferId(detailUrl) || null;
+        const supplierSubject = asText(baseTitle || title);
+        const supplierSubjectEn =
+          asText(translatedTitle) || (supplierSubject && !hasCjk(supplierSubject) ? supplierSubject : "");
+        const selectedOffer = {
+          offerId,
+          detailUrl: detailUrl || null,
+          imageUrl: remoteMainImageUrl,
+          subject: supplierSubject || null,
+          subject_en: supplierSubjectEn || null,
+          _production_payload_status: payloadFilePath ? "ready" : "failed",
+          _production_payload_source: "extension_json",
+          _production_payload_error: payloadFilePath ? null : "Failed to persist payload JSON.",
+          _production_payload_file_name: payloadFileName || null,
+          _production_payload_file_path: payloadFilePath || null,
+          _production_payload_updated_at: importedAt,
+          _production_payload_saved_at: importedAt,
+          _production_variant_selection: variantSelection,
+          _production_variant_cache: {
+            cached_at: importedAt,
+            payload_file_path: payloadFilePath || null,
+            available_count: combos.length,
+            type1_label: asText(variations.type1_label || variations.type1Label),
+            type2_label: asText(variations.type2_label || variations.type2Label),
+            type3_label: asText(variations.type3_label || variations.type3Label),
+            combos,
+            gallery_images: resolvedImageUrls1688,
+            weight_review: resolvedWeightReview,
+          },
+        };
+
+        const [searchUpsert, selectionUpsert] = await Promise.all([
+          adminClient
+            .from("discovery_production_supplier_searches")
+            .upsert(
+              {
+                provider: PARTNER_SUGGESTION_PROVIDER,
+                product_id: normalized.id,
+                fetched_at: importedAt,
+                offers: [
+                  {
+                    rank: 1,
+                    offerId,
+                    detailUrl,
+                    imageUrl: remoteMainImageUrl,
+                    subject: supplierSubject || null,
+                    subject_en: supplierSubjectEn || null,
+                  },
+                ],
+                input: {
+                  source: "extension_upload",
+                  mode: "preloaded_1688",
+                },
+                meta: {
+                  source: "extension_upload",
+                  preloaded: true,
+                  payload_file_name: payloadFileName || null,
+                },
+              },
+              { onConflict: "provider,product_id" }
+            ),
+          adminClient
+            .from("discovery_production_supplier_selection")
+            .upsert(
+              {
+                provider: PARTNER_SUGGESTION_PROVIDER,
+                product_id: normalized.id,
+                selected_offer_id: offerId,
+                selected_detail_url: detailUrl || null,
+                selected_offer: selectedOffer,
+                selected_at: importedAt,
+                selected_by: queueUserId,
+                updated_at: importedAt,
+              },
+              { onConflict: "provider,product_id" }
+            ),
+        ]);
+
+        if (searchUpsert.error || selectionUpsert.error) {
+          errors.push(
+            `Failed to preload supplier selection "${asText(title) || normalized.id}": ${
+              searchUpsert.error?.message || selectionUpsert.error?.message || "unknown error"
+            }`
+          );
+          supplierSearchWorkerIds.push(normalized.id);
+        }
+      } else {
+        supplierSearchWorkerIds.push(normalized.id);
+        if (/^https?:\/\//i.test(asText(normalized.crawlFinalUrl))) {
+          sourceWorkerCandidateIds.push(normalized.id);
+        }
+      }
       createdRecords.push(normalized);
     } catch (error) {
       errors.push(
-        `Failed to save suggestion "${asText(title) || sourceUrl || "unknown"}": ${
+        `Failed to save suggestion "${asText(title) || effectiveSourceUrl || "unknown"}": ${
           error instanceof Error ? error.message : String(error)
         }`
       );
@@ -789,10 +1559,11 @@ const importSuggestionsToPartnerQueue = async (
     errors.push(`Failed to queue product suggestions: ${queueError.message}`);
   }
 
-  const searchWorkerStarted = spawnBackgroundSupplierSearchWorker(
-    createdRecords.map((record) => record.id)
-  );
-  if (!searchWorkerStarted) {
+  const searchWorkerStarted =
+    supplierSearchWorkerIds.length > 0
+      ? spawnBackgroundSupplierSearchWorker(supplierSearchWorkerIds)
+      : true;
+  if (supplierSearchWorkerIds.length > 0 && !searchWorkerStarted) {
     errors.push("Background supplier search worker failed to start.");
   }
 
@@ -805,11 +1576,10 @@ const importSuggestionsToPartnerQueue = async (
     errors.push("Background taxonomy worker failed to start.");
   }
 
-  const sourceWorkerIds = createdRecords
-    .filter((record) => /^https?:\/\//i.test(asText(record.crawlFinalUrl)))
-    .map((record) => record.id);
+  const sourceWorkerIds = Array.from(new Set(sourceWorkerCandidateIds));
   const sourceQueued = sourceWorkerIds.length;
-  const sourceWorkerStarted = spawnBackgroundSourceWorker(sourceWorkerIds);
+  const sourceWorkerStarted =
+    sourceQueued > 0 ? spawnBackgroundSourceWorker(sourceWorkerIds) : true;
   if (sourceQueued > 0 && !sourceWorkerStarted) {
     errors.push("Background source crawl worker failed to start.");
     const failedAt = new Date().toISOString();
@@ -885,6 +1655,7 @@ export async function POST(request: Request) {
 
   const aiEnhanced = await maybeEnhanceItemsWithAi(items, payloadRecord);
   const finalItems = aiEnhanced.items;
+  const routeTo = resolveUploadRouteTarget(payloadRecord);
 
   const baseRaw =
     (payloadRecord?.filenameBase || payloadRecord?.filename || payloadRecord?.name || "").toString();
@@ -904,10 +1675,23 @@ export async function POST(request: Request) {
   void warmQueueImageCacheForFile(safeName).catch(() => {
     // best effort for upload path
   });
-  const productSuggestionsImport = await importSuggestionsToPartnerQueue(
-    finalItems,
-    payloadRecord
-  );
+  let productSuggestionsImport: SuggestionImportSummary;
+  if (routeTo === "suggestions") {
+    productSuggestionsImport = await importSuggestionsToPartnerQueue(
+      finalItems,
+      payloadRecord,
+      { force: true }
+    );
+  } else if (routeTo === "production") {
+    productSuggestionsImport = buildSuggestionImportSkippedSummary(
+      "route_target_production"
+    );
+  } else {
+    productSuggestionsImport = await importSuggestionsToPartnerQueue(
+      finalItems,
+      payloadRecord
+    );
+  }
 
   return NextResponse.json(
     {
@@ -915,6 +1699,7 @@ export async function POST(request: Request) {
       filename: safeName,
       savedTo: UPLOAD_DIR,
       count: finalItems.length,
+      route_to: routeTo,
       ai_enhanced: aiEnhanced.usedAi,
       ai_error: aiEnhanced.error,
       product_suggestions_import: productSuggestionsImport,

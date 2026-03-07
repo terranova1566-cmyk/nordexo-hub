@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { DRAFT_ROOT, resolveDraftPath, toRelativePath } from "@/lib/drafts";
+import { runAutoCenterWhiteInPlace } from "@/lib/draft-ai-edits";
 import { refreshDraftImageScoreByAbsolutePath } from "@/lib/draft-image-score";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ export const runtime = "nodejs";
 const OUTPUT_WIDTH = 1424;
 const OUTPUT_HEIGHT = 752;
 const OUTPUT_STACK_OVERLAY_SIZE = 1000;
+const STACK_OVERLAY_CANVAS_PADDING = 24;
 const RIGHT_SCENE_COVERAGE = 0.7;
 const RIGHT_FADE_PERCENT_DEFAULT = 30;
 const RIGHT_FADE_PERCENT_MAX = 30;
@@ -1499,8 +1501,57 @@ export async function POST(request: Request) {
       outputWidth = OUTPUT_STACK_OVERLAY_SIZE;
       outputHeight = OUTPUT_STACK_OVERLAY_SIZE;
       outputBaseNameSuffix = "stack-overlay";
-      const stackLeft = Math.max(0, Math.floor((outputWidth - STACK_ZONE_WIDTH) / 2));
-      const stackTop = Math.max(0, Math.floor((outputHeight - STACK_ZONE_HEIGHT) / 2));
+
+      const minLeft = stack.placements.length
+        ? Math.min(...stack.placements.map((card) => card.left))
+        : 0;
+      const maxRight = stack.placements.length
+        ? Math.max(...stack.placements.map((card) => card.left + card.renderWidth))
+        : STACK_ZONE_WIDTH;
+      const minTop = stack.placements.length
+        ? Math.min(...stack.placements.map((card) => card.top))
+        : 0;
+      const maxBottom = stack.placements.length
+        ? Math.max(...stack.placements.map((card) => card.top + card.renderHeight))
+        : STACK_ZONE_HEIGHT;
+
+      const extractLeft = clamp(minLeft, 0, Math.max(0, STACK_ZONE_WIDTH - 1));
+      const extractTop = clamp(minTop, 0, Math.max(0, STACK_ZONE_HEIGHT - 1));
+      const extractWidth = clamp(
+        Math.max(1, maxRight - minLeft),
+        1,
+        Math.max(1, STACK_ZONE_WIDTH - extractLeft)
+      );
+      const extractHeight = clamp(
+        Math.max(1, maxBottom - minTop),
+        1,
+        Math.max(1, STACK_ZONE_HEIGHT - extractTop)
+      );
+
+      const extractedStackBuffer = await sharp(stack.zoneBuffer)
+        .extract({
+          left: extractLeft,
+          top: extractTop,
+          width: extractWidth,
+          height: extractHeight,
+        })
+        .png()
+        .toBuffer();
+
+      const targetWidth = Math.max(1, outputWidth - STACK_OVERLAY_CANVAS_PADDING * 2);
+      const targetHeight = Math.max(1, outputHeight - STACK_OVERLAY_CANVAS_PADDING * 2);
+      const resizedStack = await sharp(extractedStackBuffer)
+        .resize(targetWidth, targetHeight, {
+          fit: "inside",
+          withoutEnlargement: false,
+          kernel: "lanczos3",
+        })
+        .png()
+        .toBuffer({ resolveWithObject: true });
+      const fittedStackWidth = Math.max(1, Number(resizedStack.info.width || targetWidth));
+      const fittedStackHeight = Math.max(1, Number(resizedStack.info.height || targetHeight));
+      const stackLeft = Math.max(0, Math.floor((outputWidth - fittedStackWidth) / 2));
+      const stackTop = Math.max(0, Math.floor((outputHeight - fittedStackHeight) / 2));
 
       outputBuffer = await sharp({
         create: {
@@ -1510,7 +1561,7 @@ export async function POST(request: Request) {
           background: { r: 255, g: 255, b: 255 },
         },
       })
-        .composite([{ input: stack.zoneBuffer, left: stackLeft, top: stackTop }])
+        .composite([{ input: resizedStack.data, left: stackLeft, top: stackTop }])
         .jpeg({ quality: 92, mozjpeg: true, chromaSubsampling: "4:4:4" })
         .toBuffer();
 
@@ -1520,9 +1571,14 @@ export async function POST(request: Request) {
         stackCanvasWidth: outputWidth,
         stackCanvasHeight: outputHeight,
         leftStackZoneLeft: stackLeft,
-        leftStackZoneWidth: STACK_ZONE_WIDTH,
-        leftStackZoneHeight: STACK_ZONE_HEIGHT,
+        leftStackZoneWidth: fittedStackWidth,
+        leftStackZoneHeight: fittedStackHeight,
         leftStackZoneTop: stackTop,
+        leftStackSourceCropLeft: extractLeft,
+        leftStackSourceCropTop: extractTop,
+        leftStackSourceCropWidth: extractWidth,
+        leftStackSourceCropHeight: extractHeight,
+        leftStackPadding: STACK_OVERLAY_CANVAS_PADDING,
         leftStackCardCount: stack.placements.length,
         leftStackStepRightPx: stack.stepRightPx,
         leftStackStepUpPx: stack.stepUpPx,
@@ -1681,7 +1737,13 @@ export async function POST(request: Request) {
     const outputFileName = ensureUniqueName(targetAbsolutePath, fileBaseName, "jpg");
     const outputAbsolutePath = path.join(targetAbsolutePath, outputFileName);
     fs.writeFileSync(outputAbsolutePath, outputBuffer);
+    if (standaloneStackOverlay) {
+      await runAutoCenterWhiteInPlace(outputAbsolutePath);
+    }
     const outputStat = fs.statSync(outputAbsolutePath);
+    const outputMeta = await sharp(outputAbsolutePath).metadata();
+    const finalWidth = Number(outputMeta.width || outputWidth);
+    const finalHeight = Number(outputMeta.height || outputHeight);
 
     let pixelQualityScore: number | null = null;
     try {
@@ -1699,8 +1761,8 @@ export async function POST(request: Request) {
         modifiedAt: new Date(outputStat.mtimeMs).toISOString(),
         pixelQualityScore,
         zimageUpscaled: false,
-        width: outputWidth,
-        height: outputHeight,
+        width: finalWidth,
+        height: finalHeight,
       },
       merge: mergeDetails,
       truncatedCount,

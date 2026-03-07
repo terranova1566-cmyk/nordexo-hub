@@ -2,13 +2,17 @@ import { asText, extractJsonFromText } from "./core.mjs";
 import { reviewSupplierWeightBestEffort } from "./weight-review.mjs";
 
 const DEFAULT_MODELS = [
-  process.env.NODEXO_1688_AI_MODEL,
-  process.env.SUPPLIER_WEIGHT_REVIEW_MODEL,
   "gpt-5.2",
   "gpt-5",
   "gpt-5-mini",
   "gpt-5-nano",
+  process.env.NODEXO_1688_AI_MODEL,
+  process.env.SUPPLIER_WEIGHT_REVIEW_MODEL,
 ].filter(Boolean);
+
+const DEPRECATED_MODEL_RE = /^gpt-4(?:[.-]|$)|^gpt-3(?:[.-]|$)/i;
+
+const isDeprecatedModel = (model) => DEPRECATED_MODEL_RE.test(String(model || "").trim());
 
 const toBool = (value, fallback = false) => {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -40,7 +44,7 @@ const toModels = (provided) => {
   const seen = new Set();
   for (const raw of sources) {
     const model = asText(raw);
-    if (!model || seen.has(model)) continue;
+    if (!model || isDeprecatedModel(model) || seen.has(model)) continue;
     seen.add(model);
     out.push(model);
   }
@@ -50,6 +54,203 @@ const toModels = (provided) => {
 const normalizeWeightList = (value) => {
   if (!Array.isArray(value)) return [];
   return uniq(value.map((entry) => asText(entry)).filter(Boolean), 120);
+};
+
+const normalizeVariantToken = (value) =>
+  asText(value)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[\/|,;:()（）【】\[\]{}<>._-]+/g, "");
+
+const toPieceWeightGrams = (value) => {
+  const raw = asText(value).replace(/,/g, ".");
+  if (!raw) return null;
+  const match = raw.match(/-?\d+(?:\.\d+)?/);
+  if (!match?.[0]) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  if (/(kg|公斤|千克)/i.test(raw)) return Math.round(num * 1000);
+  if (/(g|克)/i.test(raw)) return Math.round(num);
+  if (raw.includes(".") && num <= 20) return Math.round(num * 1000);
+  return Math.round(num);
+};
+
+const normalizePieceWeightRows = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  rows.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const rec = entry;
+    const specAttrs = asText(rec.specAttrs || rec.spec_attrs || rec.spec);
+    const specParts = specAttrs
+      ? specAttrs
+          .split(">")
+          .map((part) => asText(part))
+          .filter(Boolean)
+      : [];
+    const sku1 = asText(rec.sku1 || rec.spec1 || specParts[0]);
+    const sku2 = asText(rec.sku2 || rec.spec2 || specParts[1]);
+    const sku3 = asText(rec.sku3 || rec.spec3 || specParts[2]);
+    const skuId = asText(rec.sku_id || rec.skuId || rec.skuID);
+    const weightGrams = toPieceWeightGrams(
+      rec.weight_grams ?? rec.weightGrams ?? rec.weight
+    );
+    if (!weightGrams) return;
+    const key = `${normalizeVariantToken(sku1)}|${normalizeVariantToken(sku2)}|${normalizeVariantToken(
+      sku3
+    )}|${skuId}|${weightGrams}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      sku1,
+      sku2,
+      sku3,
+      sku_id: skuId || null,
+      weight_grams: weightGrams,
+      length_cm:
+        Number.isFinite(Number(rec.length)) && Number(rec.length) > 0
+          ? Number(rec.length)
+          : null,
+      width_cm:
+        Number.isFinite(Number(rec.width)) && Number(rec.width) > 0
+          ? Number(rec.width)
+          : null,
+      height_cm:
+        Number.isFinite(Number(rec.height)) && Number(rec.height) > 0
+          ? Number(rec.height)
+          : null,
+      volume_cm3:
+        Number.isFinite(Number(rec.volume)) && Number(rec.volume) > 0
+          ? Number(rec.volume)
+          : null,
+    });
+  });
+  return out;
+};
+
+const collectWeightTokensFromPieceRows = (rows, max = 180) => {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const grams = toRoundedPositiveInt(row?.weight_grams, { min: 1, max: 500_000 });
+    if (!grams) return;
+    const token = `${grams}g`;
+    if (seen.has(token)) return;
+    seen.add(token);
+    out.push(token);
+  });
+  return out.slice(0, Math.max(10, Math.trunc(Number(max) || 180)));
+};
+
+const applyPieceWeightRowsToVariations = ({
+  variations,
+  pieceWeightRows,
+  allowOverwrite = false,
+}) => {
+  const next = normalizeVariations(variations);
+  const rows = normalizePieceWeightRows(pieceWeightRows);
+  if (!next || !Array.isArray(next.combos) || next.combos.length === 0) {
+    return {
+      variations: next,
+      row_count: rows.length,
+      matched_count: 0,
+      applied_count: 0,
+      used: rows.length > 0,
+    };
+  }
+  if (!rows.length) {
+    return {
+      variations: next,
+      row_count: 0,
+      matched_count: 0,
+      applied_count: 0,
+      used: false,
+    };
+  }
+
+  const bySku = new Map();
+  const byTriple = new Map();
+  const byPair = new Map();
+  const byPairSwap = new Map();
+  const setWeight = (map, key, grams) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, grams);
+  };
+
+  rows.forEach((row) => {
+    const grams = toRoundedPositiveInt(row?.weight_grams, { min: 1, max: 500_000 });
+    if (!grams) return;
+    const k1 = normalizeVariantToken(row?.sku1);
+    const k2 = normalizeVariantToken(row?.sku2);
+    const k3 = normalizeVariantToken(row?.sku3);
+    const skuId = asText(row?.sku_id);
+    if (skuId) setWeight(bySku, skuId, grams);
+    if (k1 && k2 && k3) setWeight(byTriple, `${k1}|${k2}|${k3}`, grams);
+    if (k1 && k2) {
+      setWeight(byPair, `${k1}|${k2}`, grams);
+      setWeight(byPairSwap, `${k2}|${k1}`, grams);
+    }
+  });
+
+  const combos = next.combos.map((combo) =>
+    combo && typeof combo === "object" ? { ...combo } : {}
+  );
+  let matchedCount = 0;
+  let appliedCount = 0;
+
+  combos.forEach((combo, idx) => {
+    const existingWeight =
+      toRoundedPositiveInt(combo?.weight_grams, { min: 1, max: 500_000 }) ??
+      parseWeightGramsLoose(combo?.weight_raw ?? combo?.weightRaw ?? combo?.weight);
+    if (existingWeight && !allowOverwrite) return;
+
+    const t1 = normalizeVariantToken(
+      combo?.t1 || combo?.t1_zh || combo?.t1_en || combo?.name || combo?.title || ""
+    );
+    const t2 = normalizeVariantToken(combo?.t2 || combo?.t2_zh || combo?.t2_en || "");
+    const t3 = normalizeVariantToken(combo?.t3 || combo?.t3_zh || combo?.t3_en || "");
+    const comboSkuId = asText(combo?.sku_id || combo?.skuId);
+
+    let inferred = null;
+    if (comboSkuId && bySku.has(comboSkuId)) {
+      inferred = bySku.get(comboSkuId);
+    } else if (t1 && t2 && t3 && byTriple.has(`${t1}|${t2}|${t3}`)) {
+      inferred = byTriple.get(`${t1}|${t2}|${t3}`);
+    } else if (t1 && t2 && byPair.has(`${t1}|${t2}`)) {
+      inferred = byPair.get(`${t1}|${t2}`);
+    } else if (t1 && t2 && byPairSwap.has(`${t1}|${t2}`)) {
+      inferred = byPairSwap.get(`${t1}|${t2}`);
+    }
+
+    const inferredWeight = toRoundedPositiveInt(inferred, { min: 1, max: 500_000 });
+    if (!inferredWeight) return;
+    matchedCount += 1;
+    if (
+      existingWeight &&
+      allowOverwrite &&
+      Math.abs(Number(existingWeight) - Number(inferredWeight)) <= 2
+    ) {
+      return;
+    }
+
+    combo.weight_grams = inferredWeight;
+    if (!asText(combo.weight_raw)) combo.weight_raw = `${inferredWeight}g`;
+    if (!asText(combo.weightRaw)) combo.weightRaw = `${inferredWeight}g`;
+    combos[idx] = combo;
+    appliedCount += 1;
+  });
+
+  return {
+    variations: {
+      ...next,
+      combos,
+    },
+    row_count: rows.length,
+    matched_count: matchedCount,
+    applied_count: appliedCount,
+    used: true,
+  };
 };
 
 const normalizeVariations = (value) => {
@@ -87,17 +288,40 @@ const toTitleHints = (item) => ({
 
 const toExtractedPayload = (item) => {
   const readableText = toReadableText(item);
+  const attrs1688 =
+    item?.platform_attributes &&
+    typeof item.platform_attributes === "object" &&
+    item.platform_attributes["1688"] &&
+    typeof item.platform_attributes["1688"] === "object"
+      ? item.platform_attributes["1688"]
+      : {};
+  const pieceWeightRows = normalizePieceWeightRows(
+    item?.piece_weight_rows_1688 ||
+      item?.pieceWeightRows ||
+      item?.product_pack_piece_weight_rows_1688 ||
+      item?.product_pack_piece_weight_rows ||
+      attrs1688?.piece_weight_rows_1688 ||
+      attrs1688?.piece_weight_rows ||
+      attrs1688?.pieceWeightRows ||
+      []
+  );
+  const weightTokensFromPieceRows = collectWeightTokensFromPieceRows(pieceWeightRows, 220);
   const variations = normalizeVariations(
     item?.variations_enriched_1688 && typeof item.variations_enriched_1688 === "object"
       ? item.variations_enriched_1688
       : item?.variations
   );
-  const weights = normalizeWeightList(item?.product_weights_1688 || item?.weights || []);
+  const weights = normalizeWeightList([
+    ...(Array.isArray(item?.product_weights_1688) ? item.product_weights_1688 : []),
+    ...(Array.isArray(item?.weights) ? item.weights : []),
+    ...weightTokensFromPieceRows,
+  ]);
   return {
     extracted: {
       readableText,
       variations,
       weights,
+      pieceWeightRows,
       mainImageUrl: asText(item?.main_image_1688 || item?.mainImageUrl || ""),
     },
   };
@@ -239,16 +463,16 @@ const normalizeVariantLabelKey = (value) =>
     .replace(/\s+/g, "")
     .replace(/[\/|,;:()（）【】\[\]{}<>._-]+/g, "");
 
-const toVariantDisplayLabel = (row) =>
-  asText(
-    row?.t1 ||
-      row?.t1_zh ||
-      row?.t1_en ||
-      row?.name ||
-      row?.title ||
-      row?.spec ||
-      ""
-  );
+const toVariantDisplayLabel = (row) => {
+  const tokens = [
+    row?.t1 || row?.t1_zh || row?.t1_en || row?.name || row?.title || row?.spec || "",
+    row?.t2 || row?.t2_zh || row?.t2_en || "",
+    row?.t3 || row?.t3_zh || row?.t3_en || "",
+  ]
+    .map((entry) => asText(entry))
+    .filter(Boolean);
+  return tokens.join(" / ");
+};
 
 const SIZE_TOKEN_RE =
   /\b(?:xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|one\s*size|free\s*size|size)\b|尺码|均码/i;
@@ -365,7 +589,14 @@ const normalizeInferenceRows = (parsed) => {
           ? Number(rec.idx)
           : null;
     const label = asText(
-      rec.label || rec.size || rec.variant || rec.name || rec.title || rec.t1 || ""
+      rec.label ||
+        rec.combo ||
+        rec.size ||
+        rec.variant ||
+        rec.name ||
+        rec.title ||
+        [rec.t1, rec.t2, rec.t3].map((entry) => asText(entry)).filter(Boolean).join(" / ") ||
+        ""
     );
     const weightGrams = toRoundedPositiveInt(
       rec.weight_grams || rec.weightGrams || rec.grams || rec.weight,
@@ -433,6 +664,7 @@ const runWeightInferenceAi = async ({
     maxChars: 16_000,
     maxLines: 500,
   });
+  const pieceWeightRows = normalizePieceWeightRows(extracted.pieceWeightRows).slice(0, 500);
   const weightFocusedText = String(readableText || "")
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
@@ -447,6 +679,9 @@ const runWeightInferenceAi = async ({
     "You infer PER-UNIT variant product weights for a 1688 supplier page.",
     "Use only provided data. Never use carton/shipping/packaging weights.",
     "If evidence is weak, return decision=skip.",
+    "If piece_weight_rows_1688 is present, treat it as high-priority structured evidence and map rows to variants by sku1/sku2/sku3 labels (including swapped color/size order).",
+    "When mapping is mostly clear but not perfect, do best-effort assignment for the matched variants and still return decision=go.",
+    "If only a single reliable PER-UNIT product weight exists and variants differ only by color/style, you may assign one shared weight.",
     "When variants are clothing sizes and anchors exist (e.g., XS/3XL), infer a smooth monotonic size-to-weight progression.",
     "Do not output unrealistic outliers unless strongly supported by text.",
     "Return JSON only.",
@@ -466,6 +701,7 @@ const runWeightInferenceAi = async ({
         detail_url: toDetailUrl(item),
         title_hints: titleHints,
         product_weights_1688: productWeights,
+        piece_weight_rows_1688: pieceWeightRows,
         variant_rows: variantRows,
         weight_focused_text: weightFocusedText,
         readable_excerpt: readableText,
@@ -529,16 +765,38 @@ const applyWeightInferenceToVariations = ({
   );
   const keyToIndexes = new Map();
   combos.forEach((combo, idx) => {
+    const comboLabels = uniq(
+      [
+        [combo?.t1, combo?.t2, combo?.t3].map((entry) => asText(entry)).filter(Boolean).join(" / "),
+        [combo?.t2, combo?.t1, combo?.t3].map((entry) => asText(entry)).filter(Boolean).join(" / "),
+        [combo?.t1_zh, combo?.t2_zh, combo?.t3_zh]
+          .map((entry) => asText(entry))
+          .filter(Boolean)
+          .join(" / "),
+        [combo?.t1_en, combo?.t2_en, combo?.t3_en]
+          .map((entry) => asText(entry))
+          .filter(Boolean)
+          .join(" / "),
+      ],
+      8
+    );
     const labels = uniq(
       [
+        ...comboLabels,
         combo?.t1,
+        combo?.t2,
+        combo?.t3,
         combo?.t1_zh,
+        combo?.t2_zh,
+        combo?.t3_zh,
         combo?.t1_en,
+        combo?.t2_en,
+        combo?.t3_en,
         combo?.name,
         combo?.title,
         combo?.spec,
       ],
-      12
+      24
     );
     labels.forEach((label) => {
       const key = normalizeVariantLabelKey(label);
@@ -729,6 +987,20 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
   const modelCandidates = toModels(options.modelCandidates || []);
 
   const extractedPayload = toExtractedPayload(base);
+  const deterministicPieceWeightMapping = applyPieceWeightRowsToVariations({
+    variations: extractedPayload?.extracted?.variations,
+    pieceWeightRows: extractedPayload?.extracted?.pieceWeightRows,
+    allowOverwrite: false,
+  });
+  if (
+    deterministicPieceWeightMapping?.variations &&
+    Array.isArray(deterministicPieceWeightMapping.variations.combos)
+  ) {
+    extractedPayload.extracted.variations = deterministicPieceWeightMapping.variations;
+    if (Number(deterministicPieceWeightMapping.applied_count) > 0) {
+      base.variations_enriched_1688 = deterministicPieceWeightMapping.variations;
+    }
+  }
   const detailUrl = toDetailUrl(base);
   const competitor = toCompetitorHint(base);
   const existingWeightReview =
@@ -750,11 +1022,7 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
     }
   }
 
-  const baseVariations = normalizeVariations(
-    base?.variations_enriched_1688 && typeof base.variations_enriched_1688 === "object"
-      ? base.variations_enriched_1688
-      : base?.variations
-  );
+  const baseVariations = normalizeVariations(extractedPayload?.extracted?.variations);
   const hasStrongStructuredTable = Boolean(
     weightReview?.heuristic?.metrics?.structured_table?.strong_table_pass
   );
@@ -870,6 +1138,12 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
               ? weightInference.evidence_lines.map((entry) => asText(entry)).filter(Boolean)
               : [],
             analysis: weightQuality,
+            piece_weight_table_mapping: {
+              used: Boolean(deterministicPieceWeightMapping?.used),
+              row_count: Number(deterministicPieceWeightMapping?.row_count) || 0,
+              matched_count: Number(deterministicPieceWeightMapping?.matched_count) || 0,
+              applied_count: Number(deterministicPieceWeightMapping?.applied_count) || 0,
+            },
           },
         }
       : weightReview;
@@ -908,6 +1182,12 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
           ? weightInference.evidence_lines.map((entry) => asText(entry)).filter(Boolean)
           : [],
         analysis: weightQuality,
+        piece_weight_table_mapping: {
+          used: Boolean(deterministicPieceWeightMapping?.used),
+          row_count: Number(deterministicPieceWeightMapping?.row_count) || 0,
+          matched_count: Number(deterministicPieceWeightMapping?.matched_count) || 0,
+          applied_count: Number(deterministicPieceWeightMapping?.applied_count) || 0,
+        },
       },
     };
   }
@@ -921,6 +1201,14 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
     out = appendUniqueNote(
       out,
       `ai_weight_review_warning:${reasonTag || "possible_weight_issue"}`
+    );
+  }
+  if (Number(deterministicPieceWeightMapping?.applied_count) > 0) {
+    out = appendUniqueNote(
+      out,
+      `piece_weight_table_applied:${Number(deterministicPieceWeightMapping.applied_count)}/${Number(
+        deterministicPieceWeightMapping.matched_count || 0
+      )}`
     );
   }
 
@@ -961,6 +1249,12 @@ export const enhance1688ItemWithAi = async (item, options = {}) => {
       summary: asText(weightInference.summary).slice(0, 600),
       error: asText(weightInference.error) || null,
       analysis: weightQuality,
+      piece_weight_table_mapping: {
+        used: Boolean(deterministicPieceWeightMapping?.used),
+        row_count: Number(deterministicPieceWeightMapping?.row_count) || 0,
+        matched_count: Number(deterministicPieceWeightMapping?.matched_count) || 0,
+        applied_count: Number(deterministicPieceWeightMapping?.applied_count) || 0,
+      },
     },
     attribute_extract: attributeExtract,
   };

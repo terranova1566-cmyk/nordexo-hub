@@ -228,6 +228,8 @@ const shouldSkipImageUrl = (urlText: string) => {
   if (!text) return true;
   if (!/^https?:\/\//i.test(text)) return true;
   if (text.startsWith("data:")) return true;
+  if (text.includes("/1/batch/1/op/") || text.includes("uedata=")) return true;
+  if (/^https?:\/\/fls-[a-z0-9-]+\.amazon\./i.test(text)) return true;
   if (text.includes("/favicon")) return true;
   if (text.includes("doubleclick") || text.includes("googleads")) return true;
   if (text.includes("spacer.gif")) return true;
@@ -248,6 +250,16 @@ const scoreImageUrl = (urlText: string, ogImage: string) => {
   if (/\b(1200|1080|1000|900|800|750|700|640|600)\b/.test(lowered)) score += 18;
   if (/product|detail|offer|goods|item|sku|main|hero/.test(lowered)) score += 24;
   if (/small|thumb|icon|logo|sprite|placeholder|banner/.test(lowered)) score -= 24;
+
+  try {
+    const parsed = new URL(text);
+    if (isAmazonImageHost(parsed.hostname)) {
+      if (/\.png(?:[?#]|$)/i.test(parsed.pathname)) score -= 14;
+      if (/\.jpe?g(?:[?#]|$)/i.test(parsed.pathname)) score += 6;
+    }
+  } catch {
+    // ignore parse errors
+  }
 
   const dim = lowered.match(/(\d{2,4})[x_](\d{2,4})/);
   if (dim?.[1] && dim?.[2]) {
@@ -330,6 +342,150 @@ const normalizeAmazonGalleryImageList = (values: string[], max = 32) => {
     if (out.length >= max) break;
   }
   return out;
+};
+
+const DEFAULT_IMAGE_MIN_SHORT_SIDE = 56;
+const DEFAULT_IMAGE_MIN_AREA = 5_000;
+const DEFAULT_IMAGE_MAX_ASPECT_RATIO = 9;
+const DEFAULT_IMAGE_MIN_BYTES = 1_200;
+
+export const isSuggestionImageUsable = (
+  image: Pick<SuggestionImage, "width" | "height" | "byteSize"> | null | undefined,
+  options?: {
+    minShortSide?: number;
+    minArea?: number;
+    maxAspectRatio?: number;
+    minByteSize?: number;
+  }
+) => {
+  if (!image) return false;
+
+  const minShortSide = Math.max(10, Number(options?.minShortSide ?? DEFAULT_IMAGE_MIN_SHORT_SIDE));
+  const minArea = Math.max(100, Number(options?.minArea ?? DEFAULT_IMAGE_MIN_AREA));
+  const maxAspectRatio = Math.max(1, Number(options?.maxAspectRatio ?? DEFAULT_IMAGE_MAX_ASPECT_RATIO));
+  const minByteSize = Math.max(100, Number(options?.minByteSize ?? DEFAULT_IMAGE_MIN_BYTES));
+
+  const width = Number(image.width);
+  const height = Number(image.height);
+  const byteSize = Number(image.byteSize);
+
+  if (Number.isFinite(byteSize) && byteSize > 0 && byteSize < minByteSize) {
+    return false;
+  }
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return true;
+  }
+
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const shortSide = Math.min(w, h);
+  const area = w * h;
+  const aspectRatio = Math.max(w, h) / shortSide;
+
+  if (shortSide < minShortSide) return false;
+  if (area < minArea) return false;
+  if (aspectRatio > maxAspectRatio) return false;
+
+  return true;
+};
+
+const normalizeImageCandidateUrl = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) return "";
+  if (shouldSkipImageUrl(raw)) return "";
+  return raw;
+};
+
+const rankImageCandidates = (values: unknown[], preferredUrl: string, max = 18) => {
+  const normalized = uniqueList(
+    values.map((entry) => normalizeImageCandidateUrl(entry)).filter(Boolean),
+    Math.max(4, max * 2)
+  );
+  if (normalized.length === 0) return [] as string[];
+
+  const preferredKey = asText(preferredUrl).split("#")[0].toLowerCase();
+  return normalized
+    .map((url) => {
+      const key = url.split("#")[0].toLowerCase();
+      const preferredBoost = preferredKey && key === preferredKey ? 1000 : 0;
+      return {
+        url,
+        score: scoreImageUrl(url, "") + preferredBoost,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, max))
+    .map((entry) => entry.url);
+};
+
+export const fetchAndNormalizeBestImageCandidate = async (
+  values: unknown[],
+  options?: {
+    preferredUrl?: string | null;
+    maxAttempts?: number;
+    minShortSide?: number;
+    minArea?: number;
+    maxAspectRatio?: number;
+    minByteSize?: number;
+  }
+): Promise<{
+  image: SuggestionImage | null;
+  sourceUrl: string | null;
+  finalUrl: string | null;
+  errors: string[];
+}> => {
+  const maxAttempts = Math.max(1, Math.min(20, Number(options?.maxAttempts ?? 8)));
+  const ranked = rankImageCandidates(values, asText(options?.preferredUrl), maxAttempts);
+  if (ranked.length === 0) {
+    return {
+      image: null,
+      sourceUrl: null,
+      finalUrl: null,
+      errors: [],
+    };
+  }
+
+  const errors: string[] = [];
+  for (const sourceUrl of ranked) {
+    try {
+      const fetched = await fetchAndNormalizeImage(sourceUrl);
+      const usable = isSuggestionImageUsable(fetched.image, {
+        minShortSide: options?.minShortSide,
+        minArea: options?.minArea,
+        maxAspectRatio: options?.maxAspectRatio,
+        minByteSize: options?.minByteSize,
+      });
+      if (!usable) {
+        errors.push(
+          `Image candidate rejected (too small/strip): ${sourceUrl} (${fetched.image.width ?? "?"}x${
+            fetched.image.height ?? "?"
+          })`
+        );
+        continue;
+      }
+      return {
+        image: fetched.image,
+        sourceUrl,
+        finalUrl: asText(fetched.finalUrl) || sourceUrl,
+        errors,
+      };
+    } catch (error) {
+      errors.push(
+        `Image candidate failed: ${sourceUrl} (${
+          error instanceof Error ? error.message : String(error)
+        })`
+      );
+    }
+  }
+
+  return {
+    image: null,
+    sourceUrl: null,
+    finalUrl: null,
+    errors,
+  };
 };
 
 const collectJsonLdBlocks = (html: string) => {
@@ -584,6 +740,19 @@ type BrowserCopiedPage = {
   errors: string[];
 };
 
+type BrowserRuntime = {
+  newPage: (options?: Record<string, unknown>) => Promise<BrowserPageRuntime>;
+  close: () => Promise<unknown>;
+};
+
+type BrowserPageRuntime = {
+  goto: (url: string, options?: Record<string, unknown>) => Promise<unknown>;
+  waitForTimeout: (ms: number) => Promise<unknown>;
+  evaluate: (script: string) => Promise<unknown>;
+  url: () => string;
+  close: () => Promise<unknown>;
+};
+
 const crawlWithBrowserCopyPaste = async (inputUrl: string): Promise<BrowserCopiedPage | null> => {
   let chromiumRuntime: {
     launch: (options?: Record<string, unknown>) => Promise<unknown>;
@@ -604,14 +773,14 @@ const crawlWithBrowserCopyPaste = async (inputUrl: string): Promise<BrowserCopie
 
   if (!chromiumRuntime || typeof chromiumRuntime.launch !== "function") return null;
 
-  let browser: any = null;
-  let page: any = null;
+  let browser: BrowserRuntime | null = null;
+  let page: BrowserPageRuntime | null = null;
 
   try {
-    browser = await chromiumRuntime.launch({
+    browser = (await chromiumRuntime.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    })) as BrowserRuntime;
     page = await browser.newPage({
       userAgent:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
@@ -1342,14 +1511,20 @@ export const buildExternalDataForUrlSuggestion = async (params: {
     80
   );
   const amazonGalleryImages = isAmazonSource
-    ? normalizeAmazonGalleryImageList(normalizedRawImages, 32)
+    ? normalizeAmazonGalleryImageList(normalizedRawImages, 12)
     : [];
   const normalizedInputGalleryImageUrls =
     isAmazonSource && amazonGalleryImages.length > 0
       ? amazonGalleryImages
       : normalizedRawImages;
+  const scoredMainImageUrl = normalizedInputGalleryImageUrls
+    .map((imageUrl) => ({
+      imageUrl,
+      score: scoreImageUrl(imageUrl, isAmazonSource ? "" : asText(params.mainImageUrl)),
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.imageUrl;
   const rawMainImageUrl =
-    (isAmazonSource ? asText(normalizedInputGalleryImageUrls[0]) : "") ||
+    asText(scoredMainImageUrl) ||
     asText(params.mainImageUrl) ||
     asText(normalizedInputGalleryImageUrls[0]) ||
     null;
@@ -1381,9 +1556,20 @@ export const buildExternalDataForUrlSuggestion = async (params: {
       description = normalizeDescription(asText(aiResponse.cleanedDescription));
     }
     if (aiResponse.keptImageIndexes.length > 0) {
-      galleryImageUrls = aiResponse.keptImageIndexes
+      const keptImageUrls = aiResponse.keptImageIndexes
         .map((idx) => galleryBeforeAi[idx])
         .filter(Boolean);
+      const keptKeys = new Set(
+        keptImageUrls.map((entry) => asText(entry).split("#")[0].toLowerCase()).filter(Boolean)
+      );
+      const remainingImageUrls = galleryBeforeAi.filter((entry) => {
+        const key = asText(entry).split("#")[0].toLowerCase();
+        return key && !keptKeys.has(key);
+      });
+      galleryImageUrls = normalizeImageList(
+        [...keptImageUrls, ...remainingImageUrls],
+        isAmazonSource ? 12 : 80
+      );
     }
 
     const preferredMainImageIndex =
@@ -1465,11 +1651,20 @@ export const buildExternalDataForUrlSuggestion = async (params: {
 export const normalizeExternalDataForRecord = (
   record: ProductSuggestionRecord
 ): ProductSuggestionRecord => {
+  const rawRecordMainImageUrl = asText(record.mainImageUrl);
+  const recordMainLooksLocalTemp = rawRecordMainImageUrl.startsWith("/api/public/temp-images/");
+  const hasRecordImageMeta = Boolean(record.image && typeof record.image === "object");
+  const hasUsableRecordImage =
+    rawRecordMainImageUrl &&
+    (!recordMainLooksLocalTemp ||
+      !hasRecordImageMeta ||
+      isSuggestionImageUsable(record.image || null));
+  const baseMainCandidate = hasUsableRecordImage ? rawRecordMainImageUrl : null;
   const baseGallery = normalizeImageList(
-    [record.mainImageUrl, ...(Array.isArray(record.galleryImageUrls) ? record.galleryImageUrls : [])],
+    [baseMainCandidate, ...(Array.isArray(record.galleryImageUrls) ? record.galleryImageUrls : [])],
     80
   );
-  const baseMainImageUrl = asText(record.mainImageUrl) || asText(baseGallery[0]) || null;
+  const baseMainImageUrl = asText(baseMainCandidate) || asText(baseGallery[0]) || null;
   const baseTitle = asText(record.title) || null;
   const baseDescription = normalizeDescription(asText(record.description)) || null;
   const createdAt = asText(record.createdAt) || new Date().toISOString();
@@ -1483,11 +1678,17 @@ export const normalizeExternalDataForRecord = (
   )
     ? ((existing as { rawGalleryImageUrls?: unknown }).rawGalleryImageUrls as unknown[])
     : [];
+  const existingGalleryImageUrls = Array.isArray(existing?.galleryImageUrls)
+    ? existing.galleryImageUrls
+    : [];
+  const fallbackBaseGallery =
+    existingGalleryImageUrls.length === 0 ? baseGallery : [];
   const galleryImageUrls = normalizeImageList(
     [
-      ...(existing?.galleryImageUrls || []),
+      ...existingGalleryImageUrls,
       ...legacyRawGalleryImageUrls,
-      ...baseGallery,
+      ...fallbackBaseGallery,
+      baseMainCandidate,
     ],
     80
   );
@@ -1539,12 +1740,18 @@ export const normalizeExternalDataForRecord = (
     updatedAt: asText(existing?.updatedAt) || asText(existing?.createdAt) || createdAt,
   };
 
+  const mergedGalleryImageUrls = normalizeImageList(
+    [asText(baseMainCandidate), ...nextExternal.galleryImageUrls],
+    80
+  );
+
   return {
     ...record,
     title,
     description,
-    mainImageUrl: asText(record.mainImageUrl) || asText(nextExternal.mainImageUrl) || null,
-    galleryImageUrls: baseGallery.length > 0 ? baseGallery : [...nextExternal.galleryImageUrls],
+    mainImageUrl: asText(baseMainCandidate) || asText(nextExternal.mainImageUrl) || null,
+    galleryImageUrls: mergedGalleryImageUrls,
+    image: hasUsableRecordImage ? record.image || null : null,
     externalData: nextExternal,
     googleTaxonomy,
     errors: uniqueList(

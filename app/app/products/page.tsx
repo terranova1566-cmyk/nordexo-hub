@@ -56,6 +56,12 @@ type CategorySelection = {
   value: string;
 };
 
+type CampaignSegmentContext = {
+  run_id: string;
+  segment_id: string;
+  label: string | null;
+} | null;
+
 const useStyles = makeStyles({
   layout: {
     display: "flex",
@@ -94,7 +100,7 @@ const useStyles = makeStyles({
     marginLeft: "auto",
   },
   searchInput: {
-    width: "520px",
+    width: "260px",
     maxWidth: "100%",
     fontSize: tokens.fontSizeBase300,
     "& input": {
@@ -178,14 +184,24 @@ const useStyles = makeStyles({
     lineHeight: tokens.lineHeightBase100,
   },
   dropdownCompact: {
-    minWidth: "unset",
-    width: "auto",
-    maxWidth: "100%",
+    minWidth: "135px",
+    width: "135px",
+    maxWidth: "135px",
+  },
+  dropdownOptionCompact: {
+    minHeight: "26px",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
   },
   filterButton: {
-    minWidth: "180px",
+    minWidth: "135px",
+    width: "135px",
+    maxWidth: "135px",
     justifyContent: "space-between",
     fontWeight: tokens.fontWeightRegular,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    minHeight: "30px",
   },
   filterButtonText: {
     overflow: "hidden",
@@ -193,20 +209,27 @@ const useStyles = makeStyles({
     whiteSpace: "nowrap",
   },
   filterPopover: {
-    padding: "8px",
-    minWidth: "220px",
-    maxHeight: "260px",
+    padding: "4px",
+    width: "135px",
+    minWidth: "135px",
+    maxWidth: "135px",
+    maxHeight: "220px",
     overflowY: "auto",
   },
   filterOption: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    padding: "4px 6px",
+    gap: "6px",
+    padding: "2px 4px",
     borderRadius: "6px",
     cursor: "pointer",
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    minHeight: "24px",
     "& .fui-Checkbox__label": {
       fontWeight: tokens.fontWeightRegular,
+      fontSize: tokens.fontSizeBase100,
+      lineHeight: tokens.lineHeightBase100,
     },
     "&:hover": {
       backgroundColor: tokens.colorNeutralBackground2,
@@ -309,6 +332,10 @@ const useStyles = makeStyles({
   },
   filterField: {
     minWidth: "180px",
+  },
+  brandVendorField: {
+    minWidth: "135px",
+    width: "135px",
   },
   dropdownField: {
     width: "auto",
@@ -445,6 +472,9 @@ const useStyles = makeStyles({
     gap: "4px",
     maxWidth: "100%",
   },
+  spuValue: {
+    fontWeight: tokens.fontWeightBold,
+  },
   supplierCol: {
     minWidth: "160px",
     width: "160px",
@@ -494,12 +524,19 @@ const useStyles = makeStyles({
   salesValue: {
     fontSize: tokens.fontSizeBase100,
     lineHeight: tokens.lineHeightBase100,
-    fontWeight: tokens.fontWeightBold,
+    fontWeight: tokens.fontWeightRegular,
     fontVariantNumeric: "tabular-nums",
-    color: tokens.colorNeutralForeground1,
-    whiteSpace: "pre",
+    whiteSpace: "nowrap",
     width: "5ch",
     flexShrink: 0,
+  },
+  salesValuePositive: {
+    color: "#107c10",
+    fontWeight: tokens.fontWeightBold,
+  },
+  salesValueZero: {
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightRegular,
   },
   salesTrack: {
     display: "block",
@@ -561,6 +598,7 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase200,
     color: tokens.colorNeutralForeground1,
     lineHeight: tokens.lineHeightBase200,
+    fontWeight: tokens.fontWeightBold,
   },
   dateValueRecent: {
     color: "#107c10",
@@ -720,6 +758,14 @@ const useStyles = makeStyles({
     gap: "2px",
     lineHeight: "1.1",
   },
+  priceTypeLabel: {
+    fontWeight: tokens.fontWeightRegular,
+    color: tokens.colorNeutralForeground3,
+  },
+  priceRangeValue: {
+    fontWeight: tokens.fontWeightBold,
+    color: tokens.colorNeutralForeground1,
+  },
   variantPopover: {
     padding: "6px",
     borderRadius: "12px",
@@ -799,8 +845,8 @@ const useStyles = makeStyles({
     opacity: 1,
     minHeight: "28px",
     paddingInline: "10px",
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
     fontWeight: tokens.fontWeightSemibold,
     "&:hover": {
       backgroundColor: tokens.colorBrandBackgroundHover,
@@ -851,8 +897,8 @@ const useStyles = makeStyles({
     paddingInline: "10px",
     borderRadius: "6px",
     fontWeight: tokens.fontWeightSemibold,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
     border: `1px solid ${tokens.colorNeutralStroke1}`,
     color: tokens.colorNeutralForeground1,
     backgroundColor: tokens.colorNeutralBackground1,
@@ -875,8 +921,8 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground1,
     backgroundColor: tokens.colorNeutralBackground1,
     fontWeight: tokens.fontWeightSemibold,
-    fontSize: tokens.fontSizeBase100,
-    lineHeight: tokens.lineHeightBase100,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
     textDecorationLine: "none",
     opacity: 1,
     "&:hover": {
@@ -931,6 +977,25 @@ const useStyles = makeStyles({
       "&:not(:disabled):hover": {
         backgroundColor: tokens.colorNeutralBackground2,
       },
+    },
+  },
+  bulkActionButton: {
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    minHeight: "32px",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  actionMenuPopoverCompact: {
+    "& .fui-MenuList": {
+      paddingBlock: "2px",
+      minWidth: "148px",
+    },
+    "& .fui-MenuItem": {
+      minHeight: "24px",
+      paddingTop: "2px",
+      paddingBottom: "2px",
+      fontSize: tokens.fontSizeBase100,
+      lineHeight: tokens.lineHeightBase100,
     },
   },
   selectionCount: {
@@ -1071,7 +1136,9 @@ const priceFormatter = new Intl.NumberFormat("sv-SE", {
 });
 const salesFormatter = new Intl.NumberFormat("sv-SE", {
   maximumFractionDigits: 0,
+  useGrouping: false,
 });
+const DEFAULT_SORT = "added_desc";
 const PUBLISHED_CHANNEL_RANK: Record<string, number> = {
   tingelo: 0,
   sparkler: 1,
@@ -1249,6 +1316,7 @@ function ProductsPageInner() {
 
   const sortOptions = useMemo(
     () => [
+      { value: DEFAULT_SORT, label: "Sort by sales" },
       { value: "sales_1d_desc", label: t("products.sort.salesOneDay") },
       { value: "sales_1w_desc", label: t("products.sort.salesOneWeek") },
       { value: "sales_1m_desc", label: t("products.sort.salesOneMonth") },
@@ -1264,7 +1332,7 @@ function ProductsPageInner() {
       if (sortOptions.some((option) => option.value === normalized)) {
         return normalized;
       }
-      return "sales_all_time_desc";
+      return DEFAULT_SORT;
     },
     [sortOptions]
   );
@@ -1288,7 +1356,7 @@ function ProductsPageInner() {
   const [advancedRawResponse, setAdvancedRawResponse] = useState<string | null>(null);
   const [advancedRawJson, setAdvancedRawJson] = useState<Record<string, unknown> | null>(null);
   const [advancedDataOpen, setAdvancedDataOpen] = useState(false);
-  const [sort, setSort] = useState("sales_all_time_desc");
+  const [sort, setSort] = useState(DEFAULT_SORT);
   const [savedFilter, setSavedFilter] = useState("all");
   const [wishlistFilterId, setWishlistFilterId] = useState("all");
   const [categorySelections, setCategorySelections] = useState<CategorySelection[]>([]);
@@ -1342,11 +1410,14 @@ function ProductsPageInner() {
   }, []);
   const searchParams = useSearchParams();
   const urlSearch = searchParams.toString();
+  const campaignRunId = searchParams.get("campaignRunId")?.trim() ?? "";
+  const campaignSegmentId = searchParams.get("campaignSegmentId")?.trim() ?? "";
 
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [campaignContext, setCampaignContext] = useState<CampaignSegmentContext>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -1497,18 +1568,6 @@ function ProductsPageInner() {
     addedTo,
     t("products.filters.rangeAll")
   );
-
-  const toggleBrand = (value: string) => {
-    setSelectedBrands((prev) =>
-      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
-    );
-  };
-
-  const toggleVendor = (value: string) => {
-    setSelectedVendors((prev) =>
-      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
-    );
-  };
 
   const categorySummary =
     categorySelections.length === 0
@@ -1942,6 +2001,8 @@ function ProductsPageInner() {
       if (hasVariants) params.set("hasVariants", "true");
       if (savedFilter !== "all") params.set("saved", savedFilter);
       if (wishlistFilterId !== "all") params.set("wishlistId", wishlistFilterId);
+      if (campaignRunId) params.set("campaignRunId", campaignRunId);
+      if (campaignSegmentId) params.set("campaignSegmentId", campaignSegmentId);
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
 
@@ -1958,6 +2019,11 @@ function ProductsPageInner() {
         if (requestId !== loadRequestRef.current) return;
         setProducts(payload.items ?? []);
         setTotal(payload.total ?? 0);
+        setCampaignContext(
+          payload?.campaign_segment && typeof payload.campaign_segment === "object"
+            ? (payload.campaign_segment as CampaignSegmentContext)
+            : null
+        );
         setActiveMarkets(
           Array.isArray(payload.active_markets) && payload.active_markets.length > 0
             ? payload.active_markets
@@ -1994,6 +2060,8 @@ function ProductsPageInner() {
     hasVariants,
     savedFilter,
     wishlistFilterId,
+    campaignRunId,
+    campaignSegmentId,
     page,
     pageSize,
   ]);
@@ -2005,7 +2073,7 @@ function ProductsPageInner() {
     }
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("q", debouncedSearch);
-    if (sort !== "sales_all_time_desc") params.set("sort", sort);
+    if (sort !== DEFAULT_SORT) params.set("sort", sort);
     const categoryParam = buildCategoryParam(categorySelections);
     if (categoryParam) params.set("categories", categoryParam);
     selectedBrands.forEach((brand) => params.append("brand", brand));
@@ -2017,6 +2085,8 @@ function ProductsPageInner() {
     if (hasVariants) params.set("hasVariants", "true");
     if (savedFilter !== "all") params.set("saved", savedFilter);
     if (wishlistFilterId !== "all") params.set("wishlistId", wishlistFilterId);
+    if (campaignRunId) params.set("campaignRunId", campaignRunId);
+    if (campaignSegmentId) params.set("campaignSegmentId", campaignSegmentId);
     if (page > 1) params.set("page", String(page));
     if (pageSize !== 25) params.set("pageSize", String(pageSize));
 
@@ -2038,6 +2108,8 @@ function ProductsPageInner() {
     hasVariants,
     savedFilter,
     wishlistFilterId,
+    campaignRunId,
+    campaignSegmentId,
     page,
     pageSize,
     pathname,
@@ -2589,7 +2661,9 @@ function ProductsPageInner() {
             </TableCell>
             <TableCell className={styles.spuCol}>
               <div className={styles.spuWithVariant}>
-                <Text size={200}>{product.spu}</Text>
+                <Text size={200} className={styles.spuValue}>
+                  {product.spu}
+                </Text>
                 {hasMultipleVariants ? (
                   hasPreview ? (
                     <Popover
@@ -2721,10 +2795,12 @@ function ProductsPageInner() {
             <TableCell>
               <div className={styles.priceStack}>
                 <Text size={200} className={styles.metaText}>
-                  B2B: {priceLabel}
+                  <span className={styles.priceTypeLabel}>B2B:</span>{" "}
+                  <span className={styles.priceRangeValue}>{priceLabel}</span>
                 </Text>
                 <Text size={200} className={styles.metaText}>
-                  B2C: {b2cPriceLabel}
+                  <span className={styles.priceTypeLabel}>B2C:</span>{" "}
+                  <span className={styles.priceRangeValue}>{b2cPriceLabel}</span>
                 </Text>
               </div>
             </TableCell>
@@ -2732,7 +2808,14 @@ function ProductsPageInner() {
               <div className={styles.salesStack}>
                 <div className={styles.salesRow}>
                   <span className={styles.salesLabel}>D</span>
-                  <span className={styles.salesValue}>{`  ${salesDayLabel}`}</span>
+                  <span
+                    className={mergeClasses(
+                      styles.salesValue,
+                      salesDayValue > 0 ? styles.salesValuePositive : styles.salesValueZero
+                    )}
+                  >
+                    {salesDayLabel}
+                  </span>
                   <span className={styles.salesTrack}>
                     <span
                       className={styles.salesFill}
@@ -2742,7 +2825,14 @@ function ProductsPageInner() {
                 </div>
                 <div className={styles.salesRow}>
                   <span className={styles.salesLabel}>W</span>
-                  <span className={styles.salesValue}>{`  ${salesWeekLabel}`}</span>
+                  <span
+                    className={mergeClasses(
+                      styles.salesValue,
+                      salesWeekValue > 0 ? styles.salesValuePositive : styles.salesValueZero
+                    )}
+                  >
+                    {salesWeekLabel}
+                  </span>
                   <span className={styles.salesTrack}>
                     <span
                       className={styles.salesFill}
@@ -2752,7 +2842,14 @@ function ProductsPageInner() {
                 </div>
                 <div className={styles.salesRow}>
                   <span className={styles.salesLabel}>Y</span>
-                  <span className={styles.salesValue}>{`  ${salesYearLabel}`}</span>
+                  <span
+                    className={mergeClasses(
+                      styles.salesValue,
+                      salesYearValue > 0 ? styles.salesValuePositive : styles.salesValueZero
+                    )}
+                  >
+                    {salesYearLabel}
+                  </span>
                   <span className={styles.salesTrack}>
                     <span
                       className={styles.salesFill}
@@ -2836,13 +2933,13 @@ function ProductsPageInner() {
                       {t("products.table.actions")}
                     </Button>
                   </MenuTrigger>
-                  <MenuPopover>
+                  <MenuPopover className={styles.actionMenuPopoverCompact}>
                     <MenuList>
                       <Menu positioning="after-top">
                         <MenuTrigger disableButtonEnhancement>
                           <MenuItem hasSubmenu>{t("products.actions.addToList")}</MenuItem>
                         </MenuTrigger>
-                        <MenuPopover>
+                        <MenuPopover className={styles.actionMenuPopoverCompact}>
                           <MenuList>
                             <MenuItem
                               onClick={() => {
@@ -2858,7 +2955,7 @@ function ProductsPageInner() {
                                   {t("products.actions.addToExistingLists")}
                                 </MenuItem>
                               </MenuTrigger>
-                              <MenuPopover>
+                              <MenuPopover className={styles.actionMenuPopoverCompact}>
                                 <MenuList>
                                   {wishlistsLoading ? (
                                     <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
@@ -2907,7 +3004,7 @@ function ProductsPageInner() {
                         <MenuTrigger disableButtonEnhancement>
                           <MenuItem hasSubmenu>{t("products.actions.deliverTo")}</MenuItem>
                         </MenuTrigger>
-                        <MenuPopover>
+                        <MenuPopover className={styles.actionMenuPopoverCompact}>
                           <MenuList>
                             <MenuItem onClick={() => openDeliveryDialog([product.id], "digideal")}>
                               {t("products.actions.deliverDigiDeal")}
@@ -2961,6 +3058,13 @@ function ProductsPageInner() {
 
   return (
     <div className={styles.layout}>
+      {campaignContext ? (
+        <MessageBar intent="info">
+          Ranked campaign segment active
+          {campaignContext.label ? `: ${campaignContext.label}` : ""}. Results are ordered by
+          stored campaign score.
+        </MessageBar>
+      ) : null}
       <Card className={styles.controlsCard}>
         <div className={styles.topRow}>
           <div className={styles.topLeft}>
@@ -3192,95 +3296,92 @@ function ProductsPageInner() {
             </Field>
             <Field
               label={<span className={styles.filterLabel}>{t("products.filters.brand")}</span>}
-              className={styles.filterField}
+              className={styles.dropdownField}
             >
-              <Popover>
-                <PopoverTrigger disableButtonEnhancement>
-                  <Button appearance="outline" className={styles.filterButton}>
-                    <span className={styles.filterButtonText}>{brandLabel}</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverSurface className={styles.filterPopover}>
-                  <div className={styles.filterOption}>
-                    <Checkbox
-                      checked={selectedBrands.includes(noBrandToken)}
-                      label={t("products.filters.noBrand")}
-                      onChange={() => toggleBrand(noBrandToken)}
-                    />
-                  </div>
-                  {brandOptions.length === 0 ? (
-                    <Text size={200} className={styles.metaText}>
-                      {t("common.notAvailable")}
-                    </Text>
-                  ) : (
-                    brandOptions.map((brand) => (
-                      <div key={brand} className={styles.filterOption}>
-                        <Checkbox
-                          checked={selectedBrands.includes(brand)}
-                          label={brand}
-                          onChange={() => toggleBrand(brand)}
-                        />
-                      </div>
-                    ))
-                  )}
-                </PopoverSurface>
-              </Popover>
+              <Dropdown
+                multiselect
+                value={brandLabel}
+                selectedOptions={selectedBrands}
+                onOptionSelect={(_, data) => {
+                  const next = (data.selectedOptions ?? [])
+                    .map((value) => String(value))
+                    .filter(Boolean);
+                  setSelectedBrands(Array.from(new Set(next)));
+                }}
+                className={styles.dropdownCompact}
+              >
+                <Option
+                  value={noBrandToken}
+                  text={t("products.filters.noBrand")}
+                  className={styles.dropdownOptionCompact}
+                >
+                  {t("products.filters.noBrand")}
+                </Option>
+                {brandOptions.map((brand) => (
+                  <Option
+                    key={brand}
+                    value={brand}
+                    text={brand}
+                    className={styles.dropdownOptionCompact}
+                  >
+                    {brand}
+                  </Option>
+                ))}
+              </Dropdown>
             </Field>
             <Field
               label={<span className={styles.filterLabel}>{t("products.filters.vendor")}</span>}
-              className={styles.filterField}
+              className={styles.dropdownField}
             >
-              <Popover>
-                <PopoverTrigger disableButtonEnhancement>
-                  <Button appearance="outline" className={styles.filterButton}>
-                    <span className={styles.filterButtonText}>{vendorLabel}</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverSurface className={styles.filterPopover}>
-                  <div className={styles.filterOption}>
-                    <Checkbox
-                      checked={selectedVendors.includes(noVendorToken)}
-                      label={t("products.filters.noVendor")}
-                      onChange={() => toggleVendor(noVendorToken)}
-                    />
-                  </div>
-                  {vendorOptions.length === 0 ? (
-                    <Text size={200} className={styles.metaText}>
-                      {t("common.notAvailable")}
-                    </Text>
-                  ) : (
-                    vendorOptions.map((vendor) => (
-                      <div key={vendor} className={styles.filterOption}>
-                        <Checkbox
-                          checked={selectedVendors.includes(vendor)}
-                          label={vendor}
-                          onChange={() => toggleVendor(vendor)}
-                        />
-                      </div>
-                    ))
-                  )}
-                </PopoverSurface>
-              </Popover>
+              <Dropdown
+                multiselect
+                value={vendorLabel}
+                selectedOptions={selectedVendors}
+                onOptionSelect={(_, data) => {
+                  const next = (data.selectedOptions ?? [])
+                    .map((value) => String(value))
+                    .filter(Boolean);
+                  setSelectedVendors(Array.from(new Set(next)));
+                }}
+                className={styles.dropdownCompact}
+              >
+                <Option
+                  value={noVendorToken}
+                  text={t("products.filters.noVendor")}
+                  className={styles.dropdownOptionCompact}
+                >
+                  {t("products.filters.noVendor")}
+                </Option>
+                {vendorOptions.map((vendor) => (
+                  <Option
+                    key={vendor}
+                    value={vendor}
+                    text={vendor}
+                    className={styles.dropdownOptionCompact}
+                  >
+                    {vendor}
+                  </Option>
+                ))}
+              </Dropdown>
             </Field>
-          </div>
-        </div>
-
-        <div className={styles.bottomRow}>
-          <div className={styles.bottomLeft}>
             <Field
               label={<span className={styles.filterLabel}>{t("products.table.sales")}</span>}
               className={styles.dropdownField}
             >
               <Dropdown
                 value={selectedSortOption?.label}
-                selectedOptions={[selectedSortOption?.value ?? "sales_all_time_desc"]}
+                selectedOptions={[selectedSortOption?.value ?? DEFAULT_SORT]}
                 onOptionSelect={(_, data) =>
                   setSort(normalizeSortValue(String(data.optionValue)))
                 }
                 className={styles.dropdownCompact}
               >
                 {sortOptions.map((option) => (
-                  <Option key={option.value} value={option.value}>
+                  <Option
+                    key={option.value}
+                    value={option.value}
+                    className={styles.dropdownOptionCompact}
+                  >
                     {option.label}
                   </Option>
                 ))}
@@ -3306,6 +3407,7 @@ function ProductsPageInner() {
                     key={size}
                     value={String(size)}
                     text={t("products.filters.pageSizeValue", { size })}
+                    className={styles.dropdownOptionCompact}
                   >
                     {t("products.filters.pageSizeValue", { size })}
                   </Option>
@@ -3332,6 +3434,7 @@ function ProductsPageInner() {
                     key={option.value}
                     value={option.value}
                     text={option.label}
+                    className={styles.dropdownOptionCompact}
                   >
                     {option.label}
                   </Option>
@@ -3429,7 +3532,7 @@ function ProductsPageInner() {
               </Popover>
             </Field>
           </div>
-          <div className={styles.bottomRight}>
+          <div className={styles.topRight}>
             <Field
               label={
                 <span className={styles.filterLabel}>
@@ -3444,11 +3547,12 @@ function ProductsPageInner() {
                     <Button
                       appearance={hasSelection ? "primary" : "outline"}
                       disabled={!hasSelection || isSavingSelection || isApplyingAction}
+                      className={styles.bulkActionButton}
                     >
                       {t("products.actions.label")}
                     </Button>
                   </MenuTrigger>
-                    <MenuPopover>
+                    <MenuPopover className={styles.actionMenuPopoverCompact}>
                       <MenuList>
                         <Menu positioning="after-top">
                           <MenuTrigger disableButtonEnhancement>
@@ -3459,7 +3563,7 @@ function ProductsPageInner() {
                               {t("common.save")}
                             </MenuItem>
                           </MenuTrigger>
-                          <MenuPopover>
+                          <MenuPopover className={styles.actionMenuPopoverCompact}>
                             <MenuList>
                               {wishlistsLoading ? (
                                 <MenuItem disabled>{t("products.lists.loading")}</MenuItem>
@@ -3503,7 +3607,7 @@ function ProductsPageInner() {
                               {t("products.actions.deliver")}
                             </MenuItem>
                         </MenuTrigger>
-                        <MenuPopover>
+                        <MenuPopover className={styles.actionMenuPopoverCompact}>
                           <MenuList>
                             <Menu positioning="after-top">
                               <MenuTrigger disableButtonEnhancement>
@@ -3514,7 +3618,7 @@ function ProductsPageInner() {
                                   {t("products.actions.deliverTo")}
                                 </MenuItem>
                               </MenuTrigger>
-                              <MenuPopover>
+                              <MenuPopover className={styles.actionMenuPopoverCompact}>
                                 <MenuList>
                                   <MenuItem
                                     disabled={!hasSelection || isApplyingAction}
@@ -3556,13 +3660,8 @@ function ProductsPageInner() {
                   disabled={!hasSelection || isApplyingAction}
                   className={styles.unselectButton}
                 >
-                  {t("common.unselect")}
+                  {`${t("common.unselect")} (${selectedItems.length})`}
                 </Button>
-                <Text className={styles.selectionCount}>
-                  {t("products.selection.selectedCount", {
-                    count: selectedItems.length,
-                  })}
-                </Text>
               </div>
             </Field>
           </div>

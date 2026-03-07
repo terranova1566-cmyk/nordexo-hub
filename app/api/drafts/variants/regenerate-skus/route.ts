@@ -2,12 +2,19 @@ import fs from "node:fs";
 import * as XLSX from "xlsx";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  FALLBACK_ALLOWED_COLORS,
+  FALLBACK_ALLOWED_SIZES,
+} from "./allowed-variations-fallback";
 
 export const runtime = "nodejs";
 
 const DEFAULT_ALLOWED_VARIATIONS_FILE =
   process.env.ALLOWED_VARIATIONS_FILE ||
   "/srv/shopify-sync/api/data/allowed-variations.xlsx";
+const EXTRA_ALLOWED_VARIATIONS_FILES = [
+  "/srv/shopify-sync/api/data/allowed-variations.xlsx",
+];
 const AMOUNT_SUFFIX = (process.env.SKU_AMOUNT_SUFFIX || "P").trim() || "P";
 
 type InputVariant = {
@@ -35,6 +42,12 @@ type AllowedMaps = {
 
 const normalizeText = (value: unknown) => String(value ?? "").trim();
 const normalizeKey = (value: unknown) => normalizeText(value).toLowerCase();
+const normalizeCompactKey = (value: unknown) =>
+  normalizeText(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
 
 const buildCombinedOption = (input: {
   draft_option1: string;
@@ -85,13 +98,103 @@ const buildAllowedMaps = (
 ): AllowedMaps => {
   const colorMap = new Map<string, AllowedEntry>();
   const sizeMap = new Map<string, AllowedEntry>();
-  colors.forEach((entry) => {
-    colorMap.set(normalizeKey(entry.name), entry);
-  });
-  sizes.forEach((entry) => {
-    sizeMap.set(normalizeKey(entry.name), entry);
-  });
+  const setMapEntry = (map: Map<string, AllowedEntry>, entry: AllowedEntry) => {
+    const key = normalizeKey(entry.name);
+    const compact = normalizeCompactKey(entry.name);
+    if (key && !map.has(key)) map.set(key, entry);
+    if (compact && !map.has(compact)) map.set(compact, entry);
+  };
+  colors.forEach((entry) => setMapEntry(colorMap, entry));
+  sizes.forEach((entry) => setMapEntry(sizeMap, entry));
   return { colors, sizes, colorMap, sizeMap };
+};
+
+const pickByCompactContains = (entries: AllowedEntry[], value: string) => {
+  const compact = normalizeCompactKey(value);
+  if (!compact) return undefined;
+  let best: AllowedEntry | undefined;
+  let bestLen = -1;
+  for (const entry of entries) {
+    const entryCompact = normalizeCompactKey(entry.name);
+    if (!entryCompact || entryCompact.length < 2) continue;
+    if (compact === entryCompact || compact.includes(entryCompact)) {
+      if (entryCompact.length > bestLen) {
+        best = entry;
+        bestLen = entryCompact.length;
+      }
+    }
+  }
+  return best;
+};
+
+const COLOR_SYNONYM_TO_SWEDISH: Record<string, string> = {
+  black: "svart",
+  white: "vit",
+  blue: "bla",
+  green: "gron",
+  red: "rod",
+  pink: "rosa",
+  purple: "lila",
+  orange: "orange",
+  yellow: "gul",
+  grey: "gra",
+  gray: "gra",
+  brown: "brun",
+  lightblue: "ljusbla",
+  darkblue: "morkbla",
+  darkgreen: "morkgron",
+};
+
+const resolveColorEntry = (allowed: AllowedMaps, value: string) => {
+  const key = normalizeKey(value);
+  if (key) {
+    const byKey = allowed.colorMap.get(key);
+    if (byKey) return byKey;
+  }
+
+  const compact = normalizeCompactKey(value);
+  if (compact) {
+    const byCompact = allowed.colorMap.get(compact);
+    if (byCompact) return byCompact;
+
+    const aliased = COLOR_SYNONYM_TO_SWEDISH[compact];
+    if (aliased) {
+      const byAlias = allowed.colorMap.get(aliased);
+      if (byAlias) return byAlias;
+    }
+  }
+
+  const byContains = pickByCompactContains(allowed.colors, value);
+  if (byContains) return byContains;
+
+  return undefined;
+};
+
+const resolveSizeEntry = (allowed: AllowedMaps, value: string) => {
+  const key = normalizeKey(value);
+  if (key) {
+    const byKey = allowed.sizeMap.get(key);
+    if (byKey) return byKey;
+  }
+
+  const compact = normalizeCompactKey(value);
+  if (compact) {
+    const byCompact = allowed.sizeMap.get(compact);
+    if (byCompact) return byCompact;
+  }
+
+  const numeric = normalizeText(value).match(/(\d{1,3})/);
+  if (numeric) {
+    const byNumber =
+      allowed.sizeMap.get(normalizeKey(numeric[1])) ||
+      allowed.sizeMap.get(normalizeCompactKey(numeric[1]));
+    if (byNumber) return byNumber;
+  }
+
+  const byContains = pickByCompactContains(allowed.sizes, value);
+  if (byContains) return byContains;
+
+  return undefined;
 };
 
 const getAdminClient = () => {
@@ -144,17 +247,17 @@ const loadAllowedMapsFromDb = async (): Promise<AllowedMaps | null> => {
   }
 };
 
-const loadAllowedMapsFromFile = (filePath: string): AllowedMaps => {
+const loadAllowedMapsFromFile = (filePath: string): AllowedMaps | null => {
   try {
     if (!filePath || !fs.existsSync(filePath)) {
-      return buildAllowedMaps([], []);
+      return null;
     }
     fs.accessSync(filePath, fs.constants.R_OK);
     const workbook = XLSX.readFile(filePath);
     const firstSheetName = workbook.SheetNames[0];
     const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
     if (!sheet) {
-      return buildAllowedMaps([], []);
+      return null;
     }
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as Array<
       Array<unknown>
@@ -174,10 +277,23 @@ const loadAllowedMapsFromFile = (filePath: string): AllowedMaps => {
         sizes.push({ name: sizeName, suffix: sizeSuffix });
       }
     }
+    if (colors.length === 0 && sizes.length === 0) {
+      return null;
+    }
     return buildAllowedMaps(colors, sizes);
   } catch {
-    return buildAllowedMaps([], []);
+    return null;
   }
+};
+
+const loadAllowedMapsFromFiles = (paths: string[]): AllowedMaps | null => {
+  for (const path of paths) {
+    const loaded = loadAllowedMapsFromFile(path);
+    if (loaded && (loaded.colors.length > 0 || loaded.sizes.length > 0)) {
+      return loaded;
+    }
+  }
+  return null;
 };
 
 const sanitizeVariant = (value: unknown, index: number): InputVariant | null => {
@@ -218,15 +334,25 @@ export async function POST(request: Request) {
   }
 
   const allowedFromDb = await loadAllowedMapsFromDb();
+  const fileCandidates = Array.from(
+    new Set(
+      [DEFAULT_ALLOWED_VARIATIONS_FILE, ...EXTRA_ALLOWED_VARIATIONS_FILES].filter(
+        Boolean
+      )
+    )
+  );
+  const allowedFromFile = allowedFromDb ? null : loadAllowedMapsFromFiles(fileCandidates);
   const allowed =
-    allowedFromDb || loadAllowedMapsFromFile(DEFAULT_ALLOWED_VARIATIONS_FILE);
+    allowedFromDb ||
+    allowedFromFile ||
+    buildAllowedMaps(FALLBACK_ALLOWED_COLORS, FALLBACK_ALLOWED_SIZES);
 
   const otherMap = buildOtherMap(
     variants.map((row: InputVariant) => row.variation_other_se)
   );
   const usedSkus = new Set<string>();
   const warnings = new Set<string>();
-  if (!allowedFromDb && allowed.colors.length === 0 && allowed.sizes.length === 0) {
+  if (allowed.colors.length === 0 && allowed.sizes.length === 0) {
     warnings.add(
       "Allowed color/size SKU mapping could not be loaded; generated fallback SKUs."
     );
@@ -258,10 +384,10 @@ export async function POST(request: Request) {
     const amount = normalizeAmount(row.variation_amount_se);
 
     const colorSuffix = color
-      ? normalizeText(allowed.colorMap.get(normalizeKey(color))?.suffix)
+      ? normalizeText(resolveColorEntry(allowed, color)?.suffix)
       : "";
     const sizeSuffix = size
-      ? normalizeText(allowed.sizeMap.get(normalizeKey(size))?.suffix)
+      ? normalizeText(resolveSizeEntry(allowed, size)?.suffix)
       : "";
     const otherToken = other ? normalizeText(otherMap.get(normalizeKey(other))) : "";
     const amountToken = amount ? `${amount}${AMOUNT_SUFFIX}` : "";

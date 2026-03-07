@@ -1,0 +1,129 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "Nordexo Hub HUB" [ref=e7] [cursor=pointer]:
+            - /url: /app
+            - generic [ref=e8]:
+              - img "Nordexo Hub" [ref=e9]
+              - generic [ref=e10]: HUB
+          - generic [ref=e11]:
+            - button "Product Manager" [ref=e12]
+            - button "Product Discovery" [ref=e13]
+            - button "Deals" [ref=e14]
+            - button "Market Trends" [ref=e15]
+            - button "NX Labs" [ref=e16]
+        - toolbar [ref=e17]:
+          - combobox "Language" [ref=e19] [cursor=pointer]:
+            - text: EN
+            - img [ref=e21]
+          - button "Settings" [ref=e23]:
+            - img [ref=e25]
+          - button "Sign out" [ref=e29]:
+            - img [ref=e31]
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - group [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - generic [ref=e42]: Search
+              - textbox "Search" [ref=e44]:
+                - /placeholder: Search by order number, customer name, email, address, SKU, or SPU
+            - generic [ref=e45]:
+              - generic [ref=e46]: Transaction From
+              - textbox "Transaction From" [ref=e48]
+            - generic [ref=e49]:
+              - generic [ref=e50]: Transaction To
+              - textbox "Transaction To" [ref=e52]
+            - generic [ref=e53]:
+              - generic [ref=e54]: Shipped From
+              - textbox "Shipped From" [ref=e56]
+            - generic [ref=e57]:
+              - generic [ref=e58]: Shipped To
+              - textbox "Shipped To" [ref=e60]
+            - generic [ref=e61]:
+              - generic [ref=e62]: Date sort
+              - combobox "Date sort" [ref=e64] [cursor=pointer]:
+                - text: Transaction date (newest first)
+                - img [ref=e66]
+            - generic [ref=e68]:
+              - generic [ref=e69]: Country
+              - combobox "Country" [ref=e71] [cursor=pointer]:
+                - text: All countries
+                - img [ref=e73]
+            - generic [ref=e75]:
+              - generic [ref=e76]: Sales Channel
+              - combobox "Sales Channel" [ref=e78] [cursor=pointer]:
+                - text: All sales channels
+                - img [ref=e80]
+            - generic [ref=e82]:
+              - generic [ref=e83]: Status
+              - combobox "Status" [ref=e85] [cursor=pointer]:
+                - text: All statuses
+                - img [ref=e87]
+            - generic [ref=e89]:
+              - generic [ref=e90]: Warnings
+              - combobox "Warnings" [ref=e92] [cursor=pointer]:
+                - text: All orders
+                - img [ref=e94]
+            - generic [ref=e96]:
+              - generic [ref=e97]: Notifications
+              - combobox "Notifications" [ref=e99] [cursor=pointer]:
+                - text: All orders
+                - img [ref=e101]
+            - generic [ref=e103]:
+              - generic [ref=e104]: Show Columns
+              - button "Select Columns" [ref=e105]:
+                - text: Select Columns
+                - generic [ref=e106]: ▾
+            - generic [ref=e107]:
+              - button "Resend Orders" [disabled] [ref=e108]
+              - button "Actions" [disabled] [ref=e109]:
+                - text: Actions
+                - generic [ref=e110]: ▾
+              - button "Remove orders" [disabled] [ref=e111]
+          - generic [ref=e112]:
+            - generic [ref=e113]: No orders found
+            - generic [ref=e114]:
+              - generic [ref=e115]: Page 0 of 0
+              - combobox [ref=e117] [cursor=pointer]:
+                - text: 100 / page
+                - img [ref=e119]
+              - button "Previous" [disabled] [ref=e121]
+              - button "Next" [disabled] [ref=e122]
+        - group [ref=e123]:
+          - table [ref=e125]:
+            - rowgroup [ref=e126]:
+              - row "Select All Sales Channel ID Order Number Sales Channel Customer Country Order Value Transaction Date Status Warnings Notifications Partner Informed Date Shipped" [ref=e127]:
+                - columnheader "Select All" [ref=e128]:
+                  - checkbox "Select All" [ref=e131] [cursor=pointer]
+                - columnheader "Sales Channel ID" [ref=e132]:
+                  - generic [ref=e133]: Sales Channel ID
+                - columnheader "Order Number" [ref=e134]:
+                  - generic [ref=e135]: Order Number
+                - columnheader "Sales Channel" [ref=e136]:
+                  - generic [ref=e137]: Sales Channel
+                - columnheader "Customer" [ref=e138]:
+                  - generic [ref=e139]: Customer
+                - columnheader "Country" [ref=e140]:
+                  - generic [ref=e141]: Country
+                - columnheader "Order Value" [ref=e142]:
+                  - generic [ref=e143]: Order Value
+                - columnheader "Transaction Date" [ref=e144]:
+                  - generic [ref=e145]: Transaction Date
+                - columnheader "Status" [ref=e146]:
+                  - generic [ref=e147]: Status
+                - columnheader "Warnings" [ref=e148]:
+                  - generic [ref=e149]: Warnings
+                - columnheader "Notifications" [ref=e150]:
+                  - generic [ref=e151]: Notifications
+                - columnheader "Partner Informed" [ref=e152]:
+                  - generic [ref=e153]: Partner Informed
+                - columnheader "Date Shipped" [ref=e154]:
+                  - generic [ref=e155]: Date Shipped
+            - rowgroup [ref=e156]:
+              - row "No orders found." [ref=e157]:
+                - cell "No orders found." [ref=e158]

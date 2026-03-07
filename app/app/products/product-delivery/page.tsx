@@ -1241,7 +1241,10 @@ export default function ProductDeliveryPage() {
                 appearance={hasSelection ? "primary" : "outline"}
                 disabled={!hasSelection || isApplyingAction}
               >
-                {t("products.actions.label")}
+                <span className={styles.menuButtonLabel}>
+                  Actions
+                  <span className={styles.menuButtonChevron} aria-hidden />
+                </span>
               </Button>
             </MenuTrigger>
             <MenuPopover>

@@ -67,6 +67,7 @@ type DraftFolder = {
   path: string;
   modifiedAt: string;
   run_type?: "draft" | "re_edit" | "archive";
+  productCount?: number;
 };
 
 type DraftRunPreviewItem = {
@@ -304,6 +305,26 @@ type DraftVariantEditorRow = {
   draft_raw_row: Record<string, unknown>;
 };
 
+const buildVariantEditorReadableLabel = (row: DraftVariantEditorRow) => {
+  const swedishParts = [
+    String(row.variation_color_se || "").trim(),
+    String(row.variation_size_se || "").trim(),
+    String(row.variation_other_se || "").trim(),
+    String(row.variation_amount_se || "").trim(),
+  ].filter(Boolean);
+  if (swedishParts.length > 0) {
+    return swedishParts.join(" / ");
+  }
+  const zhCombined = buildVariantCombinedZhValue({
+    draft_option1: String(row.draft_option1 || "").trim(),
+    draft_option2: String(row.draft_option2 || "").trim(),
+    draft_option3: String(row.draft_option3 || "").trim(),
+    draft_option4: String(row.draft_option4 || "").trim(),
+    fallback: String(row.draft_option_combined_zh || "").trim(),
+  });
+  return zhCombined || String(row.draft_sku || "").trim() || String(row.key || "").trim();
+};
+
 type SpuJsonViewerState = {
   spu: string;
   content: string;
@@ -332,7 +353,20 @@ type DraftVariantEditorClearableField =
   | "variation_other_se"
   | "variation_amount_se";
 
-type VariantEditorSortKey = "sku" | "color" | "size" | "order" | "amount";
+type VariantEditorSortKey =
+  | "sku"
+  | "color"
+  | "size"
+  | "order"
+  | "amount"
+  | "combinedZh"
+  | "colorZh"
+  | "sizeZh"
+  | "otherZh"
+  | "amountZh"
+  | "shippingClass"
+  | "price"
+  | "weight";
 type VariantEditorSortDirection = "asc" | "desc";
 type ImageFolderTabValue =
   | "main"
@@ -617,7 +651,7 @@ const useStyles = makeStyles({
     gap: "12px",
     alignItems: "center",
     justifyContent: "flex-start",
-    marginTop: "10px",
+    marginTop: "0",
   },
   explorerControlsRight: {
     display: "flex",
@@ -713,7 +747,7 @@ const useStyles = makeStyles({
   },
   batchPickerRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto auto",
     gap: "6px",
     alignItems: "center",
     padding: "4px 6px",
@@ -748,6 +782,25 @@ const useStyles = makeStyles({
     minWidth: "48px",
     height: "26px",
     padding: "0 9px",
+  },
+  batchPickerCountBadge: {
+    minWidth: "18px",
+    height: "18px",
+    borderRadius: "999px",
+    padding: "0 5px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightSemibold,
+    lineHeight: 1,
+    backgroundColor: "#0f6cbd",
+    color: "#ffffff",
+    boxSizing: "border-box",
+  },
+  batchPickerCountBadgeZero: {
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground3,
   },
   batchPickerActionButton: {
     minWidth: "48px",
@@ -1036,7 +1089,7 @@ const useStyles = makeStyles({
     alignItems: "center",
   },
   explorerLayout: {
-    marginTop: "12px",
+    marginTop: "2px",
     display: "grid",
     gridTemplateColumns: "290px minmax(0, 1fr)",
     gap: "12px",
@@ -3675,25 +3728,64 @@ const useStyles = makeStyles({
     paddingLeft: "4px",
     paddingRight: "4px",
   },
+  variantsEditorImageThumbCol: {
+    width: "44px",
+    minWidth: "44px",
+    maxWidth: "44px",
+    paddingLeft: "4px",
+    paddingRight: "4px",
+    paddingTop: "3px",
+    paddingBottom: "3px",
+  },
+  variantsEditorRowThumbButton: {
+    width: "32px",
+    height: "32px",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    borderRadius: "6px",
+    cursor: "pointer",
+    margin: "3px auto",
+    display: "block",
+  },
+  variantsEditorRowThumbImage: {
+    width: "32px",
+    height: "32px",
+    objectFit: "cover",
+    borderRadius: "6px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "block",
+  },
+  variantsEditorRowThumbEmpty: {
+    display: "block",
+    width: "32px",
+    textAlign: "center",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: "32px",
+    margin: "3px auto",
+  },
   variantsEditorInstruction: {
     display: "flex",
     flexDirection: "column",
     gap: "4px",
     justifyContent: "space-between",
+    flex: "0 0 25%",
+    width: "25%",
+    minWidth: "220px",
+    maxWidth: "25%",
   },
   variantsEditorInstructionActions: {
     display: "flex",
     justifyContent: "flex-end",
   },
   variantsEditorBottomSplit: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "10px",
-    minHeight: "170px",
+    display: "flex",
+    flexDirection: "row",
     alignItems: "stretch",
-    "@media (max-width: 1100px)": {
-      gridTemplateColumns: "1fr",
-    },
+    gap: "10px",
+    minHeight: "186px",
   },
   variantsEditorThumbPanel: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -3703,8 +3795,19 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-    minHeight: "170px",
+    minHeight: "186px",
     height: "100%",
+    flex: "1 1 75%",
+    width: "75%",
+    maxWidth: "75%",
+    minWidth: 0,
+  },
+  variantsEditorThumbEmptyState: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: tokens.colorNeutralForeground3,
   },
   variantsEditorThumbGrid: {
     display: "flex",
@@ -3716,23 +3819,64 @@ const useStyles = makeStyles({
     paddingBottom: "6px",
     minHeight: "126px",
     flex: 1,
+    width: "100%",
   },
   variantsEditorThumbCard: {
     display: "flex",
     flexDirection: "column",
     gap: "4px",
-    width: "108px",
-    minWidth: "108px",
-    flex: "0 0 108px",
+    width: "120px",
+    minWidth: "120px",
+    flex: "0 0 120px",
+    position: "relative",
+  },
+  variantsEditorThumbImageWrap: {
+    width: "100%",
+    position: "relative",
   },
   variantsEditorThumbImage: {
     width: "100%",
-    height: "108px",
+    height: "120px",
     aspectRatio: "1 / 1",
     objectFit: "cover",
     borderRadius: "8px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
+  },
+  variantsEditorThumbHoverActions: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0,
+    transitionProperty: "opacity",
+    transitionDuration: tokens.durationFast,
+    pointerEvents: "none",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  variantsEditorThumbCardHover: {
+    '&:hover [data-variants-thumb-save-overlay="true"]': {
+      opacity: 1,
+      pointerEvents: "auto",
+    },
+    '&:focus-within [data-variants-thumb-save-overlay="true"]': {
+      opacity: 1,
+      pointerEvents: "auto",
+    },
+  },
+  variantsEditorThumbSaveButton: {
+    minWidth: "58px",
+  },
+  variantsEditorThumbSavingOverlay: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "8px",
+    backgroundColor: "rgba(255,255,255,0.55)",
+    pointerEvents: "none",
   },
   variantsEditorThumbLabel: {
     color: tokens.colorNeutralForeground3,
@@ -3743,6 +3887,23 @@ const useStyles = makeStyles({
     display: "-webkit-box",
     WebkitLineClamp: "2",
     WebkitBoxOrient: "vertical",
+  },
+  variantsEditorThumbAttached: {
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    textAlign: "center",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "-webkit-box",
+    WebkitLineClamp: "2",
+    WebkitBoxOrient: "vertical",
+  },
+  variantsEditorThumbAttachedMuted: {
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase100,
+    lineHeight: tokens.lineHeightBase100,
+    textAlign: "center",
   },
   variantsEditorThumbButton: {
     width: "100%",
@@ -4160,6 +4321,8 @@ const DRAFT_EXPLORER_REVIEW_KEY = "draft_explorer_review";
 const VARIANTS_REVIEWED_AT_KEY = "variants_confirmed_at";
 const DESCRIPTIONS_REVIEWED_AT_KEY = "descriptions_confirmed_at";
 const DRAFT_EXPLORER_LAST_LOCATION_KEY = "draftExplorer.lastLocation.v1";
+const DRAFT_EXPLORER_MANUAL_UNTAGGED_ORDER_KEY =
+  "draftExplorer.manualUntaggedOrder.v1";
 const AI_DIRECT_PROMPT_HISTORY_KEY = "draftExplorer.aiDirectPromptHistory.v1";
 const AI_DIRECT_PROMPT_HISTORY_LIMIT = 5;
 const AI_DIRECT_PROMPT_HISTORY_PREVIEW_WORDS = 60;
@@ -4441,9 +4604,13 @@ const getImagePrimarySortRank = (
 
 const buildTaggedImageOrderPaths = (
   imageEntries: DraftEntry[],
-  options?: { resolveTags?: (entry: DraftEntry) => ImageTagOption[] }
+  options?: {
+    resolveTags?: (entry: DraftEntry) => ImageTagOption[];
+    preserveUntaggedOrder?: boolean;
+  }
 ) => {
   const resolveTags = options?.resolveTags ?? ((entry: DraftEntry) => extractImageTagsFromFileName(entry.name));
+  const preserveUntaggedOrder = Boolean(options?.preserveUntaggedOrder);
   const originalOrder = new Map<string, number>();
   imageEntries.forEach((entry, index) => {
     originalOrder.set(entry.path, index);
@@ -4455,6 +4622,18 @@ const buildTaggedImageOrderPaths = (
       const rightPrimaryRank = getImagePrimarySortRank(right, resolveTags);
       const rankDiff = leftPrimaryRank - rightPrimaryRank;
       if (rankDiff !== 0) return rankDiff;
+
+      if (
+        preserveUntaggedOrder &&
+        leftPrimaryRank > 0 &&
+        leftPrimaryRank < 4 &&
+        rightPrimaryRank > 0 &&
+        rightPrimaryRank < 4
+      ) {
+        const leftIndex = originalOrder.get(left.path) ?? 0;
+        const rightIndex = originalOrder.get(right.path) ?? 0;
+        if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+      }
 
       if (leftPrimaryRank === 4 && rightPrimaryRank === 4) {
         const leftTagRank = getTagGroupSortRank(resolveTags(left));
@@ -5277,6 +5456,8 @@ export default function DraftExplorerPage() {
     []
   );
   const [variantsEditorThumbs, setVariantsEditorThumbs] = useState<DraftEntry[]>([]);
+  const [variantsEditorThumbAssigningPaths, setVariantsEditorThumbAssigningPaths] =
+    useState<Set<string>>(new Set());
   const [variantsEditorThumbsLoading, setVariantsEditorThumbsLoading] = useState(false);
   const [variantsEditorLoading, setVariantsEditorLoading] = useState(false);
   const [variantsEditorSaving, setVariantsEditorSaving] = useState(false);
@@ -5347,6 +5528,7 @@ export default function DraftExplorerPage() {
   const variantEntriesCacheRef = useRef<Map<string, DraftEntry[]>>(new Map());
   const autoVariantLinkInFlightSpusRef = useRef<Set<string>>(new Set());
   const autoVariantLinkAttemptedSignaturesRef = useRef<Set<string>>(new Set());
+  const manualUntaggedOrderFoldersRef = useRef<Set<string>>(new Set());
 
   const tagImagesRunning = tagImagesRunningPaths.size > 0;
   const hasPendingDetailAiRewrite =
@@ -5394,6 +5576,44 @@ export default function DraftExplorerPage() {
       setUnseenAiUpdateSpuPaths(new Set(paths));
     } catch {
       // ignore bad local storage payloads
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_EXPLORER_MANUAL_UNTAGGED_ORDER_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      const folders = parsed
+        .map((value) => String(value || "").trim())
+        .filter((value) => Boolean(value));
+      manualUntaggedOrderFoldersRef.current = new Set(folders);
+    } catch {
+      // Ignore malformed localStorage payloads.
+    }
+  }, []);
+
+  const hasManualUntaggedOrderOverride = useCallback((folderPath: string) => {
+    const normalizedFolderPath = String(folderPath || "").trim();
+    if (!normalizedFolderPath) return false;
+    return manualUntaggedOrderFoldersRef.current.has(normalizedFolderPath);
+  }, []);
+
+  const markManualUntaggedOrderOverride = useCallback((folderPath: string) => {
+    const normalizedFolderPath = String(folderPath || "").trim();
+    if (!normalizedFolderPath) return;
+    const next = new Set(manualUntaggedOrderFoldersRef.current);
+    if (next.has(normalizedFolderPath)) return;
+    next.add(normalizedFolderPath);
+    manualUntaggedOrderFoldersRef.current = next;
+    try {
+      window.localStorage.setItem(
+        DRAFT_EXPLORER_MANUAL_UNTAGGED_ORDER_KEY,
+        JSON.stringify(Array.from(next))
+      );
+    } catch {
+      // Ignore storage failures.
     }
   }, []);
 
@@ -6903,22 +7123,20 @@ export default function DraftExplorerPage() {
   const updateDetailField = (field: string, value: string) => {
     setDetailDraft((prev) => ({ ...prev, [field]: value }));
     const rawKeys = RAW_ROW_FIELD_MAP[field];
-    if (rawKeys && detailRawRow) {
-      setDetailRawRow((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev };
-        rawKeys.forEach((key) => {
-          next[key] = value;
-        });
-        return next;
+    if (!rawKeys || rawKeys.length === 0) return;
+    setDetailRawRow((prev) => {
+      const next = { ...parseDraftRawRow(prev) };
+      rawKeys.forEach((key) => {
+        next[key] = value;
       });
-    }
+      return next;
+    });
   };
 
   const openDetails = (row: DraftSpuRow) => {
     setDetailTarget(row);
     setDetailDraft(buildDetailDraft(row));
-    setDetailRawRow(row.draft_raw_row ?? null);
+    setDetailRawRow(parseDraftRawRow(row.draft_raw_row));
     setDetailInstruction("");
     setDetailError(null);
     setDetailOpen(true);
@@ -7791,7 +8009,7 @@ export default function DraftExplorerPage() {
       } else {
         setDetailDraft((prev) => ({ ...prev, ...updates }));
         if (rawRow) {
-          setDetailRawRow(rawRow);
+          setDetailRawRow(parseDraftRawRow(rawRow));
         }
       }
     } catch (err) {
@@ -8735,7 +8953,9 @@ export default function DraftExplorerPage() {
           if (folderImageEntries.length <= 1) continue;
 
           const currentOrder = folderImageEntries.map((entry) => entry.path);
-          const nextOrder = buildTaggedImageOrderPaths(folderImageEntries);
+          const nextOrder = buildTaggedImageOrderPaths(folderImageEntries, {
+            preserveUntaggedOrder: hasManualUntaggedOrderOverride(folderPath),
+          });
           if (nextOrder.length !== currentOrder.length) continue;
           const changed = nextOrder.some(
             (pathValue, index) => pathValue !== currentOrder[index]
@@ -8767,7 +8987,7 @@ export default function DraftExplorerPage() {
 
       return failures;
     },
-    [enqueueImageOrderSaveForFolder, isImage, listPathEntries]
+    [enqueueImageOrderSaveForFolder, hasManualUntaggedOrderOverride, isImage, listPathEntries]
   );
 
   const fetchPendingAiEdits = useCallback(async (pathValue: string) => {
@@ -10351,7 +10571,8 @@ export default function DraftExplorerPage() {
   }, [draftLoading, initialOpenSpu, openSpuImagesInExplorer, spuRows]);
 
   const fetchVariantEditorThumbs = useCallback(
-    async (spu: string) => {
+    async (spu: string, editorRows: DraftVariantEditorRow[] = []) => {
+      void editorRows;
       const targetSpu = String(spu || "").trim();
       if (!targetSpu) {
         setVariantsEditorThumbs([]);
@@ -10369,6 +10590,9 @@ export default function DraftExplorerPage() {
       setVariantsEditorThumbsLoading(true);
       try {
         const rootEntries = await listPathEntries(rootPath);
+        const rootImageEntries = rootEntries.filter(
+          (entry) => entry.type === "file" && isImage(entry.name)
+        );
         const normalizeToken = (value: string) =>
           value.toLowerCase().replace(/[\s_-]+/g, "");
         const variantDirs = rootEntries
@@ -10394,16 +10618,27 @@ export default function DraftExplorerPage() {
             if (right.score !== left.score) return right.score - left.score;
             return left.entry.name.localeCompare(right.entry.name);
           });
-        if (variantDirs.length === 0) {
-          setVariantsEditorThumbs([]);
-          return;
-        }
-        const primaryVariantDir = variantDirs[0].entry;
-        const variantEntries = await listPathEntries(primaryVariantDir.path);
-        const directVariantImages = variantEntries
-          .filter((entry) => entry.type === "file" && isImage(entry.name))
-          .sort((left, right) => left.name.localeCompare(right.name));
-        setVariantsEditorThumbs(directVariantImages);
+        const primaryVariantDir = variantDirs[0]?.entry ?? null;
+        const directVariantImages = primaryVariantDir
+          ? (await listPathEntries(primaryVariantDir.path))
+              .filter((entry) => entry.type === "file" && isImage(entry.name))
+              .sort((left, right) => left.name.localeCompare(right.name))
+          : [];
+
+        const mergedThumbs: DraftEntry[] = [];
+        const seenPaths = new Set<string>();
+        [...directVariantImages, ...rootImageEntries]
+          .filter((entry) => extractImageTagsFromFileName(entry.name).includes("VAR"))
+          .forEach((entry) => {
+            const pathValue = String(entry.path || "").trim();
+            if (!pathValue || seenPaths.has(pathValue)) return;
+            seenPaths.add(pathValue);
+            mergedThumbs.push(entry);
+          });
+
+        setVariantsEditorThumbs(
+          mergedThumbs.sort((left, right) => left.name.localeCompare(right.name))
+        );
       } catch {
         setVariantsEditorThumbs([]);
       } finally {
@@ -10647,6 +10882,7 @@ export default function DraftExplorerPage() {
     setVariantsEditorSpu("");
     setVariantsEditorRows([]);
     setVariantsEditorThumbs([]);
+    setVariantsEditorThumbAssigningPaths(new Set());
     setVariantsEditorError(null);
     setVariantsEditorSelectedRows(new Set());
     setVariantsEditorPacksText("");
@@ -10663,11 +10899,11 @@ export default function DraftExplorerPage() {
       setVariantsEditorSpu(targetSpu);
       setVariantsEditorRows([]);
       setVariantsEditorThumbs([]);
+      setVariantsEditorThumbAssigningPaths(new Set());
       setVariantsEditorSelectedRows(new Set());
       setVariantsEditorSort({ key: null, direction: "asc" });
       setVariantsEditorError(null);
       setVariantsEditorLoading(true);
-      void fetchVariantEditorThumbs(targetSpu);
       try {
         const url = new URL("/api/drafts/variants", window.location.origin);
         url.searchParams.set("spu", targetSpu);
@@ -10680,6 +10916,7 @@ export default function DraftExplorerPage() {
           ? (payload.items as DraftSkuRow[]).map(mapDraftSkuToVariantEditorRow)
           : [];
         setVariantsEditorRows(rows);
+        void fetchVariantEditorThumbs(targetSpu, rows);
       } catch (err) {
         setVariantsEditorError((err as Error).message);
       } finally {
@@ -10748,9 +10985,17 @@ export default function DraftExplorerPage() {
       if (key === "color") return row.variation_color_se || row.draft_option1;
       if (key === "size") return row.variation_size_se || row.draft_option2;
       if (key === "order") return row.variation_other_se || row.draft_option3;
-      return row.variation_amount_se || row.draft_option4;
+      if (key === "amount") return row.variation_amount_se || row.draft_option4;
+      if (key === "combinedZh") return row.draft_option_combined_zh;
+      if (key === "colorZh") return row.draft_option1;
+      if (key === "sizeZh") return row.draft_option2;
+      if (key === "otherZh") return row.draft_option3;
+      if (key === "amountZh") return row.draft_option4;
+      if (key === "shippingClass") return row.draft_shipping_class;
+      if (key === "price") return row.draft_price;
+      return row.draft_weight;
     };
-    const parseNumericAmount = (value: string) => {
+    const parseNumericValue = (value: string) => {
       const normalized = String(value || "")
         .trim()
         .replace(",", ".")
@@ -10763,9 +11008,9 @@ export default function DraftExplorerPage() {
     return [...variantsEditorRows].sort((left, right) => {
       const leftValue = String(getValue(left, sortKey) || "").trim();
       const rightValue = String(getValue(right, sortKey) || "").trim();
-      if (sortKey === "amount") {
-        const leftNumeric = parseNumericAmount(leftValue);
-        const rightNumeric = parseNumericAmount(rightValue);
+      if (sortKey === "amount" || sortKey === "price" || sortKey === "weight") {
+        const leftNumeric = parseNumericValue(leftValue);
+        const rightNumeric = parseNumericValue(rightValue);
         if (leftNumeric != null && rightNumeric != null && leftNumeric !== rightNumeric) {
           return (leftNumeric - rightNumeric) * directionFactor;
         }
@@ -10778,6 +11023,41 @@ export default function DraftExplorerPage() {
       );
     });
   }, [variantsEditorRows, variantsEditorSort]);
+
+  const variantsEditorThumbByFileKey = useMemo(() => {
+    const map = new Map<string, DraftEntry>();
+    variantsEditorThumbs.forEach((entry) => {
+      const fileName = extractFileNameFromPath(entry.path || entry.name);
+      const key = normalizeVariantImageFileNameKey(fileName);
+      if (!key || map.has(key)) return;
+      map.set(key, entry);
+    });
+    return map;
+  }, [variantsEditorThumbs]);
+
+  const variantsEditorThumbAttachmentsByPath = useMemo(() => {
+    const byPath = new Map<string, Set<string>>();
+    variantsEditorRows.forEach((row) => {
+      const fileName = extractVariantImageFileName(row.draft_variant_image_url);
+      const fileKey = normalizeVariantImageFileNameKey(fileName);
+      if (!fileKey) return;
+      const entry = variantsEditorThumbByFileKey.get(fileKey);
+      if (!entry) return;
+      const pathValue = String(entry.path || "").trim();
+      if (!pathValue) return;
+      const label = buildVariantEditorReadableLabel(row);
+      if (!label) return;
+      const labels = byPath.get(pathValue) ?? new Set<string>();
+      labels.add(label);
+      byPath.set(pathValue, labels);
+    });
+
+    const normalized = new Map<string, string[]>();
+    byPath.forEach((labels, pathValue) => {
+      normalized.set(pathValue, Array.from(labels));
+    });
+    return normalized;
+  }, [variantsEditorRows, variantsEditorThumbByFileKey]);
 
   const variantsEditorColumnStyles = useMemo(() => {
     const sample = variantsEditorRows.slice(0, 420);
@@ -10802,6 +11082,11 @@ export default function DraftExplorerPage() {
 
     return {
       selection: {
+        width: "44px",
+        minWidth: "44px",
+        maxWidth: "44px",
+      },
+      imageThumb: {
         width: "44px",
         minWidth: "44px",
         maxWidth: "44px",
@@ -16031,6 +16316,16 @@ export default function DraftExplorerPage() {
     []
   );
 
+  const bumpLocalImageCacheVersion = useCallback((pathRaw: string) => {
+    const normalizedPath = String(pathRaw || "").trim();
+    if (!normalizedPath) return;
+    const nextModifiedAt = new Date().toISOString();
+    const applyVersionBump = (item: DraftEntry) =>
+      item.path === normalizedPath ? { ...item, modifiedAt: nextModifiedAt } : item;
+    setEntries((prev) => prev.map(applyVersionBump));
+    setMainViewVariantImageEntries((prev) => prev.map(applyVersionBump));
+  }, []);
+
   const clearVariantImageAssignmentsByFileKey = useCallback(
     async (input: { spu: string; fileNameKey: string }) => {
       const normalizedSpu = String(input.spu || "").trim().toUpperCase();
@@ -16197,6 +16492,9 @@ export default function DraftExplorerPage() {
             ) {
               applyLocalImageRename(optimisticPath, safeRenamedPath, safeRenamedName);
             }
+            // Avoid stale broken thumbs after optimistic rename -> server rename race.
+            // Force a fresh cache-buster once the rename is confirmed.
+            bumpLocalImageCacheVersion(safeRenamedPath);
             const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
             if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
           } catch (err) {
@@ -16230,6 +16528,7 @@ export default function DraftExplorerPage() {
       entryByPath,
       isImage,
       pendingAiEditsByOriginal,
+      bumpLocalImageCacheVersion,
       resortImageFoldersByHierarchy,
     ]
   );
@@ -16304,6 +16603,9 @@ export default function DraftExplorerPage() {
             ) {
               applyLocalImageRename(optimisticPath, safeRenamedPath, safeRenamedName);
             }
+            // Avoid stale broken thumbs after optimistic rename -> server rename race.
+            // Force a fresh cache-buster once the rename is confirmed.
+            bumpLocalImageCacheVersion(safeRenamedPath);
             const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
             if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
             if (removingVariantTag && previousSpu && previousVariantFileNameKey) {
@@ -16343,6 +16645,7 @@ export default function DraftExplorerPage() {
       entryByPath,
       isImage,
       pendingAiEditsByOriginal,
+      bumpLocalImageCacheVersion,
       clearVariantImageAssignmentsByFileKey,
       resortImageFoldersByHierarchy,
     ]
@@ -16669,7 +16972,9 @@ export default function DraftExplorerPage() {
         );
         if (folderImageEntries.length > 1) {
           const currentOrder = folderImageEntries.map((entry) => entry.path);
-          const prioritizedOrder = buildTaggedImageOrderPaths(folderImageEntries);
+          const prioritizedOrder = buildTaggedImageOrderPaths(folderImageEntries, {
+            preserveUntaggedOrder: hasManualUntaggedOrderOverride(folderPath),
+          });
           const orderChanged =
             prioritizedOrder.length === currentOrder.length &&
             prioritizedOrder.some((pathValue, index) => pathValue !== currentOrder[index]);
@@ -16686,7 +16991,13 @@ export default function DraftExplorerPage() {
       }
       return { failures, applied };
     },
-    [applyTagAssignments, isImage, listPathEntries, persistImageOrderForFolder]
+    [
+      applyTagAssignments,
+      hasManualUntaggedOrderOverride,
+      isImage,
+      listPathEntries,
+      persistImageOrderForFolder,
+    ]
   );
 
   const handleRunImageClassifierTagging = useCallback(async () => {
@@ -17200,6 +17511,118 @@ export default function DraftExplorerPage() {
       });
     },
     []
+  );
+  const handleVariantEditorAttachImageToSelection = useCallback(
+    async (entry: DraftEntry) => {
+      const selectedRowKeys = new Set(variantsEditorSelectedRows);
+      if (selectedRowKeys.size === 0) return;
+      if (!variantsEditorSpu) return;
+      const entryPath = String(entry.path || "").trim();
+      if (!entryPath) return;
+
+      const selectedRows = variantsEditorRows.filter((row) => selectedRowKeys.has(row.key));
+      if (selectedRows.length === 0) return;
+
+      const targetRows = selectedRows.filter((row) => Boolean(String(row.id || "").trim()));
+      if (targetRows.length === 0) {
+        setVariantsEditorError("Selected rows must be saved before attaching variant images.");
+        return;
+      }
+
+      const variantIds = targetRows
+        .map((row) => String(row.id || "").trim())
+        .filter(Boolean);
+      if (variantIds.length === 0) return;
+
+      const imageFileName = extractFileNameFromPath(entry.path || entry.name);
+      if (!imageFileName) {
+        setVariantsEditorError("Unable to resolve image file name for this variant image.");
+        return;
+      }
+
+      const previousValuesById = new Map<string, string | null>(
+        targetRows.map((row) => [String(row.id || "").trim(), row.draft_variant_image_url ?? null])
+      );
+      const variantIdSet = new Set(variantIds);
+
+      setVariantsEditorThumbAssigningPaths((prev) => {
+        const next = new Set(prev);
+        next.add(entryPath);
+        return next;
+      });
+      setVariantsEditorError(null);
+
+      try {
+        setVariantsEditorRows((prev) =>
+          prev.map((row) => {
+            const rowId = String(row.id || "").trim();
+            if (!variantIdSet.has(rowId)) return row;
+            return { ...row, draft_variant_image_url: imageFileName };
+          })
+        );
+        applyVariantImageAssignmentToLocalState(variantsEditorSpu, variantIds, imageFileName);
+
+        const failures: string[] = [];
+        let successCount = 0;
+        for (const variantId of variantIds) {
+          try {
+            const response = await fetch("/api/drafts/variants/update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: variantId,
+                field: "draft_variant_image_url",
+                value: imageFileName,
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload?.error || "Unable to update variant image mapping.");
+            }
+            successCount += 1;
+          } catch (err) {
+            const previousValue = previousValuesById.get(variantId) ?? null;
+            setVariantsEditorRows((prev) =>
+              prev.map((row) =>
+                String(row.id || "").trim() === variantId
+                  ? { ...row, draft_variant_image_url: previousValue ?? "" }
+                  : row
+              )
+            );
+            applyVariantImageAssignmentToLocalState(
+              variantsEditorSpu,
+              [variantId],
+              previousValue
+            );
+            failures.push((err as Error).message);
+          }
+        }
+
+        if (successCount > 0) {
+          setVariantsEditorSelectedRows(new Set());
+        }
+        if (failures.length > 0) {
+          setVariantsEditorError(
+            `Variant mapping updated with ${failures.length} issue(s): ${failures
+              .slice(0, 2)
+              .join("; ")}${failures.length > 2 ? "..." : ""}`
+          );
+        }
+      } finally {
+        setVariantsEditorThumbAssigningPaths((prev) => {
+          if (!prev.has(entryPath)) return prev;
+          const next = new Set(prev);
+          next.delete(entryPath);
+          return next;
+        });
+      }
+    },
+    [
+      applyVariantImageAssignmentToLocalState,
+      variantsEditorRows,
+      variantsEditorSelectedRows,
+      variantsEditorSpu,
+    ]
   );
   const handleToggleContextMenuVariantAssignment = useCallback(
     async (assignmentIdRaw: string) => {
@@ -18832,7 +19255,9 @@ export default function DraftExplorerPage() {
     if (folderImageEntries.length <= 1) return;
 
     const currentOrder = folderImageEntries.map((entry) => entry.path);
-    const nextOrder = buildTaggedImageOrderPaths(folderImageEntries);
+    const nextOrder = buildTaggedImageOrderPaths(folderImageEntries, {
+      preserveUntaggedOrder: hasManualUntaggedOrderOverride(pathValue),
+    });
     if (nextOrder.length !== currentOrder.length) return;
     const changed = nextOrder.some((pathAtIndex, index) => pathAtIndex !== currentOrder[index]);
     if (!changed) return;
@@ -18863,6 +19288,7 @@ export default function DraftExplorerPage() {
     entriesLoading,
     isImage,
     movingEntry,
+    hasManualUntaggedOrderOverride,
     persistImageOrderForFolder,
   ]);
 
@@ -18952,6 +19378,7 @@ export default function DraftExplorerPage() {
     if (combined.length <= 1) return combined;
 
     const nextOrder = buildTaggedImageOrderPaths(combined, {
+      preserveUntaggedOrder: hasManualUntaggedOrderOverride(String(currentPath || "").trim()),
       resolveTags: getDisplayImageTagsForEntry,
     });
     if (nextOrder.length !== combined.length) return combined;
@@ -18975,13 +19402,32 @@ export default function DraftExplorerPage() {
     return sorted;
   }, [
     getDisplayImageTagsForEntry,
+    hasManualUntaggedOrderOverride,
     imageEntries,
     isSizeChartEntry,
+    currentPath,
     mainImageViewFilter,
     mainViewShowsMergedImages,
     mainViewVariantImageEntries,
     optimisticHiddenImagePaths,
   ]);
+
+  const isEntryUntaggedReorderable = useCallback(
+    (entry: DraftEntry | null | undefined) => {
+      if (!entry || entry.type !== "file" || !isImage(entry.name)) return false;
+      const tags = getDisplayImageTagsForEntry(entry);
+      return tags.length === 0;
+    },
+    [getDisplayImageTagsForEntry, isImage]
+  );
+
+  const isPathUntaggedReorderable = useCallback(
+    (pathValue: string) => {
+      const entry = entryByPath.get(pathValue);
+      return isEntryUntaggedReorderable(entry);
+    },
+    [entryByPath, isEntryUntaggedReorderable]
+  );
 
   useEffect(() => {
     const requestedImagePath = normalizeExplorerLocationPath(
@@ -19410,15 +19856,30 @@ export default function DraftExplorerPage() {
     (draggedPaths: string[], dropTargetPath: string | null) => {
       const currentImagePaths = imageEntries.map((entry) => entry.path);
       if (currentImagePaths.length <= 1) return;
-      const movingPaths = draggedPaths.filter((pathValue) =>
-        currentImagePaths.includes(pathValue)
+      const reorderablePathSet = new Set(
+        imageEntries
+          .filter((entry) => isEntryUntaggedReorderable(entry))
+          .map((entry) => entry.path)
+      );
+      if (reorderablePathSet.size <= 1) return;
+
+      const movingPaths = draggedPaths.filter(
+        (pathValue) =>
+          currentImagePaths.includes(pathValue) && reorderablePathSet.has(pathValue)
       );
       if (movingPaths.length === 0) return;
       const uniqueMoving = Array.from(new Set(movingPaths));
       if (dropTargetPath && uniqueMoving.includes(dropTargetPath)) {
         return;
       }
-      const remaining = currentImagePaths.filter(
+      if (dropTargetPath && !reorderablePathSet.has(dropTargetPath)) {
+        return;
+      }
+
+      const currentReorderablePaths = currentImagePaths.filter((pathValue) =>
+        reorderablePathSet.has(pathValue)
+      );
+      const remaining = currentReorderablePaths.filter(
         (pathValue) => !uniqueMoving.includes(pathValue)
       );
       let insertAt = remaining.length;
@@ -19434,14 +19895,28 @@ export default function DraftExplorerPage() {
         ...remaining.slice(insertAt),
       ];
       if (
-        nextImagePaths.length !== currentImagePaths.length ||
-        nextImagePaths.every((pathValue, index) => pathValue === currentImagePaths[index])
+        nextImagePaths.length !== currentReorderablePaths.length ||
+        nextImagePaths.every(
+          (pathValue, index) => pathValue === currentReorderablePaths[index]
+        )
       ) {
         return;
       }
 
+      const reorderedImagePaths: string[] = [];
+      let reorderableIndex = 0;
+      currentImagePaths.forEach((pathValue) => {
+        if (reorderablePathSet.has(pathValue)) {
+          const nextPath = nextImagePaths[reorderableIndex] ?? pathValue;
+          reorderedImagePaths.push(nextPath);
+          reorderableIndex += 1;
+          return;
+        }
+        reorderedImagePaths.push(pathValue);
+      });
+
       const nextImageOrder = new Map<string, number>();
-      nextImagePaths.forEach((pathValue, index) => {
+      reorderedImagePaths.forEach((pathValue, index) => {
         nextImageOrder.set(pathValue, index);
       });
       setEntries((prev) => {
@@ -19459,9 +19934,18 @@ export default function DraftExplorerPage() {
         });
         return [...dirs, ...sortedFiles];
       });
-      void persistImageOrder(nextImagePaths);
+      if (currentPath) {
+        markManualUntaggedOrderOverride(currentPath);
+      }
+      void persistImageOrder(reorderedImagePaths);
     },
-    [imageEntries, persistImageOrder]
+    [
+      currentPath,
+      imageEntries,
+      isEntryUntaggedReorderable,
+      markManualUntaggedOrderOverride,
+      persistImageOrder,
+    ]
   );
 
   const selectedImageEntries = displayImageEntries.filter((entry) =>
@@ -20163,26 +20647,6 @@ export default function DraftExplorerPage() {
               appearance="outline"
               className={mergeClasses(
                 styles.draftToolbarActionButton,
-                canGenerateSkusForSelection
-                  ? styles.draftToolbarActionButtonNeedsSku
-                  : undefined
-              )}
-              onClick={handleGenerateSkus}
-              disabled={!canGenerateSkusForSelection || skuStatus === "running"}
-            >
-              {skuStatus === "running" ? (
-                <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                  <Spinner size="tiny" />
-                  {t("draftExplorer.generateSkuRunning")}
-                </span>
-              ) : (
-                t("draftExplorer.generateSkuButton")
-              )}
-            </Button>
-            <Button
-              appearance="outline"
-              className={mergeClasses(
-                styles.draftToolbarActionButton,
                 styles.draftToolbarFlagButton
               )}
               onClick={openProductNoteDialog}
@@ -20228,6 +20692,26 @@ export default function DraftExplorerPage() {
                   <path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9" />
                   <path d="M5 21v-7" />
                 </svg>
+              )}
+            </Button>
+            <Button
+              appearance="outline"
+              className={mergeClasses(
+                styles.draftToolbarActionButton,
+                canGenerateSkusForSelection
+                  ? styles.draftToolbarActionButtonNeedsSku
+                  : undefined
+              )}
+              onClick={handleGenerateSkus}
+              disabled={!canGenerateSkusForSelection || skuStatus === "running"}
+            >
+              {skuStatus === "running" ? (
+                <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                  <Spinner size="tiny" />
+                  {t("draftExplorer.generateSkuRunning")}
+                </span>
+              ) : (
+                t("draftExplorer.generateSkuButton")
               )}
             </Button>
             <Button
@@ -21490,6 +21974,16 @@ export default function DraftExplorerPage() {
                         <th
                           className={mergeClasses(
                             styles.variantsEditorHeadCell,
+                            styles.resizableHeader,
+                            styles.variantsEditorImageThumbCol
+                          )}
+                          style={variantsEditorColumnStyles.imageThumb}
+                        >
+                          Img
+                        </th>
+                        <th
+                          className={mergeClasses(
+                            styles.variantsEditorHeadCell,
                             styles.resizableHeader
                           )}
                           style={variantsEditorColumnStyles.sku}
@@ -21664,7 +22158,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.optionCombinedZh}
                         >
-                          Option Combined (ZH)
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("combinedZh")}
+                          >
+                            <span>Option Combined (ZH)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("combinedZh")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21673,7 +22176,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.colorZh}
                         >
-                          Color (ZH)
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("colorZh")}
+                          >
+                            <span>Color (ZH)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("colorZh")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21682,7 +22194,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.sizeZh}
                         >
-                          Size (ZH)
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("sizeZh")}
+                          >
+                            <span>Size (ZH)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("sizeZh")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21691,7 +22212,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.otherZh}
                         >
-                          Other (ZH)
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("otherZh")}
+                          >
+                            <span>Other (ZH)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("otherZh")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21700,7 +22230,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.amountZh}
                         >
-                          Amount (ZH)
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("amountZh")}
+                          >
+                            <span>Amount (ZH)</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("amountZh")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21709,7 +22248,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.shippingClass}
                         >
-                          Shipping class
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("shippingClass")}
+                          >
+                            <span>Shipping class</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("shippingClass")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21718,7 +22266,16 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.price}
                         >
-                          Price
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("price")}
+                          >
+                            <span>Price</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("price")}
+                            </span>
+                          </button>
                         </th>
                         <th
                           className={mergeClasses(
@@ -21727,19 +22284,38 @@ export default function DraftExplorerPage() {
                           )}
                           style={variantsEditorColumnStyles.weight}
                         >
-                          Weight
+                          <button
+                            type="button"
+                            className={styles.variantsEditorSortButton}
+                            onClick={() => handleVariantEditorSort("weight")}
+                          >
+                            <span>Weight</span>
+                            <span className={styles.variantsEditorSortIndicator}>
+                              {getVariantSortIndicator("weight")}
+                            </span>
+                          </button>
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       {variantsEditorRows.length === 0 ? (
                         <tr>
-                          <td className={styles.variantsEditorCell} colSpan={14}>
+                          <td className={styles.variantsEditorCell} colSpan={15}>
                             No variants yet. Add one or run AI update.
                           </td>
                         </tr>
                       ) : (
-                        variantsEditorSortedRows.map((row) => (
+                        variantsEditorSortedRows.map((row) => {
+                          const rowThumbFileName = extractVariantImageFileName(
+                            row.draft_variant_image_url
+                          );
+                          const rowThumbFileKey =
+                            normalizeVariantImageFileNameKey(rowThumbFileName);
+                          const rowThumbEntry = rowThumbFileKey
+                            ? variantsEditorThumbByFileKey.get(rowThumbFileKey) ?? null
+                            : null;
+                          const rowThumbLabel = buildVariantEditorReadableLabel(row);
+                          return (
                           <tr key={row.key}>
                             <td
                               className={mergeClasses(
@@ -21753,6 +22329,42 @@ export default function DraftExplorerPage() {
                                 onChange={() => handleVariantEditorToggleRow(row.key)}
                                 aria-label={`Select ${row.draft_sku || row.key}`}
                               />
+                            </td>
+                            <td
+                              className={mergeClasses(
+                                styles.variantsEditorCell,
+                                styles.variantsEditorImageThumbCol
+                              )}
+                              style={variantsEditorColumnStyles.imageThumb}
+                            >
+                              {rowThumbEntry ? (
+                                <button
+                                  type="button"
+                                  className={styles.variantsEditorRowThumbButton}
+                                  title={rowThumbLabel}
+                                  onClick={() =>
+                                    setVariantsImagePreview({
+                                      src: buildDraftDownloadUrl(
+                                        rowThumbEntry.path,
+                                        rowThumbEntry.modifiedAt
+                                      ),
+                                      label: rowThumbLabel,
+                                    })
+                                  }
+                                >
+                                  <img
+                                    src={buildDraftDownloadUrl(
+                                      rowThumbEntry.path,
+                                      rowThumbEntry.modifiedAt
+                                    )}
+                                    alt={rowThumbLabel}
+                                    className={styles.variantsEditorRowThumbImage}
+                                    loading="lazy"
+                                  />
+                                </button>
+                              ) : (
+                                <span className={styles.variantsEditorRowThumbEmpty}>-</span>
+                              )}
                             </td>
                             <td
                               className={styles.variantsEditorCell}
@@ -21837,7 +22449,8 @@ export default function DraftExplorerPage() {
                               })}
                             </td>
                           </tr>
-                        ))
+                        );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -21870,44 +22483,94 @@ export default function DraftExplorerPage() {
                   </div>
                 </div>
                 <div className={styles.variantsEditorThumbPanel}>
-                  <Text size={200} weight="semibold">
-                    Variant images
-                  </Text>
                   {variantsEditorThumbsLoading ? (
-                    <Spinner size="tiny" />
+                    <div className={styles.variantsEditorThumbEmptyState}>
+                      <Spinner size="tiny" />
+                    </div>
                   ) : variantsEditorThumbs.length === 0 ? (
-                    <Text size={100}>No images found in the variant images folder.</Text>
+                    <div className={styles.variantsEditorThumbEmptyState}>
+                      <Text size={100}>No variant images selected</Text>
+                    </div>
                   ) : (
                     <div className={styles.variantsEditorThumbGrid}>
                       {variantsEditorThumbs.map((entry) => {
                         const label =
                           extractVariantLabelFromFilename(entry.name, variantsEditorSpu) ||
                           entry.name;
+                        const attachedLabels =
+                          variantsEditorThumbAttachmentsByPath.get(entry.path) ?? [];
+                        const attachedCount = attachedLabels.length;
+                        const pathValue = String(entry.path || "").trim();
+                        const imageAssigning = Boolean(
+                          pathValue && variantsEditorThumbAssigningPaths.has(pathValue)
+                        );
+                        const saveDisabled =
+                          variantsEditorSelectedRows.size === 0 ||
+                          imageAssigning ||
+                          variantsEditorLoading ||
+                          variantsEditorSaving ||
+                          variantsEditorAiRunning ||
+                          variantsEditorSkuRegenerating;
                         return (
-                          <div key={entry.path} className={styles.variantsEditorThumbCard}>
-                            <button
-                              type="button"
-                              className={styles.variantsEditorThumbButton}
-                              onClick={() =>
-                                setVariantsImagePreview({
-                                  src: buildDraftDownloadUrl(entry.path, entry.modifiedAt),
-                                  label,
-                                })
-                              }
-                            >
-                              <img
-                                src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
-                                alt={label}
-                                className={mergeClasses(
-                                  styles.variantsEditorThumbImage,
-                                  styles.variantsEditorThumbImageClickable
-                                )}
-                                loading="lazy"
-                              />
-                            </button>
-                            <Text className={styles.variantsEditorThumbLabel} size={100}>
-                              {label}
-                            </Text>
+                          <div
+                            key={entry.path}
+                            className={mergeClasses(
+                              styles.variantsEditorThumbCard,
+                              styles.variantsEditorThumbCardHover
+                            )}
+                          >
+                            <div className={styles.variantsEditorThumbImageWrap}>
+                              <button
+                                type="button"
+                                className={styles.variantsEditorThumbButton}
+                                onClick={() =>
+                                  setVariantsImagePreview({
+                                    src: buildDraftDownloadUrl(entry.path, entry.modifiedAt),
+                                    label,
+                                  })
+                                }
+                              >
+                                <img
+                                  src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                                  alt={label}
+                                  className={mergeClasses(
+                                    styles.variantsEditorThumbImage,
+                                    styles.variantsEditorThumbImageClickable
+                                  )}
+                                  loading="lazy"
+                                />
+                              </button>
+                              <div
+                                className={styles.variantsEditorThumbHoverActions}
+                                data-variants-thumb-save-overlay="true"
+                              >
+                                <Button
+                                  size="small"
+                                  appearance="primary"
+                                  className={styles.variantsEditorThumbSaveButton}
+                                  disabled={saveDisabled}
+                                  onClick={() =>
+                                    void handleVariantEditorAttachImageToSelection(entry)
+                                  }
+                                >
+                                  Save
+                                </Button>
+                              </div>
+                              {imageAssigning ? (
+                                <div className={styles.variantsEditorThumbSavingOverlay}>
+                                  <Spinner size="tiny" />
+                                </div>
+                              ) : null}
+                            </div>
+                            {attachedCount > 0 ? (
+                              <Text className={styles.variantsEditorThumbAttached} size={100}>
+                                {`Attached to ${attachedCount} variants`}
+                              </Text>
+                            ) : (
+                              <Text className={styles.variantsEditorThumbAttachedMuted} size={100}>
+                                Not attached
+                              </Text>
+                            )}
                           </div>
                         );
                       })}
@@ -22178,6 +22841,9 @@ export default function DraftExplorerPage() {
                   const active = folder.path === selectedFolder;
                   const checked = selectedRunsForMerge.has(folder.path);
                   const reEdit = isReEditFolder(folder.path);
+                  const folderProductCount = Number.isFinite(folder.productCount)
+                    ? Math.max(0, Math.trunc(Number(folder.productCount)))
+                    : 0;
                   return (
                     <div
                       key={folder.path}
@@ -22201,6 +22867,19 @@ export default function DraftExplorerPage() {
                       }}
                     >
                       <span className={styles.batchPickerRowName}>{folder.name}</span>
+                      <span
+                        className={mergeClasses(
+                          styles.batchPickerCountBadge,
+                          folderProductCount === 0
+                            ? styles.batchPickerCountBadgeZero
+                            : undefined
+                        )}
+                        data-batch-picker-action="true"
+                        aria-label={`${folderProductCount} products`}
+                        title={`${folderProductCount} products`}
+                      >
+                        {folderProductCount}
+                      </span>
                       <Button
                         size="small"
                         appearance="outline"
@@ -23392,24 +24071,22 @@ export default function DraftExplorerPage() {
                       }}
                       onDragOver={(event) => {
                         const draggedPaths = readDraggedPaths(event.dataTransfer);
-                        const hasImageDrag = draggedPaths.some((pathValue) => {
-                          const draggedEntry = entryByPath.get(pathValue);
-                          return Boolean(
-                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
+                        const hasReorderableImageDrag =
+                          draggedPaths.length > 0 &&
+                          draggedPaths.every((pathValue) =>
+                            isPathUntaggedReorderable(pathValue)
                           );
-                        });
-                        if (!hasImageDrag) return;
+                        if (!hasReorderableImageDrag) return;
                         event.preventDefault();
                       }}
                       onDrop={(event) => {
                         const draggedPaths = readDraggedPaths(event.dataTransfer);
-                        const hasImageDrag = draggedPaths.some((pathValue) => {
-                          const draggedEntry = entryByPath.get(pathValue);
-                          return Boolean(
-                            draggedEntry?.type === "file" && isImage(draggedEntry.name)
+                        const hasReorderableImageDrag =
+                          draggedPaths.length > 0 &&
+                          draggedPaths.every((pathValue) =>
+                            isPathUntaggedReorderable(pathValue)
                           );
-                        });
-                        if (!hasImageDrag) return;
+                        if (!hasReorderableImageDrag) return;
                         event.preventDefault();
                         reorderImagesInGrid(draggedPaths, null);
                         setImageReorderDropPath(null);
@@ -23431,6 +24108,8 @@ export default function DraftExplorerPage() {
                         const imageTags = getDisplayImageTagsForEntry(entry);
                         const isDisplayOnlyMainVariant =
                           mainViewShowsMergedImages && !entryByPath.has(entry.path);
+                        const isUntaggedManualReorderable =
+                          !isDisplayOnlyMainVariant && imageTags.length === 0;
                         const originalPixelQualityScore =
                           typeof entry.pixelQualityScore === "number" &&
                           Number.isFinite(entry.pixelQualityScore)
@@ -23490,10 +24169,13 @@ export default function DraftExplorerPage() {
                                 ? styles.mediaCardSelected
                                 : undefined
                             )}
-                            draggable={!isDisplayOnlyMainVariant}
+                            draggable={isUntaggedManualReorderable}
                             onDragStart={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
-                              const draggedPaths = buildDraggedPathsForEntry(entry);
+                              if (!isUntaggedManualReorderable) return;
+                              const draggedPaths = buildDraggedPathsForEntry(entry).filter(
+                                (pathValue) => isPathUntaggedReorderable(pathValue)
+                              );
+                              if (draggedPaths.length === 0) return;
                               event.dataTransfer.effectAllowed = "move";
                               event.dataTransfer.setData(
                                 "text/plain",
@@ -23512,16 +24194,14 @@ export default function DraftExplorerPage() {
                               setImageReorderDropPath(null);
                             }}
                             onDragOver={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
+                              if (!isUntaggedManualReorderable) return;
                               const draggedPaths = readDraggedPaths(event.dataTransfer);
-                              const hasImageDrag = draggedPaths.some((pathValue) => {
-                                const draggedEntry = entryByPath.get(pathValue);
-                                return Boolean(
-                                  draggedEntry?.type === "file" &&
-                                    isImage(draggedEntry.name)
+                              const hasReorderableImageDrag =
+                                draggedPaths.length > 0 &&
+                                draggedPaths.every((pathValue) =>
+                                  isPathUntaggedReorderable(pathValue)
                                 );
-                              });
-                              if (!hasImageDrag) return;
+                              if (!hasReorderableImageDrag) return;
                               event.preventDefault();
                               event.stopPropagation();
                               setImageReorderDropPath(entry.path);
@@ -23533,16 +24213,14 @@ export default function DraftExplorerPage() {
                               }
                             }}
                             onDrop={(event) => {
-                              if (isDisplayOnlyMainVariant) return;
+                              if (!isUntaggedManualReorderable) return;
                               const draggedPaths = readDraggedPaths(event.dataTransfer);
-                              const hasImageDrag = draggedPaths.some((pathValue) => {
-                                const draggedEntry = entryByPath.get(pathValue);
-                                return Boolean(
-                                  draggedEntry?.type === "file" &&
-                                    isImage(draggedEntry.name)
+                              const hasReorderableImageDrag =
+                                draggedPaths.length > 0 &&
+                                draggedPaths.every((pathValue) =>
+                                  isPathUntaggedReorderable(pathValue)
                                 );
-                              });
-                              if (!hasImageDrag) return;
+                              if (!hasReorderableImageDrag) return;
                               event.preventDefault();
                               event.stopPropagation();
                               reorderImagesInGrid(draggedPaths, entry.path);

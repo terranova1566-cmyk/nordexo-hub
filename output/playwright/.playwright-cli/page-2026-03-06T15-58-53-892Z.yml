@@ -1,0 +1,125 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "Nordexo Hub HUB" [ref=e8] [cursor=pointer]:
+            - /url: /app
+            - generic [ref=e9]:
+              - img "Nordexo Hub" [ref=e10]
+              - generic [ref=e11]: HUB
+          - generic [ref=e12]:
+            - button "Product Manager" [ref=e13]
+            - button "Product Discovery" [ref=e14]
+            - button "Deals" [ref=e15]
+            - button "Market Trends" [ref=e16]
+            - button "NX Labs" [ref=e17]
+        - toolbar [ref=e18]:
+          - combobox "Language" [ref=e21] [cursor=pointer]:
+            - text: EN
+            - img [ref=e23]
+          - button "Settings" [ref=e25]:
+            - img [ref=e27]
+          - button "Sign out" [ref=e31]:
+            - img [ref=e33]
+    - main [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]: Email settings
+        - generic [ref=e43]: Manage SMTP sender accounts and review authenticated SendPulse senders.
+        - button "Refreshing..." [disabled] [ref=e45]
+        - generic [ref=e46]:
+          - group [ref=e47]:
+            - generic [ref=e48]: SMTP accounts
+            - generic [ref=e49]: These accounts are used by Email send and can be reused in automations. This SMTP channel is optional if you only use SendPulse.
+            - progressbar "Loading settings" [ref=e50]:
+              - generic [ref=e53]: Loading settings
+            - table [ref=e55]:
+              - rowgroup [ref=e56]:
+                - row "Sender SMTP host Status" [ref=e57]:
+                  - columnheader "Sender" [ref=e58]:
+                    - generic [ref=e59]: Sender
+                  - columnheader "SMTP host" [ref=e60]:
+                    - generic [ref=e61]: SMTP host
+                  - columnheader "Status" [ref=e62]:
+                    - generic [ref=e63]: Status
+              - rowgroup [ref=e64]:
+                - row "No SMTP accounts - -" [ref=e65]:
+                  - cell "No SMTP accounts" [ref=e66]
+                  - cell "-" [ref=e67]
+                  - cell "-" [ref=e68]
+            - group [ref=e69]:
+              - img [ref=e71]
+              - text: No SMTP sender is configured yet (no active SMTP account and no environment fallback).
+          - group [ref=e73]:
+            - generic [ref=e74]: New SMTP account
+            - group [ref=e75]:
+              - generic [ref=e76]:
+                - generic [ref=e77]:
+                  - generic [ref=e78]: Account name
+                  - textbox "Account name" [disabled] [ref=e80]:
+                    - /placeholder: Partner mailbox
+                - generic [ref=e81]:
+                  - generic [ref=e82]: From email
+                  - textbox "From email" [disabled] [ref=e84]:
+                    - /placeholder: partner@nordexo.se
+              - generic [ref=e85]:
+                - generic [ref=e86]:
+                  - generic [ref=e87]: From name
+                  - textbox "From name" [disabled] [ref=e89]:
+                    - /placeholder: Nordexo Partner
+                - generic [ref=e90]:
+                  - generic [ref=e91]: SMTP host
+                  - textbox "SMTP host" [disabled] [ref=e93]:
+                    - /placeholder: mail.yourhost.com
+              - generic [ref=e94]:
+                - generic [ref=e95]:
+                  - generic [ref=e96]: SMTP port
+                  - textbox "SMTP port" [disabled] [ref=e98]:
+                    - /placeholder: "587"
+                    - text: "587"
+                - generic [ref=e99]:
+                  - generic [ref=e100]: SMTP user
+                  - textbox "SMTP user" [disabled] [ref=e102]:
+                    - /placeholder: partner@nordexo.se
+              - generic [ref=e103]:
+                - generic [ref=e104]: SMTP password
+                - textbox "SMTP password" [disabled] [ref=e106]:
+                  - /placeholder: password
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - switch "Use SSL/TLS" [disabled] [ref=e109]
+                  - generic:
+                    - img
+                  - generic [ref=e110]: Use SSL/TLS
+                - generic [ref=e111]:
+                  - switch "Account active" [checked] [disabled] [ref=e112]
+                  - generic:
+                    - img
+                  - generic [ref=e113]: Account active
+              - generic [ref=e114]:
+                - button "Create" [disabled] [ref=e115]
+                - button "New" [disabled] [ref=e116]
+                - button "Delete" [disabled] [ref=e117]
+        - group [ref=e118]:
+          - generic [ref=e119]: SendPulse authenticated senders
+          - generic [ref=e120]: Used for SendPulse API channel in automations and transactional mail flows.
+          - table [ref=e122]:
+            - rowgroup [ref=e123]:
+              - row "Email Name Status Signature" [ref=e124]:
+                - columnheader "Email" [ref=e125]:
+                  - generic [ref=e126]: Email
+                - columnheader "Name" [ref=e127]:
+                  - generic [ref=e128]: Name
+                - columnheader "Status" [ref=e129]:
+                  - generic [ref=e130]: Status
+                - columnheader "Signature" [ref=e131]:
+                  - generic [ref=e132]: Signature
+            - rowgroup [ref=e133]:
+              - row "No senders found - - -" [ref=e134]:
+                - cell "No senders found" [ref=e135]
+                - cell "-" [ref=e136]
+                - cell "-" [ref=e137]
+                - cell "-" [ref=e138]
+  - alert [ref=e141]

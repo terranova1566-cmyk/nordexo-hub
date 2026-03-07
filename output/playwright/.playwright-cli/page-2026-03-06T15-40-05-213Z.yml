@@ -1,0 +1,23 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - group [ref=e8]:
+    - generic [ref=e9]:
+      - img "Nordexo Hub" [ref=e11]
+      - generic [ref=e12]: Product & Sales Hub
+      - generic [ref=e13]: Sign in with your partner credentials to access the inventory explorer.
+    - group [ref=e14]:
+      - img [ref=e16]
+      - text: Your session expired. Please sign in to continue.
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]: Email*
+        - textbox "Email" [ref=e22]:
+          - /placeholder: partner@company.com
+      - generic [ref=e23]:
+        - generic [ref=e24]: Password*
+        - textbox "Password" [ref=e26]
+      - generic [ref=e27]:
+        - button "Sign in" [ref=e28]
+        - generic [ref=e29]: Access is restricted to approved partners.
+  - alert [ref=e6]

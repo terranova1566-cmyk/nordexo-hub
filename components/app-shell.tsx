@@ -148,6 +148,7 @@ const nxLabsMenuItems = [
 
 const productMenuItems = [
   { label: "nav.allProducts", href: "/app/products?view=all" },
+  { label: "nav.campaignSearch", href: "/app/products/campaign-search", adminOnly: true },
   { label: "nav.saved", href: "/app/saved" },
   { label: "nav.exports", href: "/app/exports" },
   { label: "nav.digidealProductDelivery", href: "/app/products/product-delivery" },

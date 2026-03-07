@@ -8280,6 +8280,386 @@
       "key": "discovery.stack.removing",
       "text": "Removing...",
       "context": "Discovery action menu remove from stack in progress label"
+    },
+    {
+      "key": "nav.campaignSearch",
+      "text": "Campaign Search",
+      "context": "Products menu item for campaign search"
+    },
+    {
+      "key": "campaignSearch.title",
+      "text": "Campaign Search",
+      "context": "Campaign Search page title"
+    },
+    {
+      "key": "campaignSearch.subtitle",
+      "text": "Run one LLM fingerprint pass, split the campaign into search segments, and rank matching catalog products with deterministic PostgreSQL retrieval.",
+      "context": "Campaign Search page subtitle"
+    },
+    {
+      "key": "campaignSearch.debug",
+      "text": "Debug",
+      "context": "Campaign Search debug toggle"
+    },
+    {
+      "key": "campaignSearch.reindex",
+      "text": "Rebuild index",
+      "context": "Campaign Search rebuild index button"
+    },
+    {
+      "key": "campaignSearch.reindexing",
+      "text": "Rebuilding...",
+      "context": "Campaign Search rebuild index in progress"
+    },
+    {
+      "key": "campaignSearch.inputLabel",
+      "text": "Campaign text",
+      "context": "Campaign Search input label"
+    },
+    {
+      "key": "campaignSearch.inputPlaceholder",
+      "text": "Paste partner campaign text, summary, or product brief here...",
+      "context": "Campaign Search input placeholder"
+    },
+    {
+      "key": "campaignSearch.execute",
+      "text": "Execute",
+      "context": "Campaign Search execute button"
+    },
+    {
+      "key": "campaignSearch.executing",
+      "text": "Executing campaign search...",
+      "context": "Campaign Search execution in progress label"
+    },
+    {
+      "key": "campaignSearch.progressTitle",
+      "text": "Campaign Search in progress",
+      "context": "Campaign Search progress card title"
+    },
+    {
+      "key": "campaignSearch.progressStarting",
+      "text": "Starting run...",
+      "context": "Campaign Search progress message while the run is starting"
+    },
+    {
+      "key": "campaignSearch.progressRemaining",
+      "text": "Estimated remaining",
+      "context": "Campaign Search progress label for estimated remaining time"
+    },
+    {
+      "key": "campaignSearch.progressEta",
+      "text": "ETA",
+      "context": "Campaign Search progress label for estimated completion time"
+    },
+    {
+      "key": "campaignSearch.executionHint",
+      "text": "Accuracy is prioritized over speed. Results are persisted and can be reopened.",
+      "context": "Campaign Search execution helper text"
+    },
+    {
+      "key": "campaignSearch.latestRun",
+      "text": "Latest run",
+      "context": "Campaign Search latest run section title"
+    },
+    {
+      "key": "campaignSearch.segments",
+      "text": "segments",
+      "context": "Campaign Search segment count label"
+    },
+    {
+      "key": "campaignSearch.results",
+      "text": "results",
+      "context": "Campaign Search result count label"
+    },
+    {
+      "key": "campaignSearch.openInProductManager",
+      "text": "Open in Product Manager",
+      "context": "Campaign Search open segment in product manager button"
+    },
+    {
+      "key": "campaignSearch.viewAiSearchData",
+      "text": "View AI Search Data",
+      "context": "Campaign Search button to open the AI search planning dialog for the active segment"
+    },
+    {
+      "key": "campaignSearch.aiDataTitle",
+      "text": "AI Search Data",
+      "context": "Campaign Search dialog title for viewing the extracted AI search data"
+    },
+    {
+      "key": "campaignSearch.aiDataIntro",
+      "text": "This shows the raw AI extraction for the selected segment and the exact search plan that was sent to the database.",
+      "context": "Campaign Search AI data dialog intro text"
+    },
+    {
+      "key": "campaignSearch.aiDataCampaign",
+      "text": "Campaign-level extraction",
+      "context": "Campaign Search AI data section heading for campaign-level extracted data"
+    },
+    {
+      "key": "campaignSearch.aiDataSourceLanguage",
+      "text": "Source language",
+      "context": "Campaign Search AI data label for detected source language"
+    },
+    {
+      "key": "campaignSearch.aiDataCampaignSummary",
+      "text": "Campaign summary",
+      "context": "Campaign Search AI data label for the campaign summary"
+    },
+    {
+      "key": "campaignSearch.aiDataGlobalNegativeTerms",
+      "text": "Global negative terms",
+      "context": "Campaign Search AI data label for global negative terms"
+    },
+    {
+      "key": "campaignSearch.aiDataExtraction",
+      "text": "What the AI extracted for this segment",
+      "context": "Campaign Search AI data section heading for the segment extraction"
+    },
+    {
+      "key": "campaignSearch.aiDataSegment",
+      "text": "Segment",
+      "context": "Campaign Search AI data label for the active segment"
+    },
+    {
+      "key": "campaignSearch.aiDataTaxonomyHints",
+      "text": "Taxonomy hints",
+      "context": "Campaign Search AI data label for raw taxonomy hints"
+    },
+    {
+      "key": "campaignSearch.aiDataCoreTerms",
+      "text": "Core nouns and keywords",
+      "context": "Campaign Search AI data label for core nouns and keywords"
+    },
+    {
+      "key": "campaignSearch.aiDataSynonyms",
+      "text": "Supporting synonyms",
+      "context": "Campaign Search AI data label for synonyms"
+    },
+    {
+      "key": "campaignSearch.aiDataJoinedVariants",
+      "text": "Joined compound variants",
+      "context": "Campaign Search AI data label for joined compound variants"
+    },
+    {
+      "key": "campaignSearch.aiDataSplitVariants",
+      "text": "Split compound variants",
+      "context": "Campaign Search AI data label for split compound variants"
+    },
+    {
+      "key": "campaignSearch.aiDataMustHave",
+      "text": "Must-have concepts",
+      "context": "Campaign Search AI data label for must-have concepts"
+    },
+    {
+      "key": "campaignSearch.aiDataNiceToHave",
+      "text": "Nice-to-have concepts",
+      "context": "Campaign Search AI data label for nice-to-have concepts"
+    },
+    {
+      "key": "campaignSearch.aiDataNegativeTerms",
+      "text": "Segment negative terms",
+      "context": "Campaign Search AI data label for segment-specific negative terms"
+    },
+    {
+      "key": "campaignSearch.aiDataBrandTerms",
+      "text": "Brand terms",
+      "context": "Campaign Search AI data label for brand terms"
+    },
+    {
+      "key": "campaignSearch.aiDataStrictQueries",
+      "text": "Raw strict queries",
+      "context": "Campaign Search AI data label for raw strict queries from the AI"
+    },
+    {
+      "key": "campaignSearch.aiDataBalancedQueries",
+      "text": "Raw balanced queries",
+      "context": "Campaign Search AI data label for raw balanced queries from the AI"
+    },
+    {
+      "key": "campaignSearch.aiDataBroadQueries",
+      "text": "Raw broad queries",
+      "context": "Campaign Search AI data label for raw broad queries from the AI"
+    },
+    {
+      "key": "campaignSearch.aiDataNotes",
+      "text": "Planner notes",
+      "context": "Campaign Search AI data label for AI planner notes"
+    },
+    {
+      "key": "campaignSearch.aiDataPlan",
+      "text": "Search plan sent to the database",
+      "context": "Campaign Search AI data section heading for the deterministic search plan"
+    },
+    {
+      "key": "campaignSearch.aiDataMappedTaxonomy",
+      "text": "Mapped taxonomy",
+      "context": "Campaign Search AI data label for mapped taxonomy values"
+    },
+    {
+      "key": "campaignSearch.aiDataMappedTaxonomyReasoning",
+      "text": "Taxonomy reasoning",
+      "context": "Campaign Search AI data label for taxonomy reasoning"
+    },
+    {
+      "key": "campaignSearch.aiDataStrictTerms",
+      "text": "Strict search terms",
+      "context": "Campaign Search AI data label for strict search terms"
+    },
+    {
+      "key": "campaignSearch.aiDataBalancedTerms",
+      "text": "Balanced search terms",
+      "context": "Campaign Search AI data label for balanced search terms"
+    },
+    {
+      "key": "campaignSearch.aiDataBroadTerms",
+      "text": "Broad search terms",
+      "context": "Campaign Search AI data label for broad search terms"
+    },
+    {
+      "key": "campaignSearch.aiDataRescueTerms",
+      "text": "Fuzzy and compound rescue terms",
+      "context": "Campaign Search AI data label for rescue terms"
+    },
+    {
+      "key": "campaignSearch.aiDataStrictTsQuery",
+      "text": "Strict tsquery",
+      "context": "Campaign Search AI data label for strict tsquery"
+    },
+    {
+      "key": "campaignSearch.aiDataBalancedTsQuery",
+      "text": "Balanced tsquery",
+      "context": "Campaign Search AI data label for balanced tsquery"
+    },
+    {
+      "key": "campaignSearch.aiDataBroadTsQuery",
+      "text": "Broad tsquery",
+      "context": "Campaign Search AI data label for broad tsquery"
+    },
+    {
+      "key": "campaignSearch.aiDataStrictPhrases",
+      "text": "Strict phrase matches",
+      "context": "Campaign Search AI data label for strict phrase matches"
+    },
+    {
+      "key": "campaignSearch.aiDataBalancedPhrases",
+      "text": "Balanced phrase matches",
+      "context": "Campaign Search AI data label for balanced phrase matches"
+    },
+    {
+      "key": "campaignSearch.aiDataSemanticQuery",
+      "text": "Semantic query text",
+      "context": "Campaign Search AI data label for the semantic query text"
+    },
+    {
+      "key": "campaignSearch.aiDataExecution",
+      "text": "Execution summary",
+      "context": "Campaign Search AI data section heading for execution summary"
+    },
+    {
+      "key": "campaignSearch.aiDataCandidateCounts",
+      "text": "Candidate counts",
+      "context": "Campaign Search AI data label for candidate counts"
+    },
+    {
+      "key": "campaignSearch.aiDataLexicalCandidates",
+      "text": "lexical",
+      "context": "Campaign Search AI data label for lexical candidate count"
+    },
+    {
+      "key": "campaignSearch.aiDataSemanticCandidates",
+      "text": "semantic",
+      "context": "Campaign Search AI data label for semantic candidate count"
+    },
+    {
+      "key": "campaignSearch.aiDataMergedCandidates",
+      "text": "merged",
+      "context": "Campaign Search AI data label for merged candidate count"
+    },
+    {
+      "key": "campaignSearch.aiDataRawJson",
+      "text": "Raw JSON",
+      "context": "Campaign Search AI data section heading for raw JSON payloads"
+    },
+    {
+      "key": "campaignSearch.aiDataFingerprintJson",
+      "text": "AI fingerprint segment JSON",
+      "context": "Campaign Search AI data label for the raw fingerprint segment JSON"
+    },
+    {
+      "key": "campaignSearch.aiDataPlanJson",
+      "text": "Stored search plan JSON",
+      "context": "Campaign Search AI data label for the stored search plan JSON"
+    },
+    {
+      "key": "campaignSearch.aiDataExecutionJson",
+      "text": "Execution debug JSON",
+      "context": "Campaign Search AI data label for the execution debug JSON"
+    },
+    {
+      "key": "campaignSearch.emptySegments",
+      "text": "No segments were stored for this run.",
+      "context": "Campaign Search empty segments message"
+    },
+    {
+      "key": "campaignSearch.runningNoSegments",
+      "text": "This run is still executing. Segments and ranked products will appear here as soon as the run is complete.",
+      "context": "Campaign Search message shown while a run is in progress and no segments are available yet"
+    },
+    {
+      "key": "campaignSearch.debugFingerprint",
+      "text": "Fingerprint JSON",
+      "context": "Campaign Search debug fingerprint heading"
+    },
+    {
+      "key": "campaignSearch.debugRun",
+      "text": "Run debug JSON",
+      "context": "Campaign Search debug run heading"
+    },
+    {
+      "key": "campaignSearch.recentRuns",
+      "text": "Recent runs",
+      "context": "Campaign Search recent runs section title"
+    },
+    {
+      "key": "campaignSearch.recentRunsEmpty",
+      "text": "No campaign search runs yet.",
+      "context": "Campaign Search recent runs empty message"
+    },
+    {
+      "key": "campaignSearch.loadRun",
+      "text": "Load run",
+      "context": "Campaign Search load run button"
+    },
+    {
+      "key": "campaignSearch.table.rank",
+      "text": "Rank",
+      "context": "Campaign Search results table rank column"
+    },
+    {
+      "key": "campaignSearch.table.product",
+      "text": "Product",
+      "context": "Campaign Search results table product column"
+    },
+    {
+      "key": "campaignSearch.table.image",
+      "text": "Image",
+      "context": "Campaign Search results table image column"
+    },
+    {
+      "key": "campaignSearch.table.taxonomy",
+      "text": "Taxonomy",
+      "context": "Campaign Search results table taxonomy column"
+    },
+    {
+      "key": "campaignSearch.table.score",
+      "text": "Score",
+      "context": "Campaign Search results table score column"
+    },
+    {
+      "key": "campaignSearch.table.explanation",
+      "text": "Explanation",
+      "context": "Campaign Search results table explanation column"
     }
   ]
 }

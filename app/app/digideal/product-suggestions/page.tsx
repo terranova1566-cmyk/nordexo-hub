@@ -2883,11 +2883,19 @@ export default function DigiDealProductSuggestionsPage() {
 
   const fileStats = useMemo(() => {
     let imageCount = 0;
+    let jsonCount = 0;
     let zipCount = 0;
     files.forEach((file) => {
       const name = toText(file.name).toLowerCase();
       const type = toText(file.type).toLowerCase();
-      if (name.endsWith(".zip") || type.includes("zip")) {
+      if (
+        name.endsWith(".json") ||
+        type === "application/json" ||
+        type === "text/json" ||
+        type.endsWith("+json")
+      ) {
+        jsonCount += 1;
+      } else if (name.endsWith(".zip") || type.includes("zip")) {
         zipCount += 1;
       } else {
         imageCount += 1;
@@ -2896,6 +2904,7 @@ export default function DigiDealProductSuggestionsPage() {
     return {
       total: files.length,
       imageCount,
+      jsonCount,
       zipCount,
       hasZip: zipCount > 0,
     };
@@ -3796,7 +3805,7 @@ export default function DigiDealProductSuggestionsPage() {
     setMessage(null);
 
     if (files.length === 0 && parsedUrls.length === 0) {
-      setError("Add at least one product URL and/or one image/zip file.");
+      setError("Add at least one product URL and/or one JSON/image/zip file.");
       return;
     }
 
@@ -3814,18 +3823,42 @@ export default function DigiDealProductSuggestionsPage() {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(toText(payload?.error) || "Failed to create suggestions.");
+        const detailText = Array.isArray(payload?.details)
+          ? (payload.details as unknown[])
+              .map((entry) => toText(entry))
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(" | ")
+          : "";
+        throw new Error(
+          detailText
+            ? `${toText(payload?.error) || "Failed to create suggestions."} ${detailText}`
+            : toText(payload?.error) || "Failed to create suggestions."
+        );
       }
 
       const createdItems = Array.isArray(payload?.items)
         ? (payload.items as SuggestionItem[])
         : [];
       const queueWorkerStarted = Boolean(payload?.queueWorkerStarted);
-      setMessage(
-        queueWorkerStarted
-          ? `Created ${createdItems.length} suggestion(s). Background supplier queue started.`
-          : `Created ${createdItems.length} suggestion(s). Supplier queue will continue in background.`
-      );
+      const preloadedCount = Math.max(0, Number(payload?.preloadedCount) || 0);
+      const queuedSearchCount = Math.max(0, Number(payload?.queuedSearchCount) || 0);
+      const importedCount = createdItems.length;
+      if (preloadedCount > 0 && preloadedCount === importedCount) {
+        setMessage(
+          `Created ${importedCount} suggestion(s). Supplier and variants were preloaded from JSON.`
+        );
+      } else if (preloadedCount > 0) {
+        setMessage(
+          `Created ${importedCount} suggestion(s). ${preloadedCount} preloaded from JSON, ${queuedSearchCount} queued for supplier search.`
+        );
+      } else {
+        setMessage(
+          queueWorkerStarted
+            ? `Created ${importedCount} suggestion(s). Background supplier queue started.`
+            : `Created ${importedCount} suggestion(s). Supplier queue will continue in background.`
+        );
+      }
       setFiles([]);
       setUrlsText("");
       setAddDialogOpen(false);
@@ -5946,6 +5979,15 @@ export default function DigiDealProductSuggestionsPage() {
                   (searchJobStatus === "error" && !hasSearchDataLoaded
                     ? searchJobErrorText
                     : "");
+                const selectedDetailUrl = toText(item.selection?.selected_detail_url);
+                const isPreloadedSingleSupplier1688 =
+                  supplierSelected &&
+                  payloadStatus === "ready" &&
+                  /detail\.1688\.com\/offer\/\d+\.html/i.test(selectedDetailUrl) &&
+                  hasSupplierOffers &&
+                  item.search.offerCount <= 1;
+                const supplierSearchDisabled =
+                  !item.mainImageUrl || searchIsBusy || isPreloadedSingleSupplier1688;
                 const searchButtonLabel = supplierSelected
                   ? "Supplier Selected"
                   : searchIsBusy
@@ -6149,9 +6191,9 @@ export default function DigiDealProductSuggestionsPage() {
                               ? styles.supplierSelectedButton
                               : hasSupplierOffers && !searchIsBusy
                                 ? styles.actionNeededBlueButton
-                              : undefined
+                                : undefined
                           )}
-                          disabled={!item.mainImageUrl || searchIsBusy}
+                          disabled={supplierSearchDisabled}
                           onClick={() => openSupplierDialog(item)}
                         >
                           {searchButtonLabel}
@@ -6588,7 +6630,7 @@ export default function DigiDealProductSuggestionsPage() {
       >
         <DialogSurface className={styles.addDialogSurface}>
           <DialogBody className={styles.addDialogBody}>
-            <DialogTitle>Add products from URLs or images</DialogTitle>
+            <DialogTitle>Add products from URLs, JSON, images or ZIP batch</DialogTitle>
             <DialogContent>
               <div className={styles.paneCard}>
                 <Field label="Product URLs (one per line)">
@@ -6609,7 +6651,7 @@ export default function DigiDealProductSuggestionsPage() {
               </div>
 
               <div className={styles.paneCard}>
-                <Text weight="semibold">Drop images or ZIP batch</Text>
+                <Text weight="semibold">Drop JSON, Images, or ZIP Batch</Text>
                 <div
                   className={mergeClasses(
                     styles.dropZone,
@@ -6633,7 +6675,7 @@ export default function DigiDealProductSuggestionsPage() {
                     <Spinner label="Uploading ZIP and counting files..." />
                   ) : (
                     <>
-                      <Text>Drop images or `.zip` files here</Text>
+                      <Text>Drop `.json`, image, or `.zip` files here</Text>
                       <Button
                         appearance="outline"
                         disabled={isSubmitting}
@@ -6647,7 +6689,7 @@ export default function DigiDealProductSuggestionsPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept="image/*,.zip,application/zip,application/x-zip-compressed"
+                    accept="image/*,.json,application/json,text/json,.zip,application/zip,application/x-zip-compressed"
                     className={styles.fileInputHidden}
                     onChange={(event) => handleFiles(event.currentTarget.files)}
                   />
@@ -6655,9 +6697,11 @@ export default function DigiDealProductSuggestionsPage() {
                 <div className={styles.selectedMeta}>
                   <Badge appearance="outline">{fileStats.total} file(s)</Badge>
                   <Text className={styles.helperText}>
-                    {fileStats.zipCount > 0
-                      ? `${fileStats.zipCount} ZIP file(s) selected. ZIP contents are counted after upload.`
-                      : "Images are standardized to max 750 x 750 before sourcing."}
+                    {fileStats.jsonCount > 0
+                      ? `${fileStats.jsonCount} JSON file(s), ${fileStats.imageCount} image file(s), and ${fileStats.zipCount} ZIP file(s) selected.`
+                      : fileStats.zipCount > 0
+                        ? `${fileStats.zipCount} ZIP file(s) selected. ZIP contents are counted after upload.`
+                        : "Images are standardized to max 750 x 750 before sourcing."}
                   </Text>
                 </div>
               </div>

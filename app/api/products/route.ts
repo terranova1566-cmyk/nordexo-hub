@@ -470,12 +470,14 @@ export async function GET(request: NextRequest) {
   const categoriesParam = searchParams.get("categories")?.trim() ?? null;
   const categorySelections = parseCategorySelections(categoriesParam);
   const tag = searchParams.get("tag")?.trim();
+  const campaignRunId = searchParams.get("campaignRunId")?.trim() ?? "";
+  const campaignSegmentId = searchParams.get("campaignSegmentId")?.trim() ?? "";
   const exactSpuQuery = q.length > 0 && q.includes("-") && !/\s/.test(q);
   const searchTerms = [exactSpuQuery ? null : q, category, tag]
     .filter(Boolean)
     .join(" ")
     .trim();
-  const useMeili = searchTerms.length > 0 || exactSpuQuery;
+  const useMeili = !campaignSegmentId && (searchTerms.length > 0 || exactSpuQuery);
   const brandFilters = searchParams
     .getAll("brand")
     .map((value) => value.trim())
@@ -513,12 +515,182 @@ export async function GET(request: NextRequest) {
   let products: ProductRow[] = [];
   let totalCount = 0;
   const salesByProductId = new Map<string, ProductSalesMetrics>();
+  let campaignContext:
+    | {
+        run_id: string;
+        segment_id: string;
+        label: string | null;
+      }
+    | null = null;
 
   const PRODUCT_SELECT_COLUMNS: string = includeLegacyText
     ? "id, spu, title, subtitle, description_html, legacy_title_sv, legacy_description_sv, legacy_bullets_sv, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled"
     : "id, spu, title, subtitle, description_html, tags, product_type, shopify_category_name, google_taxonomy_l1, google_taxonomy_l2, google_taxonomy_l3, image_folder, images, supplier_1688_url, updated_at, created_at, brand, vendor, nordic_partner_enabled";
 
-  if (useMeili) {
+  if (campaignSegmentId) {
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const adminClient = createAdminSupabase();
+    const { data: segmentRow, error: segmentError } = await adminClient
+      .from("campaign_search_segments")
+      .select("id, run_id, label")
+      .eq("id", campaignSegmentId)
+      .maybeSingle();
+
+    if (segmentError) {
+      return NextResponse.json({ error: segmentError.message }, { status: 500 });
+    }
+
+    if (!segmentRow || (campaignRunId && segmentRow.run_id !== campaignRunId)) {
+      return NextResponse.json({
+        items: [],
+        page,
+        pageSize,
+        total: 0,
+        active_markets: activeMarkets,
+      });
+    }
+
+    const { data: campaignRows, error: campaignError } = await adminClient
+      .from("campaign_search_results")
+      .select("product_id, rank, final_score")
+      .eq("segment_id", campaignSegmentId)
+      .order("rank", { ascending: true });
+
+    if (campaignError) {
+      return NextResponse.json({ error: campaignError.message }, { status: 500 });
+    }
+
+    const rankedRows =
+      (campaignRows ?? []).map((row) => ({
+        product_id: String(row.product_id ?? "").trim(),
+        rank: Number(row.rank ?? 0),
+        final_score: Number(row.final_score ?? 0),
+      })) ?? [];
+
+    const rankedIds = rankedRows.map((row) => row.product_id).filter(Boolean);
+    if (rankedIds.length === 0) {
+      return NextResponse.json({
+        items: [],
+        page,
+        pageSize,
+        total: 0,
+        active_markets: activeMarkets,
+        campaign_segment: {
+          run_id: segmentRow.run_id,
+          segment_id: segmentRow.id,
+          label: segmentRow.label ?? null,
+        },
+      });
+    }
+
+    const { data: campaignProducts, error: campaignProductsError } = await supabase
+      .from("catalog_products")
+      .select(PRODUCT_SELECT_COLUMNS)
+      .in("id", rankedIds)
+      .neq("is_blocked", true);
+
+    if (campaignProductsError) {
+      return NextResponse.json({ error: campaignProductsError.message }, { status: 500 });
+    }
+
+    const orderMap = new Map(rankedRows.map((row, index) => [row.product_id, index]));
+    const normalizeRowHaystack = (row: ProductRow) =>
+      [
+        row.spu,
+        row.title,
+        row.subtitle,
+        row.description_html ? normalizeHtml(row.description_html) : null,
+        row.legacy_title_sv,
+        row.legacy_description_sv,
+        row.legacy_bullets_sv,
+        row.tags,
+        row.product_type,
+        row.shopify_category_name,
+        row.brand,
+        row.vendor,
+        row.google_taxonomy_l1,
+        row.google_taxonomy_l2,
+        row.google_taxonomy_l3,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+    const matchesCategorySelection = (row: ProductRow) => {
+      if (categorySelections.length === 0) return true;
+      return categorySelections.some((selection) => {
+        if (selection.level === "l1") return row.google_taxonomy_l1 === selection.value;
+        if (selection.level === "l2") return row.google_taxonomy_l2 === selection.value;
+        return row.google_taxonomy_l3 === selection.value;
+      });
+    };
+
+    const matchesValueFilter = (
+      value: string | null | undefined,
+      filters: string[],
+      emptyToken: "__no_brand__" | "__no_vendor__"
+    ) => {
+      if (filters.length === 0) return true;
+      const trimmed = String(value ?? "").trim();
+      const wantsEmpty = filters.includes(emptyToken);
+      const explicitValues = filters.filter((entry) => entry !== emptyToken);
+      if (!trimmed) {
+        return wantsEmpty;
+      }
+      return explicitValues.length === 0 ? !wantsEmpty : explicitValues.includes(trimmed);
+    };
+
+    const updatedFromTs = toTimestamp(updatedFrom);
+    const updatedToTs = toTimestamp(updatedTo);
+    const addedFromTs = toTimestamp(addedFrom);
+    const addedToTs = toTimestamp(addedTo);
+    const loweredQuery = q.trim().toLowerCase();
+    const loweredTag = tag?.trim().toLowerCase() ?? "";
+
+    const filteredRows = ((campaignProducts ?? []) as unknown as ProductRow[])
+      .slice()
+      .sort((left, right) => (orderMap.get(left.id) ?? 0) - (orderMap.get(right.id) ?? 0))
+      .filter((row) => {
+        if (exactSpuQuery && q && String(row.spu ?? "").trim() !== q) return false;
+        if (!exactSpuQuery && loweredQuery) {
+          if (!normalizeRowHaystack(row).includes(loweredQuery)) return false;
+        }
+        if (loweredTag) {
+          const tagsValue = String(row.tags ?? "").toLowerCase();
+          if (!tagsValue.includes(loweredTag)) return false;
+        }
+        if (!matchesCategorySelection(row)) return false;
+        if (!matchesValueFilter(row.brand, brandFilters, "__no_brand__")) return false;
+        if (!matchesValueFilter(row.vendor, vendorFilters, "__no_vendor__")) return false;
+
+        const updatedTimestamp = toTimestamp(row.updated_at);
+        if (updatedFromTs !== null && (updatedTimestamp === null || updatedTimestamp < updatedFromTs)) {
+          return false;
+        }
+        if (updatedToTs !== null && (updatedTimestamp === null || updatedTimestamp > updatedToTs)) {
+          return false;
+        }
+        if (addedFromTs !== null && (updatedTimestamp === null || updatedTimestamp < addedFromTs)) {
+          return false;
+        }
+        if (addedToTs !== null && (updatedTimestamp === null || updatedTimestamp > addedToTs)) {
+          return false;
+        }
+
+        return true;
+      });
+
+    totalCount = filteredRows.length;
+    products = filteredRows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+    campaignContext = {
+      run_id: segmentRow.run_id,
+      segment_id: segmentRow.id,
+      label: segmentRow.label ?? null,
+    };
+  } else if (useMeili) {
     const filters: string[] = [];
     filters.push("is_blocked = false");
     if (hasVariants) {
@@ -1551,5 +1723,6 @@ export async function GET(request: NextRequest) {
     pageSize,
     total: totalCount ?? filteredItems.length,
     active_markets: activeMarkets,
+    campaign_segment: campaignContext,
   });
 }

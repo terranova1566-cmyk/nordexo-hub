@@ -1,0 +1,116 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - status
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "Nordexo Hub HUB" [ref=e7] [cursor=pointer]:
+            - /url: /app
+            - generic [ref=e8]:
+              - img "Nordexo Hub" [ref=e9]
+              - generic [ref=e10]: HUB
+          - generic [ref=e11]:
+            - button "Product Manager" [ref=e12]
+            - button "Product Discovery" [ref=e13]
+            - button "Deals" [ref=e14]
+            - button "Market Trends" [ref=e15]
+            - button "NX Labs" [ref=e16]
+        - toolbar [ref=e17]:
+          - combobox "Language" [ref=e20] [cursor=pointer]:
+            - text: EN
+            - img [ref=e22]
+          - button "Settings" [ref=e24]:
+            - img [ref=e26]
+          - button "Sign out" [ref=e30]:
+            - img [ref=e32]
+    - main [ref=e39]:
+      - generic [ref=e40]:
+        - group [ref=e41]:
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e46]:
+                - generic [ref=e47]: Search
+                - button "Advanced search" [disabled] [ref=e48]
+                - button "Clear" [disabled] [ref=e49]
+              - textbox "Search Advanced search Clear" [ref=e51]:
+                - /placeholder: Search by SPU, title, or brand
+            - generic [ref=e52]:
+              - generic [ref=e53]: Category
+              - button "All categories" [ref=e54]
+            - generic [ref=e55]:
+              - generic [ref=e56]: Brand
+              - button "All brands" [ref=e57]:
+                - generic [ref=e58]: All brands
+            - generic [ref=e59]:
+              - generic [ref=e60]: Vendor
+              - button "All vendors" [ref=e61]:
+                - generic [ref=e62]: All vendors
+          - generic [ref=e63]:
+            - generic [ref=e64]:
+              - generic [ref=e65]:
+                - generic [ref=e66]: Sales
+                - combobox "Sales" [ref=e68] [cursor=pointer]:
+                  - text: Sales (all time)
+                  - img [ref=e70]
+              - generic [ref=e72]:
+                - generic [ref=e73]: Pages
+                - combobox "Pages" [ref=e75] [cursor=pointer]:
+                  - text: 25 / page
+                  - img [ref=e77]
+              - generic [ref=e79]:
+                - generic [ref=e80]: Show
+                - combobox "Show" [ref=e82] [cursor=pointer]:
+                  - text: Show all
+                  - img [ref=e84]
+              - generic [ref=e86]:
+                - generic [ref=e87]: Updated range
+                - button "Any time" [ref=e88]:
+                  - generic [ref=e89]: Any time
+              - generic [ref=e90]:
+                - generic [ref=e91]: Added range
+                - button "Any time" [ref=e92]:
+                  - generic [ref=e93]: Any time
+            - generic [ref=e95]:
+              - generic [ref=e96]: Selection
+              - generic [ref=e97]:
+                - button "Action" [disabled] [ref=e98]
+                - button "Unselect" [disabled] [ref=e99]
+                - generic [ref=e100]: 0 selected
+        - group [ref=e101]:
+          - table [ref=e102]:
+            - rowgroup [ref=e103]:
+              - row "Image Product SPU Created / Updated Variants Sales Details Status Delivery Actions Select All" [ref=e104]:
+                - columnheader "Image" [ref=e105]
+                - columnheader "Product" [ref=e107]:
+                  - generic [ref=e108]: Product
+                - columnheader "SPU" [ref=e109]:
+                  - generic [ref=e110]: SPU
+                - columnheader "Created / Updated" [ref=e111]:
+                  - generic [ref=e112]: Created / Updated
+                - columnheader "Variants" [ref=e113]:
+                  - generic [ref=e114]: Variants
+                - columnheader "Sales" [ref=e115]:
+                  - generic [ref=e116]: Sales
+                - columnheader "Details" [ref=e117]:
+                  - generic [ref=e118]: Details
+                - columnheader "Status" [ref=e119]:
+                  - generic [ref=e120]: Status
+                - columnheader "Delivery" [ref=e121]:
+                  - generic [ref=e122]: Delivery
+                - columnheader "Actions" [ref=e123]:
+                  - generic [ref=e124]: Actions
+                - columnheader "Select All" [ref=e125]:
+                  - checkbox "Select All" [disabled] [ref=e129]
+            - rowgroup [ref=e130]:
+              - row "Loading products" [ref=e131]:
+                - cell "Loading products" [ref=e132]:
+                  - generic [ref=e133]:
+                    - progressbar [ref=e134]
+                    - generic [ref=e137]: Loading products
+          - generic [ref=e138]:
+            - generic [ref=e139]: Page 1 of 1
+            - generic [ref=e140]:
+              - button "Previous" [disabled] [ref=e141]
+              - button "Next" [disabled] [ref=e142]
+  - alert [ref=e145]
