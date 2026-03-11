@@ -9,6 +9,7 @@ import {
   DialogBody,
   DialogSurface,
   DialogTitle,
+  Dropdown,
   Field,
   Input,
   Popover,
@@ -19,6 +20,7 @@ import {
   MenuList,
   MenuPopover,
   MenuTrigger,
+  Option,
   Textarea,
   Spinner,
   Switch,
@@ -46,6 +48,7 @@ import {
   useState,
 } from "react";
 import { useI18n } from "@/components/i18n-provider";
+import { useShiftRangeSelection } from "@/hooks/use-shift-range-selection";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 type DraftEntry = {
@@ -55,6 +58,8 @@ type DraftEntry = {
   size: number;
   modifiedAt: string;
   pixelQualityScore?: number | null;
+  width?: number | null;
+  height?: number | null;
   zimageUpscaled?: boolean;
   whiteSides?: number | null;
   borderWhiteDensity?: number | null;
@@ -131,6 +136,13 @@ type ExplorerContextMenuState = {
   y: number;
 };
 
+type BackgroundImageContextMenuState = {
+  folderPath: string;
+  spu: string;
+  x: number;
+  y: number;
+};
+
 type AiEditProvider = "chatgpt" | "gemini" | "zimage";
 type AiPromptMode =
   | "template"
@@ -144,9 +156,103 @@ type AiTemplatePreset =
   | "digideal_main"
   | "digideal_main_dual"
   | "product_scene"
-  | "product_collection";
+  | "product_collection"
+  | "fashion_model";
 type AiResolveDecision = "keep_original" | "replace_with_ai" | "keep_both";
 type AiEditJobStatus = "queued" | "running";
+type AiSceneSubjectOption = "male" | "female" | "couple" | "family";
+type AiSceneAgeGroupOption =
+  | "young_adult"
+  | "adult"
+  | "middle_age"
+  | "senior"
+  | "elder";
+type AiSceneOutputFormat = "square" | "wide";
+type AiScenePromptIdea = {
+  key: string;
+  title: string;
+  prompt: string;
+};
+
+type DraftAiModel = {
+  id: string;
+  name: string;
+  imagePath: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DraftAiModelBackgroundMode =
+  | "default"
+  | "pure_white"
+  | "photo_studio"
+  | "custom";
+
+const AI_MODEL_BACKGROUND_OPTIONS: Array<{
+  value: DraftAiModelBackgroundMode;
+  label: string;
+}> = [
+  { value: "default", label: "Standard (#FFFFFF cutout)" },
+  { value: "photo_studio", label: "Natural studio white" },
+  { value: "custom", label: "Custom" },
+];
+
+const AI_SCENE_SUBJECT_OPTIONS: Array<{
+  value: AiSceneSubjectOption;
+  label: string;
+  promptValue: string;
+}> = [
+  { value: "male", label: "Male", promptValue: "Male" },
+  { value: "female", label: "Female", promptValue: "Female" },
+  { value: "couple", label: "Couple", promptValue: "Couple" },
+  { value: "family", label: "Family", promptValue: "Family" },
+];
+
+const AI_SCENE_AGE_GROUP_OPTIONS: Array<{
+  value: AiSceneAgeGroupOption;
+  label: string;
+  promptValue: string;
+}> = [
+  {
+    value: "young_adult",
+    label: "Young Adult (18-25)",
+    promptValue: "Young Adult (18-25)",
+  },
+  { value: "adult", label: "Adult (25-35)", promptValue: "Adult (25-35)" },
+  {
+    value: "middle_age",
+    label: "Middle Age (35-45)",
+    promptValue: "Middle Age (35-45)",
+  },
+  { value: "senior", label: "Senior (46-55)", promptValue: "Senior (46-55)" },
+  { value: "elder", label: "Elder (55-65)", promptValue: "Elder (55-65)" },
+];
+
+type AiModelDialogState = {
+  entries: DraftEntry[];
+};
+
+type AiModelEditorDialogState = {
+  mode: "create" | "edit";
+  modelId: string | null;
+};
+
+type NewImageDialogState = {
+  folderPath: string;
+  spu: string;
+  provider: "gemini";
+};
+
+type SizeChartTextDialogState = {
+  mainPath: string;
+  spu: string;
+  entries: DraftEntry[];
+};
+
+type RemoveWithMaskDialogState = {
+  entries: DraftEntry[];
+  referenceEntry: DraftEntry;
+};
 
 type AiDualDialogState = {
   provider: Exclude<AiEditProvider, "zimage">;
@@ -305,6 +411,13 @@ type DraftVariantEditorRow = {
   draft_raw_row: Record<string, unknown>;
 };
 
+const normalizeVariantEditorSearchValue = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+
 const buildVariantEditorReadableLabel = (row: DraftVariantEditorRow) => {
   const swedishParts = [
     String(row.variation_color_se || "").trim(),
@@ -316,14 +429,38 @@ const buildVariantEditorReadableLabel = (row: DraftVariantEditorRow) => {
     return swedishParts.join(" / ");
   }
   const zhCombined = buildVariantCombinedZhValue({
-    draft_option1: String(row.draft_option1 || "").trim(),
-    draft_option2: String(row.draft_option2 || "").trim(),
-    draft_option3: String(row.draft_option3 || "").trim(),
-    draft_option4: String(row.draft_option4 || "").trim(),
+    draft_option1: String(row.draft_option1_zh || "").trim(),
+    draft_option2: String(row.draft_option2_zh || "").trim(),
+    draft_option3: String(row.draft_option3_zh || "").trim(),
+    draft_option4: String(row.draft_option4_zh || "").trim(),
     fallback: String(row.draft_option_combined_zh || "").trim(),
   });
   return zhCombined || String(row.draft_sku || "").trim() || String(row.key || "").trim();
 };
+
+const buildVariantEditorSearchIndex = (row: DraftVariantEditorRow) =>
+  [
+    row.draft_sku,
+    row.variation_color_se,
+    row.variation_size_se,
+    row.variation_other_se,
+    row.variation_amount_se,
+    row.draft_option_combined_zh,
+    row.draft_option1,
+    row.draft_option2,
+    row.draft_option3,
+    row.draft_option4,
+    row.draft_option1_zh,
+    row.draft_option2_zh,
+    row.draft_option3_zh,
+    row.draft_option4_zh,
+    row.draft_shipping_class,
+    row.draft_price,
+    row.draft_weight,
+  ]
+    .map((value) => normalizeVariantEditorSearchValue(value))
+    .filter(Boolean)
+    .join(" ");
 
 type SpuJsonViewerState = {
   spu: string;
@@ -343,6 +480,10 @@ type DraftVariantEditorEditableField =
   | "draft_option2"
   | "draft_option3"
   | "draft_option4"
+  | "draft_option1_zh"
+  | "draft_option2_zh"
+  | "draft_option3_zh"
+  | "draft_option4_zh"
   | "draft_shipping_class"
   | "draft_price"
   | "draft_weight";
@@ -378,7 +519,7 @@ type ImageFolderTabValue =
 type MainImageViewFilter = "all" | "var_only" | "size_only";
 type ReverseSearchLocale = "sweden" | "us_global";
 
-const SHIPPING_CLASS_OPTIONS = ["NOR", "BAT", "PBA", "LIQ"] as const;
+const SHIPPING_CLASS_OPTIONS = ["NOR", "BAT", "SPC", "PBA", "LIQ"] as const;
 const SHIPPING_CLASS_OPTION_SET = new Set<string>(SHIPPING_CLASS_OPTIONS);
 const normalizeShippingClassCode = (value: unknown) => {
   const text = String(value ?? "").trim().toUpperCase();
@@ -815,26 +956,7 @@ const useStyles = makeStyles({
   batchPickerRowArchive: {
     gridTemplateColumns: "minmax(0, 1fr)",
   },
-  batchPickerMergeCheckbox: {
-    "& .fui-Checkbox__indicator": {
-      backgroundColor: "#ffffff",
-    },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator, &[aria-checked='true'] .fui-Checkbox__indicator, &[aria-checked='mixed'] .fui-Checkbox__indicator":
-      {
-        backgroundColor: tokens.colorBrandBackground,
-        color: "#ffffff",
-      },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator svg, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator svg, &[aria-checked='true'] .fui-Checkbox__indicator svg, &[aria-checked='mixed'] .fui-Checkbox__indicator svg":
-      {
-        color: "#ffffff",
-        fill: "#ffffff",
-      },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator path, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator path, &[aria-checked='true'] .fui-Checkbox__indicator path, &[aria-checked='mixed'] .fui-Checkbox__indicator path":
-      {
-        stroke: "#ffffff",
-        fill: "#ffffff",
-      },
-  },
+  batchPickerMergeCheckbox: {},
   whiteActionButton: {
     backgroundColor: "#ffffff",
     ":hover": {
@@ -1388,6 +1510,9 @@ const useStyles = makeStyles({
   mediaTagDigi: {
     backgroundColor: "#E83E8C",
   },
+  mediaTagCol: {
+    backgroundColor: "#3F51B5",
+  },
   mediaTagSize: {
     backgroundColor: "#6610F2",
   },
@@ -1628,6 +1753,18 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
     justifyContent: "flex-end",
+  },
+  imageToolbarStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    color: tokens.colorBrandForeground1,
+    minHeight: "28px",
+  },
+  imageToolbarStatusLabel: {
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    whiteSpace: "nowrap",
   },
   imageToolbarActions: {
     marginRight: "2px",
@@ -2062,6 +2199,17 @@ const useStyles = makeStyles({
     maxHeight: "84vh",
     overflow: "hidden",
   },
+  newImageSurface: {
+    width: "min(720px, 92vw)",
+    maxWidth: "92vw",
+    padding: "12px",
+    overflow: "hidden",
+  },
+  newImageBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
   autoLevelsControls: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
@@ -2315,6 +2463,12 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase200,
     lineHeight: 1,
+  },
+  contextMenuDivider: {
+    height: "1px",
+    margin: "4px 6px",
+    backgroundColor: tokens.colorNeutralStroke2,
+    flexShrink: 0,
   },
   contextMenuSubmenuWrap: {
     position: "relative",
@@ -2797,10 +2951,19 @@ const useStyles = makeStyles({
     width: "min(620px, 92vw)",
     padding: "14px",
   },
+  aiPromptSurfaceScene: {
+    width: "min(820px, 96vw)",
+    maxWidth: "min(820px, 96vw)",
+    maxHeight: "86vh",
+  },
   aiPromptBody: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+  },
+  aiPromptBodyScene: {
+    maxHeight: "80vh",
+    overflowY: "auto",
   },
   aiPromptImageWrap: {
     width: "100%",
@@ -2817,6 +2980,138 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground2,
+  },
+  aiPromptImagePreviewScene: {
+    maxWidth: "250px",
+    maxHeight: "250px",
+  },
+  aiSceneSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  aiSceneOptionRow: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  aiQuietToggleButton: {
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    color: tokens.colorNeutralForeground1,
+    transitionProperty: "none",
+    transitionDuration: "0s",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+      color: tokens.colorNeutralForeground1,
+    },
+    "&:active": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+      color: tokens.colorNeutralForeground1,
+    },
+    "&:hover:active": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+      color: tokens.colorNeutralForeground1,
+    },
+  },
+  aiQuietToggleButtonSelected: {
+    backgroundColor: tokens.colorBrandBackground,
+    border: `1px solid ${tokens.colorBrandBackground}`,
+    color: tokens.colorNeutralForegroundOnBrand,
+    transitionProperty: "none",
+    transitionDuration: "0s",
+    "&:hover": {
+      backgroundColor: tokens.colorBrandBackground,
+      border: `1px solid ${tokens.colorBrandBackground}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
+    "&:active": {
+      backgroundColor: tokens.colorBrandBackground,
+      border: `1px solid ${tokens.colorBrandBackground}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
+    "&:hover:active": {
+      backgroundColor: tokens.colorBrandBackground,
+      border: `1px solid ${tokens.colorBrandBackground}`,
+      color: tokens.colorNeutralForegroundOnBrand,
+    },
+  },
+  aiScenePromptIdeasGrid: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  aiScenePromptIdeaButton: {
+    width: "100%",
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+    whiteSpace: "normal",
+    lineHeight: "1.3",
+    minHeight: "auto",
+    textAlign: "left",
+    padding: "10px 12px",
+    fontWeight: tokens.fontWeightRegular,
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    transitionProperty: "none",
+    transitionDuration: "0s",
+    "&:hover": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+    },
+    "&:active": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+    },
+    "&:hover:active": {
+      backgroundColor: tokens.colorNeutralBackground1,
+      border: `1px solid ${tokens.colorNeutralStroke1}`,
+    },
+  },
+  aiScenePromptIdeaContent: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "4px",
+    width: "100%",
+  },
+  aiScenePromptIdeaTitle: {
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+    whiteSpace: "normal",
+    textAlign: "left",
+  },
+  aiScenePromptIdeaBody: {
+    fontWeight: tokens.fontWeightRegular,
+    color: tokens.colorNeutralForeground2,
+    whiteSpace: "normal",
+    textAlign: "left",
+  },
+  aiScenePromptIdeaMeta: {
+    color: tokens.colorNeutralForeground3,
+  },
+  aiScenePromptIdeaSelected: {
+    backgroundColor: "#eaf3ff",
+    border: `2px solid ${tokens.colorBrandStroke1}`,
+    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    "&:hover": {
+      backgroundColor: "#eaf3ff",
+      border: `2px solid ${tokens.colorBrandStroke1}`,
+      boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    },
+    "&:active": {
+      backgroundColor: "#eaf3ff",
+      border: `2px solid ${tokens.colorBrandStroke1}`,
+      boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    },
+    "&:hover:active": {
+      backgroundColor: "#eaf3ff",
+      border: `2px solid ${tokens.colorBrandStroke1}`,
+      boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    },
   },
   aiPromptHistoryPopover: {
     width: "min(760px, 90vw)",
@@ -2960,6 +3255,250 @@ const useStyles = makeStyles({
   aiCollectionHint: {
     color: tokens.colorNeutralForeground3,
   },
+  aiModelSurface: {
+    width: "min(1380px, 96vw)",
+    maxHeight: "82vh",
+    padding: "14px",
+  },
+  aiModelBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    maxHeight: "76vh",
+    overflowY: "auto",
+  },
+  aiModelPreviewBox: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    padding: "12px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    maxHeight: "44vh",
+    overflowY: "auto",
+  },
+  aiModelTargetSummary: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  aiModelTargetGrid: {
+    display: "grid",
+    gap: "10px",
+    gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+  },
+  aiModelTargetCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  aiModelTargetFrame: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    borderRadius: "10px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiModelTargetImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    backgroundColor: "#ffffff",
+  },
+  aiModelTargetLabel: {
+    color: tokens.colorNeutralForeground2,
+    textAlign: "center",
+    lineHeight: "1.25",
+    wordBreak: "break-word",
+  },
+  aiModelPreviewFrame: {
+    width: "100%",
+    maxWidth: "320px",
+    margin: "0 auto",
+    aspectRatio: "3 / 4",
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiModelPreviewImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    backgroundColor: "#ffffff",
+  },
+  aiModelPreviewName: {
+    textAlign: "center",
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  aiModelThumbGrid: {
+    display: "grid",
+    gap: "12px",
+    width: "100%",
+    maxWidth: "1240px",
+    margin: "0 auto",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    "@media (max-width: 1280px)": {
+      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    },
+    "@media (max-width: 920px)": {
+      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    },
+    "@media (max-width: 700px)": {
+      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    },
+  },
+  aiModelThumbCard: {
+    position: "relative",
+  },
+  aiModelThumbCardDragging: {
+    opacity: 0.6,
+  },
+  aiModelThumbCardDropTarget: {
+    transform: "translateY(-2px)",
+  },
+  aiModelThumbButton: {
+    borderRadius: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    width: "100%",
+    padding: "7px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    alignItems: "center",
+    cursor: "pointer",
+    transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+    ":hover": {
+      border: `1px solid ${tokens.colorBrandStroke1}`,
+      transform: "translateY(-1px)",
+    },
+    ":focus-visible": {
+      outline: `2px solid ${tokens.colorStrokeFocus2}`,
+      outlineOffset: "2px",
+    },
+  },
+  aiModelThumbButtonSelected: {
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    boxShadow: `0 0 0 1px ${tokens.colorBrandStroke1} inset`,
+    backgroundColor: tokens.colorBrandBackground2,
+  },
+  aiModelThumbFrame: {
+    width: "100%",
+    aspectRatio: "3 / 4",
+    borderRadius: "10px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiModelThumbImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    backgroundColor: "#ffffff",
+  },
+  aiModelThumbLabel: {
+    textAlign: "center",
+    color: tokens.colorNeutralForeground2,
+    fontWeight: tokens.fontWeightMedium,
+  },
+  aiModelThumbNameTag: {
+    position: "absolute",
+    top: "8px",
+    left: "8px",
+    zIndex: 2,
+    padding: "2px 8px",
+    borderRadius: "999px",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: tokens.colorNeutralForeground1,
+    boxShadow: tokens.shadow4,
+  },
+  aiModelThumbRemoveButton: {
+    position: "absolute",
+    top: "8px",
+    right: "8px",
+    zIndex: 2,
+    width: "18px",
+    height: "18px",
+    borderRadius: "999px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: tokens.colorNeutralForeground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    cursor: "pointer",
+    boxShadow: tokens.shadow4,
+    ":hover": {
+      backgroundColor: "#ffffff",
+    },
+  },
+  aiModelFieldGrid: {
+    display: "grid",
+    gap: "12px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    "@media (max-width: 720px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  aiModelSelect: {
+    width: "100%",
+    minWidth: 0,
+  },
+  aiModelEditorSurface: {
+    width: "min(520px, 94vw)",
+    padding: "14px",
+  },
+  aiModelEditorBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  aiModelEditorPreviewFrame: {
+    width: "100%",
+    maxWidth: "240px",
+    margin: "0 auto",
+    aspectRatio: "3 / 4",
+    borderRadius: "12px",
+    overflow: "hidden",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiModelEditorPreviewImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    backgroundColor: "#ffffff",
+  },
+  aiModelHint: {
+    color: tokens.colorNeutralForeground3,
+  },
+  aiModelActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    justifyContent: "flex-start",
+  },
+  aiModelDeleteBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
   aiMaskEditor: {
     display: "flex",
     flexDirection: "column",
@@ -2975,11 +3514,31 @@ const useStyles = makeStyles({
     overflow: "hidden",
     marginInline: "auto",
   },
+  removeWithMaskStage: {
+    position: "relative",
+    width: "100%",
+    maxWidth: "500px",
+    aspectRatio: "1 / 1",
+    borderRadius: "10px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    overflow: "hidden",
+    marginInline: "auto",
+  },
   aiMaskBaseImage: {
     display: "block",
     width: "100%",
     height: "auto",
     maxHeight: "500px",
+    objectFit: "contain",
+    userSelect: "none",
+    pointerEvents: "none",
+  },
+  removeWithMaskBaseImage: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
     objectFit: "contain",
     userSelect: "none",
     pointerEvents: "none",
@@ -3321,50 +3880,7 @@ const useStyles = makeStyles({
     paddingLeft: "6px",
     paddingRight: "6px",
   },
-  selectionCheckbox: {
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    padding: 0,
-    boxSizing: "border-box",
-    "& .fui-Checkbox__indicator": {
-      backgroundColor: "#ffffff",
-      color: "transparent",
-    },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator, &[aria-checked='true'] .fui-Checkbox__indicator, &[aria-checked='mixed'] .fui-Checkbox__indicator":
-      {
-        backgroundColor: tokens.colorBrandBackground,
-        color: "#ffffff",
-      },
-    "& .fui-Checkbox__input:checked:hover + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate:hover + .fui-Checkbox__indicator, &[aria-checked='true']:hover .fui-Checkbox__indicator, &[aria-checked='mixed']:hover .fui-Checkbox__indicator":
-      {
-        backgroundColor: tokens.colorBrandBackgroundHover,
-      },
-    "& .fui-Checkbox__input:checked:active + .fui-Checkbox__indicator, & .fui-Checkbox__input:indeterminate:active + .fui-Checkbox__indicator, &[aria-checked='true']:active .fui-Checkbox__indicator, &[aria-checked='mixed']:active .fui-Checkbox__indicator":
-      {
-        backgroundColor: tokens.colorBrandBackgroundPressed,
-      },
-    "& .fui-Checkbox__input:disabled + .fui-Checkbox__indicator, &[aria-disabled='true'] .fui-Checkbox__indicator":
-      {
-        backgroundColor: tokens.colorNeutralBackgroundDisabled,
-        color: tokens.colorNeutralForegroundDisabled,
-      },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator svg, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator svg, &[aria-checked='true'] .fui-Checkbox__indicator svg, &[aria-checked='mixed'] .fui-Checkbox__indicator svg":
-      {
-        color: "#ffffff",
-        fill: "#ffffff",
-      },
-    "& .fui-Checkbox__input:checked + .fui-Checkbox__indicator path, & .fui-Checkbox__input:indeterminate + .fui-Checkbox__indicator path, &[aria-checked='true'] .fui-Checkbox__indicator path, &[aria-checked='mixed'] .fui-Checkbox__indicator path":
-      {
-        stroke: "#ffffff",
-        fill: "#ffffff",
-      },
-    ":hover": {
-      backgroundColor: "transparent",
-    },
-    ":active": {
-      backgroundColor: "transparent",
-    },
-  },
+  selectionCheckbox: {},
   spuCol: {
     width: "140px",
     maxWidth: "140px",
@@ -3532,9 +4048,9 @@ const useStyles = makeStyles({
     transformOrigin: "center",
   },
   variantsEditorSurface: {
-    width: "70vw",
-    maxWidth: "70vw",
-    minWidth: "980px",
+    width: "80.5vw",
+    maxWidth: "80.5vw",
+    minWidth: "1125px",
     maxHeight: "92vh",
     padding: "14px",
     overflow: "hidden",
@@ -3550,6 +4066,30 @@ const useStyles = makeStyles({
     gap: "10px",
     minHeight: "68vh",
     position: "relative",
+  },
+  variantsEditorTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+    minWidth: 0,
+  },
+  variantsEditorTitleField: {
+    display: "inline-flex",
+    alignItems: "center",
+    minWidth: "220px",
+    maxWidth: "min(720px, 58vw)",
+    padding: "5px 10px",
+    borderRadius: "8px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: tokens.lineHeightBase200,
+    color: tokens.colorNeutralForeground2,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    boxSizing: "border-box",
   },
   variantsEditorContent: {
     display: "flex",
@@ -3585,6 +4125,9 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
+  },
+  variantsEditorSearchInput: {
+    width: "240px",
   },
   variantsEditorPacksInput: {
     width: "160px",
@@ -4434,19 +4977,20 @@ const splitFileNameAndExtension = (fileName: string) => {
   };
 };
 
-const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "VAR", "INF", "DIGI"] as const;
+const TAG_IMAGE_OPTIONS = ["MAIN", "ENV", "ENV-W", "VAR", "INF", "DIGI", "COL"] as const;
 const DISPLAY_IMAGE_TAG_OPTIONS = [...TAG_IMAGE_OPTIONS, "SIZE"] as const;
 type ImageTagOption = (typeof DISPLAY_IMAGE_TAG_OPTIONS)[number];
 const GOOGLE_SEARCH_BADGE_ICON_SRC = "/icons/google-logo.png";
 const TAG_IMAGE_SUFFIXES_TO_STRIP = [
   ...DISPLAY_IMAGE_TAG_OPTIONS,
+  "COLL",
   "ENF",
   "TAG IMAGE",
 ] as const;
 const IMAGE_TAG_SUFFIX_PAREN_REGEX =
-  /\(\s*(MAIN|ENV|VAR|INF|ENF|DIGI|SIZE)\s*\)\s*$/i;
+  /\(\s*(MAIN|ENV-W|ENV|VAR|INF|ENF|DIGI|COL|COLL|SIZE)\s*\)\s*$/i;
 const IMAGE_TAG_SUFFIX_TOKEN_REGEX =
-  /(?:[-_ ]+)(MAIN|ENV|VAR|INF|ENF|DIGI|SIZE)\s*$/i;
+  /(?:[-_ ]+)(ENV-W|MAIN|ENV|VAR|INF|ENF|DIGI|COL|COLL|SIZE)\s*$/i;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -4483,6 +5027,31 @@ const stripTrailingImageTagSuffixes = (baseName: string) => {
 
 const normalizeImageTags = (tags: ImageTagOption[]) =>
   DISPLAY_IMAGE_TAG_OPTIONS.filter((option) => tags.includes(option));
+const EMPTY_STRING_ARRAY: string[] = [];
+const EMPTY_AI_SCENE_PROMPT_IDEAS: AiScenePromptIdea[] = [];
+
+const normalizeAiScenePromptIdea = (value: unknown): AiScenePromptIdea | null => {
+  if (typeof value === "string") {
+    const prompt = String(value || "").trim();
+    if (!prompt) return null;
+    const title = prompt.split(/[.!?]/)[0]?.trim() || prompt;
+    return {
+      key: JSON.stringify([title, prompt]),
+      title,
+      prompt,
+    };
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const title = String(record.title || "").trim();
+  const prompt = String(record.prompt || "").trim();
+  if (!title || !prompt) return null;
+  return {
+    key: JSON.stringify([title, prompt]),
+    title,
+    prompt,
+  };
+};
 
 const buildTaggedImageFileNameFromTags = (
   fileName: string,
@@ -4506,13 +5075,20 @@ const extractImageTagsFromFileName = (fileName: string): ImageTagOption[] => {
 
   const appendNormalizedTag = (rawTag: string) => {
     const normalizedRaw = String(rawTag || "").trim().toUpperCase();
-    const normalized = normalizedRaw === "ENF" ? "INF" : normalizedRaw;
+    const normalized =
+      normalizedRaw === "ENF"
+        ? "INF"
+        : normalizedRaw === "COLL"
+          ? "COL"
+          : normalizedRaw;
     if (
       (normalized === "MAIN" ||
         normalized === "ENV" ||
+        normalized === "ENV-W" ||
         normalized === "VAR" ||
         normalized === "INF" ||
         normalized === "DIGI" ||
+        normalized === "COL" ||
         normalized === "SIZE") &&
       !ordered.includes(normalized as ImageTagOption)
     ) {
@@ -4577,12 +5153,14 @@ const isWhiteBorderPriorityImage = (entry: DraftEntry) => {
 
 const getTagGroupSortRank = (tags: ImageTagOption[]) => {
   // Tagged section order:
-  // INF/ENF -> ENV -> DIGI -> VAR -> SIZE
-  if (tags.includes("INF")) return 1;
-  if (tags.includes("ENV")) return 2;
-  if (tags.includes("DIGI")) return 3;
-  if (tags.includes("VAR")) return 4;
-  if (tags.includes("SIZE")) return 5;
+  // VAR -> COL -> ENV -> ENV-W -> INF/ENF -> DIGI -> SIZE
+  if (tags.includes("VAR")) return 1;
+  if (tags.includes("COL")) return 2;
+  if (tags.includes("ENV")) return 3;
+  if (tags.includes("ENV-W")) return 4;
+  if (tags.includes("INF")) return 5;
+  if (tags.includes("DIGI")) return 6;
+  if (tags.includes("SIZE")) return 7;
   return 0;
 };
 
@@ -4592,14 +5170,11 @@ const getImagePrimarySortRank = (
 ) => {
   const tags = resolveTags(entry);
   if (tags.includes("MAIN")) return 0;
-  // White-priority is only for untagged images after MAIN.
   if (tags.length === 0) {
-    if (isWhiteBackgroundPriorityImage(entry)) return 1;
-    if (isWhiteBorderPriorityImage(entry)) return 2;
-    return 3;
+    return 1;
   }
-  // Tagged images come after all untagged buckets.
-  return 4;
+  // Tagged images come after untagged images, which are ordered by whiteness.
+  return 2;
 };
 
 const buildTaggedImageOrderPaths = (
@@ -4625,17 +5200,15 @@ const buildTaggedImageOrderPaths = (
 
       if (
         preserveUntaggedOrder &&
-        leftPrimaryRank > 0 &&
-        leftPrimaryRank < 4 &&
-        rightPrimaryRank > 0 &&
-        rightPrimaryRank < 4
+        leftPrimaryRank === 1 &&
+        rightPrimaryRank === 1
       ) {
         const leftIndex = originalOrder.get(left.path) ?? 0;
         const rightIndex = originalOrder.get(right.path) ?? 0;
         if (leftIndex !== rightIndex) return leftIndex - rightIndex;
       }
 
-      if (leftPrimaryRank === 4 && rightPrimaryRank === 4) {
+      if (leftPrimaryRank === 2 && rightPrimaryRank === 2) {
         const leftTagRank = getTagGroupSortRank(resolveTags(left));
         const rightTagRank = getTagGroupSortRank(resolveTags(right));
         if (leftTagRank !== rightTagRank) {
@@ -4687,9 +5260,14 @@ const isDigiTaggedImageName = (fileName: string) =>
 
 const toggleImageTagInFileName = (fileName: string, tag: ImageTagOption) => {
   const currentTags = extractImageTagsFromFileName(fileName);
-  const nextTags = currentTags.includes(tag)
-    ? currentTags.filter((value) => value !== tag)
-    : [...currentTags, tag];
+  const isEnvironmentFamilyTag = tag === "ENV" || tag === "ENV-W";
+  const nextTags = isEnvironmentFamilyTag
+    ? currentTags.includes(tag)
+      ? currentTags.filter((value) => value !== "ENV" && value !== "ENV-W")
+      : [...currentTags.filter((value) => value !== "ENV" && value !== "ENV-W"), tag]
+    : currentTags.includes(tag)
+      ? currentTags.filter((value) => value !== tag)
+      : [...currentTags, tag];
   return buildTaggedImageFileNameFromTags(fileName, nextTags);
 };
 
@@ -4851,10 +5429,10 @@ const buildVariantSwedishReadableLabel = (row: DraftSkuRow) => {
     return swedishParts.join(" / ");
   }
   const zhCombined = buildVariantCombinedZhValue({
-    draft_option1: String(row.draft_option1 || "").trim(),
-    draft_option2: String(row.draft_option2 || "").trim(),
-    draft_option3: String(row.draft_option3 || "").trim(),
-    draft_option4: String(row.draft_option4 || "").trim(),
+    draft_option1: String(row.draft_option1_zh || "").trim(),
+    draft_option2: String(row.draft_option2_zh || "").trim(),
+    draft_option3: String(row.draft_option3_zh || "").trim(),
+    draft_option4: String(row.draft_option4_zh || "").trim(),
     fallback: String(row.draft_option_combined_zh || "").trim(),
   });
   return zhCombined || String(row.draft_sku || "").trim() || String(row.id || "").trim();
@@ -4895,6 +5473,23 @@ const buildVariantAssignmentGroupLabelFromRow = (row: DraftSkuRow) => {
   return buildVariantSwedishReadableLabel(row);
 };
 
+const getVariantColorAssignmentLabelFromRow = (row: DraftSkuRow) => {
+  const raw = parseDraftRawRow(row.draft_raw_row);
+  return toText(
+    raw.variation_color_se ||
+      row.draft_option1 ||
+      raw.variation_color_zh ||
+      row.draft_option1_zh
+  ).trim();
+};
+
+const buildVariantColorAssignmentGroupIdFromRow = (row: DraftSkuRow) => {
+  const color = getVariantColorAssignmentLabelFromRow(row);
+  const colorKey = normalizeVariantGroupToken(color);
+  if (!colorKey) return "";
+  return `color:${colorKey}`;
+};
+
 const createVariantEditorKey = () =>
   `variant-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -4926,10 +5521,10 @@ const hasHanCharacters = (value: string) => /[\u4e00-\u9fff]/.test(String(value 
 const buildVariantComparableCandidatesFromRow = (row: DraftSkuRow) => {
   const rawRow = parseDraftRawRow(row.draft_raw_row);
   const zhCombined = buildVariantCombinedZhValue({
-    draft_option1: String(row.draft_option1 || "").trim(),
-    draft_option2: String(row.draft_option2 || "").trim(),
-    draft_option3: String(row.draft_option3 || "").trim(),
-    draft_option4: String(row.draft_option4 || "").trim(),
+    draft_option1: String(row.draft_option1_zh || "").trim(),
+    draft_option2: String(row.draft_option2_zh || "").trim(),
+    draft_option3: String(row.draft_option3_zh || "").trim(),
+    draft_option4: String(row.draft_option4_zh || "").trim(),
     fallback: String(row.draft_option_combined_zh || "").trim(),
   });
   const candidates = [
@@ -4961,10 +5556,10 @@ const doesVariantRowLikelyMatchImageFileName = (
   if (!fileKey) return false;
   const rawRow = parseDraftRawRow(row.draft_raw_row);
   const zhCombined = buildVariantCombinedZhValue({
-    draft_option1: String(row.draft_option1 || "").trim(),
-    draft_option2: String(row.draft_option2 || "").trim(),
-    draft_option3: String(row.draft_option3 || "").trim(),
-    draft_option4: String(row.draft_option4 || "").trim(),
+    draft_option1: String(row.draft_option1_zh || "").trim(),
+    draft_option2: String(row.draft_option2_zh || "").trim(),
+    draft_option3: String(row.draft_option3_zh || "").trim(),
+    draft_option4: String(row.draft_option4_zh || "").trim(),
     fallback: String(row.draft_option_combined_zh || "").trim(),
   });
   const candidates = [
@@ -5007,6 +5602,7 @@ const COMPLETED_SPU_STORAGE_KEY = "draftExplorer.completedSpuFolders.v1";
 const UNSEEN_AI_UPDATES_STORAGE_KEY = "draftExplorer.unseenAiUpdatesBySpu.v1";
 const CONTEXT_MENU_STICKY_CLOSE_MS = 520;
 const AUTO_LEVELS_MAX_IMAGES = 8;
+const REMOVE_WITH_MASK_MAX_IMAGES = 20;
 const FLIP_HORIZONTAL_MAX_IMAGES = 12;
 const COLLAGE_MAX_IMAGES = 9;
 const STACK_IMAGES_MAX_IMAGES = 9;
@@ -5206,9 +5802,14 @@ export default function DraftExplorerPage() {
   const [contextMenu, setContextMenu] = useState<ExplorerContextMenuState | null>(
     null
   );
+  const [backgroundImageContextMenu, setBackgroundImageContextMenu] =
+    useState<BackgroundImageContextMenuState | null>(null);
+  const [backgroundImageContextMenuSubmenu, setBackgroundImageContextMenuSubmenu] =
+    useState<"new-image" | null>(null);
   const [contextMenuSubmenu, setContextMenuSubmenu] = useState<
     | "tag-image"
     | "assign-variant"
+    | "actions"
     | "edit-image"
     | "google-lens-search"
     | "edit-chatgpt"
@@ -5229,12 +5830,15 @@ export default function DraftExplorerPage() {
     | null
   >(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const backgroundImageContextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextMenuCloseTimerRef = useRef<number | null>(null);
   const contextMenuSubmenuCloseTimerRef = useRef<number | null>(null);
   const contextMenuNestedCloseTimerRef = useRef<number | null>(null);
   const [contextMenuSubmenuSide, setContextMenuSubmenuSide] = useState<
     "right" | "left"
   >("right");
+  const [backgroundImageContextMenuSubmenuSide, setBackgroundImageContextMenuSubmenuSide] =
+    useState<"right" | "left">("right");
   const [variantPickerRowsBySpu, setVariantPickerRowsBySpu] = useState<
     Record<string, DraftSkuRow[]>
   >({});
@@ -5247,6 +5851,7 @@ export default function DraftExplorerPage() {
   );
   const [contextMenuVariantRowsRefreshing, setContextMenuVariantRowsRefreshing] =
     useState(false);
+  const contextMenuVariantAiAssigningSpusRef = useRef(new Set<string>());
   const nonImageFileSelectAllRef = useRef<HTMLInputElement | null>(null);
   const [pendingAiEditsByOriginal, setPendingAiEditsByOriginal] = useState<
     Record<string, PendingAiEditRecord>
@@ -5262,6 +5867,49 @@ export default function DraftExplorerPage() {
   const [aiEraserRunMode, setAiEraserRunMode] = useState<"prompt" | "mask">("prompt");
   const [aiEditSubmitting, setAiEditSubmitting] = useState(false);
   const [aiEditError, setAiEditError] = useState<string | null>(null);
+  const [aiSceneSubject, setAiSceneSubject] = useState<AiSceneSubjectOption | null>(null);
+  const [aiSceneAgeGroup, setAiSceneAgeGroup] = useState<AiSceneAgeGroupOption | null>(null);
+  const [aiSceneSelectedPromptIdeas, setAiSceneSelectedPromptIdeas] = useState<string[]>([]);
+  const [aiScenePromptIdeasByProduct, setAiScenePromptIdeasByProduct] = useState<
+    Record<string, { sourceHash: string; ideas: AiScenePromptIdea[] }>
+  >({});
+  const [aiScenePromptLoadingByProduct, setAiScenePromptLoadingByProduct] = useState<
+    Record<string, boolean>
+  >({});
+  const [aiScenePromptErrorByProduct, setAiScenePromptErrorByProduct] = useState<
+    Record<string, string | null>
+  >({});
+  const [aiSceneOutputFormat, setAiSceneOutputFormat] =
+    useState<AiSceneOutputFormat>("wide");
+  const aiScenePromptRequestKeysRef = useRef<Set<string>>(new Set());
+  const resetAiProductSceneComposer = useCallback(() => {
+    setAiSceneSubject(null);
+    setAiSceneAgeGroup(null);
+    setAiSceneSelectedPromptIdeas([]);
+    setAiSceneOutputFormat("wide");
+  }, []);
+  const [newImageDialog, setNewImageDialog] = useState<NewImageDialogState | null>(
+    null
+  );
+  const [newImagePrompt, setNewImagePrompt] = useState("");
+  const [newImageSubmitting, setNewImageSubmitting] = useState(false);
+  const [newImageError, setNewImageError] = useState<string | null>(null);
+  const [sizeChartTextDialog, setSizeChartTextDialog] =
+    useState<SizeChartTextDialogState | null>(null);
+  const [sizeChartTextValue, setSizeChartTextValue] = useState("");
+  const [sizeChartTextSubmitting, setSizeChartTextSubmitting] = useState(false);
+  const [sizeChartTextError, setSizeChartTextError] = useState<string | null>(null);
+  const [sizeChartImageExtractSubmitting, setSizeChartImageExtractSubmitting] =
+    useState(false);
+  const [removeWithMaskDialog, setRemoveWithMaskDialog] =
+    useState<RemoveWithMaskDialogState | null>(null);
+  const [removeWithMaskMode, setRemoveWithMaskMode] = useState<"manual" | "ai">(
+    "manual"
+  );
+  const [removeWithMaskPrompt, setRemoveWithMaskPrompt] = useState("");
+  const [removeWithMaskFeatherPx, setRemoveWithMaskFeatherPx] = useState(10);
+  const [removeWithMaskSubmitting, setRemoveWithMaskSubmitting] = useState(false);
+  const [removeWithMaskError, setRemoveWithMaskError] = useState<string | null>(null);
   const [aiDualDialog, setAiDualDialog] = useState<AiDualDialogState | null>(null);
   const [aiDualPrompt, setAiDualPrompt] = useState("");
   const [aiDualSubmitting, setAiDualSubmitting] = useState(false);
@@ -5274,6 +5922,30 @@ export default function DraftExplorerPage() {
   const [aiCollectionPrompt, setAiCollectionPrompt] = useState("");
   const [aiCollectionSubmitting, setAiCollectionSubmitting] = useState(false);
   const [aiCollectionError, setAiCollectionError] = useState<string | null>(null);
+  const [aiModelDialog, setAiModelDialog] = useState<AiModelDialogState | null>(null);
+  const [aiModels, setAiModels] = useState<DraftAiModel[]>([]);
+  const [aiModelsLoading, setAiModelsLoading] = useState(false);
+  const [aiModelsError, setAiModelsError] = useState<string | null>(null);
+  const [selectedAiModelId, setSelectedAiModelId] = useState<string>("");
+  const [hoveredAiModelId, setHoveredAiModelId] = useState<string | null>(null);
+  const [aiModelDragId, setAiModelDragId] = useState<string | null>(null);
+  const [aiModelDropId, setAiModelDropId] = useState<string | null>(null);
+  const [aiModelPrompt, setAiModelPrompt] = useState("");
+  const [aiModelBackgroundMode, setAiModelBackgroundMode] =
+    useState<DraftAiModelBackgroundMode>("default");
+  const [aiModelBackgroundPrompt, setAiModelBackgroundPrompt] = useState("");
+  const [aiModelSubmitting, setAiModelSubmitting] = useState(false);
+  const [aiModelError, setAiModelError] = useState<string | null>(null);
+  const [aiModelDeleteTarget, setAiModelDeleteTarget] = useState<DraftAiModel | null>(null);
+  const [aiModelDeleteSubmitting, setAiModelDeleteSubmitting] = useState(false);
+  const [aiModelDeleteError, setAiModelDeleteError] = useState<string | null>(null);
+  const [aiModelEditorDialog, setAiModelEditorDialog] =
+    useState<AiModelEditorDialogState | null>(null);
+  const [aiModelEditorName, setAiModelEditorName] = useState("");
+  const [aiModelEditorFile, setAiModelEditorFile] = useState<File | null>(null);
+  const [aiModelEditorPreviewUrl, setAiModelEditorPreviewUrl] = useState("");
+  const [aiModelEditorSubmitting, setAiModelEditorSubmitting] = useState(false);
+  const [aiModelEditorError, setAiModelEditorError] = useState<string | null>(null);
   const [aiMaskBrushSize, setAiMaskBrushSize] = useState(36);
   const [aiMaskHasPaint, setAiMaskHasPaint] = useState(false);
   const [aiMaskCursor, setAiMaskCursor] = useState<{
@@ -5292,6 +5964,24 @@ export default function DraftExplorerPage() {
   const aiMaskDrawingRef = useRef(false);
   const aiMaskPointerIdRef = useRef<number | null>(null);
   const aiMaskLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [removeWithMaskBrushSize, setRemoveWithMaskBrushSize] = useState(36);
+  const [removeWithMaskHasPaint, setRemoveWithMaskHasPaint] = useState(false);
+  const [removeWithMaskCursor, setRemoveWithMaskCursor] = useState<{
+    x: number;
+    y: number;
+    size: number;
+    visible: boolean;
+  }>({
+    x: 0,
+    y: 0,
+    size: 18,
+    visible: false,
+  });
+  const removeWithMaskImageRef = useRef<HTMLImageElement | null>(null);
+  const removeWithMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const removeWithMaskDrawingRef = useRef(false);
+  const removeWithMaskPointerIdRef = useRef<number | null>(null);
+  const removeWithMaskLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const [aiEditJobsByPath, setAiEditJobsByPath] = useState<Record<string, AiEditRuntimeJob>>(
     {}
   );
@@ -5458,6 +6148,8 @@ export default function DraftExplorerPage() {
   const [variantsEditorThumbs, setVariantsEditorThumbs] = useState<DraftEntry[]>([]);
   const [variantsEditorThumbAssigningPaths, setVariantsEditorThumbAssigningPaths] =
     useState<Set<string>>(new Set());
+  const [imageToolbarBackgroundTasksBySpu, setImageToolbarBackgroundTasksBySpu] =
+    useState<Record<string, Record<string, string>>>({});
   const [variantsEditorThumbsLoading, setVariantsEditorThumbsLoading] = useState(false);
   const [variantsEditorLoading, setVariantsEditorLoading] = useState(false);
   const [variantsEditorSaving, setVariantsEditorSaving] = useState(false);
@@ -5467,6 +6159,7 @@ export default function DraftExplorerPage() {
   const [variantsEditorSelectedRows, setVariantsEditorSelectedRows] = useState<
     Set<string>
   >(new Set());
+  const [variantsEditorSearch, setVariantsEditorSearch] = useState("");
   const [variantsEditorPacksText, setVariantsEditorPacksText] = useState("");
   const [variantsEditorAiPrompt, setVariantsEditorAiPrompt] = useState("");
   const [variantsEditorAiRunning, setVariantsEditorAiRunning] = useState(false);
@@ -5487,6 +6180,9 @@ export default function DraftExplorerPage() {
   const [autoLevelsError, setAutoLevelsError] = useState<string | null>(null);
   const [stackOverlayPickerOpen, setStackOverlayPickerOpen] = useState(false);
   const [stackOverlayTargets, setStackOverlayTargets] = useState<DraftEntry[]>([]);
+  const [stackOverlayScenicTargets, setStackOverlayScenicTargets] = useState<DraftEntry[]>(
+    []
+  );
   const [stackOverlayCandidateTargets, setStackOverlayCandidateTargets] = useState<DraftEntry[]>(
     []
   );
@@ -5525,6 +6221,8 @@ export default function DraftExplorerPage() {
   const sizeChartAutoGenerateInFlightRef = useRef(false);
   const imageOrderSaveQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const entriesRequestSeqRef = useRef(0);
+  const entriesRefreshSeqRef = useRef(0);
+  const entriesResultSeqRef = useRef(0);
   const variantEntriesCacheRef = useRef<Map<string, DraftEntry[]>>(new Map());
   const autoVariantLinkInFlightSpusRef = useRef<Set<string>>(new Set());
   const autoVariantLinkAttemptedSignaturesRef = useRef<Set<string>>(new Set());
@@ -5751,26 +6449,47 @@ export default function DraftExplorerPage() {
     });
     return map;
   }, [entries]);
+  const visibleImageEntryByPath = useMemo(() => {
+    const map = new Map(entryByPath);
+    mainViewVariantImageEntries.forEach((entry) => {
+      if (!map.has(entry.path)) {
+        map.set(entry.path, entry);
+      }
+    });
+    return map;
+  }, [entryByPath, mainViewVariantImageEntries]);
   const displayImageEntriesRef = useRef<DraftEntry[]>([]);
   const isImageEntryUpscaled = useCallback(
     (entry: DraftEntry | null | undefined) => {
       if (!entry || entry.type !== "file") return false;
-      const latest = entryByPath.get(entry.path) ?? entry;
+      const latest = visibleImageEntryByPath.get(entry.path) ?? entry;
       return Boolean(latest.zimageUpscaled);
     },
-    [entryByPath]
+    [visibleImageEntryByPath]
   );
 
   const buildDraftDownloadUrl = useCallback(
-    (pathValue: string, cacheVersion?: string | number | null) => {
+    (
+      pathValue: string,
+      cacheVersion?: string | number | null,
+      variant?: "thumb" | null
+    ) => {
       const query = new URLSearchParams();
       query.set("path", pathValue);
       if (cacheVersion !== undefined && cacheVersion !== null && String(cacheVersion)) {
         query.set("v", String(cacheVersion));
       }
+      if (variant) {
+        query.set("variant", variant);
+      }
       return `/api/drafts/download?${query.toString()}`;
     },
     []
+  );
+  const buildDraftThumbnailUrl = useCallback(
+    (pathValue: string, cacheVersion?: string | number | null) =>
+      buildDraftDownloadUrl(pathValue, cacheVersion, "thumb"),
+    [buildDraftDownloadUrl]
   );
 
   const reverseSearchDisplayImagePath = useMemo(() => {
@@ -6221,16 +6940,19 @@ export default function DraftExplorerPage() {
       if (resolvedRun) {
         const normalizedRun = normalizeExplorerLocationPath(resolvedRun);
         const normalizedPath = normalizeExplorerLocationPath(requestedPath);
+        const hasSpecificPath =
+          Boolean(normalizedPath) &&
+          normalizedPath !== normalizedRun &&
+          normalizedPath.startsWith(`${normalizedRun}/`);
         const nextPath =
           normalizedPath &&
-          (normalizedPath === normalizedRun ||
-            normalizedPath.startsWith(`${normalizedRun}/`))
+          hasSpecificPath
             ? normalizedPath
-            : normalizedRun;
+            : "";
         pendingFolderOpenPathRef.current = nextPath;
         setSelectedFolder(normalizedRun);
         setCurrentPath(nextPath);
-        setInitialOpenSpu("");
+        setInitialOpenSpu(requestedSpuCode || "");
       } else if (requestedSpuCode) {
         setInitialOpenSpu(requestedSpuCode);
       }
@@ -6743,6 +7465,18 @@ export default function DraftExplorerPage() {
     () => visibleSkuRows.some((row) => selectedSkus.has(row.id)),
     [selectedSkus, visibleSkuRows]
   );
+  const { clearAnchor: clearSpuSelectionAnchor, toggleWithRange: applySpuSelection } =
+    useShiftRangeSelection<string>({
+      orderedIds: visibleSpuRows.map((row) => row.id),
+      selectedIds: selectedSpus,
+      setSelectedIds: setSelectedSpus,
+    });
+  const { clearAnchor: clearSkuSelectionAnchor, toggleWithRange: applySkuSelection } =
+    useShiftRangeSelection<string>({
+      orderedIds: visibleSkuRows.map((row) => row.id),
+      selectedIds: selectedSkus,
+      setSelectedIds: setSelectedSkus,
+    });
 
   const spuColumnStyles = useMemo(() => {
     const sample = visibleSpuRows;
@@ -6996,6 +7730,7 @@ export default function DraftExplorerPage() {
   );
 
   const toggleSelectAllSpus = () => {
+    clearSpuSelectionAnchor();
     if (allSpuSelected) {
       setSelectedSpus(new Set());
       return;
@@ -7003,19 +7738,12 @@ export default function DraftExplorerPage() {
     setSelectedSpus(new Set(visibleSpuRows.map((row) => row.id)));
   };
 
-  const toggleSelectSpu = (id: string) => {
-    setSelectedSpus((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const toggleSelectSpu = (id: string, checked: boolean, event?: unknown) => {
+    applySpuSelection(id, checked, event);
   };
 
   const toggleSelectAllSkus = () => {
+    clearSkuSelectionAnchor();
     if (allSkuSelected) {
       setSelectedSkus(new Set());
       return;
@@ -7023,16 +7751,8 @@ export default function DraftExplorerPage() {
     setSelectedSkus(new Set(visibleSkuRows.map((row) => row.id)));
   };
 
-  const toggleSelectSku = (id: string) => {
-    setSelectedSkus((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const toggleSelectSku = (id: string, checked: boolean, event?: unknown) => {
+    applySkuSelection(id, checked, event);
   };
 
   const buildRawRowWithReviewConfirmation = useCallback(
@@ -8418,10 +9138,16 @@ export default function DraftExplorerPage() {
       ) {
         return resolveInitialExplorerPath(normalizedRunPath);
       }
+      if (normalizedStoredPath === normalizedRunPath) {
+        return resolveInitialExplorerPath(normalizedRunPath);
+      }
 
       const pathParts = normalizedStoredPath.split("/").filter(Boolean);
       while (pathParts.length > 0) {
         const candidate = pathParts.join("/");
+        if (candidate === normalizedRunPath) {
+          break;
+        }
         try {
           await listPathEntries(candidate);
           return candidate;
@@ -8469,6 +9195,9 @@ export default function DraftExplorerPage() {
         const pathParts = requestedPath.split("/").filter(Boolean);
         while (pathParts.length > 0) {
           const candidate = pathParts.join("/");
+          if (candidate === normalizedRunPath) {
+            break;
+          }
           const validated = await validatePathWithinRun(candidate);
           if (validated) {
             return validated;
@@ -8512,6 +9241,24 @@ export default function DraftExplorerPage() {
       const currentSelectedFolder = String(selectedFolderRef.current || "").trim();
       const selectedStillExists = items.some((item) => item.path === currentSelectedFolder);
       if (currentSelectedFolder && selectedStillExists) {
+        const normalizedCurrentPath = normalizeExplorerLocationPath(
+          String(currentPathRef.current || "")
+        );
+        const hasConcreteProductPath =
+          Boolean(normalizedCurrentPath) &&
+          normalizedCurrentPath !== currentSelectedFolder &&
+          normalizedCurrentPath.startsWith(`${currentSelectedFolder}/`);
+        if (!hasConcreteProductPath) {
+          const fallbackPath = await resolveInitialExplorerPath(currentSelectedFolder);
+          if (requestSeq !== foldersRequestSeqRef.current) {
+            return null;
+          }
+          const normalizedFallbackPath = normalizeExplorerLocationPath(fallbackPath);
+          if (normalizedFallbackPath) {
+            pendingFolderOpenPathRef.current = normalizedFallbackPath;
+            setCurrentPath(normalizedFallbackPath);
+          }
+        }
         return items;
       }
 
@@ -8607,6 +9354,7 @@ export default function DraftExplorerPage() {
     }
   }, [
     pickPreferredRunFolder,
+    resolveInitialExplorerPath,
     resolveRequestedExplorerPathForRun,
     resolveStoredExplorerPathForRun,
   ]);
@@ -8628,6 +9376,8 @@ export default function DraftExplorerPage() {
       }
       const requestSeq = entriesRequestSeqRef.current + 1;
       entriesRequestSeqRef.current = requestSeq;
+      const resultSeq = entriesResultSeqRef.current + 1;
+      entriesResultSeqRef.current = resultSeq;
       setEntriesLoading(true);
       try {
         const [items, variantImages] = await Promise.all([
@@ -8638,7 +9388,12 @@ export default function DraftExplorerPage() {
               )
             : Promise.resolve([] as DraftEntry[]),
         ]);
-        if (entriesRequestSeqRef.current !== requestSeq) return;
+        if (
+          entriesRequestSeqRef.current !== requestSeq ||
+          entriesResultSeqRef.current !== resultSeq
+        ) {
+          return;
+        }
         setEntries(items);
         if (shouldLoadVariants) {
           variantEntriesCacheRef.current.set(normalizedVariantsPath, variantImages);
@@ -8650,7 +9405,12 @@ export default function DraftExplorerPage() {
         setSelectedFiles(new Set());
         setPreviewPath(null);
       } catch {
-        if (entriesRequestSeqRef.current !== requestSeq) return;
+        if (
+          entriesRequestSeqRef.current !== requestSeq ||
+          entriesResultSeqRef.current !== resultSeq
+        ) {
+          return;
+        }
         setEntries([]);
         if (shouldLoadVariants) {
           variantEntriesCacheRef.current.set(normalizedVariantsPath, []);
@@ -8667,11 +9427,15 @@ export default function DraftExplorerPage() {
 
   const refreshEntries = useCallback(
     async (pathValue: string) => {
-      if (!pathValue || entriesRefreshing) return;
+      if (!pathValue) return;
       const normalizedPath = String(pathValue || "").trim();
       const activePath = String(currentPathRef.current || "").trim();
       const normalizedMainPath = String(currentMainPathRef.current || "").trim();
       const normalizedVariantsPath = String(currentVariantsPathRef.current || "").trim();
+      const refreshSeq = entriesRefreshSeqRef.current + 1;
+      entriesRefreshSeqRef.current = refreshSeq;
+      const resultSeq = entriesResultSeqRef.current + 1;
+      entriesResultSeqRef.current = resultSeq;
       const shouldLoadVariants =
         Boolean(normalizedPath) &&
         Boolean(normalizedMainPath) &&
@@ -8694,6 +9458,12 @@ export default function DraftExplorerPage() {
               )
             : Promise.resolve([] as DraftEntry[]),
         ]);
+        if (
+          entriesRefreshSeqRef.current !== refreshSeq ||
+          entriesResultSeqRef.current !== resultSeq
+        ) {
+          return;
+        }
         const available = new Set(items.map((entry) => entry.path));
         const includeMergedVisiblePaths =
           activePath === normalizedPath;
@@ -8722,15 +9492,30 @@ export default function DraftExplorerPage() {
               next[pathValue] = dims;
             }
           });
+          const seedDimensions = (entryList: DraftEntry[]) => {
+            entryList.forEach((entry) => {
+              const width = Number(entry.width);
+              const height = Number(entry.height);
+              if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+              if (width <= 0 || height <= 0) return;
+              next[entry.path] = { width, height };
+            });
+          };
+          seedDimensions(items);
+          if (shouldLoadVariants) {
+            seedDimensions(variantImages);
+          }
           return next;
         });
       } catch {
         // Keep previous entries on refresh failure to avoid flicker.
       } finally {
-        setEntriesRefreshing(false);
+        if (entriesRefreshSeqRef.current === refreshSeq) {
+          setEntriesRefreshing(false);
+        }
       }
     },
-    [entriesRefreshing, listImageFileEntriesForPath, listPathEntries]
+    [listImageFileEntriesForPath, listPathEntries]
   );
 
   const refreshImageScoresForPaths = useCallback(
@@ -9050,6 +9835,272 @@ export default function DraftExplorerPage() {
       setPendingAiEditsByOriginal({});
     }
   }, []);
+
+  const fetchAiModels = useCallback(async (preferredId?: string) => {
+    setAiModelsLoading(true);
+    setAiModelsError(null);
+    try {
+      const response = await fetch("/api/drafts/ai-models");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to load AI models.");
+      }
+      const items = Array.isArray(payload?.items)
+        ? (payload.items as DraftAiModel[])
+        : [];
+      setAiModels(items);
+      setSelectedAiModelId((prev) => {
+        const preferred = String(preferredId || "").trim();
+        if (preferred && items.some((item) => item.id === preferred)) return preferred;
+        if (prev && items.some((item) => item.id === prev)) return prev;
+        return items[0]?.id || "";
+      });
+    } catch (err) {
+      setAiModels([]);
+      setAiModelsError((err as Error).message);
+    } finally {
+      setAiModelsLoading(false);
+    }
+  }, []);
+
+  const persistAiModelOrder = useCallback(async (nextItems: DraftAiModel[]) => {
+    const response = await fetch("/api/drafts/ai-models", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderedIds: nextItems.map((item) => item.id),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to reorder AI models.");
+    }
+    if (Array.isArray(payload?.items)) {
+      setAiModels(payload.items as DraftAiModel[]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!aiModelDialog && !aiModelEditorDialog) return;
+    void fetchAiModels(
+      aiModelEditorDialog?.mode === "edit" ? aiModelEditorDialog.modelId || undefined : undefined
+    );
+  }, [aiModelDialog, aiModelEditorDialog, fetchAiModels]);
+
+  useEffect(() => {
+    if (aiModelEditorFile) {
+      const nextUrl = URL.createObjectURL(aiModelEditorFile);
+      setAiModelEditorPreviewUrl(nextUrl);
+      return () => {
+        URL.revokeObjectURL(nextUrl);
+      };
+    }
+    if (aiModelEditorDialog?.mode === "edit" && aiModelEditorDialog.modelId) {
+      const match = aiModels.find((item) => item.id === aiModelEditorDialog.modelId);
+      setAiModelEditorPreviewUrl(match?.imagePath || "");
+      return;
+    }
+    setAiModelEditorPreviewUrl("");
+  }, [aiModelEditorDialog, aiModelEditorFile, aiModels]);
+
+  const openAiModelDialog = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      selectionAnchorImagePathRef.current = null;
+      setSelectedFiles(new Set());
+      const targets = sourceEntries.filter(
+        (entry, index, arr) =>
+          entry.type === "file" &&
+          isImage(entry.name) &&
+          arr.findIndex((candidate) => candidate.path === entry.path) === index
+      );
+      if (targets.length === 0) {
+        setError("Add Model requires selecting at least one image.");
+        return;
+      }
+      setAiModelDialog({ entries: targets });
+      setHoveredAiModelId(null);
+      setAiModelDragId(null);
+      setAiModelDropId(null);
+      setAiModelDeleteTarget(null);
+      setAiModelDeleteError(null);
+      setAiModelPrompt("");
+      setAiModelBackgroundMode("default");
+      setAiModelBackgroundPrompt("");
+      setAiModelError(null);
+      setError(null);
+      void fetchAiModels(selectedAiModelId || undefined);
+    },
+    [fetchAiModels, isImage, selectedAiModelId]
+  );
+
+  const closeAiModelDialog = useCallback(() => {
+    if (aiModelSubmitting) return;
+    setAiModelDialog(null);
+    setHoveredAiModelId(null);
+    setAiModelDragId(null);
+    setAiModelDropId(null);
+    setAiModelDeleteTarget(null);
+    setAiModelDeleteError(null);
+    setAiModelPrompt("");
+    setAiModelBackgroundMode("default");
+    setAiModelBackgroundPrompt("");
+    setAiModelError(null);
+  }, [aiModelSubmitting]);
+
+  const closeAiModelDeleteDialog = useCallback(() => {
+    if (aiModelDeleteSubmitting) return;
+    setAiModelDeleteTarget(null);
+    setAiModelDeleteError(null);
+  }, [aiModelDeleteSubmitting]);
+
+  const submitAiModelDelete = useCallback(async () => {
+    if (!aiModelDeleteTarget || aiModelDeleteSubmitting) return;
+
+    const deletingId = aiModelDeleteTarget.id;
+    setAiModelDeleteSubmitting(true);
+    setAiModelDeleteError(null);
+    try {
+      const response = await fetch(
+        `/api/drafts/ai-models/${encodeURIComponent(deletingId)}`,
+        { method: "DELETE" }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to remove AI model.");
+      }
+      setAiModelDeleteTarget(null);
+      setHoveredAiModelId((prev) => (prev === deletingId ? null : prev));
+      setAiModelDragId((prev) => (prev === deletingId ? null : prev));
+      setAiModelDropId((prev) => (prev === deletingId ? null : prev));
+      await fetchAiModels(selectedAiModelId === deletingId ? undefined : selectedAiModelId);
+    } catch (err) {
+      setAiModelDeleteError((err as Error).message);
+    } finally {
+      setAiModelDeleteSubmitting(false);
+    }
+  }, [
+    aiModelDeleteSubmitting,
+    aiModelDeleteTarget,
+    fetchAiModels,
+    selectedAiModelId,
+  ]);
+
+  const handleAiModelReorder = useCallback(
+    async (targetId: string) => {
+      const dragId = String(aiModelDragId || "").trim();
+      const dropId = String(targetId || "").trim();
+      if (!dragId || !dropId || dragId === dropId) {
+        setAiModelDragId(null);
+        setAiModelDropId(null);
+        return;
+      }
+
+      let nextItems: DraftAiModel[] | null = null;
+      setAiModels((prev) => {
+        const sourceIndex = prev.findIndex((item) => item.id === dragId);
+        const targetIndex = prev.findIndex((item) => item.id === dropId);
+        if (sourceIndex < 0 || targetIndex < 0) {
+          return prev;
+        }
+        const next = [...prev];
+        const [moved] = next.splice(sourceIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        nextItems = next;
+        return next;
+      });
+
+      setAiModelDragId(null);
+      setAiModelDropId(null);
+
+      if (!nextItems) return;
+      try {
+        await persistAiModelOrder(nextItems);
+      } catch (err) {
+        setAiModelError((err as Error).message);
+        await fetchAiModels(selectedAiModelId || undefined);
+      }
+    },
+    [aiModelDragId, fetchAiModels, persistAiModelOrder, selectedAiModelId]
+  );
+
+  const openAiModelEditorDialog = useCallback(
+    (mode: "create" | "edit", modelId?: string | null) => {
+      const normalizedId = String(modelId || "").trim();
+      const currentModel =
+        mode === "edit" ? aiModels.find((item) => item.id === normalizedId) ?? null : null;
+      setAiModelEditorDialog({
+        mode,
+        modelId: currentModel?.id || null,
+      });
+      setAiModelEditorName(currentModel?.name || "");
+      setAiModelEditorFile(null);
+      setAiModelEditorError(null);
+    },
+    [aiModels]
+  );
+
+  const closeAiModelEditorDialog = useCallback(() => {
+    if (aiModelEditorSubmitting) return;
+    setAiModelEditorDialog(null);
+    setAiModelEditorName("");
+    setAiModelEditorFile(null);
+    setAiModelEditorError(null);
+  }, [aiModelEditorSubmitting]);
+
+  const submitAiModelEditorDialog = useCallback(async () => {
+    if (!aiModelEditorDialog || aiModelEditorSubmitting) return;
+    const name = aiModelEditorName.trim();
+    if (!name) {
+      setAiModelEditorError("Model name is required.");
+      return;
+    }
+    if (aiModelEditorDialog.mode === "create" && !aiModelEditorFile) {
+      setAiModelEditorError("Choose a model image first.");
+      return;
+    }
+
+    setAiModelEditorSubmitting(true);
+    setAiModelEditorError(null);
+    try {
+      const formData = new FormData();
+      formData.append("name", name);
+      if (aiModelEditorFile) {
+        formData.append("file", aiModelEditorFile);
+      }
+      const endpoint =
+        aiModelEditorDialog.mode === "edit" && aiModelEditorDialog.modelId
+          ? `/api/drafts/ai-models/${encodeURIComponent(aiModelEditorDialog.modelId)}`
+          : "/api/drafts/ai-models";
+      const response = await fetch(endpoint, {
+        method: aiModelEditorDialog.mode === "edit" ? "PATCH" : "POST",
+        body: formData,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to save AI model.");
+      }
+      const savedId =
+        typeof payload?.item?.id === "string" ? String(payload.item.id).trim() : "";
+      await fetchAiModels(savedId || undefined);
+      if (savedId) {
+        setSelectedAiModelId(savedId);
+      }
+      setAiModelEditorDialog(null);
+      setAiModelEditorName("");
+      setAiModelEditorFile(null);
+      setAiModelEditorError(null);
+    } catch (err) {
+      setAiModelEditorError((err as Error).message);
+    } finally {
+      setAiModelEditorSubmitting(false);
+    }
+  }, [
+    aiModelEditorDialog,
+    aiModelEditorFile,
+    aiModelEditorName,
+    aiModelEditorSubmitting,
+    fetchAiModels,
+  ]);
 
   const handleSelectFolder = useCallback(
     async (nextFolderValue: string) => {
@@ -9894,27 +10945,34 @@ export default function DraftExplorerPage() {
 	    [visibleRunPreviewItems, runPreviewSelectedSpus]
 	  );
 
-	  const someRunPreviewSelected = useMemo(
-	    () => visibleRunPreviewItems.some((item) => runPreviewSelectedSpus.has(item.draft_spu)),
-	    [visibleRunPreviewItems, runPreviewSelectedSpus]
-	  );
+		  const someRunPreviewSelected = useMemo(
+		    () => visibleRunPreviewItems.some((item) => runPreviewSelectedSpus.has(item.draft_spu)),
+		    [visibleRunPreviewItems, runPreviewSelectedSpus]
+		  );
+      const {
+        clearAnchor: clearRunPreviewSelectionAnchor,
+        toggleWithRange: applyRunPreviewSelection,
+      } = useShiftRangeSelection<string>({
+        orderedIds: visibleRunPreviewItems.map((item) => item.draft_spu),
+        selectedIds: runPreviewSelectedSpus,
+        setSelectedIds: setRunPreviewSelectedSpus,
+      });
 
-	  const toggleSelectAllRunPreview = useCallback(() => {
-	    if (allRunPreviewSelected) {
-	      setRunPreviewSelectedSpus(new Set());
-	      return;
-	    }
-	    setRunPreviewSelectedSpus(new Set(visibleRunPreviewItems.map((item) => item.draft_spu)));
-	  }, [allRunPreviewSelected, visibleRunPreviewItems]);
+		  const toggleSelectAllRunPreview = useCallback(() => {
+		    clearRunPreviewSelectionAnchor();
+		    if (allRunPreviewSelected) {
+		      setRunPreviewSelectedSpus(new Set());
+		      return;
+		    }
+		    setRunPreviewSelectedSpus(new Set(visibleRunPreviewItems.map((item) => item.draft_spu)));
+		  }, [allRunPreviewSelected, clearRunPreviewSelectionAnchor, visibleRunPreviewItems]);
 
-	  const toggleSelectRunPreviewSpu = useCallback((spu: string) => {
-	    setRunPreviewSelectedSpus((prev) => {
-	      const next = new Set(prev);
-	      if (next.has(spu)) next.delete(spu);
-	      else next.add(spu);
-	      return next;
-	    });
-	  }, []);
+		  const toggleSelectRunPreviewSpu = useCallback(
+        (spu: string, checked: boolean, event?: unknown) => {
+          applyRunPreviewSelection(spu, checked, event);
+        },
+        [applyRunPreviewSelection]
+      );
 
 	  const handleRunPreviewDeleteSelected = useCallback(() => {
 	    if (runPreviewSelectedSpus.size === 0) return;
@@ -10155,6 +11213,11 @@ export default function DraftExplorerPage() {
     setContextMenuNestedSubmenu(null);
   }, [clearAllContextMenuCloseTimers]);
 
+  const closeBackgroundImageContextMenuImmediately = useCallback(() => {
+    setBackgroundImageContextMenu(null);
+    setBackgroundImageContextMenuSubmenu(null);
+  }, []);
+
   const keepContextMenuOpen = useCallback(() => {
     clearAllContextMenuCloseTimers();
   }, [clearAllContextMenuCloseTimers]);
@@ -10285,6 +11348,59 @@ export default function DraftExplorerPage() {
     };
   }, [contextMenu]);
 
+  useLayoutEffect(() => {
+    if (!backgroundImageContextMenu) return;
+    const menu = backgroundImageContextMenuRef.current;
+    if (!menu) return;
+
+    const clampToViewport = () => {
+      const padding = 8;
+      const rect = menu.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width - padding;
+      const maxY = window.innerHeight - rect.height - padding;
+      const nextX = Math.min(
+        Math.max(padding, backgroundImageContextMenu.x),
+        Math.max(padding, maxX)
+      );
+      const nextY = Math.min(
+        Math.max(padding, backgroundImageContextMenu.y),
+        Math.max(padding, maxY)
+      );
+
+      if (nextX !== backgroundImageContextMenu.x || nextY !== backgroundImageContextMenu.y) {
+        setBackgroundImageContextMenu((prev) =>
+          prev ? { ...prev, x: nextX, y: nextY } : prev
+        );
+        return;
+      }
+
+      const submenuWidthEstimate = 220;
+      const gap = 8;
+      const finalRect = menu.getBoundingClientRect();
+      const needed = submenuWidthEstimate + gap;
+      const availableRight = window.innerWidth - padding - finalRect.right;
+      const availableLeft = finalRect.left - padding;
+      const nextSide: "right" | "left" =
+        availableRight >= needed
+          ? "right"
+          : availableLeft >= needed
+            ? "left"
+            : availableRight >= availableLeft
+              ? "right"
+              : "left";
+      setBackgroundImageContextMenuSubmenuSide(nextSide);
+    };
+
+    clampToViewport();
+    const handleResize = () => {
+      window.requestAnimationFrame(() => clampToViewport());
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [backgroundImageContextMenu]);
+
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => {
@@ -10306,6 +11422,26 @@ export default function DraftExplorerPage() {
   }, [closeContextMenuImmediately, contextMenu]);
 
   useEffect(() => {
+    if (!backgroundImageContextMenu) return;
+    const close = () => {
+      closeBackgroundImageContextMenuImmediately();
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeBackgroundImageContextMenuImmediately();
+      }
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [backgroundImageContextMenu, closeBackgroundImageContextMenuImmediately]);
+
+  useEffect(() => {
     if (contextMenu) return;
     clearAllContextMenuCloseTimers();
   }, [clearAllContextMenuCloseTimers, contextMenu]);
@@ -10313,6 +11449,242 @@ export default function DraftExplorerPage() {
   useEffect(() => {
     setContextMenuNestedSubmenu(null);
   }, [contextMenuSubmenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    closeBackgroundImageContextMenuImmediately();
+  }, [closeBackgroundImageContextMenuImmediately, contextMenu]);
+
+  useEffect(() => {
+    if (!currentPath) {
+      closeBackgroundImageContextMenuImmediately();
+    }
+  }, [closeBackgroundImageContextMenuImmediately, currentPath]);
+
+  const openNewImageDialogFromBackgroundMenu = useCallback(
+    (provider: "gemini") => {
+      if (!backgroundImageContextMenu) return;
+      setBackgroundImageContextMenu(null);
+      setBackgroundImageContextMenuSubmenu(null);
+      setNewImageDialog({
+        folderPath: backgroundImageContextMenu.folderPath,
+        spu: backgroundImageContextMenu.spu,
+        provider,
+      });
+      setNewImagePrompt("");
+      setNewImageError(null);
+    },
+    [backgroundImageContextMenu]
+  );
+
+  const closeNewImageDialog = useCallback(() => {
+    if (newImageSubmitting) return;
+    setNewImageDialog(null);
+    setNewImagePrompt("");
+    setNewImageError(null);
+  }, [newImageSubmitting]);
+
+  const closeSizeChartTextDialog = useCallback(() => {
+    if (sizeChartTextSubmitting) return;
+    setSizeChartTextDialog(null);
+    setSizeChartTextValue("");
+    setSizeChartTextError(null);
+  }, [sizeChartTextSubmitting]);
+
+  const submitNewImageDialog = useCallback(async () => {
+    if (!newImageDialog || newImageSubmitting) return;
+    const prompt = String(newImagePrompt || "").trim();
+    if (!prompt) {
+      setNewImageError("Prompt is required.");
+      return;
+    }
+
+    setNewImageSubmitting(true);
+    setNewImageError(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/drafts/images/new-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folderPath: newImageDialog.folderPath,
+          spu: newImageDialog.spu,
+          provider: newImageDialog.provider,
+          prompt,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "Unable to create image."));
+      }
+
+      const activePath = String(currentPathRef.current || "").trim();
+      if (activePath === newImageDialog.folderPath) {
+        await refreshEntries(newImageDialog.folderPath);
+      }
+
+      setNewImageDialog(null);
+      setNewImagePrompt("");
+      setNewImageError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to create image.";
+      setNewImageError(message);
+      setError(`New image failed: ${message}`);
+    } finally {
+      setNewImageSubmitting(false);
+    }
+  }, [newImageDialog, newImagePrompt, newImageSubmitting, refreshEntries]);
+
+  const generateSizeChartImagesForMainPath = useCallback(async (mainPathRaw: string) => {
+    const mainPath = String(mainPathRaw || "").trim();
+    if (!mainPath) {
+      throw new Error("Main folder could not be resolved for this product.");
+    }
+    const response = await fetch("/api/drafts/images/size-charts/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mainPath, force: true }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String(payload?.error || "Unable to generate size chart images."));
+    }
+    return payload;
+  }, []);
+
+  const refreshAfterSizeChartUpdate = useCallback(
+    async (mainPathRaw: string) => {
+      const mainPath = String(mainPathRaw || "").trim();
+      const activePath = String(currentPathRef.current || "").trim();
+      if (!mainPath || !activePath) return;
+      if (getSpuRootFromDraftPath(activePath) !== mainPath) return;
+      await refreshEntries(activePath);
+    },
+    [refreshEntries]
+  );
+
+  const handleExtractSizeChartFromImagesForEntries = useCallback(
+    async (inputEntries: DraftEntry[]) => {
+      const targets = Array.from(
+        new Map(
+          inputEntries
+            .filter((item) => item.type === "file" && isImage(item.name))
+            .map((item) => [String(item.path || "").trim(), item] as const)
+        ).values()
+      );
+      if (targets.length === 0) {
+        setError("Select at least one image.");
+        return;
+      }
+      const mainPath = getSpuRootFromDraftPath(targets[0]?.path || "");
+      if (!mainPath) {
+        setError("Main folder could not be resolved for this product.");
+        return;
+      }
+
+      setSizeChartImageExtractSubmitting(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/drafts/images/size-charts/extract-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mainPath,
+            imagePaths: targets.map((item) => item.path),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            String(payload?.error || "Unable to extract size chart from image.")
+          );
+        }
+        await generateSizeChartImagesForMainPath(mainPath);
+        await refreshAfterSizeChartUpdate(mainPath);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unable to extract size chart from image.";
+        setError(`Size chart extraction failed: ${message}`);
+      } finally {
+        setSizeChartImageExtractSubmitting(false);
+      }
+    },
+    [generateSizeChartImagesForMainPath, isImage, refreshAfterSizeChartUpdate]
+  );
+
+  const openSizeChartTextDialogForEntries = useCallback((inputEntries: DraftEntry[]) => {
+    const targets = Array.from(
+      new Map(
+        inputEntries
+          .filter((item) => item.type === "file" && isImage(item.name))
+          .map((item) => [String(item.path || "").trim(), item] as const)
+      ).values()
+    );
+    if (targets.length === 0) {
+      setError("Select at least one image.");
+      return;
+    }
+    const mainPath = getSpuRootFromDraftPath(targets[0]?.path || "");
+    const parts = mainPath.split("/").filter(Boolean);
+    const spu = String(parts[1] || parts[0] || "").trim();
+    if (!mainPath || !spu) {
+      setError("Main folder could not be resolved for this product.");
+      return;
+    }
+    setSizeChartTextDialog({
+      mainPath,
+      spu,
+      entries: targets,
+    });
+    setSizeChartTextValue("");
+    setSizeChartTextError(null);
+  }, [isImage]);
+
+  const submitSizeChartTextDialog = useCallback(async () => {
+    if (!sizeChartTextDialog || sizeChartTextSubmitting) return;
+    const sourceText = String(sizeChartTextValue || "").trim();
+    if (!sourceText) {
+      setSizeChartTextError("Paste the size chart text first.");
+      return;
+    }
+
+    setSizeChartTextSubmitting(true);
+    setSizeChartTextError(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/drafts/images/size-charts/extract-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mainPath: sizeChartTextDialog.mainPath,
+          sourceText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "Unable to extract size chart from text."));
+      }
+      await generateSizeChartImagesForMainPath(sizeChartTextDialog.mainPath);
+      await refreshAfterSizeChartUpdate(sizeChartTextDialog.mainPath);
+      setSizeChartTextDialog(null);
+      setSizeChartTextValue("");
+      setSizeChartTextError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to extract size chart from text.";
+      setSizeChartTextError(message);
+      setError(`Size chart extraction failed: ${message}`);
+    } finally {
+      setSizeChartTextSubmitting(false);
+    }
+  }, [
+    generateSizeChartImagesForMainPath,
+    refreshAfterSizeChartUpdate,
+    sizeChartTextDialog,
+    sizeChartTextSubmitting,
+    sizeChartTextValue,
+  ]);
 
   const handleToggleFile = useCallback(
     (
@@ -10572,7 +11944,6 @@ export default function DraftExplorerPage() {
 
   const fetchVariantEditorThumbs = useCallback(
     async (spu: string, editorRows: DraftVariantEditorRow[] = []) => {
-      void editorRows;
       const targetSpu = String(spu || "").trim();
       if (!targetSpu) {
         setVariantsEditorThumbs([]);
@@ -10589,6 +11960,12 @@ export default function DraftExplorerPage() {
       }
       setVariantsEditorThumbsLoading(true);
       try {
+        const assignedFileNameKeys = new Set(
+          editorRows
+            .map((row) => extractVariantImageFileName(row.draft_variant_image_url))
+            .map((fileName) => normalizeVariantImageFileNameKey(fileName))
+            .filter((value): value is string => Boolean(value))
+        );
         const rootEntries = await listPathEntries(rootPath);
         const rootImageEntries = rootEntries.filter(
           (entry) => entry.type === "file" && isImage(entry.name)
@@ -10618,17 +11995,28 @@ export default function DraftExplorerPage() {
             if (right.score !== left.score) return right.score - left.score;
             return left.entry.name.localeCompare(right.entry.name);
           });
-        const primaryVariantDir = variantDirs[0]?.entry ?? null;
-        const directVariantImages = primaryVariantDir
-          ? (await listPathEntries(primaryVariantDir.path))
-              .filter((entry) => entry.type === "file" && isImage(entry.name))
-              .sort((left, right) => left.name.localeCompare(right.name))
-          : [];
+        const directVariantImages = (
+          await Promise.all(
+            variantDirs.map(async ({ entry }) =>
+              (await listPathEntries(entry.path)).filter(
+                (childEntry) => childEntry.type === "file" && isImage(childEntry.name)
+              )
+            )
+          )
+        )
+          .flat()
+          .sort((left, right) => left.name.localeCompare(right.name));
 
         const mergedThumbs: DraftEntry[] = [];
         const seenPaths = new Set<string>();
         [...directVariantImages, ...rootImageEntries]
-          .filter((entry) => extractImageTagsFromFileName(entry.name).includes("VAR"))
+          .filter((entry) => {
+            const fileTags = extractImageTagsFromFileName(entry.name);
+            if (fileTags.includes("VAR")) return true;
+            const fileName = extractFileNameFromPath(entry.path || entry.name);
+            const fileKey = normalizeVariantImageFileNameKey(fileName);
+            return Boolean(fileKey && assignedFileNameKeys.has(fileKey));
+          })
           .forEach((entry) => {
             const pathValue = String(entry.path || "").trim();
             if (!pathValue || seenPaths.has(pathValue)) return;
@@ -10678,10 +12066,14 @@ export default function DraftExplorerPage() {
       const shippingClass = normalizeShippingClassCode(
         row.draft_shipping_class ?? raw.draft_shipping_class
       );
-      const optionColorZh = toText(row.draft_option1).trim();
-      const optionSizeZh = toText(row.draft_option2).trim();
-      const optionOtherZh = toText(row.draft_option3).trim();
-      const optionAmountZh = toText(row.draft_option4).trim();
+      const optionColor = toText(row.draft_option1).trim();
+      const optionSize = toText(row.draft_option2).trim();
+      const optionOther = toText(row.draft_option3).trim();
+      const optionAmount = toText(row.draft_option4).trim();
+      const optionColorZh = readField(row.draft_option1_zh, "draft_option1_zh", "option1_zh");
+      const optionSizeZh = readField(row.draft_option2_zh, "draft_option2_zh", "option2_zh");
+      const optionOtherZh = readField(row.draft_option3_zh, "draft_option3_zh", "option3_zh");
+      const optionAmountZh = readField(row.draft_option4_zh, "draft_option4_zh", "option4_zh");
       const combined =
         buildVariantCombinedZhValue({
           draft_option1: optionColorZh,
@@ -10695,18 +12087,18 @@ export default function DraftExplorerPage() {
         id: String(row.id || "").trim() || null,
         draft_spu: row.draft_spu ?? "",
         draft_sku: row.draft_sku ?? "",
-        draft_option1: optionColorZh,
-        draft_option2: optionSizeZh,
-        draft_option3: optionOtherZh,
-        draft_option4: optionAmountZh,
+        draft_option1: optionColor,
+        draft_option2: optionSize,
+        draft_option3: optionOther,
+        draft_option4: optionAmount,
         draft_option_combined_zh: combined,
         draft_price: row.draft_price == null ? "" : String(row.draft_price),
         draft_weight: row.draft_weight == null ? "" : String(row.draft_weight),
         draft_weight_unit: row.draft_weight_unit ?? "",
-        draft_option1_zh: readField(row.draft_option1_zh, "draft_option1_zh", "option1_zh"),
-        draft_option2_zh: readField(row.draft_option2_zh, "draft_option2_zh", "option2_zh"),
-        draft_option3_zh: readField(row.draft_option3_zh, "draft_option3_zh", "option3_zh"),
-        draft_option4_zh: readField(row.draft_option4_zh, "draft_option4_zh", "option4_zh"),
+        draft_option1_zh: optionColorZh,
+        draft_option2_zh: optionSizeZh,
+        draft_option3_zh: optionOtherZh,
+        draft_option4_zh: optionAmountZh,
         draft_compare_at_price: readField(
           row.draft_compare_at_price,
           "draft_compare_at_price",
@@ -10813,6 +12205,11 @@ export default function DraftExplorerPage() {
         draft_option2: row.draft_option2.trim(),
         draft_option3: row.draft_option3.trim(),
         draft_option4: row.draft_option4.trim(),
+        draft_option_combined_zh: row.draft_option_combined_zh.trim(),
+        draft_option1_zh: row.draft_option1_zh.trim(),
+        draft_option2_zh: row.draft_option2_zh.trim(),
+        draft_option3_zh: row.draft_option3_zh.trim(),
+        draft_option4_zh: row.draft_option4_zh.trim(),
         variation_color_se: row.variation_color_se.trim(),
         variation_size_se: row.variation_size_se.trim(),
         variation_other_se: row.variation_other_se.trim(),
@@ -10821,10 +12218,10 @@ export default function DraftExplorerPage() {
       };
       const combined =
         buildVariantCombinedZhValue({
-          draft_option1: row.draft_option1,
-          draft_option2: row.draft_option2,
-          draft_option3: row.draft_option3,
-          draft_option4: row.draft_option4,
+          draft_option1: row.draft_option1_zh,
+          draft_option2: row.draft_option2_zh,
+          draft_option3: row.draft_option3_zh,
+          draft_option4: row.draft_option4_zh,
           fallback: row.draft_option_combined_zh,
         });
       return {
@@ -10885,6 +12282,7 @@ export default function DraftExplorerPage() {
     setVariantsEditorThumbAssigningPaths(new Set());
     setVariantsEditorError(null);
     setVariantsEditorSelectedRows(new Set());
+    setVariantsEditorSearch("");
     setVariantsEditorPacksText("");
     setVariantsEditorAiPrompt("");
     setVariantsEditorSkuRegenerating(false);
@@ -10901,6 +12299,7 @@ export default function DraftExplorerPage() {
       setVariantsEditorThumbs([]);
       setVariantsEditorThumbAssigningPaths(new Set());
       setVariantsEditorSelectedRows(new Set());
+      setVariantsEditorSearch("");
       setVariantsEditorSort({ key: null, direction: "asc" });
       setVariantsEditorError(null);
       setVariantsEditorLoading(true);
@@ -10951,14 +12350,30 @@ export default function DraftExplorerPage() {
     });
   }, []);
 
+  const variantsEditorFilteredRows = useMemo(() => {
+    const query = normalizeVariantEditorSearchValue(variantsEditorSearch);
+    if (!query) {
+      return variantsEditorRows;
+    }
+    return variantsEditorRows.filter((row) => buildVariantEditorSearchIndex(row).includes(query));
+  }, [variantsEditorRows, variantsEditorSearch]);
+
   const handleVariantEditorToggleAll = useCallback(() => {
+    const visibleKeys = variantsEditorFilteredRows.map((row) => row.key);
     setVariantsEditorSelectedRows((prev) => {
-      if (variantsEditorRows.length > 0 && prev.size === variantsEditorRows.length) {
-        return new Set();
+      if (visibleKeys.length === 0) {
+        return prev;
       }
-      return new Set(variantsEditorRows.map((row) => row.key));
+      const next = new Set(prev);
+      const allVisibleSelected = visibleKeys.every((key) => next.has(key));
+      if (allVisibleSelected) {
+        visibleKeys.forEach((key) => next.delete(key));
+        return next;
+      }
+      visibleKeys.forEach((key) => next.add(key));
+      return next;
     });
-  }, [variantsEditorRows]);
+  }, [variantsEditorFilteredRows]);
 
   const handleVariantEditorSort = useCallback((key: VariantEditorSortKey) => {
     setVariantsEditorSort((prev) => {
@@ -10978,7 +12393,7 @@ export default function DraftExplorerPage() {
   const variantsEditorSortedRows = useMemo(() => {
     const sortKey = variantsEditorSort.key;
     if (!sortKey) {
-      return variantsEditorRows;
+      return variantsEditorFilteredRows;
     }
     const getValue = (row: DraftVariantEditorRow, key: VariantEditorSortKey) => {
       if (key === "sku") return row.draft_sku;
@@ -10987,10 +12402,10 @@ export default function DraftExplorerPage() {
       if (key === "order") return row.variation_other_se || row.draft_option3;
       if (key === "amount") return row.variation_amount_se || row.draft_option4;
       if (key === "combinedZh") return row.draft_option_combined_zh;
-      if (key === "colorZh") return row.draft_option1;
-      if (key === "sizeZh") return row.draft_option2;
-      if (key === "otherZh") return row.draft_option3;
-      if (key === "amountZh") return row.draft_option4;
+      if (key === "colorZh") return row.draft_option1_zh;
+      if (key === "sizeZh") return row.draft_option2_zh;
+      if (key === "otherZh") return row.draft_option3_zh;
+      if (key === "amountZh") return row.draft_option4_zh;
       if (key === "shippingClass") return row.draft_shipping_class;
       if (key === "price") return row.draft_price;
       return row.draft_weight;
@@ -11005,7 +12420,7 @@ export default function DraftExplorerPage() {
       return Number.isFinite(numeric) ? numeric : null;
     };
     const directionFactor = variantsEditorSort.direction === "asc" ? 1 : -1;
-    return [...variantsEditorRows].sort((left, right) => {
+    return [...variantsEditorFilteredRows].sort((left, right) => {
       const leftValue = String(getValue(left, sortKey) || "").trim();
       const rightValue = String(getValue(right, sortKey) || "").trim();
       if (sortKey === "amount" || sortKey === "price" || sortKey === "weight") {
@@ -11022,7 +12437,7 @@ export default function DraftExplorerPage() {
         }) * directionFactor
       );
     });
-  }, [variantsEditorRows, variantsEditorSort]);
+  }, [variantsEditorFilteredRows, variantsEditorSort]);
 
   const variantsEditorThumbByFileKey = useMemo(() => {
     const map = new Map<string, DraftEntry>();
@@ -11123,27 +12538,27 @@ export default function DraftExplorerPage() {
       ),
       colorZh: makeStyle(
         "Color (ZH)",
-        sample.map((row) => row.draft_option1),
+        sample.map((row) => row.draft_option1_zh),
         { minPx: 70, maxPx: 250, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       sizeZh: makeStyle(
         "Size (ZH)",
-        sample.map((row) => row.draft_option2),
+        sample.map((row) => row.draft_option2_zh),
         { minPx: 64, maxPx: 190, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       otherZh: makeStyle(
         "Other (ZH)",
-        sample.map((row) => row.draft_option3),
+        sample.map((row) => row.draft_option3_zh),
         { minPx: 72, maxPx: 320, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       amountZh: makeStyle(
         "Amount (ZH)",
-        sample.map((row) => row.draft_option4),
+        sample.map((row) => row.draft_option4_zh),
         { minPx: 70, maxPx: 220, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       shippingClass: makeStyle(
         "Shipping class",
-        sample.map((row) => row.draft_shipping_class).concat("PBA"),
+        sample.map((row) => row.draft_shipping_class).concat("PBA", "SPC"),
         { minPx: 112, maxPx: 170, headerPaddingPx: 16, contentPaddingPx: 16 }
       ),
       price: makeStyle(
@@ -11265,6 +12680,10 @@ export default function DraftExplorerPage() {
             draft_option3: row.draft_option3,
             draft_option4: row.draft_option4,
             draft_option_combined_zh: row.draft_option_combined_zh,
+            draft_option1_zh: row.draft_option1_zh,
+            draft_option2_zh: row.draft_option2_zh,
+            draft_option3_zh: row.draft_option3_zh,
+            draft_option4_zh: row.draft_option4_zh,
             variation_color_se: row.variation_color_se,
             variation_size_se: row.variation_size_se,
             variation_other_se: row.variation_other_se,
@@ -11395,10 +12814,10 @@ export default function DraftExplorerPage() {
           draft_price: onePackPrice,
           draft_weight: onePackWeight,
           draft_option_combined_zh: buildVariantCombinedZhValue({
-            draft_option1: row.draft_option1,
-            draft_option2: row.draft_option2,
-            draft_option3: row.draft_option3,
-            draft_option4: onePackLabel,
+            draft_option1: row.draft_option1_zh,
+            draft_option2: row.draft_option2_zh,
+            draft_option3: row.draft_option3_zh,
+            draft_option4: row.draft_option4_zh,
             fallback: row.draft_option_combined_zh,
           }),
           draft_raw_row: {
@@ -11447,10 +12866,10 @@ export default function DraftExplorerPage() {
             draft_price: scaledPrice,
             draft_weight: scaledWeight,
             draft_option_combined_zh: buildVariantCombinedZhValue({
-              draft_option1: row.draft_option1,
-              draft_option2: row.draft_option2,
-              draft_option3: row.draft_option3,
-              draft_option4: label,
+              draft_option1: row.draft_option1_zh,
+              draft_option2: row.draft_option2_zh,
+              draft_option3: row.draft_option3_zh,
+              draft_option4: row.draft_option4_zh,
               fallback: row.draft_option_combined_zh,
             }),
             draft_raw_row: {
@@ -11976,6 +13395,7 @@ export default function DraftExplorerPage() {
       if (!force && stackOverlaySubmitting) return;
       setStackOverlayPickerOpen(false);
       setStackOverlayTargets([]);
+      setStackOverlayScenicTargets([]);
       setStackOverlayCandidateTargets([]);
       setStackOverlayMode("digideal_main_stack_overlay");
       setStackOverlayTopImagePath("");
@@ -11983,6 +13403,86 @@ export default function DraftExplorerPage() {
       setStackOverlayError(null);
     },
     [stackOverlaySubmitting]
+  );
+
+  const getKnownEntryDimensions = useCallback(
+    (entry: DraftEntry) => {
+      const liveDimensions = imageDimensions[entry.path];
+      if (
+        liveDimensions &&
+        Number.isFinite(liveDimensions.width) &&
+        Number.isFinite(liveDimensions.height) &&
+        liveDimensions.width > 0 &&
+        liveDimensions.height > 0
+      ) {
+        return liveDimensions;
+      }
+      const width = Number(entry.width || 0);
+      const height = Number(entry.height || 0);
+      if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        return { width, height };
+      }
+      return null;
+    },
+    [imageDimensions]
+  );
+
+  const isLikelyDigidealScenicEntry = useCallback(
+    (entry: DraftEntry) => {
+      const tags = extractImageTagsFromFileName(entry.name);
+      if (tags.includes("ENV") || tags.includes("ENV-W")) {
+        return true;
+      }
+      const dimensions = getKnownEntryDimensions(entry);
+      if (
+        dimensions &&
+        dimensions.width > dimensions.height * 1.2 &&
+        !isWhiteBackgroundPriorityImage(entry)
+      ) {
+        return true;
+      }
+      return false;
+    },
+    [getKnownEntryDimensions]
+  );
+
+  const partitionDigidealMainStackOverlayTargets = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      const scenicTargets = sourceEntries.filter((entry) => isLikelyDigidealScenicEntry(entry));
+      const scenicPaths = new Set(scenicTargets.map((entry) => entry.path));
+      const productTargets = sourceEntries.filter((entry) => !scenicPaths.has(entry.path));
+      const whiteProductCandidates = productTargets.filter((entry) =>
+        isWhiteBackgroundPriorityImage(entry)
+      );
+      const candidateTargets =
+        whiteProductCandidates.length > 0
+          ? whiteProductCandidates
+          : productTargets.length > 0
+            ? productTargets
+            : sourceEntries;
+      return {
+        scenicTargets,
+        productTargets,
+        candidateTargets,
+      };
+    },
+    [isLikelyDigidealScenicEntry]
+  );
+
+  const canUseDigidealMainStackOverlay = useCallback(
+    (sourceEntries: DraftEntry[]) => {
+      const imageTargets = sourceEntries.filter(
+        (entry) => entry.type === "file" && isImage(entry.name)
+      );
+      if (imageTargets.length >= DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES) {
+        return true;
+      }
+      if (imageTargets.length < 2) return false;
+      const { scenicTargets, productTargets } =
+        partitionDigidealMainStackOverlayTargets(imageTargets);
+      return scenicTargets.length > 0 && productTargets.length > 0;
+    },
+    [isImage, partitionDigidealMainStackOverlayTargets]
   );
 
   const openStackOverlayPickerForEntries = useCallback(
@@ -12007,21 +13507,45 @@ export default function DraftExplorerPage() {
       }
 
       const limitedTargets = targets.slice(0, STACK_IMAGES_MAX_IMAGES);
-      const whiteCandidates = limitedTargets.filter((entry) =>
-        isWhiteBackgroundPriorityImage(entry)
-      );
+      const digidealPartition =
+        mode === "digideal_main_stack_overlay"
+          ? partitionDigidealMainStackOverlayTargets(limitedTargets)
+          : null;
+      const whiteCandidates =
+        mode === "digideal_main_stack_overlay"
+          ? digidealPartition?.candidateTargets.filter((entry) =>
+              isWhiteBackgroundPriorityImage(entry)
+            ) ?? []
+          : limitedTargets.filter((entry) => isWhiteBackgroundPriorityImage(entry));
       const candidateTargets =
-        whiteCandidates.length > 0 ? whiteCandidates : limitedTargets;
+        mode === "stack_overlay"
+          ? limitedTargets
+          : digidealPartition?.candidateTargets.length
+            ? digidealPartition.candidateTargets
+            : whiteCandidates.length > 0
+              ? whiteCandidates
+              : limitedTargets;
       const firstCandidatePath = candidateTargets[0]?.path || "";
 
       let warningMessage: string | null = null;
       if (targets.length > STACK_IMAGES_MAX_IMAGES) {
         warningMessage = `Only the first ${STACK_IMAGES_MAX_IMAGES} selected images are included.`;
-      } else if (whiteCandidates.length === 0) {
+      } else if (
+        mode === "digideal_main_stack_overlay" &&
+        (digidealPartition?.scenicTargets.length ?? 0) > 0 &&
+        (digidealPartition?.productTargets.length ?? 0) > 0
+      ) {
+        warningMessage = `Will create ${
+          digidealPartition?.scenicTargets.length ?? 0
+        } DigiDeal image(s), one per selected scenic ENV image.`;
+      } else if (mode !== "stack_overlay" && whiteCandidates.length === 0) {
         warningMessage = "No clear white-background candidates detected; showing all selected images.";
       }
 
       setStackOverlayTargets(limitedTargets);
+      setStackOverlayScenicTargets(
+        mode === "digideal_main_stack_overlay" ? digidealPartition?.scenicTargets ?? [] : []
+      );
       setStackOverlayCandidateTargets(candidateTargets);
       setStackOverlayMode(mode);
       setStackOverlayTopImagePath(firstCandidatePath);
@@ -12030,7 +13554,7 @@ export default function DraftExplorerPage() {
       setStackOverlayPickerOpen(true);
       setError(null);
     },
-    [isImage]
+    [isImage, partitionDigidealMainStackOverlayTargets]
   );
 
   const applyStackOverlayForDialogTargets = useCallback(async () => {
@@ -12039,12 +13563,26 @@ export default function DraftExplorerPage() {
       (entry) => entry.type === "file" && isImage(entry.name)
     );
     const isStandaloneMode = stackOverlayMode === "stack_overlay";
+    const digidealPartition = !isStandaloneMode
+      ? partitionDigidealMainStackOverlayTargets(targets)
+      : null;
+    const scenicTargets = digidealPartition?.scenicTargets ?? [];
+    const productTargets =
+      !isStandaloneMode && scenicTargets.length > 0 && (digidealPartition?.productTargets.length ?? 0) > 0
+        ? digidealPartition?.productTargets ?? targets
+        : targets;
     const minImages = isStandaloneMode
       ? STACK_OVERLAY_MIN_IMAGES
-      : DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
-    if (targets.length < minImages) {
+      : scenicTargets.length > 0 && productTargets.length > 0
+        ? 2
+        : DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
+    if (targets.length < minImages || (!isStandaloneMode && productTargets.length === 0)) {
       setStackOverlayError(
-        isStandaloneMode ? "Select at least two images." : "Select at least three images."
+        isStandaloneMode
+          ? "Select at least two images."
+          : scenicTargets.length > 0
+            ? "Select at least one product image and one scenic ENV image."
+            : "Select at least three images."
       );
       return;
     }
@@ -12070,31 +13608,49 @@ export default function DraftExplorerPage() {
     }
 
     setError(null);
-    const targetPaths = targets.map((entry) => entry.path);
+    const jobTargets =
+      !isStandaloneMode && scenicTargets.length > 0 && productTargets.length > 0
+        ? scenicTargets.map((scenicEntry) => [
+            ...productTargets.map((entry) => entry.path),
+            scenicEntry.path,
+          ])
+        : [targets.map((entry) => entry.path)];
     closeStackOverlayPickerDialog(true);
     clearSelectedFilesForImageActions();
 
     // Run long stack-overlay generation in the background so the gallery stays usable.
     void (async () => {
       try {
-        const response = await fetch("/api/drafts/images/merge-digideal-main-stack-overlay", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            paths: targetPaths,
-            targetPath: resolvedTargetPath,
-            topImagePath: selectedTopPath,
-            standalone: isStandaloneMode,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
-            payload?.error ||
-              (isStandaloneMode
-                ? "Unable to create Stack Overlay."
-                : "Unable to create DigiDeal Main Stack Overlay.")
-          );
+        const failures: string[] = [];
+        let completedCount = 0;
+        for (const targetPaths of jobTargets) {
+          const response = await fetch("/api/drafts/images/merge-digideal-main-stack-overlay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              paths: targetPaths,
+              targetPath: resolvedTargetPath,
+              topImagePath: selectedTopPath,
+              standalone: isStandaloneMode,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            failures.push(
+              String(
+                payload?.error ||
+                  (isStandaloneMode
+                    ? "Unable to create Stack Overlay."
+                    : "Unable to create DigiDeal Main Stack Overlay.")
+              )
+            );
+            continue;
+          }
+          completedCount += 1;
+        }
+
+        if (completedCount === 0 && failures.length > 0) {
+          throw new Error(failures[0]);
         }
 
         const latestPath = String(currentPathRef.current || "").trim();
@@ -12105,6 +13661,13 @@ export default function DraftExplorerPage() {
         const latestSelectedFolder = String(selectedFolderRef.current || "").trim();
         if (latestSelectedFolder) {
           await fetchFolderTree(latestSelectedFolder);
+        }
+        if (failures.length > 0) {
+          setError(
+            `Created ${completedCount}/${jobTargets.length} ${
+              isStandaloneMode ? "Stack Overlay" : "DigiDeal Main Stack Overlay"
+            } image(s). ${failures[0]}`
+          );
         }
       } catch (err) {
         setError(
@@ -12121,9 +13684,11 @@ export default function DraftExplorerPage() {
     currentPath,
     fetchFolderTree,
     isImage,
+    partitionDigidealMainStackOverlayTargets,
     refreshEntries,
     stackOverlayCandidateTargets,
     stackOverlayMode,
+    stackOverlayScenicTargets,
     stackOverlaySubmitting,
     stackOverlayTargets,
     stackOverlayTopImagePath,
@@ -13161,8 +14726,8 @@ export default function DraftExplorerPage() {
       const targets = sourceEntries.filter(
         (entry) => entry.type === "file" && isImage(entry.name)
       );
-      if (targets.length !== 2) {
-        setError("Select exactly two images.");
+      if (targets.length < 2) {
+        setError("Select one white-background/COL image and at least one ENV image.");
         return;
       }
 
@@ -13496,6 +15061,9 @@ export default function DraftExplorerPage() {
 
   const aiMaskTargetPath =
     aiEditMode === "eraser" && aiEditTargets.length === 1 ? aiEditTargets[0].path : "";
+  const removeWithMaskReferenceEntry = removeWithMaskDialog?.referenceEntry ?? null;
+  const shouldShowRemoveWithMaskPainter =
+    Boolean(removeWithMaskReferenceEntry) && removeWithMaskMode === "manual";
 
   const syncAiMaskCanvasToImage = useCallback((resetMask: boolean) => {
     const imageEl = aiMaskImageRef.current;
@@ -13670,15 +15238,426 @@ export default function DraftExplorerPage() {
     const maskImage = maskCtx.createImageData(maskCanvas.width, maskCanvas.height);
     for (let index = 0; index < srcImage.data.length; index += 4) {
       const painted = srcImage.data[index + 3] > 8;
-      const color = painted ? 255 : 0;
-      maskImage.data[index] = color;
-      maskImage.data[index + 1] = color;
-      maskImage.data[index + 2] = color;
-      maskImage.data[index + 3] = 255;
+      maskImage.data[index] = 255;
+      maskImage.data[index + 1] = 255;
+      maskImage.data[index + 2] = 255;
+      maskImage.data[index + 3] = painted ? 255 : 0;
     }
     maskCtx.putImageData(maskImage, 0, 0);
     return maskCanvas.toDataURL("image/png");
   }, [aiMaskHasPaint]);
+
+  const syncRemoveWithMaskCanvasToImage = useCallback((resetMask: boolean) => {
+    const imageEl = removeWithMaskImageRef.current;
+    const canvasEl = removeWithMaskCanvasRef.current;
+    if (!imageEl || !canvasEl) return;
+    const naturalWidth = Number(imageEl.naturalWidth || 0);
+    const naturalHeight = Number(imageEl.naturalHeight || 0);
+    if (!naturalWidth || !naturalHeight) return;
+    const displayRect = canvasEl.getBoundingClientRect();
+    const displayWidth = Math.max(
+      1,
+      Math.round(displayRect.width || imageEl.clientWidth || naturalWidth)
+    );
+    const displayHeight = Math.max(
+      1,
+      Math.round(displayRect.height || imageEl.clientHeight || displayWidth)
+    );
+    const stageSize = Math.max(1, Math.round(Math.max(naturalWidth, naturalHeight)));
+    canvasEl.style.width = `${displayWidth}px`;
+    canvasEl.style.height = `${displayHeight}px`;
+    if (resetMask || canvasEl.width !== stageSize || canvasEl.height !== stageSize) {
+      canvasEl.width = stageSize;
+      canvasEl.height = stageSize;
+      const ctx = canvasEl.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, stageSize, stageSize);
+      }
+      setRemoveWithMaskHasPaint(false);
+    }
+  }, []);
+
+  const getRemoveWithMaskPointer = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const canvasEl = removeWithMaskCanvasRef.current;
+      if (!canvasEl) return null;
+      const rect = canvasEl.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const canvasWidth = canvasEl.width || rect.width;
+      const canvasHeight = canvasEl.height || rect.height;
+      const displayX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+      const displayY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+      const stageX = (displayX / rect.width) * canvasWidth;
+      const stageY = (displayY / rect.height) * canvasHeight;
+      const brushWidth = Math.max(2, Math.round(removeWithMaskBrushSize));
+      const displayScale = rect.width / canvasWidth;
+      return {
+        stagePoint: {
+          x: Math.max(0, Math.min(canvasWidth, stageX)),
+          y: Math.max(0, Math.min(canvasHeight, stageY)),
+        },
+        displayPoint: { x: displayX, y: displayY },
+        displayBrushSize: Math.max(6, Math.round(brushWidth * displayScale)),
+      };
+    },
+    [removeWithMaskBrushSize]
+  );
+
+  const setRemoveWithMaskCursorFromPointer = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>, visible: boolean) => {
+      const pointer = getRemoveWithMaskPointer(event);
+      if (!pointer) {
+        setRemoveWithMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        return null;
+      }
+      setRemoveWithMaskCursor({
+        x: pointer.displayPoint.x,
+        y: pointer.displayPoint.y,
+        size: pointer.displayBrushSize,
+        visible,
+      });
+      return pointer.stagePoint;
+    },
+    [getRemoveWithMaskPointer]
+  );
+
+  const drawRemoveWithMaskStroke = useCallback(
+    (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const canvasEl = removeWithMaskCanvasRef.current;
+      if (!canvasEl) return;
+      const ctx = canvasEl.getContext("2d");
+      if (!ctx) return;
+      const brushWidth = Math.max(2, Math.round(removeWithMaskBrushSize));
+      const brushRadius = Math.max(1, brushWidth / 2);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "rgba(36, 116, 255, 0.5)";
+      ctx.fillStyle = "rgba(36, 116, 255, 0.5)";
+      ctx.lineWidth = brushWidth;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(to.x, to.y, brushRadius, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    [removeWithMaskBrushSize]
+  );
+
+  const stopRemoveWithMaskDrawing = useCallback((pointerId?: number) => {
+    removeWithMaskDrawingRef.current = false;
+    removeWithMaskLastPointRef.current = null;
+    const canvasEl = removeWithMaskCanvasRef.current;
+    const activePointerId =
+      typeof pointerId === "number" ? pointerId : removeWithMaskPointerIdRef.current;
+    if (canvasEl && typeof activePointerId === "number") {
+      try {
+        if (canvasEl.hasPointerCapture(activePointerId)) {
+          canvasEl.releasePointerCapture(activePointerId);
+        }
+      } catch {}
+    }
+    removeWithMaskPointerIdRef.current = null;
+  }, []);
+
+  const handleRemoveWithMaskPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      if (event.button !== 0 && event.pointerType !== "touch") return;
+      const point = setRemoveWithMaskCursorFromPointer(event, true);
+      if (!point) return;
+      removeWithMaskDrawingRef.current = true;
+      removeWithMaskPointerIdRef.current = event.pointerId;
+      removeWithMaskLastPointRef.current = point;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {}
+      drawRemoveWithMaskStroke(point, point);
+      setRemoveWithMaskHasPaint(true);
+      event.preventDefault();
+    },
+    [drawRemoveWithMaskStroke, setRemoveWithMaskCursorFromPointer]
+  );
+
+  const handleRemoveWithMaskPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const point = setRemoveWithMaskCursorFromPointer(event, true);
+      if (!point) return;
+      if (!removeWithMaskDrawingRef.current) return;
+      if (
+        typeof removeWithMaskPointerIdRef.current === "number" &&
+        removeWithMaskPointerIdRef.current !== event.pointerId
+      ) {
+        return;
+      }
+      const lastPoint = removeWithMaskLastPointRef.current ?? point;
+      drawRemoveWithMaskStroke(lastPoint, point);
+      removeWithMaskLastPointRef.current = point;
+      setRemoveWithMaskHasPaint(true);
+      event.preventDefault();
+    },
+    [drawRemoveWithMaskStroke, setRemoveWithMaskCursorFromPointer]
+  );
+
+  const clearRemoveWithMaskCanvas = useCallback(() => {
+    const canvasEl = removeWithMaskCanvasRef.current;
+    if (!canvasEl) {
+      setRemoveWithMaskHasPaint(false);
+      return;
+    }
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    setRemoveWithMaskHasPaint(false);
+  }, []);
+
+  const buildRemoveWithMaskDataUrl = useCallback(() => {
+    const canvasEl = removeWithMaskCanvasRef.current;
+    if (!canvasEl || !removeWithMaskHasPaint || !canvasEl.width || !canvasEl.height) {
+      return "";
+    }
+    const srcCtx = canvasEl.getContext("2d");
+    if (!srcCtx) return "";
+    const srcImage = srcCtx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+    const maskCanvas = document.createElement("canvas");
+    maskCanvas.width = canvasEl.width;
+    maskCanvas.height = canvasEl.height;
+    const maskCtx = maskCanvas.getContext("2d");
+    if (!maskCtx) return "";
+    const maskImage = maskCtx.createImageData(maskCanvas.width, maskCanvas.height);
+    for (let index = 0; index < srcImage.data.length; index += 4) {
+      const painted = srcImage.data[index + 3] > 8;
+      maskImage.data[index] = 255;
+      maskImage.data[index + 1] = 255;
+      maskImage.data[index + 2] = 255;
+      maskImage.data[index + 3] = painted ? 255 : 0;
+    }
+    maskCtx.putImageData(maskImage, 0, 0);
+    return maskCanvas.toDataURL("image/png");
+  }, [removeWithMaskHasPaint]);
+
+  const closeRemoveWithMaskDialog = useCallback(
+    (force = false) => {
+      if (!force && removeWithMaskSubmitting) return;
+      stopRemoveWithMaskDrawing();
+      setRemoveWithMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      clearRemoveWithMaskCanvas();
+      setRemoveWithMaskDialog(null);
+      setRemoveWithMaskMode("manual");
+      setRemoveWithMaskPrompt("");
+      setRemoveWithMaskFeatherPx(10);
+      setRemoveWithMaskBrushSize(36);
+      setRemoveWithMaskError(null);
+    },
+    [clearRemoveWithMaskCanvas, removeWithMaskSubmitting, stopRemoveWithMaskDrawing]
+  );
+
+  const openRemoveWithMaskDialogForEntries = useCallback(
+    (inputEntries: DraftEntry[]) => {
+      const targets = Array.from(
+        new Map(
+          inputEntries
+            .filter((item) => item.type === "file" && isImage(item.name))
+            .map((item) => [String(item.path || "").trim(), item] as const)
+        ).values()
+      );
+      if (targets.length === 0) {
+        setError("Select at least one image.");
+        return;
+      }
+      const limitedTargets = targets.slice(0, REMOVE_WITH_MASK_MAX_IMAGES);
+      stopRemoveWithMaskDrawing();
+      clearRemoveWithMaskCanvas();
+      setRemoveWithMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      setRemoveWithMaskHasPaint(false);
+      setRemoveWithMaskDialog({
+        entries: limitedTargets,
+        referenceEntry: limitedTargets[0],
+      });
+      setRemoveWithMaskMode("manual");
+      setRemoveWithMaskPrompt("");
+      setRemoveWithMaskFeatherPx(10);
+      setRemoveWithMaskBrushSize(36);
+      setRemoveWithMaskError(
+        targets.length > REMOVE_WITH_MASK_MAX_IMAGES
+          ? `Only the first ${REMOVE_WITH_MASK_MAX_IMAGES} selected images are included.`
+          : null
+      );
+      setError(null);
+    },
+    [clearRemoveWithMaskCanvas, isImage, stopRemoveWithMaskDrawing]
+  );
+
+  const applyRemoveWithMaskForDialogTargets = useCallback(async () => {
+    if (!removeWithMaskDialog || removeWithMaskSubmitting) return;
+    const targets = removeWithMaskDialog.entries.filter(
+      (entry) => entry.type === "file" && isImage(entry.name)
+    );
+    if (targets.length === 0) {
+      setRemoveWithMaskError("Select at least one image.");
+      return;
+    }
+
+    const mode = removeWithMaskMode;
+    const prompt = removeWithMaskPrompt.trim();
+    if (mode === "ai" && !prompt) {
+      setRemoveWithMaskError("Prompt is required for AI mode.");
+      return;
+    }
+
+    let maskDataUrl = "";
+    if (mode === "manual") {
+      if (!removeWithMaskHasPaint) {
+        setRemoveWithMaskError("Paint the mask area first.");
+        return;
+      }
+      maskDataUrl = buildRemoveWithMaskDataUrl();
+      if (!maskDataUrl) {
+        setRemoveWithMaskError("Unable to build mask image. Please paint again.");
+        return;
+      }
+    }
+
+    const targetPaths = targets.map((entry) => entry.path);
+    setRemoveWithMaskSubmitting(true);
+    setRemoveWithMaskError(null);
+    setError(null);
+    setReloadingImagePaths((prev) => {
+      const next = new Set(prev);
+      targetPaths.forEach((pathValue) => next.add(pathValue));
+      return next;
+    });
+
+    try {
+      const response = await fetch("/api/drafts/images/remove-with-mask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paths: targetPaths,
+          mode,
+          prompt,
+          featherPx: removeWithMaskFeatherPx,
+          maskDataUrl: mode === "manual" ? maskDataUrl : undefined,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "Unable to remove masked area."));
+      }
+
+      const updatedRows = Array.isArray(payload?.updated)
+        ? (payload.updated as Array<Record<string, unknown>>)
+        : [];
+      const errors = Array.isArray(payload?.errors)
+        ? (payload.errors as Array<Record<string, unknown>>)
+        : [];
+
+      const updates = new Map<
+        string,
+        {
+          modifiedAt: string;
+          size: number;
+          pixelQualityScore: number | null;
+        }
+      >();
+      updatedRows.forEach((row) => {
+        const rowPath = String(row.path || "").trim();
+        if (!rowPath) return;
+        updates.set(rowPath, {
+          modifiedAt:
+            String(row.modifiedAt || "").trim() || new Date().toISOString(),
+          size:
+            typeof row.size === "number" && Number.isFinite(row.size) ? row.size : 0,
+          pixelQualityScore:
+            typeof row.pixelQualityScore === "number" &&
+            Number.isFinite(row.pixelQualityScore)
+              ? Math.round(row.pixelQualityScore)
+              : null,
+        });
+      });
+
+      if (updates.size > 0) {
+        setEntries((prev) =>
+          prev.map((item) => {
+            const update = updates.get(item.path);
+            if (!update) return item;
+            return {
+              ...item,
+              modifiedAt: update.modifiedAt,
+              size: update.size || item.size,
+              pixelQualityScore:
+                update.pixelQualityScore !== null
+                  ? update.pixelQualityScore
+                  : item.pixelQualityScore ?? null,
+            };
+          })
+        );
+        setMainViewVariantImageEntries((prev) =>
+          prev.map((item) => {
+            const update = updates.get(item.path);
+            if (!update) return item;
+            return {
+              ...item,
+              modifiedAt: update.modifiedAt,
+              size: update.size || item.size,
+              pixelQualityScore:
+                update.pixelQualityScore !== null
+                  ? update.pixelQualityScore
+                  : item.pixelQualityScore ?? null,
+            };
+          })
+        );
+        setImageDimensions((prev) => {
+          const next: Record<string, { width: number; height: number }> = { ...prev };
+          targetPaths.forEach((pathValue) => {
+            delete next[pathValue];
+          });
+          return next;
+        });
+      }
+
+      if (selectedFolder) {
+        await fetchFolderTree(selectedFolder);
+      }
+
+      if (errors.length > 0) {
+        const preview = errors
+          .slice(0, 2)
+          .map((row) => String(row.error || "Unknown error"))
+          .join("; ");
+        setRemoveWithMaskError(
+          `Failed to process ${errors.length} image(s). ${preview}${
+            errors.length > 2 ? "..." : ""
+          }`
+        );
+      } else {
+        closeRemoveWithMaskDialog(true);
+      }
+    } catch (err) {
+      setRemoveWithMaskError(
+        err instanceof Error ? err.message : "Unable to remove masked area."
+      );
+    } finally {
+      setRemoveWithMaskSubmitting(false);
+      setReloadingImagePaths((prev) => {
+        const next = new Set(prev);
+        targetPaths.forEach((pathValue) => next.delete(pathValue));
+        return next;
+      });
+    }
+  }, [
+    buildRemoveWithMaskDataUrl,
+    closeRemoveWithMaskDialog,
+    fetchFolderTree,
+    isImage,
+    removeWithMaskHasPaint,
+    removeWithMaskDialog,
+    removeWithMaskFeatherPx,
+    removeWithMaskMode,
+    removeWithMaskPrompt,
+    removeWithMaskSubmitting,
+    selectedFolder,
+  ]);
 
   useEffect(() => {
     aiMaskDrawingRef.current = false;
@@ -13694,13 +15673,36 @@ export default function DraftExplorerPage() {
     };
   }, [aiMaskTargetPath, clearAiMaskCanvas, syncAiMaskCanvasToImage]);
 
+  useEffect(() => {
+    removeWithMaskDrawingRef.current = false;
+    removeWithMaskPointerIdRef.current = null;
+    removeWithMaskLastPointRef.current = null;
+    setRemoveWithMaskCursor((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    clearRemoveWithMaskCanvas();
+    if (!shouldShowRemoveWithMaskPainter) return;
+    const handleResize = () => syncRemoveWithMaskCanvasToImage(false);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [clearRemoveWithMaskCanvas, shouldShowRemoveWithMaskPainter, syncRemoveWithMaskCanvasToImage]);
+
   const runAiEditsForEntries = useCallback(
     async (
       sourceEntries: DraftEntry[],
       provider: AiEditProvider,
       mode: AiPromptMode,
       promptText: string,
-      options?: { templatePreset?: AiTemplatePreset; outputCount?: number; maskDataUrl?: string }
+      options?: {
+        templatePreset?: AiTemplatePreset;
+        outputCount?: number;
+        promptVariants?: string[];
+        imageAspect?: AiSceneOutputFormat;
+        maskDataUrl?: string;
+        modelId?: string;
+        backgroundMode?: DraftAiModelBackgroundMode;
+        backgroundPrompt?: string;
+      }
     ) => {
       clearSelectedFilesForImageActions();
       const pathAtStart = String(currentPathRef.current || "");
@@ -13723,6 +15725,8 @@ export default function DraftExplorerPage() {
               ? "Product Scene"
             : options?.templatePreset === "product_collection"
               ? "Product Collection"
+              : options?.templatePreset === "fashion_model"
+                ? "Add Model"
             : mode === "template"
                 ? "Standard Template"
                 : mode === "direct"
@@ -13817,6 +15821,11 @@ export default function DraftExplorerPage() {
 		                provider,
 		                mode,
 		                prompt: promptText,
+                    promptVariants: options?.promptVariants,
+                    imageAspect: options?.imageAspect,
+                    modelId: options?.modelId,
+                    backgroundMode: options?.backgroundMode,
+                    backgroundPrompt: options?.backgroundPrompt,
                     maskDataUrl:
                       mode === "eraser" && runnable.length === 1
                         ? options?.maskDataUrl
@@ -14034,14 +16043,15 @@ export default function DraftExplorerPage() {
         setAiEditProvider(provider);
         setAiEditMode(mode);
         setAiEditTemplatePreset("standard");
-        setAiEditOutputCount(1);
-        setAiEditPrompt("");
-        setAiEraserRunMode("prompt");
-        setAiEditError(null);
-        setAiMaskHasPaint(false);
-        setError(null);
-        void runAiEditsForEntries(targets, provider, mode, "");
-        return;
+      setAiEditOutputCount(1);
+      setAiEditPrompt("");
+      setAiEraserRunMode("prompt");
+      setAiEditError(null);
+      resetAiProductSceneComposer();
+      setAiMaskHasPaint(false);
+      setError(null);
+      void runAiEditsForEntries(targets, provider, mode, "");
+      return;
       }
       setAiEditTargets(targets);
       setAiEditProvider(provider);
@@ -14051,9 +16061,15 @@ export default function DraftExplorerPage() {
       setAiEditPrompt("");
       setAiEraserRunMode("prompt");
       setAiEditError(null);
+      resetAiProductSceneComposer();
       setAiMaskHasPaint(false);
     },
-    [clearSelectedFilesForImageActions, isImage, runAiEditsForEntries]
+    [
+      clearSelectedFilesForImageActions,
+      isImage,
+      resetAiProductSceneComposer,
+      runAiEditsForEntries,
+    ]
   );
 
   const startAiTemplatePresetForEntries = useCallback(
@@ -14083,10 +16099,11 @@ export default function DraftExplorerPage() {
       setAiEditPrompt("");
       setAiEraserRunMode("prompt");
       setAiEditError(null);
+      resetAiProductSceneComposer();
       setAiMaskHasPaint(false);
       setError(null);
     },
-    [clearSelectedFilesForImageActions, isImage]
+    [clearSelectedFilesForImageActions, isImage, resetAiProductSceneComposer]
   );
 
   const closeAiDualDialog = useCallback(() => {
@@ -14486,6 +16503,74 @@ export default function DraftExplorerPage() {
     [startAiEditForEntries]
   );
 
+  const buildProductScenePromptText = useCallback(
+    (basePrompt: string, suggestedIdea?: AiScenePromptIdea | null) => {
+      const sections: string[] = [];
+      const subjectLabel =
+        AI_SCENE_SUBJECT_OPTIONS.find((option) => option.value === aiSceneSubject)?.promptValue ||
+        "";
+      const ageLabel =
+        AI_SCENE_AGE_GROUP_OPTIONS.find((option) => option.value === aiSceneAgeGroup)
+          ?.promptValue || "";
+      if (subjectLabel || ageLabel) {
+        const sceneLines = ["Casting requirements for this product scene:"];
+        if (subjectLabel) {
+          sceneLines.push(`- Main subject / family type: ${subjectLabel}`);
+          if (aiSceneSubject === "couple") {
+            sceneLines.push("- Use two adults of the same selected age group.");
+          } else if (aiSceneSubject === "family") {
+            sceneLines.push(
+              "- Adults should follow the selected age group; other family members may vary naturally."
+            );
+          }
+        }
+        if (ageLabel) {
+          sceneLines.push(`- Target age group: ${ageLabel}`);
+        }
+        sceneLines.push(
+          "- Keep the scene realistic, commercially clean, and consistent with Swedish/Nordic lifestyle imagery."
+        );
+        sections.push(sceneLines.join("\n"));
+      }
+      if (suggestedIdea?.title && suggestedIdea?.prompt) {
+        sections.push(
+          `Use this scene direction:\nScene title: ${suggestedIdea.title}\n${suggestedIdea.prompt}`
+        );
+      }
+      const manualPrompt = String(basePrompt || "").trim();
+      if (manualPrompt) {
+        sections.push(`Additional guidance:\n${manualPrompt}`);
+      }
+      return sections.join("\n\n").trim();
+    },
+    [aiSceneAgeGroup, aiSceneSubject]
+  );
+  const aiSceneMaxSelectedPromptIdeas = Math.max(
+    1,
+    Number.isFinite(aiEditOutputCount) ? Math.min(3, Math.floor(aiEditOutputCount)) : 1
+  );
+
+  const toggleAiScenePromptIdea = useCallback(
+    (idea: AiScenePromptIdea) => {
+      const normalized = String(idea?.key || "").trim();
+      if (!normalized) return;
+      const maxSelectedPromptIdeas = Math.max(
+        1,
+        Number.isFinite(aiEditOutputCount) ? Math.min(3, Math.floor(aiEditOutputCount)) : 1
+      );
+      setAiSceneSelectedPromptIdeas((prev) => {
+        if (prev.includes(normalized)) {
+          return prev.filter((item) => item !== normalized);
+        }
+        if (prev.length >= maxSelectedPromptIdeas) {
+          return prev;
+        }
+        return [...prev, normalized];
+      });
+    },
+    [aiEditOutputCount]
+  );
+
   const cancelAiEdit = useCallback(() => {
     if (aiEditSubmitting) return;
     stopAiMaskDrawing();
@@ -14497,7 +16582,8 @@ export default function DraftExplorerPage() {
     setAiEditPrompt("");
     setAiEraserRunMode("prompt");
     setAiEditError(null);
-  }, [aiEditSubmitting, clearAiMaskCanvas, stopAiMaskDrawing]);
+    resetAiProductSceneComposer();
+  }, [aiEditSubmitting, clearAiMaskCanvas, resetAiProductSceneComposer, stopAiMaskDrawing]);
 
   const submitAiEdit = useCallback(async () => {
     if (aiEditTargets.length === 0 || aiEditSubmitting) return;
@@ -14519,6 +16605,47 @@ export default function DraftExplorerPage() {
       : 1;
     const outputCount =
       mode === "template" || mode === "direct" ? normalizedOutputCount : undefined;
+    const scenePromptProductRoot =
+      templatePreset === "product_scene"
+        ? getSpuRootFromDraftPath(String(targets[0]?.path || ""))
+        : null;
+    const scenePromptIdeasForRun =
+      scenePromptProductRoot
+        ? aiScenePromptIdeasByProduct[scenePromptProductRoot]?.ideas ??
+          EMPTY_AI_SCENE_PROMPT_IDEAS
+        : EMPTY_AI_SCENE_PROMPT_IDEAS;
+    const selectedScenePromptIdeasToRun =
+      templatePreset === "product_scene"
+        ? aiSceneSelectedPromptIdeas
+            .map(
+              (key) => scenePromptIdeasForRun.find((idea) => idea.key === key) ?? null
+            )
+            .filter((idea): idea is AiScenePromptIdea => Boolean(idea))
+            .slice(0, normalizedOutputCount)
+        : [];
+    if (
+      templatePreset === "product_scene" &&
+      aiSceneSelectedPromptIdeas.length > normalizedOutputCount
+    ) {
+      setAiEditError(`Select up to ${normalizedOutputCount} prompt idea(s) for this run.`);
+      return;
+    }
+    if (templatePreset === "product_scene" && !aiSceneSubject) {
+      setAiEditError("Choose a gender or constellation for Product Scene.");
+      return;
+    }
+    if (templatePreset === "product_scene" && !aiSceneAgeGroup) {
+      setAiEditError("Choose an age group for Product Scene.");
+      return;
+    }
+    if (
+      templatePreset === "product_scene" &&
+      aiSceneOutputFormat === "wide" &&
+      provider !== "gemini"
+    ) {
+      setAiEditError("Wide Product Scene output is currently available only for Gemini.");
+      return;
+    }
     if (mode === "direct" && promptText) {
       setAiDirectPromptHistory((prev) => {
         const deduped = [promptText, ...prev.filter((item) => item !== promptText)];
@@ -14549,15 +16676,32 @@ export default function DraftExplorerPage() {
     setAiEditPrompt("");
     setAiEraserRunMode("prompt");
     setAiEditError(null);
+    resetAiProductSceneComposer();
     setAiMaskHasPaint(false);
     setError(null);
     setAiEditSubmitting(false);
-    void runAiEditsForEntries(targets, provider, mode, promptText, {
+    const promptVariants =
+      templatePreset === "product_scene" && selectedScenePromptIdeasToRun.length > 0
+        ? selectedScenePromptIdeasToRun.map((idea) =>
+            buildProductScenePromptText(promptText, idea)
+          )
+        : undefined;
+    const finalPromptText =
+      templatePreset === "product_scene"
+        ? buildProductScenePromptText(promptText)
+        : promptText;
+    void runAiEditsForEntries(targets, provider, mode, finalPromptText, {
       templatePreset,
-      outputCount,
+      outputCount: promptVariants?.length || outputCount,
+      promptVariants,
+      imageAspect:
+        templatePreset === "product_scene" ? aiSceneOutputFormat : undefined,
       maskDataUrl,
     });
   }, [
+    aiSceneOutputFormat,
+    aiScenePromptIdeasByProduct,
+    aiSceneSelectedPromptIdeas,
     aiMaskHasPaint,
     aiEraserRunMode,
     aiEditOutputCount,
@@ -14568,30 +16712,99 @@ export default function DraftExplorerPage() {
     aiEditProvider,
     aiEditSubmitting,
     buildAiMaskDataUrl,
+    buildProductScenePromptText,
+    resetAiProductSceneComposer,
     runAiEditsForEntries,
+  ]);
+
+  const submitAiModelDialog = useCallback(async () => {
+    if (!aiModelDialog || aiModelSubmitting) return;
+    const modelId = String(selectedAiModelId || "").trim();
+    if (!modelId) {
+      setAiModelError("Select a model first.");
+      return;
+    }
+    if (aiModelBackgroundMode === "custom" && !aiModelBackgroundPrompt.trim()) {
+      setAiModelError("Add custom background or action text.");
+      return;
+    }
+
+    const entries = aiModelDialog.entries;
+    const promptText = aiModelPrompt.trim();
+    const backgroundMode = aiModelBackgroundMode;
+    const backgroundPrompt = aiModelBackgroundPrompt.trim();
+
+    setAiModelSubmitting(true);
+    setAiModelError(null);
+    setAiModelDialog(null);
+    setAiModelPrompt("");
+    setAiModelBackgroundMode("default");
+    setAiModelBackgroundPrompt("");
+    const task = runAiEditsForEntries(entries, "gemini", "template", promptText, {
+        templatePreset: "fashion_model",
+        outputCount: 1,
+        modelId,
+        backgroundMode,
+        backgroundPrompt,
+      });
+    setAiModelSubmitting(false);
+    void task.catch((err) => {
+      setError((err as Error).message || "Unable to run Gemini Add Model.");
+    });
+  }, [
+    aiModelBackgroundMode,
+    aiModelBackgroundPrompt,
+    aiModelDialog,
+    aiModelPrompt,
+    aiModelSubmitting,
+    runAiEditsForEntries,
+    selectedAiModelId,
   ]);
 
   const resolveAiEdit = useCallback(
     async (originalPath: string, decision: AiResolveDecision) => {
-      if (aiReviewSubmitting) return;
+      const normalizedPath = String(originalPath || "").trim();
+      if (!normalizedPath) return;
+      if (confirmingAiEditPaths.has(normalizedPath)) return;
+
       const pathAtStart = String(currentPathRef.current || "");
-      setAiReviewSubmitting(true);
+      const pendingRecordAtStart = pendingAiEditsByOriginal[normalizedPath] ?? null;
+
+      // Close immediately. The resolve call continues in the background.
+      setAiReviewOriginalPath(null);
+      setAiReviewSubmitting(false);
       setError(null);
+      setConfirmingAiEditPaths((prev) => {
+        const next = new Set(prev);
+        next.add(normalizedPath);
+        return next;
+      });
+
+      if (decision === "keep_original" && pendingRecordAtStart) {
+        setPendingAiEditsByOriginal((prev) => {
+          const next = { ...prev };
+          delete next[normalizedPath];
+          return next;
+        });
+      }
+
       try {
         const response = await fetch("/api/drafts/ai-edits/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ originalPath, decision }),
+          body: JSON.stringify({ originalPath: normalizedPath, decision }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(payload?.error || "Unable to resolve AI edit.");
         }
+
         setPendingAiEditsByOriginal((prev) => {
           const next = { ...prev };
-          delete next[originalPath];
+          delete next[normalizedPath];
           return next;
         });
+
         const refreshedScoresRaw = Array.isArray(payload?.refreshedScores)
           ? (payload.refreshedScores as Array<{ path?: unknown; pixelQualityScore?: unknown }>)
           : [];
@@ -14618,7 +16831,7 @@ export default function DraftExplorerPage() {
             Number.isFinite(row.pixelQualityScore)
               ? Math.round(row.pixelQualityScore)
               : null;
-            refreshedScoreByPath.set(pathValue, scoreValue);
+          refreshedScoreByPath.set(pathValue, scoreValue);
         });
         setLastDeletedImageUndoItems(discardedUndoItems);
         if (refreshedScoreByPath.size > 0) {
@@ -14649,30 +16862,24 @@ export default function DraftExplorerPage() {
         const shouldRefreshActiveFolder =
           canRefreshActiveFolder &&
           (decision === "replace_with_ai" || decision === "keep_both");
-        if (decision === "replace_with_ai") {
-          if (!canRefreshActiveFolder) {
-            const now = new Date().toISOString();
-            setEntries((prev) =>
-              prev.map((item) =>
-                item.path === originalPath ? { ...item, modifiedAt: now } : item
-              )
-            );
-            setMainViewVariantImageEntries((prev) =>
-              prev.map((item) =>
-                item.path === originalPath ? { ...item, modifiedAt: now } : item
-              )
-            );
-          }
+        if (decision === "replace_with_ai" && !canRefreshActiveFolder) {
+          const now = new Date().toISOString();
+          setEntries((prev) =>
+            prev.map((item) =>
+              item.path === normalizedPath ? { ...item, modifiedAt: now } : item
+            )
+          );
+          setMainViewVariantImageEntries((prev) =>
+            prev.map((item) =>
+              item.path === normalizedPath ? { ...item, modifiedAt: now } : item
+            )
+          );
         }
         if (decision !== "keep_original") {
-          markSpuNeedsAiReview(originalPath);
+          markSpuNeedsAiReview(normalizedPath);
         }
-        // Close dialog immediately after server ack + optimistic state updates.
-        // Heavy housekeeping runs in background to keep save/replace responsive.
-        setAiReviewOriginalPath(null);
-        setAiReviewSubmitting(false);
 
-        const folderPath = getParentFolderPathFromEntryPath(originalPath);
+        const folderPath = getParentFolderPathFromEntryPath(normalizedPath);
         void (async () => {
           if (
             folderPath &&
@@ -14692,16 +16899,28 @@ export default function DraftExplorerPage() {
             await fetchPendingAiEdits(pathAtStart);
           }
         })();
-
       } catch (err) {
+        if (decision === "keep_original" && pendingRecordAtStart) {
+          setPendingAiEditsByOriginal((prev) => ({
+            ...prev,
+            [normalizedPath]: pendingRecordAtStart,
+          }));
+        }
         setError((err as Error).message);
-        setAiReviewSubmitting(false);
+      } finally {
+        setConfirmingAiEditPaths((prev) => {
+          if (!prev.has(normalizedPath)) return prev;
+          const next = new Set(prev);
+          next.delete(normalizedPath);
+          return next;
+        });
       }
     },
     [
-      aiReviewSubmitting,
+      confirmingAiEditPaths,
       fetchPendingAiEdits,
       markSpuNeedsAiReview,
+      pendingAiEditsByOriginal,
       refreshEntries,
       resortImageFoldersByHierarchy,
     ]
@@ -15002,7 +17221,13 @@ export default function DraftExplorerPage() {
     const previousAiEditJobsByPath = aiEditJobsByPath;
     const previousImageDimensions = imageDimensions;
     const previousPreviewPath = previewPath;
+    const previousOptimisticHiddenImagePaths = optimisticHiddenImagePaths;
 
+    setOptimisticHiddenImagePaths((prev) => {
+      const next = new Set(prev);
+      paths.forEach((pathValue) => next.add(pathValue));
+      return next;
+    });
     setEntries((prev) => prev.filter((entry) => !isDeletedPath(entry.path)));
     setMainViewVariantImageEntries((prev) =>
       prev.filter((entry) => !isDeletedPath(entry.path))
@@ -15053,7 +17278,13 @@ export default function DraftExplorerPage() {
         await refreshEntries(activePath);
         await fetchPendingAiEdits(activePath);
       }
+      setOptimisticHiddenImagePaths((prev) => {
+        const next = new Set(prev);
+        paths.forEach((pathValue) => next.delete(pathValue));
+        return next;
+      });
     } catch (err) {
+      setOptimisticHiddenImagePaths(previousOptimisticHiddenImagePaths);
       setEntries(previousEntries);
       setMainViewVariantImageEntries(previousMainViewVariantImageEntries);
       setSelectedFiles(previousSelectedFiles);
@@ -16316,6 +18547,52 @@ export default function DraftExplorerPage() {
     []
   );
 
+  const promoteImageToMainIfNeeded = useCallback(
+    async (entryPathRaw: string, entryNameRaw: string) => {
+      const entryPath = String(entryPathRaw || "").trim();
+      const fallbackName = extractFileNameFromPath(entryPath);
+      const entryName = String(entryNameRaw || fallbackName).trim() || fallbackName;
+      const sourceFolderPath = getParentFolderPathFromEntryPath(entryPath);
+      const mainPath = getSpuRootFromDraftPath(entryPath);
+      if (!entryPath || !entryName || !sourceFolderPath || !mainPath || sourceFolderPath === mainPath) {
+        return {
+          moved: false,
+          path: entryPath,
+          name: entryName,
+          sourceFolderPath,
+          destinationFolderPath: sourceFolderPath,
+        };
+      }
+
+      const response = await fetch("/api/drafts/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath: entryPath,
+          targetPath: mainPath,
+          allowRenameOnConflict: true,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to move image to Main.");
+      }
+
+      const movedPath = String(payload?.path || "").trim() || entryPath;
+      const movedName =
+        String(payload?.name || "").trim() || extractFileNameFromPath(movedPath) || entryName;
+
+      return {
+        moved: movedPath !== entryPath || movedName !== entryName,
+        path: movedPath,
+        name: movedName,
+        sourceFolderPath,
+        destinationFolderPath: getParentFolderPathFromEntryPath(movedPath),
+      };
+    },
+    []
+  );
+
   const bumpLocalImageCacheVersion = useCallback((pathRaw: string) => {
     const normalizedPath = String(pathRaw || "").trim();
     if (!normalizedPath) return;
@@ -16451,20 +18728,39 @@ export default function DraftExplorerPage() {
 
       try {
         for (const sourceEntry of targets) {
-          const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
+          const entry = visibleImageEntryByPath.get(sourceEntry.path) ?? sourceEntry;
           if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
             failures.push(`${entry.name}: resolve AI status first.`);
             continue;
           }
           const previousPath = entry.path;
           const previousName = entry.name;
-          const requestedName = buildTaggedImageFileName(entry.name, tag);
-          if (!requestedName || requestedName === entry.name) continue;
-          const parentPath = getParentFolderPathFromEntryPath(previousPath);
+          let workingPath = previousPath;
+          let workingName = previousName;
+          if (tag === "MAIN") {
+            const promoted = await promoteImageToMainIfNeeded(previousPath, previousName);
+            workingPath = promoted.path || workingPath;
+            workingName = promoted.name || workingName;
+            if (promoted.moved) {
+              applyLocalImageRename(previousPath, workingPath, workingName);
+              if (promoted.sourceFolderPath) foldersNeedingResort.add(promoted.sourceFolderPath);
+              if (promoted.destinationFolderPath) {
+                foldersNeedingResort.add(promoted.destinationFolderPath);
+              }
+            }
+          }
+          const requestedName = buildTaggedImageFileName(workingName, tag);
+          if (!requestedName || requestedName === workingName) {
+            if (workingPath !== previousPath || workingName !== previousName) {
+              bumpLocalImageCacheVersion(workingPath);
+            }
+            continue;
+          }
+          const parentPath = getParentFolderPathFromEntryPath(workingPath);
           const optimisticPath = parentPath
             ? `${parentPath}/${requestedName}`.replace(/\/{2,}/g, "/")
-            : previousPath;
-          applyLocalImageRename(previousPath, optimisticPath, requestedName);
+            : workingPath;
+          applyLocalImageRename(workingPath, optimisticPath, requestedName);
           if (parentPath) foldersNeedingResort.add(parentPath);
           const optimisticFolderPath = getParentFolderPathFromEntryPath(optimisticPath);
           if (optimisticFolderPath) foldersNeedingResort.add(optimisticFolderPath);
@@ -16473,7 +18769,7 @@ export default function DraftExplorerPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                path: previousPath,
+                path: workingPath,
                 name: requestedName,
                 allowRenameOnConflict: true,
               }),
@@ -16482,9 +18778,9 @@ export default function DraftExplorerPage() {
             if (!response.ok) {
               throw new Error(payload?.error || "Rename failed.");
             }
-            const renamedPath = String(payload?.path || optimisticPath || previousPath).trim();
+            const renamedPath = String(payload?.path || optimisticPath || workingPath).trim();
             const renamedName = String(payload?.name || requestedName);
-            const safeRenamedPath = renamedPath || optimisticPath || previousPath;
+            const safeRenamedPath = renamedPath || optimisticPath || workingPath;
             const safeRenamedName = renamedName || requestedName;
             if (
               safeRenamedPath !== optimisticPath ||
@@ -16498,7 +18794,7 @@ export default function DraftExplorerPage() {
             const renamedFolderPath = getParentFolderPathFromEntryPath(safeRenamedPath);
             if (renamedFolderPath) foldersNeedingResort.add(renamedFolderPath);
           } catch (err) {
-            applyLocalImageRename(optimisticPath, previousPath, previousName);
+            applyLocalImageRename(optimisticPath, workingPath, workingName);
             failures.push(`${entry.name}: ${(err as Error).message}`);
           }
         }
@@ -16525,10 +18821,11 @@ export default function DraftExplorerPage() {
       applyLocalImageRename,
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
-      entryByPath,
+      visibleImageEntryByPath,
       isImage,
       pendingAiEditsByOriginal,
       bumpLocalImageCacheVersion,
+      promoteImageToMainIfNeeded,
       resortImageFoldersByHierarchy,
     ]
   );
@@ -16551,7 +18848,7 @@ export default function DraftExplorerPage() {
 
       try {
         for (const sourceEntry of targets) {
-          const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
+          const entry = visibleImageEntryByPath.get(sourceEntry.path) ?? sourceEntry;
           if (pendingAiEditsByOriginal[entry.path] || aiEditJobsByPath[entry.path]) {
             failures.push(`${entry.name}: resolve AI status first.`);
             continue;
@@ -16559,8 +18856,33 @@ export default function DraftExplorerPage() {
           const previousPath = entry.path;
           const previousName = entry.name;
           const previousTags = extractImageTagsFromFileName(previousName);
-          const requestedName = toggleImageTagInFileName(entry.name, tag);
-          if (!requestedName || requestedName === entry.name) continue;
+          let workingPath = previousPath;
+          let workingName = previousName;
+          const nextNameCandidate = toggleImageTagInFileName(entry.name, tag);
+          const nextTagsCandidate = extractImageTagsFromFileName(nextNameCandidate);
+          const addingMainTag =
+            tag === "MAIN" &&
+            !previousTags.includes("MAIN") &&
+            nextTagsCandidate.includes("MAIN");
+          if (addingMainTag) {
+            const promoted = await promoteImageToMainIfNeeded(previousPath, previousName);
+            workingPath = promoted.path || workingPath;
+            workingName = promoted.name || workingName;
+            if (promoted.moved) {
+              applyLocalImageRename(previousPath, workingPath, workingName);
+              if (promoted.sourceFolderPath) foldersNeedingResort.add(promoted.sourceFolderPath);
+              if (promoted.destinationFolderPath) {
+                foldersNeedingResort.add(promoted.destinationFolderPath);
+              }
+            }
+          }
+          const requestedName = toggleImageTagInFileName(workingName, tag);
+          if (!requestedName || requestedName === workingName) {
+            if (workingPath !== previousPath || workingName !== previousName) {
+              bumpLocalImageCacheVersion(workingPath);
+            }
+            continue;
+          }
           const nextTags = extractImageTagsFromFileName(requestedName);
           const removingVariantTag =
             tag === "VAR" && previousTags.includes("VAR") && !nextTags.includes("VAR");
@@ -16570,11 +18892,11 @@ export default function DraftExplorerPage() {
             .split("/")
             .filter(Boolean);
           const previousSpu = String(previousPathParts[1] || "").trim().toUpperCase();
-          const parentPath = getParentFolderPathFromEntryPath(previousPath);
+          const parentPath = getParentFolderPathFromEntryPath(workingPath);
           const optimisticPath = parentPath
             ? `${parentPath}/${requestedName}`.replace(/\/{2,}/g, "/")
-            : previousPath;
-          applyLocalImageRename(previousPath, optimisticPath, requestedName);
+            : workingPath;
+          applyLocalImageRename(workingPath, optimisticPath, requestedName);
           if (parentPath) foldersNeedingResort.add(parentPath);
           const optimisticFolderPath = getParentFolderPathFromEntryPath(optimisticPath);
           if (optimisticFolderPath) foldersNeedingResort.add(optimisticFolderPath);
@@ -16583,7 +18905,7 @@ export default function DraftExplorerPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                path: previousPath,
+                path: workingPath,
                 name: requestedName,
                 allowRenameOnConflict: true,
                 clearVariantMappings: removingVariantTag,
@@ -16593,9 +18915,9 @@ export default function DraftExplorerPage() {
             if (!response.ok) {
               throw new Error(payload?.error || "Rename failed.");
             }
-            const renamedPath = String(payload?.path || optimisticPath || previousPath).trim();
+            const renamedPath = String(payload?.path || optimisticPath || workingPath).trim();
             const renamedName = String(payload?.name || requestedName);
-            const safeRenamedPath = renamedPath || optimisticPath || previousPath;
+            const safeRenamedPath = renamedPath || optimisticPath || workingPath;
             const safeRenamedName = renamedName || requestedName;
             if (
               safeRenamedPath !== optimisticPath ||
@@ -16615,7 +18937,7 @@ export default function DraftExplorerPage() {
               });
             }
           } catch (err) {
-            applyLocalImageRename(optimisticPath, previousPath, previousName);
+            applyLocalImageRename(optimisticPath, workingPath, workingName);
             failures.push(`${entry.name}: ${(err as Error).message}`);
           }
         }
@@ -16642,11 +18964,12 @@ export default function DraftExplorerPage() {
       applyLocalImageRename,
       bulkImageActionPending,
       clearSelectedFilesForImageActions,
-      entryByPath,
+      visibleImageEntryByPath,
       isImage,
       pendingAiEditsByOriginal,
       bumpLocalImageCacheVersion,
       clearVariantImageAssignmentsByFileKey,
+      promoteImageToMainIfNeeded,
       resortImageFoldersByHierarchy,
     ]
   );
@@ -16661,10 +18984,10 @@ export default function DraftExplorerPage() {
         const seen = new Set<string>();
         rows.forEach((row) => {
           const combined = buildVariantCombinedZhValue({
-            draft_option1: String(row.draft_option1 ?? ""),
-            draft_option2: String(row.draft_option2 ?? ""),
-            draft_option3: String(row.draft_option3 ?? ""),
-            draft_option4: String(row.draft_option4 ?? ""),
+            draft_option1: String(row.draft_option1_zh ?? ""),
+            draft_option2: String(row.draft_option2_zh ?? ""),
+            draft_option3: String(row.draft_option3_zh ?? ""),
+            draft_option4: String(row.draft_option4_zh ?? ""),
             fallback: String(row.draft_option_combined_zh ?? ""),
           }).trim();
           if (!combined) return;
@@ -16720,9 +19043,11 @@ export default function DraftExplorerPage() {
             Boolean(assignment.path) &&
             (assignment.tag === "MAIN" ||
               assignment.tag === "ENV" ||
+              assignment.tag === "ENV-W" ||
               assignment.tag === "VAR" ||
               assignment.tag === "INF" ||
-              assignment.tag === "DIGI")
+              assignment.tag === "DIGI" ||
+              assignment.tag === "COL")
         );
 
       if (normalizedAssignments.length === 0) {
@@ -16733,7 +19058,7 @@ export default function DraftExplorerPage() {
       const failures: string[] = [];
       const renames: Record<string, { name: string; path: string }> = {};
       const workingEntries = new Map(
-        entries
+        Array.from(visibleImageEntryByPath.values())
           .filter((entry) => entry.type === "file" && isImage(entry.name))
           .map((entry) => [entry.path, { path: entry.path, name: entry.name }])
       );
@@ -16831,7 +19156,7 @@ export default function DraftExplorerPage() {
     [
       aiEditJobsByPath,
       clearSelectedFilesForImageActions,
-      entries,
+      visibleImageEntryByPath,
       isImage,
       pendingAiEditsByOriginal,
     ]
@@ -16942,6 +19267,7 @@ export default function DraftExplorerPage() {
             Boolean(row.path) &&
             (row.tag === "MAIN" ||
               row.tag === "ENV" ||
+              row.tag === "ENV-W" ||
               row.tag === "VAR" ||
               row.tag === "INF" ||
               row.tag === "DIGI")
@@ -17181,7 +19507,7 @@ export default function DraftExplorerPage() {
       });
       if (targets.length === 0) return "none";
       const taggedCount = targets.reduce((count, sourceEntry) => {
-        const entry = entryByPath.get(sourceEntry.path) ?? sourceEntry;
+        const entry = visibleImageEntryByPath.get(sourceEntry.path) ?? sourceEntry;
         const tags = extractImageTagsFromFileName(entry.name);
         return tags.includes(tag) ? count + 1 : count;
       }, 0);
@@ -17189,10 +19515,10 @@ export default function DraftExplorerPage() {
       if (taggedCount === targets.length) return "all";
       return "some";
     },
-    [contextMenu, entryByPath, resolveContextActionTargets]
+    [contextMenu, resolveContextActionTargets, visibleImageEntryByPath]
   );
   const contextMenuLiveEntry = contextMenu
-    ? entryByPath.get(contextMenu.entry.path) ?? contextMenu.entry
+    ? visibleImageEntryByPath.get(contextMenu.entry.path) ?? contextMenu.entry
     : null;
   const contextMenuUpscaleDisabled =
     contextMenuLiveEntry &&
@@ -17210,14 +19536,16 @@ export default function DraftExplorerPage() {
     [contextMenu, resolveContextActionTargets]
   );
   const contextMenuCollageAllowed = contextMenuImageTargets.length >= 2;
+  const contextMenuModelAllowed = contextMenuImageTargets.length === 1;
   const contextMenuStackOverlayAllowed =
     contextMenuImageTargets.length >= STACK_OVERLAY_MIN_IMAGES;
   const contextMenuStackImagesAllowed = contextMenuImageTargets.length >= 2;
   const contextMenuFlipHorizontalAllowed = contextMenuImageTargets.length >= 1;
   const contextMenuMergeDigidealMainAllowed = contextMenuImageTargets.length === 2;
-  const contextMenuMergeDigidealMainOverlayAllowed = contextMenuImageTargets.length === 2;
-  const contextMenuMergeDigidealMainStackOverlayAllowed =
-    contextMenuImageTargets.length >= DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES;
+  const contextMenuMergeDigidealMainOverlayAllowed = contextMenuImageTargets.length >= 2;
+  const contextMenuMergeDigidealMainStackOverlayAllowed = canUseDigidealMainStackOverlay(
+    contextMenuImageTargets
+  );
   const contextMenuCollectionAllowed =
     contextMenuImageTargets.length >= 2 && contextMenuImageTargets.length <= 4;
   const contextMenuVariantSpu = useMemo(() => {
@@ -17325,6 +19653,47 @@ export default function DraftExplorerPage() {
     });
     return next;
   }, [contextMenuVariantGroups]);
+  const contextMenuVariantColorGroups = useMemo(() => {
+    const byId = new Map<
+      string,
+      { id: string; label: string; rowIds: string[]; skuHint: string }
+    >();
+    contextMenuVariantRows.forEach((row) => {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) return;
+      const groupId = buildVariantColorAssignmentGroupIdFromRow(row);
+      if (!groupId) return;
+      const sku = String(row.draft_sku || "").trim();
+      const existing = byId.get(groupId);
+      if (!existing) {
+        byId.set(groupId, {
+          id: groupId,
+          label: getVariantColorAssignmentLabelFromRow(row) || "-",
+          rowIds: [rowId],
+          skuHint: sku,
+        });
+        return;
+      }
+      if (!existing.rowIds.includes(rowId)) {
+        existing.rowIds.push(rowId);
+      }
+      if (!existing.skuHint && sku) {
+        existing.skuHint = sku;
+      }
+    });
+
+    return Array.from(byId.values()).sort((left, right) => {
+      const labelCompare = left.label.localeCompare(right.label, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+      if (labelCompare !== 0) return labelCompare;
+      return left.skuHint.localeCompare(right.skuHint, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }, [contextMenuVariantRows]);
   const contextMenuVariantInferredRowIds = useMemo(() => {
     if (!contextMenuVariantImageIsTaggedVar) return new Set<string>();
     if (!contextMenuVariantImageFileName) return new Set<string>();
@@ -17740,6 +20109,125 @@ export default function DraftExplorerPage() {
       fetchVariantPickerRowsForSpu,
     ]
   );
+  const handleAssignVariantsWithAiForEntries = useCallback(
+    async (inputEntries: DraftEntry[], mode: "image" | "text") => {
+      const targets = Array.from(
+        new Map(
+          inputEntries
+            .filter((item) => item.type === "file" && isImage(item.name))
+            .map((item) => [String(item.path || "").trim(), item] as const)
+        ).values()
+      );
+      if (targets.length === 0) {
+        setError("Select at least one image.");
+        return;
+      }
+
+      const firstPath = String(targets[0]?.path || "").trim();
+      const pathParts = firstPath.split("/").filter(Boolean);
+      const spu = String(pathParts[1] || "").trim().toUpperCase();
+      if (!spu) {
+        setError("Unable to resolve the product for AI variant assignment.");
+        return;
+      }
+      if (contextMenuVariantColorGroups.length === 0) {
+        setError("No color variants found for this product.");
+        return;
+      }
+      const inFlightSpus = contextMenuVariantAiAssigningSpusRef.current;
+      if (inFlightSpus.has(spu)) {
+        setError("AI variant assignment is already running for this product.");
+        return;
+      }
+
+      inFlightSpus.add(spu);
+      setImageToolbarBackgroundTasksBySpu((prev) => ({
+        ...prev,
+        [spu]: {
+          ...(prev[spu] || {}),
+          "variant-ai-assign": "AI Assigning Variations",
+        },
+      }));
+      setError(null);
+
+      try {
+        const response = await fetch("/api/drafts/variants/assign-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            spu,
+            imagePaths: targets.map((item) => item.path),
+            mode,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            String(payload?.error || "Unable to assign variants with AI.")
+          );
+        }
+
+        const assignments = Array.isArray(payload?.assignments)
+          ? (payload.assignments as Array<{
+              rowIds?: unknown;
+              fileName?: unknown;
+            }>)
+          : [];
+        if (assignments.length === 0) {
+          setError(
+            `AI variant assignment (${mode === "text" ? "text" : "image"}) found no confident color matches.`
+          );
+          return;
+        }
+
+        assignments.forEach((assignment) => {
+          const fileName = String(assignment.fileName || "").trim();
+          const rowIds = Array.isArray(assignment.rowIds)
+            ? assignment.rowIds
+                .map((value) => String(value || "").trim())
+                .filter((value) => Boolean(value))
+            : [];
+          if (!fileName || rowIds.length === 0) return;
+          applyVariantImageAssignmentToLocalState(spu, rowIds, fileName);
+        });
+
+        try {
+          const refreshed = await fetchVariantPickerRowsForSpu(spu);
+          setVariantPickerRowsBySpu((prev) => ({
+            ...prev,
+            [spu]: refreshed,
+          }));
+        } catch {
+          // Keep optimistic local state if refresh fails.
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unable to assign variants with AI.";
+        setError(message);
+      } finally {
+        inFlightSpus.delete(spu);
+        setImageToolbarBackgroundTasksBySpu((prev) => {
+          const existing = { ...(prev[spu] || {}) };
+          delete existing["variant-ai-assign"];
+          if (Object.keys(existing).length === 0) {
+            const next = { ...prev };
+            delete next[spu];
+            return next;
+          }
+          return {
+            ...prev,
+            [spu]: existing,
+          };
+        });
+      }
+    },
+    [
+      applyVariantImageAssignmentToLocalState,
+      contextMenuVariantColorGroups.length,
+      fetchVariantPickerRowsForSpu,
+      isImage,
+    ]
+  );
   useEffect(() => {
     if (!ENABLE_VARIANT_IMAGE_AUTO_INFER) return;
     const spu = String(currentImageSpuForDraftFilter || "").trim().toUpperCase();
@@ -17973,9 +20461,11 @@ export default function DraftExplorerPage() {
       if (
         tag === "MAIN" ||
         tag === "ENV" ||
+        tag === "ENV-W" ||
         tag === "VAR" ||
         tag === "INF" ||
-        tag === "DIGI"
+        tag === "DIGI" ||
+        tag === "COL"
       ) {
         const targets = resolveContextActionTargets(entry, { imageOnly: true });
         restoreSelectionAfterContextAction(targets);
@@ -18010,14 +20500,34 @@ export default function DraftExplorerPage() {
     setContextMenu(null);
     setContextMenuSubmenu(null);
     setContextMenuNestedSubmenu(null);
+    if (action === "assign-variant-ai") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      restoreSelectionAfterContextAction(targets);
+      void handleAssignVariantsWithAiForEntries(targets, "image");
+      return;
+    }
+    if (action === "assign-variant-ai-image") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      restoreSelectionAfterContextAction(targets);
+      void handleAssignVariantsWithAiForEntries(targets, "image");
+      return;
+    }
+    if (action === "assign-variant-ai-text") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      restoreSelectionAfterContextAction(targets);
+      void handleAssignVariantsWithAiForEntries(targets, "text");
+      return;
+    }
     if (action.startsWith("tag-image:")) {
       const tag = action.slice("tag-image:".length).trim().toUpperCase();
       if (
         tag === "MAIN" ||
         tag === "ENV" ||
+        tag === "ENV-W" ||
         tag === "VAR" ||
         tag === "INF" ||
-        tag === "DIGI"
+        tag === "DIGI" ||
+        tag === "COL"
       ) {
         const targets = resolveContextActionTargets(entry, { imageOnly: true });
         restoreSelectionAfterContextAction(targets);
@@ -18042,6 +20552,26 @@ export default function DraftExplorerPage() {
             ? "us_global"
             : "sweden";
         void handleRunGoogleReverseSearch(entry, locale);
+      }
+      return;
+    }
+    if (action === "size-chart-extract-image") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        void handleExtractSizeChartFromImagesForEntries(targets);
+      } else {
+        setError("Select at least one image.");
+      }
+      return;
+    }
+    if (action === "size-chart-extract-text") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        openSizeChartTextDialogForEntries(targets);
+      } else {
+        setError("Select at least one image.");
       }
       return;
     }
@@ -18116,6 +20646,16 @@ export default function DraftExplorerPage() {
       }
       return;
     }
+    if (action === "remove-with-mask") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        openRemoveWithMaskDialogForEntries(targets);
+      } else {
+        setError("Select at least one image.");
+      }
+      return;
+    }
     if (action === "create-collage") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 1) {
@@ -18158,21 +20698,21 @@ export default function DraftExplorerPage() {
     }
     if (action === "merge-digideal-main-overlay") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length === 2) {
+      if (targets.length > 1) {
         restoreSelectionAfterContextAction(targets);
         void handleMergeDigidealMainOverlayForEntries(targets);
       } else {
-        setError("Select exactly two images.");
+        setError("Select one white-background/COL image and at least one ENV image.");
       }
       return;
     }
     if (action === "merge-digideal-main-stack-overlay") {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
-      if (targets.length >= DIGIDEAL_MAIN_STACK_OVERLAY_MIN_IMAGES) {
+      if (canUseDigidealMainStackOverlay(targets)) {
         restoreSelectionAfterContextAction(targets);
         void handleMergeDigidealMainStackOverlayForEntries(targets);
       } else {
-        setError("Select at least three images.");
+        setError("Select either at least three images or one product image with one scenic ENV image.");
       }
       return;
     }
@@ -18285,6 +20825,14 @@ export default function DraftExplorerPage() {
       }
       return;
     }
+    if (action === "ai-gemini-fashion-model") {
+      const targets = resolveContextActionTargets(entry, { imageOnly: true });
+      if (targets.length > 0) {
+        restoreSelectionAfterContextAction(targets);
+        openAiModelDialog(targets);
+      }
+      return;
+    }
     if (action.startsWith("ai-gemini-digideal-main-dual")) {
       const targets = resolveContextActionTargets(entry, { imageOnly: true });
       if (targets.length > 0) {
@@ -18394,7 +20942,11 @@ export default function DraftExplorerPage() {
       }
       return;
     }
-    if (action === "ai-review" && pendingAiEditsByOriginal[entry.path]) {
+    if (
+      action === "ai-review" &&
+      pendingAiEditsByOriginal[entry.path] &&
+      !confirmingAiEditPaths.has(entry.path)
+    ) {
       clearSelectedFilesForImageActions();
       setAiReviewOriginalPath(entry.path);
       return;
@@ -19388,18 +21940,15 @@ export default function DraftExplorerPage() {
       .filter((entry): entry is DraftEntry => Boolean(entry));
     if (sorted.length !== combined.length) return combined;
 
-    if (mainViewShowsMergedImages && mainImageViewFilter === "var_only") {
+    if (mainImageViewFilter === "var_only") {
       return sorted.filter((entry) => {
         return getDisplayImageTagsForEntry(entry).includes("VAR");
       });
     }
-    if (mainViewShowsMergedImages && mainImageViewFilter === "size_only") {
+    if (mainImageViewFilter === "size_only") {
       return sorted.filter((entry) => isSizeChartEntry(entry));
     }
-    if (mainViewShowsMergedImages && mainImageViewFilter === "all") {
-      return sorted.filter((entry) => !isSizeChartEntry(entry));
-    }
-    return sorted;
+    return sorted.filter((entry) => !isSizeChartEntry(entry));
   }, [
     getDisplayImageTagsForEntry,
     hasManualUntaggedOrderOverride,
@@ -19471,10 +22020,6 @@ export default function DraftExplorerPage() {
             const next: Record<string, ReverseSearchJobState> = { ...prev };
             imagePaths.forEach((pathValue) => {
               const existing = prev[pathValue];
-              if (existing?.status === "running") {
-                next[pathValue] = existing;
-                return;
-              }
               const stored = storedJobs[pathValue];
               if (!stored) {
                 // Keep in-memory status when persistence is delayed/unavailable so the
@@ -19541,6 +22086,12 @@ export default function DraftExplorerPage() {
     }
     return currentPathProductContext;
   }, [currentMainProductContext, currentPathProductContext]);
+  const currentImageToolbarBackgroundTaskLabel = useMemo(() => {
+    const spu = String(activeProductContext.spu || "").trim().toUpperCase();
+    if (!spu) return null;
+    const labels = Object.values(imageToolbarBackgroundTasksBySpu[spu] || {}).filter(Boolean);
+    return labels[0] ?? null;
+  }, [activeProductContext.spu, imageToolbarBackgroundTasksBySpu]);
 
   useEffect(() => {
     const scope = getSpuRootFromDraftPath(String(currentPath || ""));
@@ -20245,13 +22796,246 @@ export default function DraftExplorerPage() {
         entryByPath.get(aiEditSingleTarget.path)?.modifiedAt
       )
     : "";
+  const aiEditIsProductScene =
+    aiEditMode === "template" && aiEditTemplatePreset === "product_scene";
   const aiEditShowMaskPainter =
     aiEditMode === "eraser" && aiEraserRunMode === "mask" && Boolean(aiEditSingleTarget);
+  const aiSceneSourceSpuCode = useMemo(() => {
+    const targetPath = String(aiEditTargets[0]?.path || "").trim();
+    const spuRoot = getSpuRootFromDraftPath(targetPath);
+    const parts = String(spuRoot || "").split("/").filter(Boolean);
+    return String(parts[1] || "").trim().toUpperCase();
+  }, [aiEditTargets]);
+  const aiSceneSpuRow = useMemo(
+    () =>
+      spuRows.find(
+        (row) =>
+          String(row.draft_spu || "").trim().toUpperCase() === aiSceneSourceSpuCode
+      ) ?? null,
+    [aiSceneSourceSpuCode, spuRows]
+  );
+  const aiSceneProductTitle = useMemo(() => {
+    const candidates = [
+      aiSceneSpuRow?.draft_mf_product_short_title,
+      aiSceneSpuRow?.draft_title,
+      aiSceneSpuRow?.draft_mf_product_long_title,
+      aiEditTargets[0]?.name,
+    ];
+    for (const candidate of candidates) {
+      const text = stripHtml(String(candidate || "")).trim();
+      if (text) return text;
+    }
+    return "";
+  }, [aiEditTargets, aiSceneSpuRow]);
+  const aiSceneProductDescription = useMemo(() => {
+    const candidates = [
+      aiSceneSpuRow?.draft_mf_product_description_short_html,
+      aiSceneSpuRow?.draft_product_description_main_html,
+      aiSceneSpuRow?.draft_description_html,
+      aiSceneSpuRow?.draft_mf_product_bullets_short,
+    ];
+    for (const candidate of candidates) {
+      const text = stripHtml(String(candidate || "")).trim();
+      if (text) return text;
+    }
+    return "";
+  }, [aiSceneSpuRow]);
+  const currentViewedSceneProductRoot = useMemo(
+    () => getSpuRootFromDraftPath(String(currentPath || "")),
+    [currentPath]
+  );
+  const currentViewedSceneSpuCode = useMemo(() => {
+    const parts = String(currentViewedSceneProductRoot || "").split("/").filter(Boolean);
+    return String(parts[1] || "").trim().toUpperCase();
+  }, [currentViewedSceneProductRoot]);
+  const currentViewedSceneSpuRow = useMemo(
+    () =>
+      spuRows.find(
+        (row) =>
+          String(row.draft_spu || "").trim().toUpperCase() === currentViewedSceneSpuCode
+      ) ?? null,
+    [currentViewedSceneSpuCode, spuRows]
+  );
+  const currentViewedSceneTitle = useMemo(() => {
+    const candidates = [
+      currentViewedSceneSpuRow?.draft_mf_product_short_title,
+      currentViewedSceneSpuRow?.draft_title,
+      currentViewedSceneSpuRow?.draft_mf_product_long_title,
+    ];
+    for (const candidate of candidates) {
+      const text = stripHtml(String(candidate || "")).trim();
+      if (text) return text;
+    }
+    return "";
+  }, [currentViewedSceneSpuRow]);
+  const currentViewedSceneDescription = useMemo(() => {
+    const candidates = [
+      currentViewedSceneSpuRow?.draft_mf_product_description_short_html,
+      currentViewedSceneSpuRow?.draft_product_description_main_html,
+      currentViewedSceneSpuRow?.draft_description_html,
+      currentViewedSceneSpuRow?.draft_mf_product_bullets_short,
+    ];
+    for (const candidate of candidates) {
+      const text = stripHtml(String(candidate || "")).trim();
+      if (text) return text;
+    }
+    return "";
+  }, [currentViewedSceneSpuRow]);
+  const buildAiScenePromptSourceHash = useCallback(
+    (title: string, description: string) =>
+      JSON.stringify([String(title || "").trim(), String(description || "").trim()]),
+    []
+  );
+  const fetchAiScenePromptIdeas = useCallback(
+    async (draftProductPath: string, productTitle: string, productDescription: string) => {
+      const normalizedPath = String(draftProductPath || "").trim();
+      const normalizedTitle = String(productTitle || "").trim();
+      const normalizedDescription = String(productDescription || "").trim();
+      if (!normalizedPath || !normalizedTitle) return;
+      const sourceHash = buildAiScenePromptSourceHash(normalizedTitle, normalizedDescription);
+      const existing = aiScenePromptIdeasByProduct[normalizedPath];
+      if (existing && existing.sourceHash === sourceHash && existing.ideas.length > 0) {
+        return;
+      }
+      const requestKey = `${normalizedPath}::${sourceHash}`;
+      if (aiScenePromptRequestKeysRef.current.has(requestKey)) {
+        return;
+      }
+      aiScenePromptRequestKeysRef.current.add(requestKey);
+      setAiScenePromptLoadingByProduct((prev) => ({ ...prev, [normalizedPath]: true }));
+      setAiScenePromptErrorByProduct((prev) => ({ ...prev, [normalizedPath]: null }));
+      try {
+        const response = await fetch("/api/drafts/ai-scene-prompts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draftProductPath: normalizedPath,
+            productTitle: normalizedTitle,
+            productDescription: normalizedDescription,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load product scene ideas.");
+        }
+        const ideas = Array.isArray(payload?.ideas)
+          ? payload.ideas
+              .map((value: unknown) => normalizeAiScenePromptIdea(value))
+              .filter(
+                (value: AiScenePromptIdea | null): value is AiScenePromptIdea =>
+                  Boolean(value)
+              )
+              .slice(0, 10)
+          : [];
+        setAiScenePromptIdeasByProduct((prev) => ({
+          ...prev,
+          [normalizedPath]: {
+            sourceHash,
+            ideas,
+          },
+        }));
+        setAiScenePromptErrorByProduct((prev) => ({ ...prev, [normalizedPath]: null }));
+      } catch (err) {
+        setAiScenePromptErrorByProduct((prev) => ({
+          ...prev,
+          [normalizedPath]:
+            err instanceof Error ? err.message : "Unable to load product scene ideas.",
+        }));
+      } finally {
+        aiScenePromptRequestKeysRef.current.delete(requestKey);
+        setAiScenePromptLoadingByProduct((prev) => ({ ...prev, [normalizedPath]: false }));
+      }
+    },
+    [aiScenePromptIdeasByProduct, buildAiScenePromptSourceHash]
+  );
+  const aiScenePromptProductRoot = useMemo(
+    () =>
+      getSpuRootFromDraftPath(
+        String(aiEditTargets[0]?.path || currentViewedSceneProductRoot || "")
+      ),
+    [aiEditTargets, currentViewedSceneProductRoot]
+  );
+  const aiScenePromptIdeas = useMemo(() => {
+    if (!aiScenePromptProductRoot) return EMPTY_AI_SCENE_PROMPT_IDEAS;
+    const ideas = aiScenePromptIdeasByProduct[aiScenePromptProductRoot]?.ideas;
+    return Array.isArray(ideas) ? ideas : EMPTY_AI_SCENE_PROMPT_IDEAS;
+  }, [aiScenePromptIdeasByProduct, aiScenePromptProductRoot]);
+  const aiScenePromptIdeasLoading = aiScenePromptProductRoot
+    ? Boolean(aiScenePromptLoadingByProduct[aiScenePromptProductRoot])
+    : false;
+  const aiScenePromptIdeasError = aiScenePromptProductRoot
+    ? aiScenePromptErrorByProduct[aiScenePromptProductRoot] ?? null
+    : null;
+  const aiSceneSubjectLabel =
+    AI_SCENE_SUBJECT_OPTIONS.find((option) => option.value === aiSceneSubject)?.promptValue ||
+    "";
+  const aiSceneAgeGroupLabel =
+    AI_SCENE_AGE_GROUP_OPTIONS.find((option) => option.value === aiSceneAgeGroup)?.promptValue ||
+    "";
+  const removeWithMaskPreviewUrl = removeWithMaskReferenceEntry
+    ? buildDraftDownloadUrl(
+        removeWithMaskReferenceEntry.path,
+        entryByPath.get(removeWithMaskReferenceEntry.path)?.modifiedAt ??
+          removeWithMaskReferenceEntry.modifiedAt
+      )
+    : "";
+  const removeWithMaskEntryCount = removeWithMaskDialog?.entries.length ?? 0;
+  const removeWithMaskShowPainter =
+    Boolean(removeWithMaskReferenceEntry) && removeWithMaskMode === "manual";
   const aiDualProviderLabel = aiDualDialog
     ? aiDualDialog.provider === "chatgpt"
       ? "ChatGPT"
       : "Gemini"
     : "";
+  useEffect(() => {
+    if (!currentViewedSceneProductRoot || !currentViewedSceneTitle) {
+      return;
+    }
+    void fetchAiScenePromptIdeas(
+      currentViewedSceneProductRoot,
+      currentViewedSceneTitle,
+      currentViewedSceneDescription
+    );
+  }, [
+    currentViewedSceneDescription,
+    currentViewedSceneProductRoot,
+    currentViewedSceneTitle,
+    fetchAiScenePromptIdeas,
+  ]);
+  useEffect(() => {
+    if (!aiEditIsProductScene || !aiScenePromptProductRoot || !aiSceneProductTitle) {
+      return;
+    }
+    void fetchAiScenePromptIdeas(
+      aiScenePromptProductRoot,
+      aiSceneProductTitle,
+      aiSceneProductDescription
+    );
+  }, [
+    aiEditIsProductScene,
+    aiSceneProductDescription,
+    aiSceneProductTitle,
+    aiScenePromptProductRoot,
+    fetchAiScenePromptIdeas,
+  ]);
+  useEffect(() => {
+    setAiSceneSelectedPromptIdeas((prev) => prev.slice(0, aiSceneMaxSelectedPromptIdeas));
+  }, [aiSceneMaxSelectedPromptIdeas]);
+  useEffect(() => {
+    setAiSceneSelectedPromptIdeas((prev) => {
+      const availableKeys = new Set(aiScenePromptIdeas.map((idea) => idea.key));
+      const next = prev
+        .filter((value) => availableKeys.has(value))
+        .slice(0, aiSceneMaxSelectedPromptIdeas);
+      if (
+        next.length === prev.length &&
+        next.every((value, index) => value === prev[index])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [aiSceneMaxSelectedPromptIdeas, aiScenePromptIdeas]);
   const aiDualProductPreviewUrl = aiDualDialog
     ? buildDraftDownloadUrl(
         aiDualDialog.productEntry.path,
@@ -20281,11 +23065,39 @@ export default function DraftExplorerPage() {
         ),
       }))
     : [];
+  const selectedAiModel = useMemo(
+    () => aiModels.find((item) => item.id === selectedAiModelId) ?? null,
+    [aiModels, selectedAiModelId]
+  );
+  const variantsEditorSpuRow = useMemo(
+    () =>
+      spuRows.find(
+        (row) =>
+          String(row.draft_spu || "").trim().toUpperCase() ===
+          String(variantsEditorSpu || "").trim().toUpperCase()
+      ) ?? null,
+    [spuRows, variantsEditorSpu]
+  );
+  const variantsEditorTitleFieldValue = useMemo(() => {
+    const candidates = [
+      variantsEditorSpuRow?.draft_mf_product_short_title,
+      variantsEditorSpuRow?.draft_title,
+      variantsEditorSpuRow?.draft_mf_product_long_title,
+    ];
+    for (const candidate of candidates) {
+      const text = String(candidate || "").trim();
+      if (text) return text;
+    }
+    return "";
+  }, [variantsEditorSpuRow]);
+  const variantsEditorSupplierUrl = String(
+    variantsEditorSpuRow?.draft_supplier_1688_url || ""
+  ).trim();
   const variantsEditorAllSelected =
-    variantsEditorRows.length > 0 &&
-    variantsEditorRows.every((row) => variantsEditorSelectedRows.has(row.key));
+    variantsEditorSortedRows.length > 0 &&
+    variantsEditorSortedRows.every((row) => variantsEditorSelectedRows.has(row.key));
   const variantsEditorSomeSelected =
-    variantsEditorRows.some((row) => variantsEditorSelectedRows.has(row.key));
+    variantsEditorSortedRows.some((row) => variantsEditorSelectedRows.has(row.key));
   const autoLevelsBounds = useMemo(
     () => mapAutoLevelsBounds(autoLevelsLevelPercent),
     [autoLevelsLevelPercent]
@@ -20845,10 +23657,10 @@ export default function DraftExplorerPage() {
                     )}
                     style={spuColumnStyles.selection}
                   >
-                    <Checkbox
-                      className={styles.selectionCheckbox}
-                      checked={allSpuSelected ? true : someSpuSelected ? "mixed" : false}
-                      onChange={toggleSelectAllSpus}
+	                    <Checkbox
+	                      className={styles.selectionCheckbox}
+	                      checked={allSpuSelected ? true : someSpuSelected ? "mixed" : false}
+	                      onChange={toggleSelectAllSpus}
                       aria-label={t("common.selectAll")}
                     />
                   </TableHeaderCell>
@@ -21021,12 +23833,14 @@ export default function DraftExplorerPage() {
                             )}
                             style={spuColumnStyles.selection}
                           >
-                            <Checkbox
-                              className={styles.selectionCheckbox}
-                              checked={selectedSpus.has(row.id)}
-                              onChange={() => toggleSelectSpu(row.id)}
-                              aria-label={t("common.selectItem", { item: row.draft_spu })}
-                            />
+	                            <Checkbox
+	                              className={styles.selectionCheckbox}
+	                              checked={selectedSpus.has(row.id)}
+	                              onChange={(event, data) =>
+                                  toggleSelectSpu(row.id, data.checked === true, event)
+                                }
+	                              aria-label={t("common.selectItem", { item: row.draft_spu })}
+	                            />
                           </TableCell>
                           <TableCell
                             className={mergeClasses(styles.tableCell, styles.spuCol)}
@@ -21317,10 +24131,10 @@ export default function DraftExplorerPage() {
                     )}
                     style={skuColumnStyles.selection}
                   >
-                    <Checkbox
-                      className={styles.selectionCheckbox}
-                      checked={allSkuSelected ? true : someSkuSelected ? "mixed" : false}
-                      onChange={toggleSelectAllSkus}
+	                    <Checkbox
+	                      className={styles.selectionCheckbox}
+	                      checked={allSkuSelected ? true : someSkuSelected ? "mixed" : false}
+	                      onChange={toggleSelectAllSkus}
                       aria-label={t("common.selectAll")}
                     />
                   </TableHeaderCell>
@@ -21367,11 +24181,13 @@ export default function DraftExplorerPage() {
                             )}
                             style={skuColumnStyles.selection}
                           >
-                            <Checkbox
-                              className={styles.selectionCheckbox}
-                              checked={selectedSkus.has(row.id)}
-                              onChange={() => toggleSelectSku(row.id)}
-                              aria-label={t("common.selectItem", { item: row.draft_sku ?? "" })}
+	                            <Checkbox
+	                              className={styles.selectionCheckbox}
+	                              checked={selectedSkus.has(row.id)}
+	                              onChange={(event, data) =>
+                                  toggleSelectSku(row.id, data.checked === true, event)
+                                }
+	                              aria-label={t("common.selectItem", { item: row.draft_sku ?? "" })}
                             />
                           </TableCell>
                           <TableCell className={styles.tableCell} style={skuColumnStyles.sku}>
@@ -21605,6 +24421,124 @@ export default function DraftExplorerPage() {
       </Dialog>
 
       <Dialog
+        open={Boolean(newImageDialog)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeNewImageDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.newImageSurface}>
+          <DialogBody className={styles.newImageBody}>
+            <DialogTitle>New Image with Gemini</DialogTitle>
+            {newImageError ? (
+              <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                {newImageError}
+              </Text>
+            ) : null}
+            <Field label="Prompt">
+              <Textarea
+                value={newImagePrompt}
+                onChange={(_, data) => setNewImagePrompt(data.value)}
+                resize="vertical"
+                rows={6}
+                disabled={newImageSubmitting}
+                placeholder="Describe the image you want Gemini to generate..."
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void submitNewImageDialog();
+                  }
+                }}
+              />
+            </Field>
+            <DialogActions>
+              <Button
+                appearance="outline"
+                onClick={closeNewImageDialog}
+                disabled={newImageSubmitting}
+              >
+                {t("common.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => void submitNewImageDialog()}
+                disabled={!newImageDialog || newImageSubmitting || !newImagePrompt.trim()}
+              >
+                {newImageSubmitting ? "Generating..." : "Generate Image"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(sizeChartTextDialog)}
+        onOpenChange={(_, data) => {
+          if (!data.open) {
+            closeSizeChartTextDialog();
+          }
+        }}
+      >
+        <DialogSurface className={styles.newImageSurface}>
+          <DialogBody className={styles.newImageBody}>
+            <DialogTitle>Text Size Chart Extraction</DialogTitle>
+            {sizeChartTextDialog ? (
+              <Text size={200}>
+                {sizeChartTextDialog.spu}
+                {sizeChartTextDialog.entries.length > 0
+                  ? ` • ${sizeChartTextDialog.entries.length} selected image${
+                      sizeChartTextDialog.entries.length === 1 ? "" : "s"
+                    }`
+                  : ""}
+              </Text>
+            ) : null}
+            {sizeChartTextError ? (
+              <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                {sizeChartTextError}
+              </Text>
+            ) : null}
+            <Field label="Paste size chart text">
+              <Textarea
+                value={sizeChartTextValue}
+                onChange={(_, data) => setSizeChartTextValue(data.value)}
+                resize="vertical"
+                rows={10}
+                disabled={sizeChartTextSubmitting}
+                placeholder="Paste the size chart table or copied text here..."
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void submitSizeChartTextDialog();
+                  }
+                }}
+              />
+            </Field>
+            <DialogActions>
+              <Button
+                appearance="outline"
+                onClick={closeSizeChartTextDialog}
+                disabled={sizeChartTextSubmitting}
+              >
+                {t("common.close")}
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => void submitSizeChartTextDialog()}
+                disabled={
+                  !sizeChartTextDialog ||
+                  sizeChartTextSubmitting ||
+                  !sizeChartTextValue.trim()
+                }
+              >
+                {sizeChartTextSubmitting ? "Extracting..." : "Extract Size Chart"}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      <Dialog
         open={detailOpen}
         onOpenChange={(_, data) => {
           if (!data.open) {
@@ -21638,7 +24572,7 @@ export default function DraftExplorerPage() {
                     {detailImages.map((entry) => (
                       <img
                         key={entry.path}
-                        src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                        src={buildDraftThumbnailUrl(entry.path, entry.modifiedAt)}
                         alt={entry.name}
                         className={styles.detailsGalleryImage}
                       />
@@ -21861,9 +24795,21 @@ export default function DraftExplorerPage() {
         <DialogSurface className={styles.variantsEditorSurface}>
           <DialogBody className={styles.variantsEditorBody}>
             <DialogTitle>
-              {variantsEditorSpu
-                ? `Edit variants for ${variantsEditorSpu}`
-                : "Edit variants"}
+              <div className={styles.variantsEditorTitleRow}>
+                <span>
+                  {variantsEditorSpu
+                    ? `Edit variants for ${variantsEditorSpu}`
+                    : "Edit variants"}
+                </span>
+                {variantsEditorTitleFieldValue ? (
+                  <span
+                    className={styles.variantsEditorTitleField}
+                    title={variantsEditorTitleFieldValue}
+                  >
+                    {variantsEditorTitleFieldValue}
+                  </span>
+                ) : null}
+              </div>
             </DialogTitle>
             {variantsEditorError ? (
               <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
@@ -21880,6 +24826,12 @@ export default function DraftExplorerPage() {
             >
               <div className={styles.variantsEditorToolbar}>
                 <div className={styles.variantsEditorToolbarLeft}>
+                  <Input
+                    className={styles.variantsEditorSearchInput}
+                    value={variantsEditorSearch}
+                    onChange={(_, data) => setVariantsEditorSearch(data.value)}
+                    placeholder="Search variants"
+                  />
                   <Button
                     appearance="outline"
                     onClick={handleVariantEditorAddRow}
@@ -21935,6 +24887,19 @@ export default function DraftExplorerPage() {
                     }
                   >
                     {variantsEditorSkuRegenerating ? "Regenerating..." : "Regenerate SKUs"}
+                  </Button>
+                  <Button
+                    appearance="outline"
+                    onClick={() => handleOpenSupplierLink(variantsEditorSupplierUrl)}
+                    disabled={
+                      variantsEditorLoading ||
+                      variantsEditorSaving ||
+                      variantsEditorAiRunning ||
+                      variantsEditorSkuRegenerating ||
+                      !variantsEditorSupplierUrl
+                    }
+                  >
+                    Supplier Link
                   </Button>
                 </div>
               </div>
@@ -22298,10 +25263,12 @@ export default function DraftExplorerPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {variantsEditorRows.length === 0 ? (
+                      {variantsEditorSortedRows.length === 0 ? (
                         <tr>
                           <td className={styles.variantsEditorCell} colSpan={15}>
-                            No variants yet. Add one or run AI update.
+                            {variantsEditorRows.length === 0
+                              ? "No variants yet. Add one or run AI update."
+                              : "No variants match the current search."}
                           </td>
                         </tr>
                       ) : (
@@ -22353,7 +25320,7 @@ export default function DraftExplorerPage() {
                                   }
                                 >
                                   <img
-                                    src={buildDraftDownloadUrl(
+                                    src={buildDraftThumbnailUrl(
                                       rowThumbEntry.path,
                                       rowThumbEntry.modifiedAt
                                     )}
@@ -22406,25 +25373,25 @@ export default function DraftExplorerPage() {
                               className={styles.variantsEditorCell}
                               style={variantsEditorColumnStyles.colorZh}
                             >
-                              {renderVariantEditorInput(row, "draft_option1")}
+                              {renderVariantEditorInput(row, "draft_option1_zh")}
                             </td>
                             <td
                               className={styles.variantsEditorCell}
                               style={variantsEditorColumnStyles.sizeZh}
                             >
-                              {renderVariantEditorInput(row, "draft_option2")}
+                              {renderVariantEditorInput(row, "draft_option2_zh")}
                             </td>
                             <td
                               className={styles.variantsEditorCell}
                               style={variantsEditorColumnStyles.otherZh}
                             >
-                              {renderVariantEditorInput(row, "draft_option3")}
+                              {renderVariantEditorInput(row, "draft_option3_zh")}
                             </td>
                             <td
                               className={styles.variantsEditorCell}
                               style={variantsEditorColumnStyles.amountZh}
                             >
-                              {renderVariantEditorInput(row, "draft_option4")}
+                              {renderVariantEditorInput(row, "draft_option4_zh")}
                             </td>
                             <td
                               className={styles.variantsEditorCell}
@@ -22531,7 +25498,7 @@ export default function DraftExplorerPage() {
                                 }
                               >
                                 <img
-                                  src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                                  src={buildDraftThumbnailUrl(entry.path, entry.modifiedAt)}
                                   alt={label}
                                   className={mergeClasses(
                                     styles.variantsEditorThumbImage,
@@ -22705,12 +25672,12 @@ export default function DraftExplorerPage() {
 		                        <TableCell className={styles.runPreviewImageCell}>
 		                          <div className={styles.runPreviewCellCenter}>
 		                            {item.preview_image_path ? (
-		                              <img
-		                                src={buildDraftDownloadUrl(
-		                                  item.preview_image_path,
-		                                  item.preview_image_modified_at ?? undefined
-		                                )}
-		                                alt={item.draft_spu}
+                              <img
+                                src={buildDraftThumbnailUrl(
+                                  item.preview_image_path,
+                                  item.preview_image_modified_at ?? undefined
+                                )}
+                                alt={item.draft_spu}
 		                                className={styles.runPreviewThumb}
 		                                loading="lazy"
 		                              />
@@ -22735,11 +25702,17 @@ export default function DraftExplorerPage() {
 		                        </TableCell>
 		                        <TableCell className={styles.runPreviewSelectCell}>
 		                          <div className={styles.runPreviewCellCenter}>
-		                            <Checkbox
-		                              checked={runPreviewSelectedSpus.has(item.draft_spu)}
-		                              onChange={() => toggleSelectRunPreviewSpu(item.draft_spu)}
-		                              aria-label={`Select ${item.draft_spu}`}
-		                            />
+			                            <Checkbox
+			                              checked={runPreviewSelectedSpus.has(item.draft_spu)}
+			                              onChange={(event, data) =>
+                                      toggleSelectRunPreviewSpu(
+                                        item.draft_spu,
+                                        data.checked === true,
+                                        event
+                                      )
+                                    }
+			                              aria-label={`Select ${item.draft_spu}`}
+			                            />
 		                          </div>
 		                        </TableCell>
 		                        <TableCell className={styles.runPreviewDeleteCell}>
@@ -23774,6 +26747,47 @@ export default function DraftExplorerPage() {
                 </div>
 
                 <div className={styles.imageToolbarRight}>
+                  {currentImageToolbarBackgroundTaskLabel ? (
+                    <div className={styles.imageToolbarStatus}>
+                      <Spinner size="tiny" />
+                      <span className={styles.imageToolbarStatusLabel}>
+                        {currentImageToolbarBackgroundTaskLabel}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className={styles.imageToolbarIconGroup}>
+                    <Button
+                      appearance="outline"
+                      disabled={
+                        selectedImageEntries.length < STACK_OVERLAY_MIN_IMAGES ||
+                        bulkImageActionPending ||
+                        addImagesSubmitting ||
+                        deleteProductPending ||
+                        movingEntry
+                      }
+                      className={mergeClasses(styles.iconButton, styles.explorerWhiteButton)}
+                      aria-label="Stack Overlay"
+                      title="Stack Overlay"
+                      onClick={() => void handleStackOverlayForEntries(selectedImageEntries)}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={styles.iconSvg}
+                        aria-hidden="true"
+                      >
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M12 4l-8 4l8 4l8 -4l-8 -4" />
+                        <path d="M4 12l8 4l8 -4" />
+                        <path d="M4 16l8 4l8 -4" />
+                      </svg>
+                    </Button>
+                  </div>
                   {mainViewShowsMergedImages && currentMainProductContext.spu ? (
                     <Button
                       appearance="outline"
@@ -24051,6 +27065,24 @@ export default function DraftExplorerPage() {
                   currentSpuMarkedCompleted ? styles.entriesContentAreaCompleted : undefined
                 )}
                 aria-busy={entriesLoading}
+                onContextMenu={(event) => {
+                  const target = event.target;
+                  if (!(target instanceof Element)) return;
+                  if (target.closest("[data-draft-media-card='true']")) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const folderPath = String(currentPath || "").trim();
+                  if (!folderPath) return;
+                  closeContextMenuImmediately();
+                  setBackgroundImageContextMenu({
+                    folderPath,
+                    spu: String(activeProductContext.spu || "").trim(),
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+                  setBackgroundImageContextMenuSubmenu(null);
+                }}
               >
                   {displayImageEntries.length === 0 ? (
                     <Text size={200}>No images in this folder.</Text>
@@ -24160,6 +27192,7 @@ export default function DraftExplorerPage() {
                         return (
                           <div
                             key={buildStableImageCardKey(entry)}
+                            data-draft-media-card="true"
                             className={mergeClasses(
                               styles.mediaCard,
                               imageReorderDropPath === entry.path
@@ -24230,8 +27263,11 @@ export default function DraftExplorerPage() {
                             }}
                             onContextMenu={(event) => {
                               event.preventDefault();
+                              event.stopPropagation();
+                              closeBackgroundImageContextMenuImmediately();
                               syncSelectionForContextMenuEntry(entry);
                               setContextMenuSubmenu(null);
+                              setContextMenuNestedSubmenu(null);
                               setContextMenu({
                                 entry,
                                 image: true,
@@ -24275,10 +27311,12 @@ export default function DraftExplorerPage() {
                                         styles.mediaTagBadge,
                                         tag === "MAIN"
                                           ? styles.mediaTagMain
-                                          : tag === "ENV"
+                                          : tag === "ENV" || tag === "ENV-W"
                                             ? styles.mediaTagEnv
                                             : tag === "VAR"
                                               ? styles.mediaTagVar
+                                              : tag === "COL"
+                                                ? styles.mediaTagCol
                                               : tag === "SIZE"
                                                 ? styles.mediaTagSize
                                               : tag === "DIGI"
@@ -24291,7 +27329,7 @@ export default function DraftExplorerPage() {
                                   ))}
                                 </div>
                               ) : null}
-                              {pendingAi ? (
+                              {pendingAi && !confirmBusy ? (
                                 <button
                                   type="button"
                                   className={styles.aiPendingBadge}
@@ -24356,7 +27394,7 @@ export default function DraftExplorerPage() {
                                 </svg>
                               </button>
                               <img
-                                src={buildDraftDownloadUrl(
+                                src={buildDraftThumbnailUrl(
                                   displayPath,
                                   displayModifiedAt
                                 )}
@@ -24370,14 +27408,24 @@ export default function DraftExplorerPage() {
                                 )}
                                 onLoad={(event) => {
                                   const img = event.currentTarget;
-                                  const pathValue = entry.path;
-                                  setImageDimensions((prev) => ({
-                                    ...prev,
-                                    [pathValue]: {
-                                      width: img.naturalWidth,
-                                      height: img.naturalHeight,
-                                    },
-                                  }));
+                                  const pathValue = displayPath;
+                                  const latestEntry =
+                                    entryByPath.get(pathValue) ??
+                                    entryByPath.get(entry.path) ??
+                                    entry;
+                                  const width = Number(latestEntry?.width);
+                                  const height = Number(latestEntry?.height);
+                                  if (
+                                    Number.isFinite(width) &&
+                                    width > 0 &&
+                                    Number.isFinite(height) &&
+                                    height > 0
+                                  ) {
+                                    setImageDimensions((prev) => ({
+                                      ...prev,
+                                      [pathValue]: { width, height },
+                                    }));
+                                  }
                                   setReloadingImagePaths((prev) => {
                                     if (!prev.has(pathValue)) return prev;
                                     const next = new Set(prev);
@@ -24606,8 +27654,10 @@ export default function DraftExplorerPage() {
                                 }}
                                 onContextMenu={(event) => {
                                   event.preventDefault();
+                                  closeBackgroundImageContextMenuImmediately();
                                   syncSelectionForContextMenuEntry(entry);
                                   setContextMenuSubmenu(null);
+                                  setContextMenuNestedSubmenu(null);
                                   setContextMenu({
                                     entry,
                                     image: false,
@@ -24973,7 +28023,7 @@ export default function DraftExplorerPage() {
                     </svg>
                   ) : isImage(entry.name) ? (
                     <img
-                      src={buildDraftDownloadUrl(entry.path, entry.modifiedAt)}
+                      src={buildDraftThumbnailUrl(entry.path, entry.modifiedAt)}
                       alt={entry.name}
                       className={styles.thumbImage}
                     />
@@ -25033,6 +28083,55 @@ export default function DraftExplorerPage() {
             ))}
           </div>
         )}
+
+        {backgroundImageContextMenu ? (
+          <div
+            className={styles.contextMenu}
+            style={{
+              left: `${backgroundImageContextMenu.x}px`,
+              top: `${backgroundImageContextMenu.y}px`,
+            }}
+            ref={backgroundImageContextMenuRef}
+            onContextMenu={(event) => event.preventDefault()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              className={styles.contextMenuSubmenuWrap}
+              onMouseEnter={() => setBackgroundImageContextMenuSubmenu("new-image")}
+              onMouseLeave={() => setBackgroundImageContextMenuSubmenu(null)}
+            >
+              <button type="button" className={styles.contextMenuButton}>
+                {renderContextMenuIcon("ai")}
+                <span>New Image</span>
+                <span className={styles.contextMenuButtonCaret}>
+                  {backgroundImageContextMenuSubmenuSide === "left" ? "‹" : "›"}
+                </span>
+              </button>
+              {backgroundImageContextMenuSubmenu === "new-image" ? (
+                <div
+                  className={mergeClasses(
+                    styles.contextMenuSubmenu,
+                    backgroundImageContextMenuSubmenuSide === "left"
+                      ? styles.contextMenuSubmenuLeft
+                      : undefined
+                  )}
+                >
+                  <button
+                    type="button"
+                    className={styles.contextMenuButton}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openNewImageDialogFromBackgroundMenu("gemini");
+                    }}
+                  >
+                    <span>Gemini</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
 		        {contextMenu ? (
 		          <div
@@ -25186,6 +28285,37 @@ export default function DraftExplorerPage() {
                             <span>Refreshing variants...</span>
                           </div>
                         ) : null}
+                        <button
+                          type="button"
+                          className={styles.contextMenuButton}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleContextMenuAction("assign-variant-ai-image");
+                          }}
+                          disabled={
+                            contextMenuVariantRowsLoading ||
+                            contextMenuVariantColorGroups.length === 0
+                          }
+                        >
+                          <span>Assign with AI using image</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.contextMenuButton}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleContextMenuAction("assign-variant-ai-text");
+                          }}
+                          disabled={
+                            contextMenuVariantRowsLoading ||
+                            contextMenuVariantColorGroups.length === 0
+                          }
+                        >
+                          <span>Assign with AI using text</span>
+                        </button>
+                        <div className={styles.contextMenuDivider} />
                         {contextMenuVariantGroups.map((group) => {
                           const rowsInGroup = group.rowIds
                             .map((rowId) => contextMenuVariantRowsById.get(rowId))
@@ -25280,15 +28410,6 @@ export default function DraftExplorerPage() {
                 ) : null}
 	              </div>
 	            ) : null}
-		            <button
-			              type="button"
-			              className={styles.contextMenuButton}
-		              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-		              onClick={() => handleContextMenuAction("open")}
-		            >
-              {renderContextMenuIcon("open")}
-              <span>Open</span>
-            </button>
 		            {contextMenu.image ? (
 		              <div
 		                className={styles.contextMenuSubmenuWrap}
@@ -25343,26 +28464,64 @@ export default function DraftExplorerPage() {
               </div>
             ) : null}
             {contextMenu.image ? (
-              <button
-                type="button"
-                className={styles.contextMenuButton}
-                disabled={contextMenuMoveToMainDisabled}
-                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-                onClick={() => handleContextMenuAction("move-to-main")}
+              <div
+                className={styles.contextMenuSubmenuWrap}
+                onMouseEnter={() => openContextMenuSubmenu("actions")}
+                onMouseLeave={() => {
+                  scheduleContextMenuSubmenuClose("actions");
+                }}
               >
-                {renderContextMenuIcon("move-main")}
-                <span>Move to Main</span>
-              </button>
+                <button
+                  type="button"
+                  className={styles.contextMenuButton}
+                  onMouseEnter={() => openContextMenuSubmenu("actions")}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openContextMenuSubmenu("actions");
+                  }}
+                >
+                  {renderContextMenuIcon("ai")}
+                  <span>Actions</span>
+                  <span className={styles.contextMenuButtonCaret}>
+                    {contextMenuSubmenuSide === "left" ? "‹" : "›"}
+                  </span>
+                </button>
+                {contextMenuSubmenu === "actions" ? (
+                  <div
+                    className={mergeClasses(
+                      styles.contextMenuSubmenu,
+                      contextMenuSubmenuSide === "left"
+                        ? styles.contextMenuSubmenuLeft
+                        : undefined
+                    )}
+                    onMouseEnter={() => openContextMenuSubmenu("actions")}
+                    onMouseLeave={() => scheduleContextMenuSubmenuClose("actions")}
+                  >
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      disabled={sizeChartImageExtractSubmitting || sizeChartTextSubmitting}
+                      onClick={() => handleContextMenuAction("size-chart-extract-image")}
+                    >
+                      <span>
+                        {sizeChartImageExtractSubmitting
+                          ? "Extracting size chart..."
+                          : "Image Size Chart Extraction"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.contextMenuButton}
+                      disabled={sizeChartImageExtractSubmitting || sizeChartTextSubmitting}
+                      onClick={() => handleContextMenuAction("size-chart-extract-text")}
+                    >
+                      <span>Text Size Chart Extraction</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
-	            <button
-	              type="button"
-	              className={styles.contextMenuButton}
-	              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-	              onClick={() => handleContextMenuAction("download")}
-	            >
-              {renderContextMenuIcon("download")}
-              <span>Download</span>
-            </button>
 	            {isTextFileEditable(contextMenu.entry) ? (
 	              <button
 	                type="button"
@@ -25374,37 +28533,6 @@ export default function DraftExplorerPage() {
                 <span>View</span>
               </button>
             ) : null}
-	            <button
-		              type="button"
-		              className={styles.contextMenuButton}
-		              onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-		              onClick={() => handleContextMenuAction("create-copy")}
-		            >
-	              {renderContextMenuIcon("duplicate")}
-	              <span>Duplicate</span>
-	            </button>
-	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-	                onClick={() => handleContextMenuAction("copy-to-clipboard")}
-	              >
-	                {renderContextMenuIcon("clipboard")}
-	                <span>Copy to Clipboard</span>
-	              </button>
-	            ) : null}
-	            {contextMenu.image ? (
-	              <button
-	                type="button"
-	                className={styles.contextMenuButton}
-	                onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-	                onClick={() => handleContextMenuAction("undo-last-change")}
-	              >
-	                {renderContextMenuIcon("undo")}
-	                <span>Undo last change</span>
-	              </button>
-	            ) : null}
 	            {contextMenu.image ? (
                 <div
                   className={styles.contextMenuSubmenuWrap}
@@ -25465,6 +28593,13 @@ export default function DraftExplorerPage() {
                       <button
                         type="button"
                         className={styles.contextMenuButton}
+                        onClick={() => handleContextMenuAction("remove-with-mask")}
+                      >
+                        <span>Remove with Mask</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.contextMenuButton}
                         disabled={!contextMenuCollageAllowed}
                         onClick={() => handleContextMenuAction("create-collage")}
                       >
@@ -25520,15 +28655,6 @@ export default function DraftExplorerPage() {
 	            ) : null}
 	            {contextMenu.image ? (
 	              <>
-			                <button
-			                  type="button"
-			                  className={styles.contextMenuButton}
-		                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
-		                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
-		                >
-	                  {renderContextMenuIcon("focuscenter")}
-	                  <span>Edit Auto Center Wide</span>
-	                </button>
 			                <div
 			                  className={styles.contextMenuSubmenuWrap}
 			                  onMouseEnter={() => {
@@ -26009,6 +29135,15 @@ export default function DraftExplorerPage() {
                                 scheduleContextMenuSubmenuClose("edit-gemini")
                               }
 			                    >
+                            <button
+                              type="button"
+                              className={styles.contextMenuButton}
+                              disabled={!contextMenuModelAllowed}
+                              onMouseEnter={closeAnyOpenContextMenuNestedSubmenuWithDelay}
+                              onClick={() => handleContextMenuAction("ai-gemini-fashion-model")}
+                            >
+                              <span>Add Model</span>
+                            </button>
 			                        <div
 			                          className={styles.contextMenuSubmenuWrap}
 			                          onMouseEnter={() =>
@@ -26417,6 +29552,52 @@ export default function DraftExplorerPage() {
                   {renderContextMenuIcon("upscale")}
                   <span>Edit Z-Image: Upscale</span>
                 </button>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+		                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+	                  onClick={() => handleContextMenuAction("ai-auto-center-white")}
+	                >
+                  {renderContextMenuIcon("focuscenter")}
+                  <span>Edit Auto Center Wide</span>
+                </button>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+	                  onClick={() => handleContextMenuAction("copy-to-clipboard")}
+	                >
+                  {renderContextMenuIcon("clipboard")}
+                  <span>Copy to Clipboard</span>
+                </button>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+	                  onClick={() => handleContextMenuAction("create-copy")}
+	                >
+                  {renderContextMenuIcon("duplicate")}
+                  <span>Duplicate</span>
+                </button>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  disabled={contextMenuMoveToMainDisabled}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+	                  onClick={() => handleContextMenuAction("move-to-main")}
+	                >
+                  {renderContextMenuIcon("move-main")}
+                  <span>Move to Main</span>
+                </button>
+	                <button
+	                  type="button"
+	                  className={styles.contextMenuButton}
+	                  onMouseEnter={closeAnyOpenContextMenuSubmenuWithDelay}
+	                  onClick={() => handleContextMenuAction("undo-last-change")}
+	                >
+                  {renderContextMenuIcon("undo")}
+                  <span>Undo last change</span>
+                </button>
               </>
             ) : null}
 	          </div>
@@ -26531,7 +29712,7 @@ export default function DraftExplorerPage() {
                       <div key={entry.path} className={styles.autoLevelsThumbCard}>
                         <div className={styles.autoLevelsThumbImageFrame}>
                           <img
-                            src={buildDraftDownloadUrl(
+                            src={buildDraftThumbnailUrl(
                               entry.path,
                               entryByPath.get(entry.path)?.modifiedAt ?? entry.modifiedAt
                             )}
@@ -26601,12 +29782,15 @@ export default function DraftExplorerPage() {
                 </Text>
               ) : (
                 <Text size={100} className={styles.filesInfo}>
-                  Select which white-background image should be on top, then save.
+                  {stackOverlayMode === "digideal_main_stack_overlay" &&
+                  stackOverlayScenicTargets.length > 0
+                    ? `Select which white-background image should be on top. One output will be created for each scenic ENV image (${stackOverlayScenicTargets.length}).`
+                    : "Select which white-background image should be on top, then save."}
                 </Text>
               )}
               {stackOverlayMode === "digideal_main_stack_overlay" ? (
                 <Text size={100} className={styles.stackOverlayTagLine}>
-                  Only white-background candidates are shown here.
+                  Only non-ENV product candidates are shown here.
                 </Text>
               ) : null}
               <div className={styles.stackOverlayThumbGrid}>
@@ -26626,7 +29810,7 @@ export default function DraftExplorerPage() {
                   >
                     <div className={styles.autoLevelsThumbImageFrame}>
                       <img
-                        src={buildDraftDownloadUrl(
+                        src={buildDraftThumbnailUrl(
                           entry.path,
                           entryByPath.get(entry.path)?.modifiedAt ?? entry.modifiedAt
                         )}
@@ -26955,6 +30139,389 @@ export default function DraftExplorerPage() {
           </DialogSurface>
         </Dialog>
 
+        <Dialog
+          open={Boolean(aiModelDialog)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAiModelDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiModelSurface}>
+            <DialogBody className={styles.aiModelBody}>
+              <DialogTitle>Add Model with Gemini</DialogTitle>
+              {aiModelError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiModelError}
+                </Text>
+              ) : null}
+              {aiModelsError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiModelsError}
+                </Text>
+              ) : null}
+              {aiModelDialog ? (
+                <div className={styles.aiModelTargetSummary}>
+                  <Text size={200} weight="semibold">
+                    {aiModelDialog.entries.length === 1
+                      ? "Selected image"
+                      : `Selected images (${aiModelDialog.entries.length})`}
+                  </Text>
+                  <div className={styles.aiModelTargetGrid}>
+                    {aiModelDialog.entries.slice(0, 8).map((entry) => (
+                      <div key={entry.path} className={styles.aiModelTargetCard}>
+                        <div className={styles.aiModelTargetFrame}>
+                          <img
+                            src={buildDraftThumbnailUrl(entry.path, entry.modifiedAt)}
+                            alt={entry.name}
+                            className={styles.aiModelTargetImage}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                        <Text size={100} className={styles.aiModelTargetLabel}>
+                          {entry.name}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
+                  {aiModelDialog.entries.length > 8 ? (
+                    <Text size={100} className={styles.aiModelHint}>
+                      +{aiModelDialog.entries.length - 8} more selected image(s)
+                    </Text>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className={styles.aiModelPreviewBox}>
+                {aiModelsLoading && aiModels.length === 0 ? (
+                  <div
+                    style={{
+                      minHeight: "140px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Spinner size="medium" />
+                  </div>
+                ) : (
+                  <>
+                    {aiModels.length === 0 ? (
+                      <Text size={200} className={styles.aiModelHint}>
+                        No saved models yet. Add one to start using Gemini try-on.
+                      </Text>
+                    ) : null}
+                    {aiModels.length > 0 ? (
+                      <div className={styles.aiModelThumbGrid}>
+                        {aiModels.map((item) => (
+                          <div
+                            key={item.id}
+                            className={mergeClasses(
+                              styles.aiModelThumbCard,
+                              aiModelDragId === item.id
+                                ? styles.aiModelThumbCardDragging
+                                : undefined,
+                              aiModelDropId === item.id && aiModelDragId !== item.id
+                                ? styles.aiModelThumbCardDropTarget
+                                : undefined
+                            )}
+                            draggable={!aiModelSubmitting && !aiModelDeleteSubmitting}
+                            onDragStart={(event) => {
+                              setAiModelDragId(item.id);
+                              setAiModelDropId(item.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", item.id);
+                            }}
+                            onDragEnd={() => {
+                              setAiModelDragId(null);
+                              setAiModelDropId(null);
+                            }}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              if (aiModelDragId && aiModelDragId !== item.id) {
+                                setAiModelDropId(item.id);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              void handleAiModelReorder(item.id);
+                            }}
+                            onMouseEnter={() => setHoveredAiModelId(item.id)}
+                            onMouseLeave={() => setHoveredAiModelId((prev) => (prev === item.id ? null : prev))}
+                          >
+                            {hoveredAiModelId === item.id ? (
+                              <Text size={100} className={styles.aiModelThumbNameTag}>
+                                {item.name}
+                              </Text>
+                            ) : null}
+                            {hoveredAiModelId === item.id ? (
+                              <button
+                                type="button"
+                                className={styles.aiModelThumbRemoveButton}
+                                aria-label={`Remove ${item.name}`}
+                                title={`Remove ${item.name}`}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setAiModelDeleteTarget(item);
+                                  setAiModelDeleteError(null);
+                                }}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                  focusable="false"
+                                >
+                                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                  <path d="M18 6l-12 12" />
+                                  <path d="M6 6l12 12" />
+                                </svg>
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className={mergeClasses(
+                                styles.aiModelThumbButton,
+                                item.id === selectedAiModelId
+                                  ? styles.aiModelThumbButtonSelected
+                                  : undefined
+                              )}
+                              onClick={() => setSelectedAiModelId(item.id)}
+                            >
+                              <div className={styles.aiModelThumbFrame}>
+                                <img
+                                  src={`${item.imagePath}${
+                                    item.imagePath.includes("?") ? "&" : "?"
+                                  }variant=thumb`}
+                                  alt={item.name}
+                                  className={styles.aiModelThumbImage}
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </div>
+                              <Text size={100} className={styles.aiModelThumbLabel}>
+                                {item.name}
+                              </Text>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+              <Field label="Background">
+                <Dropdown
+                  className={styles.aiModelSelect}
+                  value={
+                    AI_MODEL_BACKGROUND_OPTIONS.find(
+                      (option) => option.value === aiModelBackgroundMode
+                    )?.label ?? AI_MODEL_BACKGROUND_OPTIONS[0].label
+                  }
+                  selectedOptions={[aiModelBackgroundMode]}
+                  disabled={aiModelSubmitting}
+                  inlinePopup
+                  onOptionSelect={(_, data) =>
+                    setAiModelBackgroundMode(
+                      (data.optionValue as DraftAiModelBackgroundMode) || "default"
+                    )
+                  }
+                >
+                  {AI_MODEL_BACKGROUND_OPTIONS.map((option) => (
+                    <Option key={option.value} value={option.value} text={option.label}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Dropdown>
+              </Field>
+              {aiModelBackgroundMode === "custom" ? (
+                <Field label="Custom background or action">
+                  <Input
+                    value={aiModelBackgroundPrompt}
+                    onChange={(_, data) => setAiModelBackgroundPrompt(data.value)}
+                    disabled={aiModelSubmitting}
+                    placeholder="Example: clean stone terrace, slight wind, soft morning light"
+                  />
+                </Field>
+              ) : null}
+              <Field label="Additional guidance (optional)">
+                <Textarea
+                  value={aiModelPrompt}
+                  onChange={(_, data) => setAiModelPrompt(data.value)}
+                  resize="vertical"
+                  rows={4}
+                  disabled={aiModelSubmitting}
+                  placeholder="Example: She should smile but show no teeth."
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      void submitAiModelDialog();
+                    }
+                  }}
+                />
+              </Field>
+              <DialogActions className={styles.aiModelActions}>
+                <Button
+                  appearance="outline"
+                  onClick={() => openAiModelEditorDialog("create")}
+                  disabled={aiModelSubmitting}
+                >
+                  Add New Model
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={() => openAiModelEditorDialog("edit", selectedAiModel?.id)}
+                  disabled={aiModelSubmitting || !selectedAiModel}
+                >
+                  Edit
+                </Button>
+                <Button
+                  appearance="outline"
+                  onClick={closeAiModelDialog}
+                  disabled={aiModelSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void submitAiModelDialog()}
+                  disabled={!aiModelDialog || aiModelSubmitting || !selectedAiModel}
+                >
+                  {aiModelSubmitting ? "Running..." : "Run with AI"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(aiModelDeleteTarget)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAiModelDeleteDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiModelEditorSurface}>
+            <DialogBody className={styles.aiModelDeleteBody}>
+              <DialogTitle>Remove Model</DialogTitle>
+              {aiModelDeleteError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiModelDeleteError}
+                </Text>
+              ) : null}
+              <Text size={200}>Do you want to remove this model?</Text>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={closeAiModelDeleteDialog}
+                  disabled={aiModelDeleteSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void submitAiModelDelete()}
+                  disabled={!aiModelDeleteTarget || aiModelDeleteSubmitting}
+                >
+                  {aiModelDeleteSubmitting ? "Removing..." : "Yes"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(aiModelEditorDialog)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeAiModelEditorDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiModelEditorSurface}>
+            <DialogBody className={styles.aiModelEditorBody}>
+              <DialogTitle>
+                {aiModelEditorDialog?.mode === "edit" ? "Edit Model" : "Add New Model"}
+              </DialogTitle>
+              {aiModelEditorError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {aiModelEditorError}
+                </Text>
+              ) : null}
+              <Field label="Model name">
+                <Input
+                  value={aiModelEditorName}
+                  onChange={(_, data) => setAiModelEditorName(data.value)}
+                  disabled={aiModelEditorSubmitting}
+                  placeholder="Lisa"
+                />
+              </Field>
+              <Field
+                label={
+                  aiModelEditorDialog?.mode === "edit"
+                    ? "Replace model photo (optional)"
+                    : "Upload model photo"
+                }
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  className={styles.fileInput}
+                  disabled={aiModelEditorSubmitting}
+                  onChange={(event) => {
+                    setAiModelEditorFile(event.currentTarget.files?.[0] ?? null);
+                  }}
+                />
+              </Field>
+              {aiModelEditorPreviewUrl ? (
+                <div className={styles.aiModelEditorPreviewFrame}>
+                  <img
+                    src={aiModelEditorPreviewUrl}
+                    alt={aiModelEditorName || "Model preview"}
+                    className={styles.aiModelEditorPreviewImage}
+                  />
+                </div>
+              ) : (
+                <Text size={200} className={styles.aiModelHint}>
+                  Choose a clean model image to show the person clearly.
+                </Text>
+              )}
+              <Text size={100} className={styles.aiModelHint}>
+                Saved models become selectable immediately in the Add Model window.
+              </Text>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={closeAiModelEditorDialog}
+                  disabled={aiModelEditorSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void submitAiModelEditorDialog()}
+                  disabled={
+                    aiModelEditorSubmitting ||
+                    !aiModelEditorName.trim() ||
+                    (aiModelEditorDialog?.mode === "create" && !aiModelEditorFile)
+                  }
+                >
+                  {aiModelEditorSubmitting ? "Saving..." : "Save"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
 	        <Dialog
 	          open={aiEditTargets.length > 0}
 	          onOpenChange={(_, data) => {
@@ -26963,8 +30530,18 @@ export default function DraftExplorerPage() {
             }
           }}
         >
-          <DialogSurface className={styles.aiPromptSurface}>
-            <DialogBody className={styles.aiPromptBody}>
+          <DialogSurface
+            className={mergeClasses(
+              styles.aiPromptSurface,
+              aiEditIsProductScene ? styles.aiPromptSurfaceScene : undefined
+            )}
+          >
+            <DialogBody
+              className={mergeClasses(
+                styles.aiPromptBody,
+                aiEditIsProductScene ? styles.aiPromptBodyScene : undefined
+              )}
+            >
               <DialogTitle>
                 {aiEditTargets.length > 0
                   ? aiEditTargets.length === 1
@@ -26982,6 +30559,12 @@ export default function DraftExplorerPage() {
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                     <Button
                       appearance={aiEraserRunMode === "prompt" ? "primary" : "outline"}
+                      className={mergeClasses(
+                        styles.aiQuietToggleButton,
+                        aiEraserRunMode === "prompt"
+                          ? styles.aiQuietToggleButtonSelected
+                          : undefined
+                      )}
                       onClick={() => setAiEraserRunMode("prompt")}
                       disabled={aiEditSubmitting}
                     >
@@ -26989,6 +30572,12 @@ export default function DraftExplorerPage() {
                     </Button>
                     <Button
                       appearance={aiEraserRunMode === "mask" ? "primary" : "outline"}
+                      className={mergeClasses(
+                        styles.aiQuietToggleButton,
+                        aiEraserRunMode === "mask"
+                          ? styles.aiQuietToggleButtonSelected
+                          : undefined
+                      )}
                       onClick={() => setAiEraserRunMode("mask")}
                       disabled={aiEditTargets.length !== 1 || aiEditSubmitting}
                     >
@@ -27093,7 +30682,10 @@ export default function DraftExplorerPage() {
                     <img
                       src={aiEditSingleTargetPreviewUrl}
                       alt={aiEditSingleTarget.name}
-                      className={styles.aiPromptImagePreview}
+                      className={mergeClasses(
+                        styles.aiPromptImagePreview,
+                        aiEditIsProductScene ? styles.aiPromptImagePreviewScene : undefined
+                      )}
                     />
                   </div>
                 )
@@ -27104,6 +30696,158 @@ export default function DraftExplorerPage() {
                   use prompt-only auto mode.
                 </Text>
               ) : null}
+              {aiEditIsProductScene ? (
+                <div className={styles.aiSceneSection}>
+                  <Field
+                    label={
+                      <span>
+                        <strong>Gender</strong> / <strong>Constellation</strong>
+                      </span>
+                    }
+                  >
+                    <div className={styles.aiSceneOptionRow}>
+                      {AI_SCENE_SUBJECT_OPTIONS.map((option) => (
+                        <Button
+                          key={option.value}
+                          appearance={aiSceneSubject === option.value ? "primary" : "outline"}
+                          className={mergeClasses(
+                            styles.aiQuietToggleButton,
+                            aiSceneSubject === option.value
+                              ? styles.aiQuietToggleButtonSelected
+                              : undefined
+                          )}
+                          onClick={() => setAiSceneSubject(option.value)}
+                          disabled={aiEditSubmitting}
+                        >
+                          {option.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label={<strong>Age Group</strong>}>
+                    <div className={styles.aiSceneOptionRow}>
+                      {AI_SCENE_AGE_GROUP_OPTIONS.map((option) => (
+                        <Button
+                          key={option.value}
+                          appearance={aiSceneAgeGroup === option.value ? "primary" : "outline"}
+                          className={mergeClasses(
+                            styles.aiQuietToggleButton,
+                            aiSceneAgeGroup === option.value
+                              ? styles.aiQuietToggleButtonSelected
+                              : undefined
+                          )}
+                          onClick={() => setAiSceneAgeGroup(option.value)}
+                          disabled={aiEditSubmitting}
+                        >
+                          {option.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label={<strong>Output Format</strong>}>
+                    <div className={styles.aiSceneOptionRow}>
+                      <Button
+                        appearance={aiSceneOutputFormat === "square" ? "primary" : "outline"}
+                        className={mergeClasses(
+                          styles.aiQuietToggleButton,
+                          aiSceneOutputFormat === "square"
+                            ? styles.aiQuietToggleButtonSelected
+                            : undefined
+                        )}
+                        onClick={() => setAiSceneOutputFormat("square")}
+                        disabled={aiEditSubmitting}
+                      >
+                        Square (1:1)
+                      </Button>
+                      <Button
+                        appearance={aiSceneOutputFormat === "wide" ? "primary" : "outline"}
+                        className={mergeClasses(
+                          styles.aiQuietToggleButton,
+                          aiSceneOutputFormat === "wide"
+                            ? styles.aiQuietToggleButtonSelected
+                            : undefined
+                        )}
+                        onClick={() => setAiSceneOutputFormat("wide")}
+                        disabled={aiEditSubmitting || aiEditProvider !== "gemini"}
+                      >
+                        Wide (1.5:1)
+                      </Button>
+                    </div>
+                    {aiEditProvider !== "gemini" ? (
+                      <Text size={200} className={styles.aiScenePromptIdeaMeta}>
+                        Wide Product Scene output is currently available only for Gemini.
+                      </Text>
+                    ) : aiSceneOutputFormat === "wide" ? (
+                      <Text size={200} className={styles.aiScenePromptIdeaMeta}>
+                        Wide mode saves both the original 1.5:1 scene and a centered square crop.
+                      </Text>
+                    ) : null}
+                  </Field>
+                  <Field
+                    label={`AI Prompt Suggestions${
+                      aiSceneMaxSelectedPromptIdeas > 1
+                        ? ` (select up to ${aiSceneMaxSelectedPromptIdeas})`
+                        : ""
+                    }`}
+                  >
+                    {aiScenePromptIdeasLoading ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Spinner size="tiny" />
+                        <Text size={200}>Generating product scene ideas...</Text>
+                      </div>
+                    ) : aiScenePromptIdeasError ? (
+                      <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                        {aiScenePromptIdeasError}
+                      </Text>
+                    ) : aiScenePromptIdeas.length === 0 ? (
+                      <Text size={200} className={styles.aiScenePromptIdeaMeta}>
+                        No prompt suggestions returned for this product.
+                      </Text>
+                    ) : (
+                      <div className={styles.aiScenePromptIdeasGrid}>
+                        {aiScenePromptIdeas.map((idea, index) => {
+                          const selected = aiSceneSelectedPromptIdeas.includes(idea.key);
+                          const disabled =
+                            !selected &&
+                            aiSceneSelectedPromptIdeas.length >= aiSceneMaxSelectedPromptIdeas;
+                          return (
+                            <Button
+                              key={`${index}-${idea.key}`}
+                              appearance="outline"
+                              className={mergeClasses(
+                                styles.aiScenePromptIdeaButton,
+                                selected ? styles.aiScenePromptIdeaSelected : undefined
+                              )}
+                              disabled={disabled || aiEditSubmitting}
+                              onClick={() => toggleAiScenePromptIdea(idea)}
+                            >
+                              <div className={styles.aiScenePromptIdeaContent}>
+                                <Text
+                                  size={300}
+                                  weight="semibold"
+                                  className={styles.aiScenePromptIdeaTitle}
+                                >
+                                  {idea.title}
+                                </Text>
+                                <Text size={200} className={styles.aiScenePromptIdeaBody}>
+                                  {idea.prompt}
+                                </Text>
+                              </div>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {aiSceneSelectedPromptIdeas.length > 0 ? (
+                      <Text size={200} className={styles.aiScenePromptIdeaMeta}>
+                        {aiSceneSelectedPromptIdeas.length} prompt idea
+                        {aiSceneSelectedPromptIdeas.length === 1 ? "" : "s"} selected. Each
+                        selected idea runs as its own Product Scene output.
+                      </Text>
+                    ) : null}
+                  </Field>
+                </div>
+              ) : null}
               {aiEditHasPromptInput ? (
 	                <Field
 	                  label={
@@ -27113,7 +30857,11 @@ export default function DraftExplorerPage() {
                           : aiEditTemplatePreset === "digideal_main_dual"
                             ? "Guidance prompt (optional, added to DigiDeal Main Dual template)"
                           : aiEditTemplatePreset === "product_scene"
-                            ? "Guidance prompt (optional, added to Product Scene template)"
+                            ? (
+                                <strong>
+                                  Guidance Prompt 2 (Optional) Added to Product Scene Template
+                                </strong>
+                              )
                           : aiEditTemplatePreset === "product_collection"
                             ? "Guidance prompt (optional, added to Product Collection template)"
                           : "Prompt (inserted into standard template)"
@@ -27199,6 +30947,208 @@ export default function DraftExplorerPage() {
                   disabled={aiEditTargets.length === 0 || aiEditSubmitting}
                 >
                   {aiEditSubmitting ? "Running..." : "Run AI Edit"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(removeWithMaskDialog)}
+          onOpenChange={(_, data) => {
+            if (!data.open) {
+              closeRemoveWithMaskDialog();
+            }
+          }}
+        >
+          <DialogSurface className={styles.aiPromptSurface}>
+            <DialogBody className={styles.aiPromptBody}>
+              <DialogTitle>
+                {removeWithMaskDialog
+                  ? `Remove with Mask (${removeWithMaskDialog.entries.length} image${
+                      removeWithMaskDialog.entries.length === 1 ? "" : "s"
+                    })`
+                  : "Remove with Mask"}
+              </DialogTitle>
+              {removeWithMaskError ? (
+                <Text size={200} style={{ color: tokens.colorStatusDangerForeground1 }}>
+                  {removeWithMaskError}
+                </Text>
+              ) : null}
+              <Field label="Mode">
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <Button
+                    appearance={removeWithMaskMode === "manual" ? "primary" : "outline"}
+                    className={mergeClasses(
+                      styles.aiQuietToggleButton,
+                      removeWithMaskMode === "manual"
+                        ? styles.aiQuietToggleButtonSelected
+                        : undefined
+                    )}
+                    onClick={() => setRemoveWithMaskMode("manual")}
+                    disabled={removeWithMaskSubmitting}
+                  >
+                    Paint with Mask
+                  </Button>
+                  <Button
+                    appearance={removeWithMaskMode === "ai" ? "primary" : "outline"}
+                    className={mergeClasses(
+                      styles.aiQuietToggleButton,
+                      removeWithMaskMode === "ai"
+                        ? styles.aiQuietToggleButtonSelected
+                        : undefined
+                    )}
+                    onClick={() => setRemoveWithMaskMode("ai")}
+                    disabled={removeWithMaskSubmitting}
+                  >
+                    AI Mode
+                  </Button>
+                </div>
+              </Field>
+              {removeWithMaskReferenceEntry ? (
+                removeWithMaskShowPainter ? (
+                  <div className={styles.aiMaskEditor}>
+                    <div className={styles.removeWithMaskStage}>
+                      <img
+                        ref={removeWithMaskImageRef}
+                        src={removeWithMaskPreviewUrl}
+                        alt={removeWithMaskReferenceEntry.name}
+                        className={styles.removeWithMaskBaseImage}
+                        onLoad={() => {
+                          syncRemoveWithMaskCanvasToImage(true);
+                        }}
+                      />
+                      <div
+                        className={styles.aiMaskCursor}
+                        style={{
+                          left: `${removeWithMaskCursor.x}px`,
+                          top: `${removeWithMaskCursor.y}px`,
+                          width: `${removeWithMaskCursor.size}px`,
+                          height: `${removeWithMaskCursor.size}px`,
+                          display: removeWithMaskCursor.visible ? "block" : "none",
+                        }}
+                      />
+                      <canvas
+                        ref={removeWithMaskCanvasRef}
+                        className={styles.aiMaskCanvas}
+                        onPointerEnter={(event) => {
+                          setRemoveWithMaskCursorFromPointer(event, true);
+                        }}
+                        onPointerDown={handleRemoveWithMaskPointerDown}
+                        onPointerMove={handleRemoveWithMaskPointerMove}
+                        onPointerUp={(event) => stopRemoveWithMaskDrawing(event.pointerId)}
+                        onPointerCancel={(event) => {
+                          stopRemoveWithMaskDrawing(event.pointerId);
+                          setRemoveWithMaskCursor((prev) =>
+                            prev.visible ? { ...prev, visible: false } : prev
+                          );
+                        }}
+                        onPointerLeave={(event) => {
+                          if (
+                            removeWithMaskDrawingRef.current &&
+                            removeWithMaskPointerIdRef.current === event.pointerId
+                          ) {
+                            stopRemoveWithMaskDrawing(event.pointerId);
+                          }
+                          setRemoveWithMaskCursor((prev) =>
+                            prev.visible ? { ...prev, visible: false } : prev
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className={styles.aiMaskToolbar}>
+                      <Field label={`Brush size (${removeWithMaskBrushSize}px)`}>
+                        <input
+                          type="range"
+                          min={6}
+                          max={180}
+                          step={1}
+                          value={removeWithMaskBrushSize}
+                          onChange={(event) => {
+                            const nextValue = Number(event.currentTarget.value);
+                            setRemoveWithMaskBrushSize(
+                              Number.isFinite(nextValue)
+                                ? Math.max(6, Math.min(180, Math.round(nextValue)))
+                                : 36
+                            );
+                          }}
+                          className={styles.aiMaskBrushSlider}
+                        />
+                      </Field>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Button
+                          appearance="subtle"
+                          onClick={clearRemoveWithMaskCanvas}
+                          disabled={!removeWithMaskHasPaint || removeWithMaskSubmitting}
+                        >
+                          Clear mask
+                        </Button>
+                      </div>
+                    </div>
+                    <Text size={200} className={styles.aiMaskHint}>
+                      {removeWithMaskEntryCount > 1
+                        ? "Paint on the square stage once. That mask geometry will be mapped and applied to all selected images."
+                        : "Paint on the square stage and the masked area will be whitened on this image."}
+                    </Text>
+                  </div>
+                ) : (
+                  <div className={styles.aiPromptImageWrap}>
+                    <img
+                      src={removeWithMaskPreviewUrl}
+                      alt={removeWithMaskReferenceEntry.name}
+                      className={styles.aiPromptImagePreview}
+                    />
+                  </div>
+                )
+              ) : null}
+              {removeWithMaskMode === "ai" ? (
+                <Field label="Prompt">
+                  <Textarea
+                    value={removeWithMaskPrompt}
+                    onChange={(_, data) => setRemoveWithMaskPrompt(data.value)}
+                    resize="vertical"
+                    rows={3}
+                    placeholder="Remove the logo in the upper right corner and the text in the lower left."
+                  />
+                </Field>
+              ) : null}
+              <Field label={`Feather (${removeWithMaskFeatherPx}px)`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={40}
+                  step={1}
+                  value={removeWithMaskFeatherPx}
+                  onChange={(event) => {
+                    const nextValue = Number(event.currentTarget.value);
+                    setRemoveWithMaskFeatherPx(
+                      Number.isFinite(nextValue)
+                        ? Math.max(0, Math.min(40, Math.round(nextValue)))
+                        : 10
+                    );
+                  }}
+                  className={styles.aiMaskBrushSlider}
+                />
+              </Field>
+              <Text size={200} className={styles.aiMaskHint}>
+                {removeWithMaskMode === "ai"
+                  ? "AI will inspect the first selected image, return removable regions as JSON, and apply that mask to all selected images."
+                  : "Manual mode paints the removable area once and applies the same white feathered mask to all selected images."}
+              </Text>
+              <DialogActions>
+                <Button
+                  appearance="outline"
+                  onClick={() => closeRemoveWithMaskDialog()}
+                  disabled={removeWithMaskSubmitting}
+                >
+                  {t("common.close")}
+                </Button>
+                <Button
+                  appearance="primary"
+                  onClick={() => void applyRemoveWithMaskForDialogTargets()}
+                  disabled={!removeWithMaskDialog || removeWithMaskSubmitting}
+                >
+                  {removeWithMaskSubmitting ? "Applying..." : "Remove with Mask"}
                 </Button>
               </DialogActions>
             </DialogBody>
@@ -27799,6 +31749,7 @@ export default function DraftExplorerPage() {
                 onContextMenu={(event) => {
                   event.preventDefault();
                   if (!previewEntry) return;
+                  closeBackgroundImageContextMenuImmediately();
                   syncSelectionForContextMenuEntry(previewEntry);
                   setContextMenuSubmenu(null);
                   setContextMenuNestedSubmenu(null);
